@@ -351,6 +351,18 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
 .proof-card pre,.proof-json{margin:14px 0 0;max-height:440px;overflow:auto;background:#070a12;border:1px solid var(--line);padding:14px 16px;border-radius:4px;font-size:12px;line-height:1.55;color:#c5d4e8;white-space:pre}
 .proof-shots{display:grid;gap:14px}
 .proof-shots img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:4px;background:#070a12}
+.proof-shots a{display:block;cursor:zoom-in}
+.proof-shots a:focus-visible{outline:2px solid var(--acid);outline-offset:3px}
+.proof-zoom-hint{font-size:12px;color:var(--muted);margin-top:4px}
+.proof-viewer{width:min(96vw,1400px);max-width:none;height:90vh;max-height:none;padding:0;border:1px solid var(--line2);border-radius:6px;background:#0b101a;color:#e3eafa}
+.proof-viewer::backdrop{background:rgba(0,0,0,.85)}
+.proof-viewer[open]{display:flex;flex-direction:column}
+.proof-viewer-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px;border-bottom:1px solid var(--line2)}
+.proof-viewer-bar strong{margin-right:auto}
+.proof-viewer-bar button{background:#151e2b;color:inherit;border:1px solid var(--line2);border-radius:4px;padding:8px 12px;cursor:pointer}
+.proof-viewer-bar button:focus-visible{outline:2px solid var(--acid);outline-offset:2px}
+.proof-viewer-scroll{overflow:auto;flex:1;min-height:0;overscroll-behavior:contain}
+.proof-viewer-scroll img{display:block;max-width:none;height:auto}
 .proof-fields{display:grid;gap:10px;margin-top:18px}
 .proof-fields div{display:grid;grid-template-columns:180px 1fr;gap:12px;padding:12px 14px;border:1px solid var(--line2);background:rgba(0,240,255,.03)}
 .proof-fields b{font:600 12px/1.3 var(--mono);letter-spacing:.04em;color:var(--cyan)}
@@ -807,9 +819,10 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
         <h3>What the terminal showed</h3>
         <p class="proof-note">The launcher enrolled the <code>goose</code> application, then Goose issued <code>echo</code> with args <code>ztd-smoke-ok</code> and <code>rm -rf /</code>. The allow returned exit 0. The deny came back as <code>TX_DOCTRINE_L1_FAILED</code> with a signed receipt in the tool error.</p>
         <div class="proof-shots">
-          <img src="/proofs/agent-run.png" alt="Terminal transcript of ztd mcp agent run goose against Ollama qwen2.5:0.5b, showing the echo tool call and the L1 denial of rm -rf /.">
-          <img src="/proofs/verify.png" alt="ztd audit verify reporting Audit chain OK, and ztd report verify reporting Verification PASSED.">
+          <a href="/proofs/agent-run.png" data-proof-image><img src="/proofs/agent-run.png" alt="Terminal transcript of ztd mcp agent run goose against Ollama qwen2.5:0.5b, showing the echo tool call and the L1 denial of rm -rf /."></a>
+          <a href="/proofs/verify.png" data-proof-image><img src="/proofs/verify.png" alt="ztd audit verify reporting Audit chain OK, and ztd report verify reporting Verification PASSED."></a>
         </div>
+        <p class="proof-zoom-hint">Click a screenshot to expand and zoom.</p>
       </div>
       <div class="proof-card rv">
         <h3>Denied call · L1 doctrine</h3>
@@ -1129,6 +1142,17 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   </div>
 </section>
 </main>
+
+<dialog class="proof-viewer" id="proof-viewer" aria-labelledby="proof-viewer-title">
+  <div class="proof-viewer-bar">
+    <strong id="proof-viewer-title">Terminal screenshot</strong>
+    <button type="button" id="proof-zoom-out" aria-label="Zoom out">−</button>
+    <output id="proof-zoom-level" aria-live="polite">100%</output>
+    <button type="button" id="proof-zoom-in" aria-label="Zoom in">+</button>
+    <button type="button" id="proof-viewer-close">Close</button>
+  </div>
+  <div class="proof-viewer-scroll" tabindex="0" aria-label="Scrollable screenshot"><img id="proof-viewer-image" alt=""></div>
+</dialog>
 
 <footer>
   <div class="wrap">

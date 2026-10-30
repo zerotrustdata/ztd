@@ -39,6 +39,35 @@
     });
   });
 
+  /* Expand proof screenshots at their original resolution, with scrollable zoom. */
+  var viewer=document.getElementById('proof-viewer');
+  if(viewer && typeof viewer.showModal==='function'){
+    var viewerImage=document.getElementById('proof-viewer-image');
+    var zoomLevel=document.getElementById('proof-zoom-level');
+    var zoomOut=document.getElementById('proof-zoom-out');
+    var zoomIn=document.getElementById('proof-zoom-in');
+    var zoom=100, imageWidth=1280;
+    function setZoom(value){
+      zoom=Math.max(50,Math.min(300,value));
+      viewerImage.style.width=(imageWidth*zoom/100)+'px';
+      zoomLevel.textContent=zoom+'%';
+      zoomOut.disabled=zoom===50; zoomIn.disabled=zoom===300;
+    }
+    document.querySelectorAll('[data-proof-image]').forEach(function(link){
+      link.addEventListener('click',function(event){
+        event.preventDefault();
+        var image=link.querySelector('img');
+        imageWidth=image.naturalWidth || 1280;
+        viewerImage.src=link.href; viewerImage.alt=image.alt;
+        setZoom(100); viewer.showModal();
+        viewerImage.parentElement.scrollTop=0; viewerImage.parentElement.scrollLeft=0;
+      });
+    });
+    zoomOut.addEventListener('click',function(){setZoom(zoom-25)});
+    zoomIn.addEventListener('click',function(){setZoom(zoom+25)});
+    document.getElementById('proof-viewer-close').addEventListener('click',function(){viewer.close()});
+  }
+
   /* replay trace when it scrolls back into view */
   var trace=document.getElementById('trace');
   if(trace && 'IntersectionObserver' in window){
