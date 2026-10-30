@@ -89,7 +89,12 @@ func (t *FSDiskProfileTool) Execute(ctx context.Context, args json.RawMessage) (
 		}
 
 		if err != nil {
-			return fmt.Errorf("fs_disk_profile: error accessing path %s: %w", path, err)
+			if path == req.Path {
+				return fmt.Errorf("fs_disk_profile: error accessing path %s: %w", path, err)
+			}
+			// An unreadable entry below the root is skipped, so one
+			// root-only directory does not fail the profile of the rest.
+			return nil
 		}
 
 		walkEntries++

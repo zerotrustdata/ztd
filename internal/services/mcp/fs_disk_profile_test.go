@@ -568,3 +568,26 @@ func TestFSDiskProfileTool_Execute_WithinBoundsNotTruncated(t *testing.T) {
 	require.Len(t, profile.Entries, 2)
 	require.False(t, profile.Truncated)
 }
+
+// An unreadable directory below the root is skipped, so the profile still
+// reports the readable entries instead of failing the whole walk.
+func TestFSDiskProfileTool_Execute_SkipsUnreadableEntry(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads every directory, so no entry is unreadable")
+	}
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "readable.txt"), []byte("data"), 0o600))
+	locked := filepath.Join(root, "locked")
+	require.NoError(t, os.Mkdir(locked, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(locked, "hidden.txt"), []byte("x"), 0o600))
+	require.NoError(t, os.Chmod(locked, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+
+	tool := &FSDiskProfileTool{}
+	args, err := json.Marshal(FSDiskProfileRequest{Path: root})
+	require.NoError(t, err)
+
+	result, err := tool.Execute(context.Background(), args)
+	require.NoError(t, err)
+	require.Contains(t, result.Content[0].Text, "readable.txt")
+}
