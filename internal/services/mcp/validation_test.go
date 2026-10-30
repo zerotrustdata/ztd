@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func setPrivateIPAllowlistForTest(t *testing.T, cidrs []string) {
@@ -847,8 +848,51 @@ func TestValidateHTTPRequestURL_DefaultBlocksPrivate(t *testing.T) {
 	resetPrivateIPAllowlistForTest()
 
 	_, err := validateHTTPRequestURL("http://10.43.0.40")
-	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrMCPValidateURLPrivateAddress)
 
 	_, err = validateHTTPRequestURL("http://127.0.0.1")
-	assert.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrMCPValidateURLLoopbackAddress)
+}
+
+func TestValidateHTTPRequestURL_BlocksUnspecifiedAndMulticast(t *testing.T) {
+	t.Cleanup(resetPrivateIPAllowlistForTest)
+	resetPrivateIPAllowlistForTest()
+	for _, u := range []string{
+		"http://0.0.0.0:11434/",
+		"http://[::]:11434/",
+		"http://224.0.0.1/",
+		"http://[ff02::1]/",
+		"http://169.254.169.254/",
+	} {
+		t.Run(u, func(t *testing.T) {
+			_, err := validateHTTPRequestURL(u)
+			require.ErrorIs(t, err, constants.ErrMCPValidateURLPrivateAddress)
+		})
+	}
+}
+
+func TestIsRestrictedIP(t *testing.T) {
+	for _, ip := range []string{"0.0.0.0", "::", "127.0.0.1", "10.0.0.1", "169.254.169.254", "224.0.0.1", "ff02::1"} {
+		require.True(t, isRestrictedIP(net.ParseIP(ip)), ip)
+	}
+	for _, ip := range []string{"8.8.8.8", "93.184.216.34", "2606:4700:4700::1111"} {
+		require.False(t, isRestrictedIP(net.ParseIP(ip)), ip)
+	}
+}
+
+func TestRejectRestrictedDial(t *testing.T) {
+	t.Cleanup(resetPrivateIPAllowlistForTest)
+	resetPrivateIPAllowlistForTest()
+	for _, address := range []string{"10.1.2.3:80", "0.0.0.0:11434", "[::]:80", "127.0.0.1:1", "[fe80::1%eth0]:80", "not-an-ip:80"} {
+		t.Run(address, func(t *testing.T) {
+			err := rejectRestrictedDial("tcp", address, nil)
+			require.ErrorIs(t, err, constants.ErrMCPValidateURLPrivateAddress)
+		})
+	}
+	require.NoError(t, rejectRestrictedDial("tcp", "8.8.8.8:53", nil))
+	require.NoError(t, rejectRestrictedDial("tcp", "[2001:4860:4860::8888]:53", nil))
+
+	setPrivateIPAllowlistForTest(t, []string{"127.0.0.0/8"})
+	require.NoError(t, rejectRestrictedDial("tcp", "127.0.0.1:1", nil))
+	require.ErrorIs(t, rejectRestrictedDial("tcp", "10.0.0.1:80", nil), constants.ErrMCPValidateURLPrivateAddress)
 }
