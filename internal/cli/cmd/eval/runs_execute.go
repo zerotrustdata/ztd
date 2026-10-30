@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -308,6 +307,10 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}
+	residency, err := newRunModelResidency(cfg, authContext, deps, topology.Inference.OperatorSessionID)
+	if err != nil {
+		return 0, fmt.Errorf("evaluation: run execute: %w", err)
+	}
 	executor, err := deps.agentExecutorFactory(campaignAgentExecutorInputs{
 		Cmd:         cmd,
 		Deps:        deps,
@@ -316,6 +319,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		AuthContext: authContext,
 		Topology:    topology,
 		Store:       store,
+		Residency:   residency,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
@@ -342,21 +346,19 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	// and joined into the returned error once the run has finished normally.
 	var publicationErrs []error
 	finished := false
-	if strictObservation {
-		defer func() {
-			if runErr == nil || finished {
-				return
-			}
-			cleanupErr := releaseRunModels(cmd, deps, opts, cfg, authContext, topology.Inference.OperatorSessionID, spec)
-			if cleanupErr == nil {
-				return
-			}
-			runErr = errors.Join(runErr, fmt.Errorf("evaluation: run execute: release provider models: %w", cleanupErr))
-		}()
-		if err := releaseResidentProviderModels(cmd, deps, opts, cfg, authContext, topology.Inference.OperatorSessionID); err != nil {
-			return executed, fmt.Errorf("evaluation: run execute: %w", err)
+	// Each assignment releases the models it does not dispatch before it runs,
+	// so a run never starts against a warm, foreign model. A run that fails
+	// still leaves no model resident.
+	defer func() {
+		if runErr == nil || finished {
+			return
 		}
-	}
+		cleanupErr := releaseRunModels(cmd, residency, opts)
+		if cleanupErr == nil {
+			return
+		}
+		runErr = errors.Join(runErr, fmt.Errorf("evaluation: run execute: release provider models: %w", cleanupErr))
+	}()
 	iterations := int64(opts.Limit)
 	stopped := false
 	generationFailures := 0
@@ -422,7 +424,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		return executed, fmt.Errorf("evaluation: run execute: run %s stopped after %d assignment(s) with %d queued: %w", opts.RunID, executed, summary.QueuedCount, constants.ErrEvaluationRunStopped)
 	}
 	if summary.QueuedCount == 0 && summary.RunningCount == 0 {
-		finalPubErrs, err := finalizeRunExecution(cmd, deps, opts, cfg, authContext, topology, spec, witness, publication, strictProvenance, strictObservation)
+		finalPubErrs, err := finalizeRunExecution(cmd, deps, opts, residency, witness, publication, strictProvenance, strictObservation)
 		if err != nil {
 			return executed, err
 		}
@@ -436,17 +438,14 @@ func finalizeRunExecution(
 	cmd *cobra.Command,
 	deps nativeEvalDeps,
 	opts runExecuteOptions,
-	cfg *config.Config,
-	authContext *auth.ClientAuthContext,
-	topology evaluation.CampaignOperatorTopology,
-	spec *evalv1.EvaluationCampaignSpec,
+	residency evaluation.ModelResidencyReleaser,
 	witness *evaluation.CampaignWitnessCapture,
 	publication *evaluation.CampaignPublicationCoordinator,
 	strictProvenance, strictObservation bool,
 ) ([]error, error) {
-	// Windows recorded after their assignment completed are sealed here, while
-	// the run's models are still loaded. A strict run then waits, once, for the
-	// windows its scored attempts have not delivered yet.
+	// Windows recorded after their assignment completed are sealed here, before
+	// the run releases its resident models. A strict run then waits, once, for
+	// the windows its scored attempts have not delivered yet.
 	if err := witness.CaptureRunProviderObservationEvidence(cmd.Context(), opts.RunID); err != nil {
 		return nil, fmt.Errorf("evaluation: run execute: %w", err)
 	}
@@ -467,7 +466,7 @@ func finalizeRunExecution(
 			return nil, fmt.Errorf("evaluation: run execute: %w", err)
 		}
 	}
-	if err := releaseRunModels(cmd, deps, opts, cfg, authContext, topology.Inference.OperatorSessionID, spec); err != nil {
+	if err := releaseRunModels(cmd, residency, opts); err != nil {
 		return nil, fmt.Errorf("evaluation: run execute: %w", err)
 	}
 	var publicationErrs []error
@@ -510,62 +509,25 @@ func waitForRunEvidence(cmd *cobra.Command, runID, kind string, timeout time.Dur
 	return err
 }
 
-// releaseResidentProviderModels unloads every model resident on the provider
-// before scored work, so a run never starts against a warm, foreign model.
-func releaseResidentProviderModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions, cfg *config.Config, authContext *auth.ClientAuthContext, inferenceSessionID string) error {
-	return releaseProviderModels(cmd, deps, opts, cfg, authContext, inferenceSessionID, "resident", nil)
-}
-
-// releaseRunModels unloads the campaign's own models once the run is done.
-func releaseRunModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions, cfg *config.Config, authContext *auth.ClientAuthContext, inferenceSessionID string, spec *evalv1.EvaluationCampaignSpec) error {
-	if inferenceSessionID == "" || spec == nil || len(spec.GetModelRegistry()) == 0 {
-		return nil
-	}
-	modelTags := make([]string, 0, len(spec.GetModelRegistry()))
-	for _, variant := range spec.GetModelRegistry() {
-		if variant != nil && variant.GetServedModelTag() != "" {
-			modelTags = append(modelTags, variant.GetServedModelTag())
-		}
-	}
-	if len(modelTags) == 0 {
-		return nil
-	}
-	return releaseProviderModels(cmd, deps, opts, cfg, authContext, inferenceSessionID, "campaign", modelTags)
-}
-
-// releaseProviderModels releases the resident provider models, limited to
-// only when it is non-nil, through the exact Inference Operator session and
-// waits until the provider reports them absent. Residency and release are
-// typed commands the Operator serves from its own configured provider, so no
-// endpoint travels with them.
-func releaseProviderModels(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions, cfg *config.Config, authContext *auth.ClientAuthContext, inferenceSessionID, label string, only []string) error {
+// newRunModelResidency builds the run's provider residency releaser on the
+// exact Inference Operator session the run dispatches to.
+func newRunModelResidency(cfg *config.Config, authContext *auth.ClientAuthContext, deps nativeEvalDeps, inferenceSessionID string) (*evaluation.ProviderModelResidency, error) {
 	dispatcher, err := newHarnessOllamaModelCommandDispatcher(cfg, authContext, deps.gatewayDeps())
 	if err != nil {
-		return err
+		return nil, err
 	}
-	maintenance := evaluation.OllamaModelMaintenanceContext{
-		TargetOperatorSessionID: inferenceSessionID,
-		CaseID:                  opts.RunID,
-		NewID:                   adaptNewID(deps.newID),
-	}
-	residency, err := evaluation.ReadOllamaProviderResidency(cmd.Context(), dispatcher, maintenance)
+	return evaluation.NewProviderModelResidency(dispatcher, inferenceSessionID, adaptNewID(deps.newID))
+}
+
+// releaseRunModels releases every model the run left resident on the provider
+// once the run is done.
+func releaseRunModels(cmd *cobra.Command, residency evaluation.ModelResidencyReleaser, opts runExecuteOptions) error {
+	released, err := residency.ReleaseAllExcept(cmd.Context(), evaluation.ModelResidencyRelease{RunID: opts.RunID})
 	if err != nil {
-		return fmt.Errorf("evaluation: read provider residency: %w", err)
-	}
-	residentTags := make([]string, 0, len(residency.Models))
-	for _, resident := range residency.Models {
-		if only == nil || slices.Contains(only, resident.Name) {
-			residentTags = append(residentTags, resident.Name)
-		}
-	}
-	if len(residentTags) == 0 {
-		return nil
-	}
-	if err := evaluation.ReleaseOllamaModels(cmd.Context(), dispatcher, inferenceSessionID, opts.RunID, residentTags, maintenance.NewID); err != nil {
 		return err
 	}
-	if !opts.JSONOutput {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Released %d %s model(s) through inference session %s\n", len(residentTags), label, inferenceSessionID)
+	if len(released) > 0 && !opts.JSONOutput {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Released %d resident model(s) after run %s\n", len(released), opts.RunID)
 	}
 	return nil
 }
@@ -580,6 +542,8 @@ type campaignAgentExecutorInputs struct {
 	AuthContext *auth.ClientAuthContext
 	Topology    evaluation.CampaignOperatorTopology
 	Store       *evaluation.Store
+	// Residency releases provider models between the phases of an assignment.
+	Residency evaluation.ModelResidencyReleaser
 }
 
 // campaignAgentExecutorFactory builds the executor campaign execution runs
@@ -606,7 +570,7 @@ func newProductionCampaignAgentExecutor(in campaignAgentExecutorInputs) (evaluat
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: initialize ledger sentinel: %w", err)
 	}
-	return evaluation.NewCampaignAgentExecutor(&governedInferenceDispatcher{client: appClient, cliSessionID: persona.CLISessionID}, evaluation.NewCommandLane(gatewayClient, persona), sentinel, in.Store, in.Deps.now, adaptNewID(in.Deps.newID))
+	return evaluation.NewCampaignAgentExecutor(&governedInferenceDispatcher{client: appClient, cliSessionID: persona.CLISessionID}, in.Residency, evaluation.NewCommandLane(gatewayClient, persona), sentinel, in.Store, in.Deps.now, adaptNewID(in.Deps.newID))
 }
 
 // reconcileStopRequest reads the run's lease and marks the watcher requested when

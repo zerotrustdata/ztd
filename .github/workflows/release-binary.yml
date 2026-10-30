@@ -8,14 +8,13 @@
 # Job order:
 #   validate  -> preflight: tag/VERSION/revision agreement, dispatch ref rules
 #   credentials -> write/read/delete a probe in the real R2 bucket with the publish
-#                credential; runs on rehearsals too, so a revoked or under-scoped
-#                Cloudflare token fails `make release-rehearse`, never a tag
+#                credential, so a revoked or under-scoped Cloudflare token fails
+#                before anything is built or published; fix it and rerun
 #   build     -> build-all, checksums, prepublication artifact verification,
 #                cosign keyless signing (.sigstore.json bundles), staged release set
-#   verify-download -> download the artifact set exactly as publish will, re-verify
-#                it, and run scripts/release-r2.sh against wrangler local storage;
-#                runs on rehearsals too, so `make release-rehearse` covers
-#                everything up to publication
+#   verify-download -> execute the real publication procedure against a temporary
+#                GitHub draft and an isolated prefix in the real R2 bucket;
+#                verify downloaded bytes and clean up, without public publication
 #   publish   -> (publish=true only) re-verify the downloaded set, GitHub draft
 #                release, immutable R2 upload under v<VERSION>/ (wrangler), release
 #                published, then promote R2 latest.json (the single website
@@ -52,8 +51,6 @@ jobs:
     timeout-minutes: 10
     outputs:
       version: ${{ steps.preflight.outputs.version }}
-      version_major_minor: ${{ steps.preflight.outputs.version_major_minor }}
-      tag: ${{ steps.preflight.outputs.tag }}
       publish: ${{ steps.preflight.outputs.publish }}
     steps:
       - name: Checkout
@@ -168,9 +165,9 @@ jobs:
     name: Verify Downloaded Release Set
     needs: [validate, build]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
-      contents: read
+      contents: write
     env:
       VERSION: ${{ needs.validate.outputs.version }}
     steps:
@@ -192,12 +189,6 @@ jobs:
           name: release-set
           path: release
 
-      - name: Re-verify downloaded release set
-        run: |
-          set -euo pipefail
-          scripts/release-artifacts.sh verify release "$VERSION" "$(git rev-parse HEAD)"
-          scripts/release-artifacts.sh verify-signatures release
-
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -208,15 +199,12 @@ jobs:
       - name: Install wrangler
         run: npm ci --prefix website
 
-      - name: Rehearse R2 publication against wrangler local storage
+      - name: Test the publication procedure without publishing
         env:
-          ZTD_R2_PERSIST_TO: ${{ runner.temp }}/r2
-        run: |
-          set -euo pipefail
-          if scripts/release-r2.sh promote release "$VERSION"; then echo "promote accepted an unpublished set"; exit 1; fi
-          scripts/release-r2.sh upload release "$VERSION"
-          scripts/release-r2.sh promote release "$VERSION"
-          if scripts/release-r2.sh upload release "$VERSION"; then echo "upload overwrote an immutable versioned set"; exit 1; fi
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_ACCOUNT_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: scripts/release-publish.sh rehearse release "$VERSION" "$(git rev-parse HEAD)"
 
   publish:
     name: Publish Release
@@ -229,7 +217,6 @@ jobs:
       contents: write
     env:
       VERSION: ${{ needs.validate.outputs.version }}
-      TAG: ${{ needs.validate.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -249,24 +236,6 @@ jobs:
           name: release-set
           path: release
 
-      - name: Re-verify downloaded release set
-        run: |
-          set -euo pipefail
-          scripts/release-artifacts.sh verify release "$VERSION" "$(git rev-parse HEAD)"
-          scripts/release-artifacts.sh verify-signatures release
-
-      - name: Create draft GitHub release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          tag_name: ${{ needs.validate.outputs.tag }}
-          target_commitish: ${{ github.sha }}
-          name: ztd v${{ needs.validate.outputs.version }}
-          body_path: docs/release_notes/v${{ needs.validate.outputs.version_major_minor }}.x/v${{ needs.validate.outputs.version }}.md
-          draft: true
-          prerelease: false
-          files: |
-            release/*
-
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -277,25 +246,12 @@ jobs:
       - name: Install wrangler
         run: npm ci --prefix website
 
-      - name: Upload versioned release set to R2
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_ACCOUNT_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: scripts/release-r2.sh upload release "$VERSION"
-
-      - name: Publish Release
+      - name: Publish and verify the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release edit "$TAG" --draft=false
-
-      # Runs last: unversioned website routes (/ztd, /ztd-linux-amd64, ...) follow this pointer, so it moves
-      # only after the GitHub release is public and the whole versioned set is verified in R2.
-      - name: Promote latest pointer
-        env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_ACCOUNT_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: scripts/release-r2.sh promote release "$VERSION"
+        run: scripts/release-publish.sh publish release "$VERSION" "$(git rev-parse HEAD)"
 
   verify-install:
     # POSTPUBLICATION gate: runs only after the release is public.

@@ -16,6 +16,30 @@ const liveEventVector = JSON.parse(
 
 const wire = (): Record<string, unknown> => JSON.parse(liveEventVector.canonical_json) as Record<string, unknown>;
 
+const judgeEventVector = JSON.parse(
+  readFileSync(join(repoRoot, 'protocol/vectors/eval/public_live_event_judge.json'), 'utf8'),
+) as { message_type: string; canonical_json: string };
+
+const judgeWire = (): Record<string, unknown> => JSON.parse(judgeEventVector.canonical_json) as Record<string, unknown>;
+const withJudge = (patch: Record<string, unknown>, event: Record<string, unknown> = {}): Record<string, unknown> => {
+  const body = { ...judgeWire(), ...event };
+  return { ...body, judge: { ...(body.judge as Record<string, unknown>), ...patch } };
+};
+const startedJudge = (): Record<string, unknown> => {
+  const body = judgeWire();
+  const judge = body.judge as Record<string, unknown>;
+  return {
+    ...body,
+    kind: 'judge_started',
+    event_id: 'run-1:assign-1:judge-started:judge-criterion-1:event',
+    judge: {
+      judge_variant_id: judge.judge_variant_id, served_model_tag: judge.served_model_tag, model_digest: judge.model_digest,
+      subject: judge.subject, criterion_id: judge.criterion_id, index: judge.index, count: judge.count,
+      rubric_version: judge.rubric_version, state: 'JUDGE_ACTIVITY_STATE_JUDGING', provider_attempt_id: judge.provider_attempt_id,
+    },
+  };
+};
+
 describe('decodeLiveEventWire', () => {
   it('decodes the Go-produced vector, keeping zero progress and a measured zero', () => {
     expect(liveEventVector.message_type).toBe('PublicLiveEvent');
@@ -95,6 +119,17 @@ describe('EvalStore live event ingest', () => {
     expect(event?.release_basis).toBe('recorded');
   });
 
+  it('indexes a judgment\'s start and completion beside its assignment\'s other events', () => {
+    const store = new EvalStore();
+    store.acceptProjection({ sequence: 9, record_type: 'event', record_bytes: JSON.stringify(startedJudge()) });
+    store.acceptProjection({ sequence: 10, record_type: 'event', record_bytes: judgeEventVector.canonical_json });
+    expect(store.getState().errors).toEqual([]);
+    const judged = store.getState().events.filter((candidate) => candidate.assignment_id === 'assign-1');
+    expect(judged.map((event) => event.kind).sort()).toEqual(['judge_completed', 'judge_started']);
+    const history = [...store.getState().assignmentEvents.values()].flat().filter((event) => event.assignment_id === 'assign-1');
+    expect(history.map((event) => event.judge?.state).sort()).toEqual(['judging', 'met']);
+  });
+
   it('records an error and no event when the wire event omits its progress', () => {
     const store = new EvalStore();
     const body = wire();
@@ -102,5 +137,56 @@ describe('EvalStore live event ingest', () => {
     store.acceptProjection({ sequence: 8, record_type: 'event', record_bytes: JSON.stringify(body) });
     expect(store.getState().events).toHaveLength(0);
     expect(store.getState().errors.join(' ')).toContain('completed');
+  });
+});
+
+describe('decodeLiveEventWire judge events', () => {
+  it('decodes the Go-produced judge vector into view vocabulary and numbers', () => {
+    expect(judgeEventVector.message_type).toBe('PublicLiveEvent');
+    const event = decodeLiveEventWire(judgeWire());
+    expect(event.kind).toBe('judge_completed');
+    expect(event.variant_id).toBe('gemma4-e2b');
+    expect(event.judge).toMatchObject({
+      served_model_tag: 'qwen3.5:4b', subject: 'criterion', criterion_id: 'refusal', state: 'met',
+      index: 1, count: 2, usage_reported: true, prompt_tokens: 812, completion_tokens: 40, thinking_tokens: 0,
+      load_duration_ns: 0, total_duration_ns: 1_200_000_000, executed_at_unix_ms: 1_793_361_605_000, dispatch_elapsed_ns: 1_300_000_000,
+    });
+    expect(() => decodeViewRecord(event.kind, event)).not.toThrow();
+  });
+
+  it('decodes an in-flight judgment', () => {
+    const event = decodeLiveEventWire(startedJudge());
+    expect(event.judge?.state).toBe('judging');
+    expect(event.judge?.usage_reported).toBe(false);
+  });
+
+  it('decodes a scored quality judgment and a failed one', () => {
+    const scored = decodeLiveEventWire(withJudge({ subject: 'JUDGE_SUBJECT_FINAL_REPLY', criterion_id: undefined, state: 'JUDGE_ACTIVITY_STATE_SCORED', score: 4 }));
+    expect(scored.judge).toMatchObject({ subject: 'final_reply', state: 'scored', score: 4 });
+    const failed = decodeLiveEventWire(withJudge({ state: 'JUDGE_ACTIVITY_STATE_FAILED', failure: 'JUDGE_FAILURE_VERDICT_INVALID', rationale: undefined }));
+    expect(failed.judge).toMatchObject({ state: 'failed', failure: 'verdict_invalid' });
+  });
+
+  it.each<[string, Record<string, unknown>]>([
+    ['an unknown judge field', withJudge({ prompt: 'secret' })],
+    ['a view-form enum on the wire', withJudge({ state: 'met' })],
+    ['a 64-bit duration that is not a decimal string', withJudge({ total_duration_ns: 1200 })],
+    ['a 64-bit duration past the browser-safe range', withJudge({ total_duration_ns: '9007199254740993' })],
+    ['judge on a non-judge event', { ...judgeWire(), kind: 'stage_updated' }],
+    ['a judge event without judge', { ...judgeWire(), judge: undefined }],
+    ['a metric on a judge event', { ...judgeWire(), metric_delta: { latency_ms: { value: 1 } } }],
+    ['a stage label on a judge event', { ...judgeWire(), stage_label: 'judge' }],
+    ['a judge event without the subject variant', { ...judgeWire(), variant_id: undefined }],
+    ['a scored criterion', withJudge({ state: 'JUDGE_ACTIVITY_STATE_SCORED', score: 4 })],
+    ['a met quality subject', withJudge({ subject: 'JUDGE_SUBJECT_MEMORY', criterion_id: undefined })],
+    ['a score outside 1..5', withJudge({ subject: 'JUDGE_SUBJECT_MEMORY', criterion_id: undefined, state: 'JUDGE_ACTIVITY_STATE_SCORED', score: 6 })],
+    ['a failure without its code', withJudge({ state: 'JUDGE_ACTIVITY_STATE_FAILED', rationale: undefined })],
+    ['a verdict with a failure code', withJudge({ failure: 'JUDGE_FAILURE_DISPATCH_FAILED' })],
+    ['a verdict without its transaction', withJudge({ transaction_id: undefined })],
+    ['tokens without usage_reported', withJudge({ usage_reported: false })],
+    ['an index past count', withJudge({ index: 3 })],
+    ['a started judgment with usage', { ...startedJudge(), judge: { ...(startedJudge().judge as Record<string, unknown>), total_duration_ns: '1' } }],
+  ])('rejects %s', (_, body) => {
+    expect(() => decodeLiveEventWire(JSON.parse(JSON.stringify(body)) as Record<string, unknown>)).toThrow(ValidationError);
   });
 });

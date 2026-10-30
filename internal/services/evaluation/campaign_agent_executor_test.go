@@ -81,7 +81,7 @@ const (
 // the constructor's nil check rejects every missing dependency with the typed
 // sentinel before any of them is used.
 func TestCampaignAgentExecutor_RequiresLedgerSentinelToConstruct(t *testing.T) {
-	_, err := NewCampaignAgentExecutor(nil, NewCommandLane(nil, client.Persona{}), nil, nil, time.Now, func(prefix string) string { return prefix })
+	_, err := NewCampaignAgentExecutor(nil, &recordingModelResidency{}, NewCommandLane(nil, client.Persona{}), nil, nil, time.Now, func(prefix string) string { return prefix })
 
 	assert.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
@@ -123,10 +123,11 @@ func TestCampaignAgentExecutor_JudgeFailsClosedWithoutAFrozenJudge(t *testing.T)
 		GradingMethod: evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE,
 		Assignment:    &evalv1.EvaluationAssignment{},
 	}
-	grades, scores, err := executor.scoreWithJudge(context.Background(), req, &AgentTrace{})
+	quality, err := executor.scoreWithJudge(context.Background(), req, &AgentTrace{})
 	require.ErrorIs(t, err, constants.ErrEvaluationCampaignJudgeInvalid)
-	assert.Nil(t, grades)
-	assert.Nil(t, scores)
+	assert.Empty(t, quality.grades)
+	assert.Empty(t, quality.scores)
+	assert.Empty(t, quality.graderCalls)
 }
 
 // heterogeneousLiteRequest is a SYSTEM-lane stack assignment whose designated

@@ -61,9 +61,8 @@ func foldSemanticContentTerm(s string) string {
 
 // evaluateContentCheck evaluates the designated role's final response against
 // the scenario's typed content check. Returns whether the output passed and the
-// detail of the first failing constraint rule. An interrogation is graded on
-// the Interrogation Protocol alone: the answer rules describe an answer the
-// model chose not to give.
+// detail of the first failing constraint rule. Under v4, only an explicit
+// interrogation objective accepts questions in place of an answer.
 func evaluateContentCheck(output string, check ScenarioContentCheck) (bool, string) {
 	return evaluateContentCheckForGold(output, check, ScenarioWorkspace{}, ScenarioGoldCriteria{})
 }
@@ -74,6 +73,9 @@ func evaluateContentCheckForGold(output string, check ScenarioContentCheck, ws S
 	if _, interrogated, err := ParseInterrogationForGold(trimmed, gold); interrogated {
 		if err != nil {
 			return false, err.Error()
+		}
+		if gold.GradingContract == ScenarioGradingContractV4 && !check.Interrogation {
+			return false, constants.ErrEvaluationInterrogationAnswerRequired.Error()
 		}
 		return true, ""
 	}

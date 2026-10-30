@@ -89,5 +89,11 @@ func TestEvalCmd_ContainsProgramGroups(t *testing.T) {
 		gatesNames = append(gatesNames, child.Name())
 	}
 	assert.ElementsMatch(t, []string{"inference", "probe"}, gatesNames)
+}
 
+func TestSuitesHelpNamesFourBuiltins(t *testing.T) {
+	cmd := suitesEvalCmd(panickingNativeEvalDeps(t))
+	for _, phrase := range []string{"default-suite", "smoke-suite", "investigations", "quickstart", "ten-scenario"} {
+		assert.Contains(t, cmd.Long, phrase)
+	}
 }

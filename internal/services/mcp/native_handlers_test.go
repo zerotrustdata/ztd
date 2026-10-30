@@ -13,10 +13,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -953,10 +955,17 @@ func TestHandleNetEndpointPing(t *testing.T) {
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
-	t.Run("invalid host", func(t *testing.T) {
+	t.Run("closed loopback port is unreachable", func(t *testing.T) {
+		// Hermetic (INV-TEST-RUN-02): a loopback port with no listener refuses the
+		// connection. The allowlist lets the literal through validation so the
+		// failure is the dial, and nothing depends on DNS returning NXDOMAIN.
+		setPrivateIPAllowlistForTest(t, []string{"127.0.0.0/8"})
+		t.Cleanup(resetPrivateIPAllowlistForTest)
+		host, port := closedLoopbackEndpoint(t)
+		require.NoError(t, validateProbeHost(host))
 		req := NetEndpointPingRequest{
-			Host: "invalid-host-that-does-not-exist-12345.com",
-			Port: 9999,
+			Host: host,
+			Port: port,
 		}
 		reqJSON, _ := json.Marshal(req)
 
@@ -1010,26 +1019,28 @@ func TestHandleNetEndpointPing(t *testing.T) {
 		}
 	})
 
-	t.Run("localhost ping", func(t *testing.T) {
-		req := NetEndpointPingRequest{
-			Host: "127.0.0.1",
-			Port: 80, // May or may not be listening
+	t.Run("restricted addresses are rejected", func(t *testing.T) {
+		resetPrivateIPAllowlistForTest()
+		t.Cleanup(resetPrivateIPAllowlistForTest)
+		cases := []struct {
+			host string
+			want error
+		}{
+			{host: "localhost", want: constants.ErrMCPValidateURLLoopbackAddress},
+			{host: "127.0.0.1", want: constants.ErrMCPValidateURLLoopbackAddress},
+			{host: "::1", want: constants.ErrMCPValidateURLLoopbackAddress},
+			{host: "0.0.0.0", want: constants.ErrMCPValidateURLPrivateAddress},
+			{host: "::", want: constants.ErrMCPValidateURLPrivateAddress},
+			{host: "10.0.0.1", want: constants.ErrMCPValidateURLPrivateAddress},
+			{host: "224.0.0.1", want: constants.ErrMCPValidateURLPrivateAddress},
 		}
-		reqJSON, _ := json.Marshal(req)
-
-		result, err := handler.HandleTool(context.Background(), "net_endpoint_ping", reqJSON)
-		if err != nil {
-			t.Fatalf("HandleTool failed: %v", err)
-		}
-
-		var pingResult NetEndpointPingResult
-		if err := json.Unmarshal([]byte(result.Content[0].Text), &pingResult); err != nil {
-			t.Fatalf("failed to unmarshal result: %v", err)
-		}
-
-		// Latency should be set regardless of reachability
-		if pingResult.LatencyMs < 0 {
-			t.Error("expected non-negative latency")
+		for _, tc := range cases {
+			t.Run(tc.host, func(t *testing.T) {
+				reqJSON, err := json.Marshal(NetEndpointPingRequest{Host: tc.host, Port: 80})
+				require.NoError(t, err)
+				_, err = handler.HandleTool(context.Background(), "net_endpoint_ping", reqJSON)
+				require.ErrorIs(t, err, tc.want)
+			})
 		}
 	})
 
@@ -1064,9 +1075,17 @@ func TestHandleNetHTTPProbe(t *testing.T) {
 	handler, err := NewNativeToolHandler(nil)
 	require.NoError(t, err)
 
-	t.Run("invalid URL", func(t *testing.T) {
+	t.Run("closed loopback port fails at dial", func(t *testing.T) {
+		// Hermetic (INV-TEST-RUN-02): connection refused on a closed loopback port
+		// instead of relying on NXDOMAIN, which wildcard-DNS resolvers break.
+		setPrivateIPAllowlistForTest(t, []string{"127.0.0.0/8"})
+		t.Cleanup(resetPrivateIPAllowlistForTest)
+		host, port := closedLoopbackEndpoint(t)
+		rawURL := "http://" + net.JoinHostPort(host, strconv.Itoa(port))
+		_, valErr := validateHTTPRequestURL(rawURL)
+		require.NoError(t, valErr)
 		req := NetHTTPProbeRequest{
-			URL: "http://invalid-host-that-does-not-exist-12345.com",
+			URL: rawURL,
 		}
 		reqJSON, _ := json.Marshal(req)
 
@@ -1081,8 +1100,10 @@ func TestHandleNetHTTPProbe(t *testing.T) {
 		}
 
 		if probeResult.Error == "" {
-			t.Error("expected error for invalid URL")
+			t.Error("expected a dial failure")
 		}
+		require.NotContains(t, probeResult.Error, constants.ErrMCPValidateURLPrivateAddress.Error())
+		require.NotContains(t, probeResult.Error, constants.ErrMCPValidateURLLoopbackAddress.Error())
 	})
 
 	t.Run("missing URL", func(t *testing.T) {
@@ -2130,4 +2151,12 @@ func TestHandleK8sInspect(t *testing.T) {
 			t.Error("expected error due to context cancellation")
 		}
 	})
+}
+
+// closedLoopbackEndpoint returns a loopback IP literal and a port nothing listens on
+// (tcpmux, port 1). A dial is refused locally: no DNS lookup, no listener, and no
+// external network, so the Tier 1 tests that use it stay hermetic (INV-TEST-RUN-02).
+func closedLoopbackEndpoint(t *testing.T) (string, int) {
+	t.Helper()
+	return "127.0.0.1", 1
 }

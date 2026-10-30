@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -104,6 +105,9 @@ func judgeConfig(t *testing.T, mutate func(*Config)) Config {
 	return cfg
 }
 
+// onlyPosition places a judgment as the only one of its phase.
+var onlyPosition = Position{Index: 1, Count: 1}
+
 func newTestJudge(t *testing.T, d Dispatcher, mutate func(*Config)) *Judge {
 	t.Helper()
 	j, err := New(d, judgeConfig(t, mutate))
@@ -145,6 +149,7 @@ func TestScoreTrace_FinalReplyAndMemoryAreScoredThroughCampaignAuthorizedDispatc
 	require.Len(t, scores, 2)
 	assert.Equal(t, Score{
 		Subject:           SubjectFinalReply,
+		Position:          Position{Index: 1, Count: 2},
 		Status:            StatusScored,
 		Value:             4,
 		Rationale:         "answers the objective",
@@ -247,21 +252,24 @@ func TestScoreTrace_OnlyLastPostTurnMemoryWriteIsJudged(t *testing.T) {
 
 func TestScoreTrace_ScoreFailuresAreFailedScoresNeverErrors(t *testing.T) {
 	cases := []struct {
-		name     string
-		respond  func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error)
-		wantTxID string
+		name        string
+		respond     func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error)
+		wantTxID    string
+		wantFailure evalv1.JudgeFailure
 	}{
 		{
 			name: "dispatch error",
 			respond: func(*operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 				return nil, fmt.Errorf("dispatch: %w", constants.ErrInferenceBackendTimeout)
 			},
+			wantFailure: evalv1.JudgeFailure_JUDGE_FAILURE_DISPATCH_FAILED,
 		},
 		{
 			name: "nil response without error",
 			respond: func(*operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 				return nil, nil
 			},
+			wantFailure: evalv1.JudgeFailure_JUDGE_FAILURE_RESPONSE_MISMATCH,
 		},
 		{
 			name: "response for another attempt",
@@ -270,7 +278,8 @@ func TestScoreTrace_ScoreFailuresAreFailedScoresNeverErrors(t *testing.T) {
 				resp.GetResult().ProviderAttemptId = "forged-attempt"
 				return resp, nil
 			},
-			wantTxID: "tx-judge-final_reply",
+			wantTxID:    "tx-judge-final_reply",
+			wantFailure: evalv1.JudgeFailure_JUDGE_FAILURE_RESPONSE_MISMATCH,
 		},
 		{
 			name: "result for another run",
@@ -279,7 +288,8 @@ func TestScoreTrace_ScoreFailuresAreFailedScoresNeverErrors(t *testing.T) {
 				resp.GetResult().RunId = "other-run"
 				return resp, nil
 			},
-			wantTxID: "tx-judge-final_reply",
+			wantTxID:    "tx-judge-final_reply",
+			wantFailure: evalv1.JudgeFailure_JUDGE_FAILURE_RESPONSE_MISMATCH,
 		},
 		{
 			name: "result for another assignment",
@@ -288,7 +298,8 @@ func TestScoreTrace_ScoreFailuresAreFailedScoresNeverErrors(t *testing.T) {
 				resp.GetResult().AssignmentId = "other-assignment"
 				return resp, nil
 			},
-			wantTxID: "tx-judge-final_reply",
+			wantTxID:    "tx-judge-final_reply",
+			wantFailure: evalv1.JudgeFailure_JUDGE_FAILURE_RESPONSE_MISMATCH,
 		},
 		{
 			name: "result for another scenario",
@@ -297,35 +308,50 @@ func TestScoreTrace_ScoreFailuresAreFailedScoresNeverErrors(t *testing.T) {
 				resp.GetResult().ScenarioId = "other-scenario"
 				return resp, nil
 			},
-			wantTxID: "tx-judge-final_reply",
+			wantTxID:    "tx-judge-final_reply",
+			wantFailure: evalv1.JudgeFailure_JUDGE_FAILURE_RESPONSE_MISMATCH,
+		},
+		{
+			name: "receipt that does not bind the result digest",
+			respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+				resp := judgmentResponse(req, `{"score": 3, "rationale": "x"}`)
+				resp.Receipt.ResultSummary = "other-digest"
+				return resp, nil
+			},
+			wantTxID:    "tx-judge-final_reply",
+			wantFailure: evalv1.JudgeFailure_JUDGE_FAILURE_RESULT_DIGEST,
 		},
 		{
 			name: "score 0",
 			respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 				return judgmentResponse(req, `{"score": 0, "rationale": "x"}`), nil
 			},
-			wantTxID: "tx-judge-final_reply",
+			wantTxID:    "tx-judge-final_reply",
+			wantFailure: evalv1.JudgeFailure_JUDGE_FAILURE_VERDICT_INVALID,
 		},
 		{
 			name: "score 6",
 			respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 				return judgmentResponse(req, `{"score": 6, "rationale": "x"}`), nil
 			},
-			wantTxID: "tx-judge-final_reply",
+			wantTxID:    "tx-judge-final_reply",
+			wantFailure: evalv1.JudgeFailure_JUDGE_FAILURE_VERDICT_INVALID,
 		},
 		{
 			name: "unknown field",
 			respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 				return judgmentResponse(req, `{"score": 3, "rationale": "x", "verdict": "pass"}`), nil
 			},
-			wantTxID: "tx-judge-final_reply",
+			wantTxID:    "tx-judge-final_reply",
+			wantFailure: evalv1.JudgeFailure_JUDGE_FAILURE_VERDICT_INVALID,
 		},
 		{
 			name: "non-JSON text",
 			respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
 				return judgmentResponse(req, "not-json"), nil
 			},
-			wantTxID: "tx-judge-final_reply",
+			wantTxID:    "tx-judge-final_reply",
+			wantFailure: evalv1.JudgeFailure_JUDGE_FAILURE_VERDICT_INVALID,
 		},
 	}
 	for _, tc := range cases {
@@ -340,6 +366,7 @@ func TestScoreTrace_ScoreFailuresAreFailedScoresNeverErrors(t *testing.T) {
 			assert.Equal(t, 0, scores[0].Value)
 			assert.NotEmpty(t, scores[0].Detail)
 			assert.Equal(t, tc.wantTxID, scores[0].TransactionID)
+			assert.Equal(t, tc.wantFailure, scores[0].Failure)
 		})
 	}
 }
@@ -515,7 +542,7 @@ func TestScoreCriterion_VerdictIsBoundToTheFrozenJudgeAndCampaignAuthority(t *te
 			}}
 			j := newTestJudge(t, dispatcher, nil)
 
-			score := j.ScoreCriterion(context.Background(), refusalCriterion(), judgeObjective, criterionReply)
+			score := j.ScoreCriterion(context.Background(), refusalCriterion(), onlyPosition, judgeObjective, criterionReply)
 
 			assert.Equal(t, SubjectCriterion, score.Subject)
 			assert.Equal(t, StatusScored, score.Status)
@@ -564,7 +591,7 @@ func TestScoreCriterion_IncompleteInputFailsWithoutDispatch(t *testing.T) {
 			}}
 			j := newTestJudge(t, dispatcher, nil)
 
-			score := j.ScoreCriterion(context.Background(), tc.criterion, judgeObjective, tc.reply)
+			score := j.ScoreCriterion(context.Background(), tc.criterion, onlyPosition, judgeObjective, tc.reply)
 
 			assert.Equal(t, StatusFailed, score.Status)
 			assert.False(t, score.Met, "a failed score never reads as met")
@@ -615,7 +642,7 @@ func TestScoreCriterion_JudgeFailuresAreFailedScoresNeverMet(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			j := newTestJudge(t, &fakeDispatcher{respond: respond}, nil)
 
-			score := j.ScoreCriterion(context.Background(), refusalCriterion(), judgeObjective, criterionReply)
+			score := j.ScoreCriterion(context.Background(), refusalCriterion(), onlyPosition, judgeObjective, criterionReply)
 
 			assert.Equal(t, StatusFailed, score.Status)
 			assert.False(t, score.Met)
@@ -630,7 +657,7 @@ func TestScoreCriterion_CampaignAuthorityMismatchFailsWithoutDispatch(t *testing
 	}}
 	j := newTestJudge(t, dispatcher, func(cfg *Config) { cfg.ModelRegistryDigest = "not-the-registry-digest" })
 
-	score := j.ScoreCriterion(context.Background(), refusalCriterion(), judgeObjective, criterionReply)
+	score := j.ScoreCriterion(context.Background(), refusalCriterion(), onlyPosition, judgeObjective, criterionReply)
 
 	assert.Equal(t, StatusFailed, score.Status)
 	assert.False(t, score.Met)
@@ -745,7 +772,7 @@ func TestCriterionMessages_MatchesMessagesDispatchedByScoreCriterion(t *testing.
 			}}
 			j := newTestJudge(t, dispatcher, nil)
 
-			score := j.ScoreCriterion(context.Background(), tc.criterion, tc.objective, tc.reply)
+			score := j.ScoreCriterion(context.Background(), tc.criterion, onlyPosition, tc.objective, tc.reply)
 
 			require.Equal(t, StatusScored, score.Status)
 			require.Len(t, dispatcher.requests, 1)
@@ -768,7 +795,7 @@ func dispatchCriterion(t *testing.T, cfg Config, text string) Score {
 	}}
 	j, err := New(dispatcher, cfg)
 	require.NoError(t, err)
-	score := j.ScoreCriterion(context.Background(), refusalCriterion(), judgeObjective, criterionReply)
+	score := j.ScoreCriterion(context.Background(), refusalCriterion(), onlyPosition, judgeObjective, criterionReply)
 	require.NotEmpty(t, score.ProviderAttemptID)
 	require.NotNil(t, score.Result)
 	require.NotNil(t, score.Receipt)
@@ -869,4 +896,115 @@ func TestVerifyCriterionResult_NilVariantIsErrMissingRequiredField(t *testing.T)
 
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	assert.False(t, met)
+}
+
+// recordingObserver records every observer call in order.
+type recordingObserver struct {
+	calls []string
+	stats []Score
+}
+
+func (o *recordingObserver) Started(score Score) {
+	o.calls = append(o.calls, "started:"+string(score.Subject))
+	o.stats = append(o.stats, score)
+}
+
+func (o *recordingObserver) Completed(score Score, elapsed time.Duration) {
+	o.calls = append(o.calls, fmt.Sprintf("completed:%s:%s", score.Subject, elapsed))
+	o.stats = append(o.stats, score)
+}
+
+func TestScoreTrace_ObserverSeesEachJudgmentStartBeforeItCompletesWithItsPosition(t *testing.T) {
+	dispatcher := &fakeDispatcher{respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+		return judgmentResponse(req, `{"score": 4, "rationale": "good"}`), nil
+	}}
+	observer := &recordingObserver{}
+	tick := time.Unix(1_700_000_000, 0)
+	j := newTestJudge(t, dispatcher, func(cfg *Config) {
+		cfg.Observer = observer
+		cfg.Clock = func() time.Time {
+			tick = tick.Add(time.Second)
+			return tick
+		}
+	})
+
+	scores := j.ScoreTrace(context.Background(), trace(judgeFinalReply, postTurnMemory(judgeMemoryFact1)), judgeObjective, []string{judgeMemoryFact1})
+
+	require.Len(t, scores, 2)
+	assert.Equal(t, []string{"started:final_reply", "completed:final_reply:1s", "started:memory", "completed:memory:1s"}, observer.calls)
+	assert.Equal(t, Position{Index: 1, Count: 2}, scores[0].Position)
+	assert.Equal(t, Position{Index: 2, Count: 2}, scores[1].Position)
+	started := observer.stats[0]
+	assert.Equal(t, "judge-final_reply", started.ProviderAttemptID, "the attempt is known when the dispatch starts")
+	assert.Empty(t, started.TransactionID, "nothing has returned when the dispatch starts")
+	assert.Equal(t, Position{Index: 1, Count: 2}, started.Position)
+	completed := observer.stats[1]
+	assert.Equal(t, StatusScored, completed.Status)
+	assert.Equal(t, 4, completed.Value)
+}
+
+func TestScoreCriterion_RequestThatCannotBeBuiltCompletesWithoutStarting(t *testing.T) {
+	dispatcher := &fakeDispatcher{respond: func(*operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+		t.Fatal("an incomplete criterion must not be dispatched")
+		return nil, nil
+	}}
+	observer := &recordingObserver{}
+	j := newTestJudge(t, dispatcher, func(cfg *Config) { cfg.Observer = observer })
+
+	score := j.ScoreCriterion(context.Background(), Criterion{ID: "refusal"}, Position{Index: 2, Count: 3}, judgeObjective, criterionReply)
+
+	assert.Equal(t, StatusFailed, score.Status)
+	assert.Equal(t, evalv1.JudgeFailure_JUDGE_FAILURE_REQUEST_INVALID, score.Failure)
+	assert.Equal(t, []string{"completed:criterion:0s"}, observer.calls)
+	assert.Equal(t, Position{Index: 2, Count: 3}, observer.stats[0].Position)
+}
+
+func TestScoreTrace_RegistryMismatchIsRequestInvalid(t *testing.T) {
+	dispatcher := &fakeDispatcher{respond: func(*operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+		t.Fatal("a request outside the campaign authority must not be dispatched")
+		return nil, nil
+	}}
+	j := newTestJudge(t, dispatcher, func(cfg *Config) { cfg.ModelRegistryDigest = "other" })
+
+	scores := j.ScoreTrace(context.Background(), trace(judgeFinalReply), judgeObjective, nil)
+
+	require.Len(t, scores, 1)
+	assert.Equal(t, evalv1.JudgeFailure_JUDGE_FAILURE_REQUEST_INVALID, scores[0].Failure)
+}
+
+func TestVerifyQualityResult_ReturnsTheRecordedScoreAndClassifiesEachFailure(t *testing.T) {
+	cfg := judgeConfig(t, nil)
+	dispatched := func(text string) Score {
+		dispatcher := &fakeDispatcher{respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+			return judgmentResponse(req, text), nil
+		}}
+		j, err := New(dispatcher, cfg)
+		require.NoError(t, err)
+		return j.ScoreTrace(context.Background(), trace(judgeFinalReply), judgeObjective, nil)[0]
+	}
+
+	scored := dispatched(`{"score": 2, "rationale": "unsupported certainty"}`)
+	value, rationale, err := VerifyQualityResult(cfg, scored.ProviderAttemptID, scored.Result, scored.Receipt)
+	require.NoError(t, err)
+	assert.Equal(t, 2, value)
+	assert.Equal(t, "unsupported certainty", rationale)
+
+	invalid := dispatched("not-json")
+	_, _, err = VerifyQualityResult(cfg, invalid.ProviderAttemptID, invalid.Result, invalid.Receipt)
+	assert.Equal(t, evalv1.JudgeFailure_JUDGE_FAILURE_VERDICT_INVALID, ResultFailure(err))
+
+	_, _, err = VerifyQualityResult(cfg, "other-attempt", scored.Result, scored.Receipt)
+	assert.Equal(t, evalv1.JudgeFailure_JUDGE_FAILURE_RESPONSE_MISMATCH, ResultFailure(err))
+
+	forged := proto.Clone(scored.Receipt).(*operatorv1.EventReceipt)
+	forged.ResultSummary = "other-digest"
+	_, _, err = VerifyQualityResult(cfg, scored.ProviderAttemptID, scored.Result, forged)
+	assert.Equal(t, evalv1.JudgeFailure_JUDGE_FAILURE_RESULT_DIGEST, ResultFailure(err))
+}
+
+func TestSubjectProto_MapsEverySubject(t *testing.T) {
+	assert.Equal(t, evalv1.JudgeSubject_JUDGE_SUBJECT_CRITERION, SubjectCriterion.Proto())
+	assert.Equal(t, evalv1.JudgeSubject_JUDGE_SUBJECT_FINAL_REPLY, SubjectFinalReply.Proto())
+	assert.Equal(t, evalv1.JudgeSubject_JUDGE_SUBJECT_MEMORY, SubjectMemory.Proto())
+	assert.Equal(t, evalv1.JudgeSubject_JUDGE_SUBJECT_UNSPECIFIED, Subject("other").Proto())
 }

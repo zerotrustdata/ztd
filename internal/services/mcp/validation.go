@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
@@ -46,6 +47,49 @@ func isIPAllowed(ip net.IP) bool {
 	return false
 }
 
+// isRestrictedIP reports whether ip is an address a network probe must not reach
+// unless it is explicitly allowlisted. IsUnspecified matters on Linux: dialing
+// 0.0.0.0 connects to the local host. IsLinkLocalMulticast is covered by
+// IsMulticast; both are named so a future split of those checks stays obvious.
+func isRestrictedIP(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsUnspecified() || ip.IsMulticast() || ip.IsLinkLocalMulticast()
+}
+
+// validateProbeHost rejects literal restricted addresses and the localhost name.
+// A hostname is accepted here and checked again after resolution by rejectRestrictedDial.
+func validateProbeHost(host string) error {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if strings.Contains(host, "localhost") || host == "127.0.0.1" || host == "::1" {
+		ip := net.ParseIP(host)
+		if ip == nil || !isIPAllowed(ip) {
+			return fmt.Errorf("mcp: validate probe host: %w", constants.ErrMCPValidateURLLoopbackAddress)
+		}
+	}
+	if ip := net.ParseIP(host); ip != nil && isRestrictedIP(ip) && !isIPAllowed(ip) {
+		return fmt.Errorf("mcp: validate probe host: %w", constants.ErrMCPValidateURLPrivateAddress)
+	}
+	return nil
+}
+
+// rejectRestrictedDial is a net.Dialer Control hook. It runs after name
+// resolution, so a hostname that resolves to a restricted address is rejected
+// along with a literal one. An address that is not a parseable IP fails closed.
+func rejectRestrictedDial(_, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return fmt.Errorf("mcp: dial resolved address: %w", err)
+	}
+	if zone := strings.IndexByte(host, '%'); zone >= 0 {
+		host = host[:zone]
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || (isRestrictedIP(ip) && !isIPAllowed(ip)) {
+		return fmt.Errorf("mcp: dial resolved address: %w", constants.ErrMCPValidateURLPrivateAddress)
+	}
+	return nil
+}
+
 func validateSQLQuery(query string) error {
 	query = strings.TrimSpace(query)
 
@@ -74,21 +118,8 @@ func validateHTTPRequestURL(rawURL string) (*url.URL, error) {
 		return nil, fmt.Errorf("mcp: validate HTTP request URL: %w", constants.ErrMCPValidateURLMissingHost)
 	}
 
-	host := strings.ToLower(parsedURL.Hostname())
-	if strings.Contains(host, "localhost") || host == "127.0.0.1" || host == "::1" {
-		ip := net.ParseIP(host)
-		if ip == nil || !isIPAllowed(ip) {
-			return nil, fmt.Errorf("mcp: validate HTTP request URL: %w", constants.ErrMCPValidateURLLoopbackAddress)
-		}
-	}
-
-	ip := net.ParseIP(host)
-	if ip != nil {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
-			if !isIPAllowed(ip) {
-				return nil, fmt.Errorf("mcp: validate HTTP request URL: %w", constants.ErrMCPValidateURLPrivateAddress)
-			}
-		}
+	if err := validateProbeHost(parsedURL.Hostname()); err != nil {
+		return nil, fmt.Errorf("mcp: validate HTTP request URL: %w", err)
 	}
 
 	return parsedURL, nil

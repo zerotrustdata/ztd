@@ -16,10 +16,12 @@ var Flag = struct {
 	CABundle   string
 	GatewayURL string
 	App        string
+	Check      string
 }{
 	ClientCert: "client-cert",
 	ClientKey:  "client-key",
 	CABundle:   "ca-bundle",
 	GatewayURL: "gateway-url",
 	App:        "app",
+	Check:      "check",
 }

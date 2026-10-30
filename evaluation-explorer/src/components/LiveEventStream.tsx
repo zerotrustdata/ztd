@@ -9,9 +9,13 @@ import { Link } from 'react-router-dom';
 import type { FeedConnectionState, StreamConnectionState } from '../utils/feed-state';
 import { recordKey, resolveModelSummary, useStoreState } from '../state/store';
 import {
+  assignmentRowKey,
+  isJudgeEvent,
+  judgeActivityByAssignment,
   roleLabel,
   visibleStreamEvents,
 } from '../views/derived';
+import { JudgeActivity } from './JudgeActivity';
 import { EmptyState, ReconcilePlaceholder, StreamStatusIndicator } from './shared';
 import { SCENARIO_TASK_BY_ID } from '../content/scenario-task';
 import {
@@ -62,10 +66,6 @@ function tribunalSeatId(record: Record<string, unknown>): TribunalSeatId | undef
 }
 
 type SeatVotes = Map<TribunalSeatId, Record<string, unknown>>;
-
-function assignmentRowKey(event: LiveEvent): string {
-  return `${event.dataset_id}:${event.run_id}:${event.assignment_id}`;
-}
 
 /** Only explicit dataset/run/assignment identities associate votes with rows.
  *  Unassigned governance activity must never attach to a campaign assignment.
@@ -374,8 +374,11 @@ export function LiveEventStream({
   const scrollRef = useRef<HTMLDivElement>(null);
   const models = useStoreState((state) => state.models);
   const assignments = useStoreState((state) => state.assignments);
-  const activityEvents = useMemo(() => events.filter((event) => !isTribunalVoteEvent(event)), [events]);
+  // Tribunal votes and judge activity are cells of their assignment's row,
+  // never rows of their own and never its status, model, or metrics.
+  const activityEvents = useMemo(() => events.filter((event) => !isTribunalVoteEvent(event) && !isJudgeEvent(event)), [events]);
   const tribunalVotes = useMemo(() => tribunalVotesByAssignment(events), [events]);
+  const judgeActivity = useMemo(() => judgeActivityByAssignment(events), [events]);
 
   const latestEvent = useMemo(() => activityEvents.reduce<LiveEvent | undefined>(
     (latest, event) => !latest || event.observed_at > latest.observed_at ? event : latest, undefined,
@@ -424,6 +427,7 @@ export function LiveEventStream({
   const safePage = Math.min(page, Math.max(0, pageCount - 1));
   const pageEvents = sortedVisible.slice(safePage * STREAM_PAGE_SIZE, (safePage + 1) * STREAM_PAGE_SIZE);
   const showTribunal = pageEvents.some((event) => event.assignment_id && tribunalVotes.has(assignmentRowKey(event)));
+  const showJudge = pageEvents.some((event) => event.assignment_id && judgeActivity.has(assignmentRowKey(event)));
 
   function handleSort(field: StreamSortField): void {
     if (sortField === field) setSortDirection((direction) => direction === 'asc' ? 'desc' : 'asc');
@@ -488,6 +492,7 @@ export function LiveEventStream({
               <SortHeader label="Task" field="task" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <SortHeader label="Model" field="model" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               {showTribunal ? <th scope="col" className="stream-tribunal-header"><span className="sr-only">Tribunal</span></th> : null}
+              {showJudge ? <th scope="col" className="stream-judge-header">Judge</th> : null}
               {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label }) => <SortHeader key={key} className="stream-metric-header" label={label} field={key} sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />)}
               <SortHeader className="stream-time-header" label="Time" field="time" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
             </tr></thead>
@@ -497,6 +502,7 @@ export function LiveEventStream({
                 const model = event.variant_id ? resolveModelSummary(models, event.dataset_id, event.variant_id) : undefined;
                 const parts = eventParts(event, assignment);
                 const rowVotes = event.assignment_id ? tribunalVotes.get(assignmentRowKey(event)) : undefined;
+                const rowJudgments = event.assignment_id ? judgeActivity.get(assignmentRowKey(event)) : undefined;
                 const result = streamResult(event, assignment);
                 const eventHref = event.assignment_id
                   ? `/evaluations/${event.dataset_id}/${event.run_id}/assignments/${event.assignment_id}`
@@ -525,6 +531,9 @@ export function LiveEventStream({
                     </td>
                     {showTribunal ? <td className="stream-tribunal-cell">
                       {rowVotes ? <TribunalVotes votes={rowVotes} /> : null}
+                    </td> : null}
+                    {showJudge ? <td className="stream-judge-cell">
+                      {rowJudgments ? <JudgeActivity judgments={rowJudgments} /> : null}
                     </td> : null}
                     {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label, format }) => {
                       const displayed = event.assignment_id

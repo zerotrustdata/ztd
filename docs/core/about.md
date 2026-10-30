@@ -3,8 +3,8 @@ doc_id: about
 title: About ztd
 audience: developers, operators, security architects, and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - cmd/ztd/
   - internal/services/gateway/
@@ -54,7 +54,7 @@ The platform separates Policy Decision Points (PDP) from Policy Execution Points
 | :--- | :--- | :--- |
 | **`ztd Protocol`** | Wire Contract & Standards | Protobuf contracts (`GovernanceEnvelope`, `EventReceipt`, `CommitmentAttestation`), canonical hashing, identity bindings, replay defenses, and proof schemas. See [protocol/docs/spec.md](../../protocol/docs/spec.md). |
 | **`Governance Gateway (ztdg)`** | Policy Decision Point (PDP) | Workload authentication, PKI CA management, envelope construction, L1 Doctrine, L2 Consensus coordination, L3 Notary ceremonies, routing, and platform APIs. Hosts an in-process Operator substrate for Gateway-local actions. |
-| **`Governed Operator (ztdo)`** | Policy Execution Point (PEP) | Host-side daemon. Connects outbound over mTLS to the Gateway and receives dispatched work over that connection. Re-verifies envelopes at L4 Warden, executes via L5 Actuator, and keeps local execution events and a git file ledger. Operators expose no inbound listening ports. |
+| **`Governed Operator (ztdo)`** | Policy Execution Point (PEP) | Host-side runtime. Connects outbound over mTLS to the Gateway and receives dispatched work over that connection. Re-verifies envelopes at L4 Warden, executes via L5 Actuator, and keeps local execution events and a git file ledger. Operators expose no inbound listening ports. |
 | **`Consensus`** | Quorum Decision Body | Collects votes and verifies Ed25519 signatures over `<message_id>\|<decision>`. The bound provider is an enrolled consensus application or the Gateway-hosted Tribunal panel (default quorum 3-of-5, see `internal/constants/consensus.go`). |
 | **`Clients & Interfaces`** | Proposers & Observers | AI agents, MCP clients, A2A callers, CLI sessions, and the embedded browser console propose actions and inspect receipts. They are outside the execution boundary. |
 
@@ -66,7 +66,7 @@ Every governed mutation passes the five-layer pipeline before execution:
 
 1. **L1 Doctrine**: Decodes typed payloads and applies technical hard gates, regex constraints, and deterministic MITRE ATT&CK-style heuristics. Enforced in every posture.
 2. **L2 Consensus**: Verifies Ed25519 quorum votes from enrolled consensus members against the configured threshold. It applies only to actions that change state and are not bootstrap actions. Read-only targets are skipped. It is enforced only under the `consensus` and `notary` postures.
-3. **L3 Notary**: Verifies human approval bound to the transaction. Gateway workflows verify WebAuthn passkey approvals. Outbound Operators verify CLI approval proofs signed by a key chaining to the pinned Gateway CA roots, or passkey approval proofs. It applies to every mutation action, including `MCP_CALL`, except actions authorized by decision (enrollment, issuance, and policy persistence), and is enforced only under the `ratify` and `notary` postures.
+3. **L3 Notary**: Verifies human approval bound to the transaction. Gateway workflows accept exactly one of a WebAuthn passkey assertion or a signature from an enrolled CLI certificate. Outbound Operators verify CLI approval proofs signed by a key chaining to the pinned Gateway CA roots, or passkey approval proofs. It applies to every mutation action, including `MCP_CALL`, except actions authorized by decision (enrollment session creation, issuance, and policy persistence), and is enforced only under the `ratify` and `notary` postures.
 4. **L4 Warden**: Runs host-side pre-dispatch checks. Reserves nonces durably, checks expiry, recomputes the canonical transaction hash, verifies the bound state root, re-runs L1 Doctrine, and verifies the L2 and L3 proofs the posture requires.
 5. **L5 Actuator**: The execution boundary on the host. Signs and persists an `EXECUTING` receipt, appends a signed commitment to the local commitment ledger, rehydrates scrubbed tokens locally, mints a single-action capability, dispatches the handler, dissolves the capability, and persists the signed final receipt.
 
@@ -89,7 +89,7 @@ ztd keeps execution authority and forensic evidence at the data owner's local bo
 - **Independent Execution Verification**: An Operator re-runs the L4 checks on every envelope before it mutates the host. Gateway admission alone is not sufficient to execute on a host.
 - **Token Scrubbing**: Values matched by the scrubbing boundary's patterns are replaced with reversible placeholders (`{{UEI_<owner>_<N>}}`) before crossing network boundaries. Rehydration happens only at L5 on the runtime that minted the token, immediately before dispatch. Another runtime's tokens do not resolve locally.
 - **Local-First Events Architecture (LFEA)**: Each Operator keeps an authoritative Local-First Events Store and a git-backed file ledger for the events it executes. The Gateway's Local-First Events Store holds mirrored projections, which are best-effort. For events an Operator executed, the Operator's local records are the reference.
-- **Encryption at Rest**: Audit content, token maps, and ledger entries are encrypted with AES-256-GCM through the vault service. The stores use the vault's `EncryptWithAAD` path. See [encryption.md](../architecture/encryption.md).
+- **Encryption at Rest**: Sensitive audit fields, token records, and file ledger entries are encrypted with AES-256-GCM through the vault service. The stores use the vault's `EncryptWithAAD` path. See [encryption.md](../architecture/encryption.md).
 - **Limits of the Claim**: Receipts attest only to operations that traversed the governed pipeline. ztd does not sandbox unmanaged host processes, client-native shell access, external MCP servers, or side channels outside the pipeline. Approval strength depends on how the approving identity was enrolled. Platform-wide assurance requires that all execution paths on a host go through the Operator.
 
 ## Reference Implementation

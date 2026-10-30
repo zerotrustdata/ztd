@@ -212,6 +212,7 @@ type realStackAgentRun struct {
 	gateway        *harnessclient.Client
 	appClient      *harnessclient.Client
 	inference      realStackInference
+	residency      *evaluation.ProviderModelResidency
 	sentinel       *drive.Sentinel
 	persona        harnessclient.Persona
 	dataOperatorID string
@@ -362,15 +363,16 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	})
 	require.NoError(t, err)
 	inference := realStackInference{client: appClient, cliSessionID: persona.CLISessionID}
+	residency := newRealStackModelResidency(t, gateway, persona, inferenceWorkload.OperatorSessionID)
 	executor, err := evaluation.NewCampaignAgentExecutor(
-		inference, evaluation.NewCommandLane(gateway, persona), sentinel, store, clock, newID)
+		inference, residency, evaluation.NewCommandLane(gateway, persona), sentinel, store, clock, newID)
 	require.NoError(t, err)
 	controller := evaluation.NewCampaignController(store, executor, clock, newID)
 
 	env := &realStackAgentRun{
 		stack: stack, store: store, files: evidenceFiles, controller: controller,
 		clock: clock, gateway: gateway, appClient: appClient,
-		inference: inference, sentinel: sentinel, persona: persona,
+		inference: inference, residency: residency, sentinel: sentinel, persona: persona,
 		dataOperatorID: dataWorkload.OperatorID, dataSessionID: dataWorkload.OperatorSessionID,
 		catalog: truncated, artifacts: artifacts, topology: topology,
 		inferenceSessionID: inferenceWorkload.OperatorSessionID,
@@ -395,6 +397,22 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 		stack.Owner.DenyToolTransactions(constants.MCPToolRunShellCommand)
 	}
 	return env
+}
+
+// newRealStackModelResidency builds the production residency releaser over the
+// governed Gateway dispatch to the rig's Inference Operator. Its IDs come from
+// their own sequence, so the rig's attempt and record IDs stay unchanged.
+func newRealStackModelResidency(t *testing.T, gateway *harnessclient.Client, persona harnessclient.Persona, inferenceSessionID string) *evaluation.ProviderModelResidency {
+	t.Helper()
+	dispatcher, err := evaluation.NewGovernedOllamaModelCommandDispatcher(gateway, persona)
+	require.NoError(t, err)
+	seq := 0
+	residency, err := evaluation.NewProviderModelResidency(dispatcher, inferenceSessionID, func(prefix string) string {
+		seq++
+		return fmt.Sprintf("%s-residency-%d", prefix, seq)
+	})
+	require.NoError(t, err)
+	return residency
 }
 
 // startRun initializes one campaign run on the rig's stack, schedules it, and

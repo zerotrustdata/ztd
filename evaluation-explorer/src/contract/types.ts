@@ -10,12 +10,12 @@
 // and checked-in explorer fixtures. See src/contract/CONTRACT.md for the
 // ownership map and integration decisions.
 //
-// FROZEN at schema_version 1.10.0 on 2026-10-19. A change to any enum value
+// FROZEN at schema_version 1.11.0 on 2026-10-30. A change to any enum value
 // or required field is a contract revision: bump VIEW_SCHEMA_VERSION and
 // update descriptor.json and validators.
 
-export const VIEW_SCHEMA_VERSION = '1.10.0' as const;
-export const SUPPORTED_VIEW_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '1.10.0'] as const;
+export const VIEW_SCHEMA_VERSION = '1.11.0' as const;
+export const SUPPORTED_VIEW_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '1.10.0', '1.11.0'] as const;
 export type ViewSchemaVersion = (typeof SUPPORTED_VIEW_SCHEMA_VERSIONS)[number];
 
 export const ACTIVITY_AVAILABILITIES = ['observed', 'unavailable', 'not_applicable'] as const;
@@ -292,8 +292,29 @@ export const LIVE_EVENT_KINDS = [
   'evaluation_completed',
   'evaluation_failed',
   'evaluation_stopped',
+  'judge_started',
+  'judge_completed',
 ] as const;
 export type LiveEventKind = (typeof LIVE_EVENT_KINDS)[number];
+
+/** What one judge inference grades: a binary content criterion, or a 1..5
+ *  quality score of the final reply or the memory write. */
+export const LIVE_JUDGE_SUBJECTS = ['criterion', 'final_reply', 'memory'] as const;
+export type LiveJudgeSubject = (typeof LIVE_JUDGE_SUBJECTS)[number];
+
+export const LIVE_JUDGE_STATES = ['judging', 'met', 'not_met', 'scored', 'failed'] as const;
+export type LiveJudgeState = (typeof LIVE_JUDGE_STATES)[number];
+
+/** The step of a judge dispatch that failed; raw failure text is never public. */
+export const LIVE_JUDGE_FAILURES = [
+  'request_invalid',
+  'dispatch_failed',
+  'response_mismatch',
+  'result_digest',
+  'verdict_invalid',
+  'receipt_unverified',
+] as const;
+export type LiveJudgeFailure = (typeof LIVE_JUDGE_FAILURES)[number];
 
 /** Public feed record types carried by the mirror transport. */
 export const FEED_RECORD_TYPES = [
@@ -820,9 +841,45 @@ export interface LiveEvent extends ViewRecordEnvelope {
   total: number;
   stage_label?: string;
   metric_delta?: Record<string, MetricValue>;
+  /** Present only on judge_started and judge_completed. */
+  judge?: LiveJudgeActivity;
   observed_at: string;
   /** Mirror feed sequence stamped at client ingest; not part of wire payloads. */
   feed_sequence?: number;
+}
+
+/** One pinned-judge inference on the assignment its event names. The event's
+ *  variant_id and role stay the graded subject's. Usage and timing come from
+ *  the judge's signed inference result; dispatch_elapsed_ns is the harness
+ *  wall clock of a live dispatch. */
+export interface LiveJudgeActivity {
+  judge_variant_id: string;
+  served_model_tag: string;
+  model_digest: string;
+  subject: LiveJudgeSubject;
+  criterion_id?: string;
+  index: number;
+  count: number;
+  rubric_version: string;
+  state: LiveJudgeState;
+  score?: number;
+  rationale?: string;
+  failure?: LiveJudgeFailure;
+  provider_attempt_id?: string;
+  transaction_id?: string;
+  usage_reported: boolean;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  thinking_tokens?: number;
+  cache_tokens?: number;
+  load_duration_ns?: number;
+  prompt_eval_duration_ns?: number;
+  generation_duration_ns?: number;
+  total_duration_ns?: number;
+  time_to_first_token_ns?: number;
+  finish_reason?: string;
+  executed_at_unix_ms?: number;
+  dispatch_elapsed_ns?: number;
 }
 
 /** Union of all snapshot records. */

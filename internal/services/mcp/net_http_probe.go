@@ -89,17 +89,7 @@ func (t *NetHTTPProbeTool) Execute(ctx context.Context, args json.RawMessage) (C
 
 	transport := &http.Transport{
 		DialContext: func(dialCtx context.Context, network, addr string) (net.Conn, error) {
-			host, _, err := net.SplitHostPort(addr)
-			if err != nil {
-				host = addr
-			}
-			ip := net.ParseIP(host)
-			if ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()) {
-				if !isIPAllowed(ip) {
-					return nil, fmt.Errorf("blocked address: %s", host)
-				}
-			}
-			d := net.Dialer{}
+			d := net.Dialer{Control: rejectRestrictedDial}
 			return d.DialContext(dialCtx, network, addr)
 		},
 	}

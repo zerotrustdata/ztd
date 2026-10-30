@@ -206,3 +206,32 @@ export const PUBLIC_RELEASE_BASIS_VALUES = [
   'PUBLIC_RELEASE_BASIS_UNKNOWN',
 ] as const;
 export type PublicReleaseBasis = (typeof PUBLIC_RELEASE_BASIS_VALUES)[number];
+
+/** ztd.eval.v1.JudgeSubject */
+export const JUDGE_SUBJECT_VALUES = [
+  'JUDGE_SUBJECT_CRITERION',
+  'JUDGE_SUBJECT_FINAL_REPLY',
+  'JUDGE_SUBJECT_MEMORY',
+] as const;
+export type JudgeSubject = (typeof JUDGE_SUBJECT_VALUES)[number];
+
+/** ztd.eval.v1.JudgeActivityState */
+export const JUDGE_ACTIVITY_STATE_VALUES = [
+  'JUDGE_ACTIVITY_STATE_JUDGING',
+  'JUDGE_ACTIVITY_STATE_MET',
+  'JUDGE_ACTIVITY_STATE_NOT_MET',
+  'JUDGE_ACTIVITY_STATE_SCORED',
+  'JUDGE_ACTIVITY_STATE_FAILED',
+] as const;
+export type JudgeActivityState = (typeof JUDGE_ACTIVITY_STATE_VALUES)[number];
+
+/** ztd.eval.v1.JudgeFailure */
+export const JUDGE_FAILURE_VALUES = [
+  'JUDGE_FAILURE_REQUEST_INVALID',
+  'JUDGE_FAILURE_DISPATCH_FAILED',
+  'JUDGE_FAILURE_RESPONSE_MISMATCH',
+  'JUDGE_FAILURE_RESULT_DIGEST',
+  'JUDGE_FAILURE_VERDICT_INVALID',
+  'JUDGE_FAILURE_RECEIPT_UNVERIFIED',
+] as const;
+export type JudgeFailure = (typeof JUDGE_FAILURE_VALUES)[number];

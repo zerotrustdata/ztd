@@ -101,7 +101,7 @@ func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCat
 	}
 	triageOnly := len(blueprint.EligibleRoles) == 1 && blueprint.EligibleRoles[0] == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE &&
 		blueprint.Gold.Players != nil && blueprint.Gold.Players.Triage != nil
-	fileStateObjective := blueprint.Gold.GradingContract == ScenarioGradingContractV3 && len(blueprint.Gold.FileState) > 0
+	fileStateObjective := (blueprint.Gold.GradingContract == ScenarioGradingContractV3 || blueprint.Gold.GradingContract == ScenarioGradingContractV4) && len(blueprint.Gold.FileState) > 0
 	if !contentCheckHasConstraint(blueprint.Gold.ContentCheck) && !triageOnly && !fileStateObjective {
 		return scenarioContractError(blueprint, "scenario has no content check, so it cannot fail")
 	}

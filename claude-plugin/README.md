@@ -12,8 +12,8 @@ extensions.
 | --- | --- |
 | MCP server `ztd` ([.mcp.json](.mcp.json)) | Runs [scripts/mcp-stdio.sh](scripts/mcp-stdio.sh), which changes to your ztd root and runs `ztd mcp stdio --app <app_name>`. Every tool call is proxied over mTLS to the Gateway and becomes a `GovernanceEnvelope` that passes L1–L5. Tools appear as `mcp__plugin_ztd_ztd__<tool>`. |
 | PreToolUse hook ([hooks/pretool.sh](hooks/pretool.sh)) | Denies every tool except the ztd tools, `ToolSearch`/`WaitForMcpServers` (needed to load MCP tools), and conversation-only tools (`Skill`, `TodoWrite`, `AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode`). Unknown and future tools are denied. Fires in subagents too. |
-| SessionStart hook ([hooks/session-start.sh](hooks/session-start.sh)) | Tells Claude it is governed, which tools to use, and the project path to pass to them. Flags missing setup. |
-| `/ztd:setup` skill | Setup steps for the user to run in their own terminal. |
+| SessionStart hook ([hooks/session-start.sh](hooks/session-start.sh)) | Tells Claude it is governed, which tools to use, and the project path to pass to them. Runs `ztd mcp stdio --app <app_name> --check` locally and prints the app identity and next setup action. It exits successfully even when ztd is not installed yet. |
+| `/ztd:setup` skill | Uses the SessionStart check and app identity to show only the remaining setup steps for the user to run in their own terminal. |
 
 The hook does not grant anything. ztd tool calls still go through Claude Code's normal permission prompts. To skip
 those prompts and rely on the Gateway's posture instead, add `"mcp__plugin_ztd_ztd"` to `permissions.allow` in your
@@ -21,8 +21,10 @@ settings.
 
 ## Requirements
 
-- A running ztd Gateway, and in its ztd root: an enrolled CLI user (`ztd auth enroll user`) and an owner-approved
-  application identity (`ztd auth enroll app claude`). `/ztd:setup` lists the steps.
+- A ztd Gateway and an enrolled application identity (default name `claude`) in the configured ztd root. Under
+  `doctrine` and `consensus`, `ztd auth enroll app <name>` approves itself when the owner is signed in. Under `ratify`
+  and `notary`, or when no owner CLI identity is signed in, complete the sign-in and approval steps reported by the
+  local `--check`. `/ztd:setup` guides the user through only the remaining steps.
 - `/bin/sh` (Linux or macOS). See [Limitations](#limitations).
 
 ## Install

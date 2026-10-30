@@ -610,7 +610,87 @@ func validatePublicLiveEvent(recordBytes []byte) error {
 			return err
 		}
 	}
+	return validateLiveJudgeEvent(event)
+}
+
+// validateLiveJudgeEvent holds judge events to their shape: a judge block on
+// judge kinds only, placed on the graded subject's running assignment row, and
+// never a metric or free-text stage that could merge into the subject's row.
+func validateLiveJudgeEvent(event *evalv1.PublicLiveEvent) error {
+	judgeKind := event.GetKind() == "judge_started" || event.GetKind() == "judge_completed"
+	if !judgeKind {
+		if event.GetJudge() != nil {
+			return publicFeedSchemaError("judge is set on a non-judge event")
+		}
+		return nil
+	}
+	if event.GetJudge() == nil || event.GetAssignmentId() == "" || event.GetTaskId() == "" || event.GetVariantId() == "" || event.GetRole() == "" {
+		return publicFeedSchemaError("judge event requires judge, assignment, task, variant, and role")
+	}
+	if len(event.GetMetricDelta()) > 0 || event.GetStageLabel() != "" || event.GetLifecycleStatus() != "running" {
+		return publicFeedSchemaError("judge event carries a metric, a stage label, or a non-running lifecycle")
+	}
+	return validateLiveJudgeActivity(event.GetJudge(), event.GetKind() == "judge_completed")
+}
+
+func validateLiveJudgeActivity(judge *evalv1.PublicLiveJudgeActivity, completed bool) error {
+	if judge.GetJudgeVariantId() == "" || judge.GetServedModelTag() == "" || judge.GetModelDigest() == "" || judge.GetRubricVersion() == "" {
+		return publicFeedSchemaError("judge identity or rubric is missing")
+	}
+	criterion := judge.GetSubject() == evalv1.JudgeSubject_JUDGE_SUBJECT_CRITERION
+	switch judge.GetSubject() {
+	case evalv1.JudgeSubject_JUDGE_SUBJECT_CRITERION, evalv1.JudgeSubject_JUDGE_SUBJECT_FINAL_REPLY, evalv1.JudgeSubject_JUDGE_SUBJECT_MEMORY:
+	default:
+		return publicFeedSchemaError("invalid judge subject")
+	}
+	if criterion != (judge.GetCriterionId() != "") {
+		return publicFeedSchemaError("criterion_id is set exactly for a criterion judgment")
+	}
+	if judge.GetIndex() < 1 || judge.GetIndex() > judge.GetCount() {
+		return publicFeedSchemaError("judge index is outside 1..count")
+	}
+	if !completed {
+		if judge.GetState() != evalv1.JudgeActivityState_JUDGE_ACTIVITY_STATE_JUDGING || judge.GetProviderAttemptId() == "" ||
+			judge.Score != nil || judge.GetRationale() != "" || judge.GetFailure() != evalv1.JudgeFailure_JUDGE_FAILURE_UNSPECIFIED ||
+			judge.GetTransactionId() != "" || judge.GetUsageReported() || judge.GetFinishReason() != "" || judge.ExecutedAtUnixMs != nil ||
+			judge.DispatchElapsedNs != nil || judgeUsagePresent(judge) {
+			return publicFeedSchemaError("judge_started carries only the judge, the judgment, and its attempt")
+		}
+		return nil
+	}
+	failed := judge.GetState() == evalv1.JudgeActivityState_JUDGE_ACTIVITY_STATE_FAILED
+	switch judge.GetState() {
+	case evalv1.JudgeActivityState_JUDGE_ACTIVITY_STATE_MET, evalv1.JudgeActivityState_JUDGE_ACTIVITY_STATE_NOT_MET:
+		if !criterion || judge.Score != nil {
+			return publicFeedSchemaError("met and not_met are criterion verdicts without a score")
+		}
+	case evalv1.JudgeActivityState_JUDGE_ACTIVITY_STATE_SCORED:
+		if criterion || judge.Score == nil || judge.GetScore() < 1 || judge.GetScore() > 5 {
+			return publicFeedSchemaError("scored is a quality verdict with a score in 1..5")
+		}
+	case evalv1.JudgeActivityState_JUDGE_ACTIVITY_STATE_FAILED:
+		if judge.GetFailure() == evalv1.JudgeFailure_JUDGE_FAILURE_UNSPECIFIED || judge.Score != nil || judge.GetRationale() != "" {
+			return publicFeedSchemaError("a failed judgment carries its failure code and no verdict")
+		}
+	default:
+		return publicFeedSchemaError("invalid judge_completed state")
+	}
+	if !failed && (judge.GetFailure() != evalv1.JudgeFailure_JUDGE_FAILURE_UNSPECIFIED || judge.GetTransactionId() == "" || judge.GetProviderAttemptId() == "") {
+		return publicFeedSchemaError("a judge verdict carries its attempt and transaction and no failure")
+	}
+	if _, ok := evalv1.JudgeFailure_name[int32(judge.GetFailure())]; !ok {
+		return publicFeedSchemaError("invalid judge failure")
+	}
+	if !judge.GetUsageReported() && (judge.PromptTokens != nil || judge.CompletionTokens != nil || judge.ThinkingTokens != nil || judge.CacheTokens != nil) {
+		return publicFeedSchemaError("judge tokens require usage_reported")
+	}
 	return nil
+}
+
+func judgeUsagePresent(judge *evalv1.PublicLiveJudgeActivity) bool {
+	return judge.PromptTokens != nil || judge.CompletionTokens != nil || judge.ThinkingTokens != nil || judge.CacheTokens != nil ||
+		judge.LoadDurationNs != nil || judge.PromptEvalDurationNs != nil || judge.GenerationDurationNs != nil ||
+		judge.TotalDurationNs != nil || judge.TimeToFirstTokenNs != nil
 }
 
 func validateLiveMetricValue(key string, metric *evalv1.PublicLiveMetricValue) error {
@@ -724,7 +804,7 @@ func validatePublicFeedKeyRevocation(recordBytes []byte) error {
 
 func publicFeedViewSchemaVersion(value string) bool {
 	switch value {
-	case "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0", "1.10.0":
+	case "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0", "1.10.0", constants.ExplorerViewSchemaVersion:
 		return true
 	default:
 		return false
@@ -742,7 +822,7 @@ func publicFeedSnapshotKind(value string) bool {
 
 func publicFeedEventKind(value string) bool {
 	switch value {
-	case "evaluation_queued", "evaluation_started", "assignment_started", "stage_updated", "assignment_completed", "assignment_failed", "metric_updated", "evaluation_completed", "evaluation_failed", "evaluation_stopped":
+	case "evaluation_queued", "evaluation_started", "assignment_started", "stage_updated", "assignment_completed", "assignment_failed", "metric_updated", "evaluation_completed", "evaluation_failed", "evaluation_stopped", "judge_started", "judge_completed":
 		return true
 	default:
 		return false

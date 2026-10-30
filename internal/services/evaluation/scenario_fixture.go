@@ -23,15 +23,15 @@ import (
 
 const (
 	GraderID      = "ztd-native-deterministic-grader"
-	GraderVersion = "1.18.0"
+	GraderVersion = "1.19.0"
 
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
 	DefaultSuiteID             = "default-suite"
-	DefaultSuiteVersion        = "1.29.0"
-	SmokeSuiteVersion          = "1.28.0"
-	InvestigationsSuiteVersion = "1.26.0"
-	QuickstartSuiteVersion     = "1.0.0"
+	DefaultSuiteVersion        = "1.31.0"
+	SmokeSuiteVersion          = "1.30.0"
+	InvestigationsSuiteVersion = "1.27.0"
+	QuickstartSuiteVersion     = "1.1.0"
 
 	// LegacyDefaultSuiteID is the catalog id the built-in suite carried before
 	// it was renamed. Campaigns frozen under it (north-star-25@1.0.0) exist on
@@ -78,6 +78,10 @@ const (
 	// ScenarioGradingContractV3 inherits v2 and validates Interrogator questions
 	// as closed questions rather than rejecting every use of the word "or".
 	ScenarioGradingContractV3 ScenarioGradingContract = "grading-contract.v3"
+	// ScenarioGradingContractV4 requires an explicit interrogation objective
+	// before questions can substitute for an answer. It accepts binary answer
+	// markers before or after questions without changing older freezes.
+	ScenarioGradingContractV4 ScenarioGradingContract = "grading-contract.v4"
 )
 
 // scenarioCatalogFreezeTime is the fixed production and verification time of
@@ -385,11 +389,11 @@ func (gold *ScenarioGoldCriteria) requiresReceiptIDActionCitation(expectedReceip
 // gradingContractV2 reports whether the gold was frozen under
 // ScenarioGradingContractV2.
 func (gold *ScenarioGoldCriteria) gradingContractV2() bool {
-	return gold.GradingContract == ScenarioGradingContractV2 || gold.GradingContract == ScenarioGradingContractV3
+	return gold.GradingContract == ScenarioGradingContractV2 || gold.closedInterrogationContract()
 }
 
 func (gold *ScenarioGoldCriteria) closedInterrogationContract() bool {
-	return gold.GradingContract == ScenarioGradingContractV3
+	return gold.GradingContract == ScenarioGradingContractV3 || gold.GradingContract == ScenarioGradingContractV4
 }
 
 func (gold *ScenarioGoldCriteria) requiredEvidenceForRole(role string) []string {

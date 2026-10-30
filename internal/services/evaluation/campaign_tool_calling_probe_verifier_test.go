@@ -57,7 +57,11 @@ func newToolCallingVerifierFixture(t *testing.T) toolCallingVerifierFixture {
 
 	store := NewStore(newCampaignMemoryFileService())
 	executor := &toolCallingGateExecutor{t: t, probeText: true}
-	controller := NewCampaignController(store, executor, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-verifier" })
+	now := time.Unix(1_700_000_000, 0).UTC()
+	controller := NewCampaignController(store, executor, func() time.Time {
+		now = now.Add(time.Second)
+		return now
+	}, func(prefix string) string { return prefix + "-verifier" })
 	run, err := controller.InitializeCampaign(ctx, req)
 	require.NoError(t, err)
 	count, err := controller.ScheduleRun(ctx, run.GetRunId())
@@ -92,6 +96,7 @@ func (f toolCallingVerifierFixture) verify(t *testing.T) *evalv1.EvaluationVerif
 func TestCampaignRunVerifier_ToolCallingProbeBacksUnsupportedCellExclusion(t *testing.T) {
 	f := newToolCallingVerifierFixture(t)
 	require.Equal(t, toolCallingProbeFailure, f.result.GetFailureReason())
+	assert.False(t, f.result.GetCompletedAt().AsTime().Before(f.assignment.GetStartedAt().AsTime()), "a probe exclusion cannot complete before its assignment starts")
 	report := f.verify(t)
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus(), report.GetFailureReasons())
 	assert.Empty(t, report.GetFailureReasons())

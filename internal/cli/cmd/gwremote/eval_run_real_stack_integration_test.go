@@ -179,6 +179,7 @@ func newEvalRunStack(t *testing.T, opts evalRunOptions) *evalRunStack {
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
+		Personas:      catalog.GetPersonas(),
 		Scenarios:     []*evalv1.EvaluationScenarioDefinition{target},
 	}
 	truncated.CatalogDigest, err = evaluation.ComputeScenarioCatalogDigest(truncated)
@@ -224,8 +225,16 @@ func newEvalRunStack(t *testing.T, opts evalRunOptions) *evalRunStack {
 	})
 	require.NoError(t, err)
 	inference := evalRunInference{client: appClient, cliSessionID: persona.CLISessionID}
+	residencyDispatcher, err := evaluation.NewGovernedOllamaModelCommandDispatcher(gatewayClient, persona)
+	require.NoError(t, err)
+	residencySeq := 0
+	residency, err := evaluation.NewProviderModelResidency(residencyDispatcher, inferenceWorkload.OperatorSessionID, func(prefix string) string {
+		residencySeq++
+		return fmt.Sprintf("%s-residency-%d", prefix, residencySeq)
+	})
+	require.NoError(t, err)
 	executor, err := evaluation.NewCampaignAgentExecutor(
-		inference, evaluation.NewCommandLane(gatewayClient, persona), sentinel, store, clock, newID)
+		inference, residency, evaluation.NewCommandLane(gatewayClient, persona), sentinel, store, clock, newID)
 	require.NoError(t, err)
 
 	return &evalRunStack{

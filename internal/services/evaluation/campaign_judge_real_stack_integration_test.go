@@ -14,6 +14,7 @@ package evaluation_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -22,6 +23,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
@@ -96,7 +98,7 @@ func executeNextWithInference(t *testing.T, env *realStackAgentRun, inference ev
 		return prefix + "-" + id
 	}
 	executor, err := evaluation.NewCampaignAgentExecutor(
-		inference, evaluation.NewCommandLane(env.gateway, env.persona), env.sentinel, env.store, env.clock, newID)
+		inference, env.residency, evaluation.NewCommandLane(env.gateway, env.persona), env.sentinel, env.store, env.clock, newID)
 	require.NoError(t, err)
 	controller := evaluation.NewCampaignController(env.store, executor, env.clock, newID)
 	res, ok, err := controller.ExecuteNextAssignment(t.Context(), env.req.RunID, env.binding, env.req.ScenarioArtifacts)
@@ -115,6 +117,7 @@ func TestRealStackJudge_SecondaryScoreAttachesVerifiedReceipt(t *testing.T) {
 	res := env.executeNext(t)
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
 	assert.Equal(t, 2, env.stack.Provider.ChatCount(), "the agent answer and the judge each take one provider turn")
+	assert.Empty(t, env.stack.Provider.ReleasedModels(), "a judge that is the scored model stays loaded")
 
 	trace, err := env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, res.GetAssignmentId())
 	require.NoError(t, err)
@@ -161,6 +164,23 @@ func TestRealStackJudge_SecondaryScoreAttachesVerifiedReceipt(t *testing.T) {
 	}
 	assert.True(t, hasJudgeGraderCall, "GraderCalls should record the judge inference")
 
+	// 4a. The grader call carries the judge's signed result and receipt, so its
+	// tokens and timings are offline-verifiable.
+	var judgeCall *evalv1.GraderModelCallRecord
+	for _, gc := range res.GetGraderCalls() {
+		if gc.GetTransactionId() == judgeTx {
+			judgeCall = gc
+		}
+	}
+	require.NotNil(t, judgeCall)
+	assert.Equal(t, "diagnosis-quality", judgeCall.GetCriterionId())
+	assert.Equal(t, judge.RubricVersion, judgeCall.GetRubricVersion())
+	assert.NotEmpty(t, judgeCall.GetProviderAttemptId())
+	require.NotNil(t, judgeCall.GetInferenceResult())
+	require.NotNil(t, judgeCall.GetReceipt())
+	assert.Equal(t, judgeCall.GetInferenceResult().GetResultDigest(), judgeCall.GetReceipt().GetResultSummary())
+	assert.Equal(t, judgeCall.GetProviderAttemptId(), judgeCall.GetInferenceResult().GetProviderAttemptId())
+
 	// 5. DecomposedScores carries the diagnosis_quality value.
 	hasDiagDecomposedScore := false
 	for _, ds := range res.GetDecomposedScores() {
@@ -179,6 +199,45 @@ func TestRealStackJudge_SecondaryScoreAttachesVerifiedReceipt(t *testing.T) {
 	}
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus())
 	assert.Equal(t, evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT, res.GetTrajectoryOutcome())
+
+	// 7. The run verifies, and a stored judge usage or score that the signed
+	// result does not carry does not.
+	verify := func() *evalv1.EvaluationVerificationReport {
+		report, err := evaluation.NewCampaignRunVerifier(env.clock).VerifyRun(ctx, env.store, env.req.RunID, env.req.Catalog, env.req.ScenarioArtifacts)
+		require.NoError(t, err)
+		return report
+	}
+	require.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, verify().GetStatus(), verify().GetFailureReasons())
+	for _, tamper := range []struct {
+		name  string
+		apply func(*evalv1.EvaluationAssignmentResult)
+	}{
+		{"inflated judge tokens", func(result *evalv1.EvaluationAssignmentResult) {
+			for _, gc := range result.GetGraderCalls() {
+				gc.GetInferenceResult().PromptTokens++
+			}
+		}},
+		{"raised judge score", func(result *evalv1.EvaluationAssignmentResult) {
+			grade := diagnosisQualityGrade(result)
+			grade.Detail = strings.Replace(grade.GetDetail(), "score: 4/5", "score: 5/5", 1)
+		}},
+		{"stripped judge evidence", func(result *evalv1.EvaluationAssignmentResult) {
+			for _, gc := range result.GetGraderCalls() {
+				gc.InferenceResult, gc.Receipt = nil, nil
+			}
+		}},
+	} {
+		t.Run(tamper.name, func(t *testing.T) {
+			tampered := proto.Clone(res).(*evalv1.EvaluationAssignmentResult)
+			tamper.apply(tampered)
+			var err error
+			tampered.ResultDigest, err = evaluation.ComputeAssignmentResultDigest(tampered)
+			require.NoError(t, err)
+			require.NoError(t, env.store.SaveAssignmentResult(ctx, tampered))
+			t.Cleanup(func() { require.NoError(t, env.store.SaveAssignmentResult(context.WithoutCancel(ctx), res)) })
+			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, verify().GetStatus())
+		})
+	}
 }
 
 // judgeRequestInference forwards every governed inference to the real Inference
@@ -233,6 +292,11 @@ func TestRealStackJudge_PinnedJudgeScoresUnderItsOwnRegistry(t *testing.T) {
 				require.Len(t, judgeRequest.GetModelRegistry(), 1, "the judge dispatches under a registry of the judge alone")
 				assert.True(t, proto.Equal(wantRegistry[0], judgeRequest.GetModelRegistry()[0]))
 				assert.NotEqual(t, agentRequest.GetModelRegistryDigest(), judgeRequest.GetModelRegistryDigest(), "the judge registry is not the scored registry")
+				assert.Equal(t, []fixtures.OllamaChatResidency{
+					{Model: realStackModelTag, Others: []string{}},
+					{Model: tag.served, Others: []string{}},
+				}, env.stack.Provider.ChatResidency(), "the scored model and the judge never share the provider")
+				assert.Equal(t, []string{realStackModelTag}, env.stack.Provider.ReleasedModels(), "the scored model is released before the judge loads")
 
 				grade := diagnosisQualityGrade(res)
 				require.NotNil(t, grade)
@@ -248,6 +312,64 @@ func TestRealStackJudge_PinnedJudgeScoresUnderItsOwnRegistry(t *testing.T) {
 				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus(), report.GetFailureReasons())
 			})
 		}
+	}
+}
+
+// TestRealStackJudge_ProviderHoldsOnePhasesModelsAcrossAssignments runs two
+// judged assignments with a judge distinct from the scored model. Each phase
+// finds the provider holding nothing else, the release receipts are scoped to
+// the run, and the evidence still verifies, including when the Inference and
+// Data runtimes share one ledger.
+func TestRealStackJudge_ProviderHoldsOnePhasesModelsAcrossAssignments(t *testing.T) {
+	for _, shared := range []bool{false, true} {
+		t.Run(fmt.Sprintf("shared=%t", shared), func(t *testing.T) {
+			ctx := t.Context()
+			judgeVariant := &evalv1.ModelVariant{
+				VariantId: "gemma4-e4b", ProviderClass: "ollama",
+				ServedModelTag: evaluation.DefaultJudgeServedModelTag,
+				ModelDigest:    fixtures.ScriptedModelDigest(t, evaluation.DefaultJudgeServedModelTag),
+			}
+			judgeReply := fixtures.OllamaReply{Content: judgeScoreFour}
+			env := newRealStackAgentRun(t, realStackOptions{
+				shared: shared, singleRole: true, repetitions: 2, scenarioID: judgeScenarioID, suffix: "judge-residency",
+				replies:   append(judgeReplies(judgeReply), judgeReplies(judgeReply)...),
+				modelTags: []string{evaluation.DefaultJudgeServedModelTag},
+				request: func(req *evaluation.CampaignInitRequest, _ string) {
+					req.Judge = judgeVariant
+				},
+			})
+
+			for range 2 {
+				res := env.executeNext(t)
+				require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
+			}
+
+			judge := evaluation.DefaultJudgeServedModelTag
+			assert.Equal(t, []fixtures.OllamaChatResidency{
+				{Model: realStackModelTag, Others: []string{}},
+				{Model: judge, Others: []string{}},
+				{Model: realStackModelTag, Others: []string{}},
+				{Model: judge, Others: []string{}},
+			}, env.stack.Provider.ChatResidency(), "every turn finds the provider holding no other model")
+			assert.Equal(t, []string{realStackModelTag, judge, realStackModelTag}, env.stack.Provider.ReleasedModels(),
+				"the judge releases the scored model, and the next assignment releases the judge")
+
+			gatewayReceipts := env.stack.Gateway.Service.GetLocalFirstEventsStore()
+			releases, err := gatewayReceipts.ListEventReceipts(models.EventsScope{OperatorSessionID: env.inferenceSessionID, InvestigationID: constants.ProviderModelReleaseInvestigationID}, 10, 0)
+			require.NoError(t, err)
+			require.Len(t, releases, 3, "one governed release per phase change")
+			for _, receipt := range releases {
+				assert.Equal(t, constants.ActionTypeOllamaModelRelease, receipt.ActionType)
+				assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.Status)
+			}
+			reads, err := gatewayReceipts.ListEventReceipts(models.EventsScope{OperatorSessionID: env.inferenceSessionID, InvestigationID: constants.ProviderModelResidencyInvestigationID}, 10, 0)
+			require.NoError(t, err)
+			assert.Len(t, reads, 4, "each assignment reads residency before its turns and before its judge")
+
+			report, err := evaluation.NewCampaignRunVerifier(env.clock).VerifyRun(ctx, env.store, env.req.RunID, env.req.Catalog, env.req.ScenarioArtifacts)
+			require.NoError(t, err)
+			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus(), report.GetFailureReasons())
+		})
 	}
 }
 

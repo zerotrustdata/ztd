@@ -200,9 +200,9 @@ type llamaCppModelActionResponse struct {
 // expressible.
 func llamaCppUnloadAfterRequest(keepAlive string) (bool, error) {
 	switch keepAlive {
-	case "", "-1":
+	case "", constants.InferenceDefaultKeepAlive:
 		return false, nil
-	case "0":
+	case constants.InferenceUnloadKeepAlive:
 		return true, nil
 	default:
 		return false, fmt.Errorf("llamacpp_backend: keep_alive %q: %w", keepAlive, constants.ErrInferenceCapabilityUnsupported)

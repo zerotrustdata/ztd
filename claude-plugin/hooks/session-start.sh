@@ -12,7 +12,12 @@
 
 root=${CLAUDE_PLUGIN_OPTION_ZTD_ROOT:-}
 app=${CLAUDE_PLUGIN_OPTION_APP_NAME:-claude}
+bin=${CLAUDE_PLUGIN_OPTION_ZTD_BINARY:-ztd}
 project=${CLAUDE_PROJECT_DIR:-$(pwd)}
+
+case $app in
+  '' | '${'* ) app=claude ;;
+esac
 
 cat <<EOF
 This Claude Code session is governed by ztd (plugin "ztd").
@@ -26,14 +31,29 @@ This Claude Code session is governed by ztd (plugin "ztd").
 - If no mcp__plugin_ztd_ztd__ tools are available, say so and ask the user to run /ztd:setup. Do not fall back to native tools.
 EOF
 
+# Claude does not substitute plugin userConfig values into skill text. Include
+# the effective app name and the bridge's local setup check in hook context.
+printf '\nSetup needed — next step:\nApp identity: %s\n' "$app"
+
 # shellcheck disable=SC2016 # '${' matches an unsubstituted ${user_config.*} placeholder.
 case $root in
   '' | '${'*)
-    printf '\nSetup needed: the plugin option ztd_root is not set, so the ztd MCP server cannot start. Tell the user to run /ztd:setup.\n'
+    printf 'Configure the plugin ztd_root option to the directory where you run ztd.\n'
     ;;
   *)
-    if [ ! -d "$root/.ztd" ]; then
-      printf '\nSetup needed: %s has no .ztd directory, so the ztd MCP server cannot authenticate. Tell the user to run /ztd:setup.\n' "$root"
+    printf 'Configured ztd root: %s\n' "$root"
+    if [ ! -d "$root" ]; then
+      printf 'Create or choose the configured ztd root directory: %s\n' "$root"
+    elif ! command -v "$bin" >/dev/null 2>&1; then
+      printf 'Install ztd or set the plugin ztd_binary option to its executable.\n'
+    else
+      check_output=$(cd "$root" && "$bin" mcp stdio --app "$app" --check 2>&1)
+      check_status=$?
+      if [ "$check_status" -eq 0 ]; then
+        printf 'Ready. %s\n' "$check_output"
+      else
+        printf '%s\n' "$check_output"
+      fi
     fi
     ;;
 esac

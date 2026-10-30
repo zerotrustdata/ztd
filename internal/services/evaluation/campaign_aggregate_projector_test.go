@@ -219,7 +219,7 @@ func TestBuildRunAggregateViewRecords(t *testing.T) {
 
 	var summary evaluationSummaryRecord
 	require.NoError(t, json.Unmarshal(records[0].Body, &summary))
-	assert.Equal(t, explorerViewSchemaVersion, summary.SchemaVersion)
+	assert.Equal(t, constants.ExplorerViewSchemaVersion, summary.SchemaVersion)
 	assert.Equal(t, "evaluation_summary", summary.Kind)
 	assert.Equal(t, "model", summary.EvaluationUnit)
 	assert.Equal(t, "completed", summary.LifecycleState)
@@ -234,7 +234,7 @@ func TestBuildRunAggregateViewRecords(t *testing.T) {
 
 	var catalog catalogSnapshotRecord
 	require.NoError(t, json.Unmarshal(records[1].Body, &catalog))
-	assert.Equal(t, explorerViewSchemaVersion, catalog.SchemaVersion)
+	assert.Equal(t, constants.ExplorerViewSchemaVersion, catalog.SchemaVersion)
 	assert.Equal(t, "catalog_snapshot", catalog.Kind)
 	assert.Equal(t, "ds-live-run-1", catalog.DatasetID)
 	assert.Equal(t, uint32(1), catalog.AssignmentCount)
@@ -242,7 +242,7 @@ func TestBuildRunAggregateViewRecords(t *testing.T) {
 
 	var model modelSummaryRecord
 	require.NoError(t, json.Unmarshal(records[2].Body, &model))
-	assert.Equal(t, explorerViewSchemaVersion, model.SchemaVersion)
+	assert.Equal(t, constants.ExplorerViewSchemaVersion, model.SchemaVersion)
 	assert.Equal(t, "model_summary", model.Kind)
 	assert.Equal(t, "qwen3-4b", model.VariantID)
 	assert.Equal(t, "primary", model.Role)
@@ -257,7 +257,7 @@ func TestBuildRunAggregateViewRecords(t *testing.T) {
 
 	var methodology methodologySnapshotRecord
 	require.NoError(t, json.Unmarshal(records[3].Body, &methodology))
-	assert.Equal(t, explorerViewSchemaVersion, methodology.SchemaVersion)
+	assert.Equal(t, constants.ExplorerViewSchemaVersion, methodology.SchemaVersion)
 	assert.Equal(t, "methodology_snapshot", methodology.Kind)
 }
 

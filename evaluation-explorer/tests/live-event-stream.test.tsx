@@ -478,3 +478,146 @@ describe('LiveEventStream', () => {
   });
 
 });
+
+describe('LiveEventStream judge activity', () => {
+  const judge = (partial: Partial<NonNullable<LiveEvent['judge']>> = {}): NonNullable<LiveEvent['judge']> => ({
+    judge_variant_id: 'qwen3-5-4b', served_model_tag: 'qwen3.5:4b', model_digest: 'abc123',
+    subject: 'criterion', criterion_id: 'refusal', index: 1, count: 2, rubric_version: 'criterion-v2',
+    state: 'judging', provider_attempt_id: 'judge-criterion-1', usage_reported: false, ...partial,
+  });
+  const done = (partial: Partial<NonNullable<LiveEvent['judge']>> = {}) => judge({
+    state: 'met', rationale: 'Refuses to delete the audit log.', transaction_id: 'tx-1', usage_reported: true,
+    prompt_tokens: 812, completion_tokens: 40, thinking_tokens: 12, cache_tokens: 3,
+    load_duration_ns: 5_000_000, prompt_eval_duration_ns: 400_000_000, generation_duration_ns: 800_000_000,
+    total_duration_ns: 1_200_000_000, time_to_first_token_ns: 410_000_000, finish_reason: 'stop',
+    executed_at_unix_ms: Date.UTC(2026, 9, 30, 12, 0, 5), dispatch_elapsed_ns: 1_300_000_000, ...partial,
+  });
+  const judgeEvent = (id: string, block: NonNullable<LiveEvent['judge']>, observedAt: string, identity: Partial<LiveEvent> = {}) => liveEvent({
+    event_id: id, kind: block.state === 'judging' ? 'judge_started' : 'judge_completed', lifecycle_status: 'running',
+    observed_at: observedAt, assignment_id: 'a-1', task_id: 'task-a-1', variant_id: 'model-a', role: 'primary', judge: block, ...identity,
+  });
+  const started = (assignmentId: string, observedAt: string) => liveEvent({
+    event_id: `start-${assignmentId}`, kind: 'assignment_started', lifecycle_status: 'running',
+    assignment_id: assignmentId, task_id: `task-${assignmentId}`, observed_at: observedAt,
+  });
+  const rowFor = (task: string) => rows().find((row) => row.textContent?.includes(task)) as HTMLElement;
+  const headers = () => screen.getAllByRole('columnheader').map((header) => header.textContent);
+
+  it('adds no Judge column to rows without judge activity', () => {
+    render(stream([started('a-1', '2026-09-17T08:00:00Z')]));
+    expect(headers()).not.toContain('Judge');
+    expect(screen.queryByRole('group', { name: 'Judge' })).not.toBeInTheDocument();
+  });
+
+  it('shows the in-flight judgment in the assignment row, never as its own row', () => {
+    render(stream([
+      started('a-1', '2026-09-17T08:00:00Z'),
+      judgeEvent('j-1', judge(), '2026-09-17T08:00:05Z'),
+    ]));
+    expect(rows()).toHaveLength(1);
+    expect(headers()).toContain('Judge');
+    const cell = within(rowFor('task-a-1')).getByRole('group', { name: 'Judge' });
+    expect(within(cell).getByText('refusal')).toBeInTheDocument();
+    expect(within(cell).getByText('Judging…')).toBeInTheDocument();
+    expect(within(cell).getByText(/qwen3\.5:4b · 0\/2 judged/)).toBeInTheDocument();
+  });
+
+  it('keeps the row status, model, and metrics the subject\'s', () => {
+    render(stream([
+      started('a-1', '2026-09-17T08:00:00Z'),
+      liveEvent({
+        event_id: 'done-a-1', assignment_id: 'a-1', task_id: 'task-a-1', observed_at: '2026-09-17T08:00:20Z',
+        metric_delta: { latency_ms: { value: 1500 }, input_tokens: { value: 900 } },
+      }),
+      judgeEvent('j-1-done', done(), '2026-09-17T08:00:30Z'),
+    ]));
+    const row = rowFor('task-a-1');
+    expect(rows()).toHaveLength(1);
+    expect(within(row).getByText('model-a')).toBeInTheDocument();
+    expect(within(row).queryByText(/judge completed/i)).not.toBeInTheDocument();
+    expect(row.querySelector('[data-metric="latency_ms"]')?.textContent).toBe('1,500');
+    expect(row.querySelector('[data-metric="input_tokens"]')?.textContent).toBe('900');
+  });
+
+  it('replaces the in-flight judgment with its verdict and summarizes the row', () => {
+    render(stream([
+      started('a-1', '2026-09-17T08:00:00Z'),
+      judgeEvent('j-1', judge(), '2026-09-17T08:00:05Z'),
+      judgeEvent('j-1-done', done(), '2026-09-17T08:00:07Z'),
+      judgeEvent('j-2', judge({ criterion_id: 'advice', index: 2, provider_attempt_id: 'judge-criterion-2' }), '2026-09-17T08:00:08Z'),
+      judgeEvent('j-3-done', done({ subject: 'final_reply', criterion_id: undefined, index: 1, count: 1, rubric_version: 'diagnosis-quality-v3', state: 'scored', score: 4, provider_attempt_id: 'judge-final_reply-1', transaction_id: 'tx-3' }), '2026-09-17T08:00:12Z'),
+    ]));
+    const cell = within(rowFor('task-a-1')).getByRole('group', { name: 'Judge' });
+    expect(within(cell).queryAllByText('Judging…')).toHaveLength(1);
+    expect(within(cell).getByText('Met')).toBeInTheDocument();
+    expect(within(cell).getByText('Score 4/5')).toBeInTheDocument();
+    const chips = [...cell.querySelectorAll('.judge-subject')].map((chip) => chip.textContent);
+    expect(chips).toEqual(['refusal', 'advice', 'Diagnosis quality']);
+    expect(within(cell).getByText('qwen3.5:4b · 2/3 judged · 1 met · 0 not met · scores 4/5 · 2.40 s · 1,624 in / 80 out tok')).toBeInTheDocument();
+  });
+
+  it('expands a judgment in place to every recorded detail', async () => {
+    const user = userEvent.setup();
+    render(stream([started('a-1', '2026-09-17T08:00:00Z'), judgeEvent('j-1-done', done(), '2026-09-17T08:00:07Z')]));
+    const chip = within(rowFor('task-a-1')).getByText('refusal').closest('details') as HTMLElement;
+    expect(chip).toHaveAttribute('data-state', 'met');
+    await user.click(within(chip).getByText('refusal'));
+    expect(chip).toHaveAttribute('open');
+    const detail = (label: string) => within(chip).getByText(label).nextElementSibling?.textContent;
+    expect(detail('Judge model')).toBe('qwen3.5:4b');
+    expect(detail('Judge variant')).toBe('qwen3-5-4b');
+    expect(detail('Model digest')).toBe('abc123');
+    expect(detail('Rubric')).toBe('criterion-v2');
+    expect(detail('Rationale')).toBe('Refuses to delete the audit log.');
+    expect(detail('Tokens in')).toBe('812');
+    expect(detail('Tokens out')).toBe('40');
+    expect(detail('Thinking tokens')).toBe('12');
+    expect(detail('Cache tokens')).toBe('3');
+    expect(detail('Load')).toBe('5 ms');
+    expect(detail('Prompt eval')).toBe('400 ms');
+    expect(detail('Generation')).toBe('800 ms');
+    expect(detail('Total (provider)')).toBe('1.20 s');
+    expect(detail('Time to first token')).toBe('410 ms');
+    expect(detail('Throughput')).toBe('50 tok/s');
+    expect(detail('Finish reason')).toBe('stop');
+    expect(detail('Executed at')).toBe('2026-10-30T12:00:05.000Z');
+    expect(detail('Wall time (live)')).toBe('1.30 s');
+    expect(detail('Attempt')).toBe('judge-criterion-1');
+    expect(detail('Transaction')).toBe('tx-1');
+  });
+
+  it('shows a failed judgment by its closed code', () => {
+    render(stream([
+      started('a-1', '2026-09-17T08:00:00Z'),
+      judgeEvent('j-1-done', judge({ state: 'failed', failure: 'receipt_unverified', transaction_id: 'tx-1' }), '2026-09-17T08:00:07Z'),
+    ]));
+    const cell = within(rowFor('task-a-1')).getByRole('group', { name: 'Judge' });
+    expect(within(cell).getByText('Failed: receipt unverified')).toBeInTheDocument();
+    expect(within(cell).getByText(/1 failed/)).toBeInTheDocument();
+  });
+
+  it('routes judge activity by assignment identity regardless of time', () => {
+    render(stream([
+      started('a-1', '2026-09-17T08:00:00Z'),
+      started('a-2', '2026-09-17T08:00:01Z'),
+      judgeEvent('j-other-run', done({ criterion_id: 'other-run' }), '2026-09-17T08:00:02Z', { run_id: 'run-b' }),
+      judgeEvent('j-other-dataset', done({ criterion_id: 'other-dataset' }), '2026-09-17T08:00:02Z', { dataset_id: 'ds-live-b' }),
+      judgeEvent('j-a-2', done({ criterion_id: 'second' }), '2026-09-17T08:00:00Z', { assignment_id: 'a-2', task_id: 'task-a-2' }),
+    ]));
+    expect(within(rowFor('task-a-1')).queryByRole('group', { name: 'Judge' })).not.toBeInTheDocument();
+    const second = within(rowFor('task-a-2')).getByRole('group', { name: 'Judge' });
+    expect(within(second).getByText('second')).toBeInTheDocument();
+    expect(screen.queryByText('other-run')).not.toBeInTheDocument();
+    expect(screen.queryByText('other-dataset')).not.toBeInTheDocument();
+  });
+
+  it('keeps every judgment on the row after the assignment completes', () => {
+    render(stream([
+      started('a-1', '2026-09-17T08:00:00Z'),
+      judgeEvent('j-1-done', done(), '2026-09-17T08:00:07Z'),
+      liveEvent({ event_id: 'done-a-1', assignment_id: 'a-1', task_id: 'task-a-1', observed_at: '2026-09-17T08:00:20Z' }),
+    ]));
+    expect(rows()).toHaveLength(1);
+    expect(within(rowFor('task-a-1')).getByRole('group', { name: 'Judge' })).toHaveTextContent('Met');
+  });
+});

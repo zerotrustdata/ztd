@@ -24,7 +24,9 @@ var (
 	interrogationQuestion = regexp.MustCompile(`^\d+[.)]\s*(\S.*\?)$`)
 	// interrogationBinaryMarker is a leading "YES/NO" answer-type marker. It
 	// echoes the protocol's own wording (I1), so it is not part of the question.
-	interrogationBinaryMarker = regexp.MustCompile(`(?i)^yes\s*/\s*no\s*[-–—:]?\s*`)
+	interrogationBinaryMarker   = regexp.MustCompile(`(?i)^yes\s*/\s*no\s*[-–—:]?\s*`)
+	interrogationQuestionV4     = regexp.MustCompile(`^\d+[.)]\s*(\S.*\?)\s*(?:\((?i:yes\s*/\s*no)\))?$`)
+	interrogationBinaryMarkerV4 = regexp.MustCompile(`(?i)^yes(?:\s*/\s*|\s+or\s+)no\s*[-–—:,]?\s*`)
 )
 
 // binaryOpeners are the words a yes/no question starts with. A question that
@@ -63,17 +65,18 @@ type AgentInterrogation struct {
 // first rule it breaks. The executor and the grader read interrogations only
 // through this parser.
 func ParseInterrogation(text string) (interrogation AgentInterrogation, attempted bool, err error) {
-	return parseInterrogation(text, false)
+	return parseInterrogation(text, ScenarioGoldCriteria{})
 }
 
 // ParseInterrogationForGold applies the protocol frozen in scenario gold.
 // Older contracts retain the lexical "or" rule; v3 accepts coordinated noun
-// phrases while still rejecting common explicit action choices.
+// phrases while still rejecting common explicit action choices. V4 also accepts
+// explicit binary answer markers before or after a question.
 func ParseInterrogationForGold(text string, gold ScenarioGoldCriteria) (AgentInterrogation, bool, error) {
-	return parseInterrogation(text, gold.closedInterrogationContract())
+	return parseInterrogation(text, gold)
 }
 
-func parseInterrogation(text string, closedQuestionContract bool) (interrogation AgentInterrogation, attempted bool, err error) {
+func parseInterrogation(text string, gold ScenarioGoldCriteria) (interrogation AgentInterrogation, attempted bool, err error) {
 	trimmed := strings.TrimSpace(text)
 	if !strings.Contains(strings.ToLower(trimmed), interrogationOpenTag) {
 		return AgentInterrogation{}, false, nil
@@ -92,12 +95,16 @@ func parseInterrogation(text string, closedQuestionContract bool) (interrogation
 		return AgentInterrogation{}, true, fmt.Errorf("%w: got %d", constants.ErrEvaluationInterrogationCount, len(lines))
 	}
 	for i, line := range lines {
-		numbered := interrogationQuestion.FindStringSubmatch(line)
+		questionPattern, markerPattern := interrogationQuestion, interrogationBinaryMarker
+		if gold.GradingContract == ScenarioGradingContractV4 {
+			questionPattern, markerPattern = interrogationQuestionV4, interrogationBinaryMarkerV4
+		}
+		numbered := questionPattern.FindStringSubmatch(line)
 		if numbered == nil {
 			return AgentInterrogation{}, true, fmt.Errorf("%w: line %d", constants.ErrEvaluationInterrogationNotNumbered, i+1)
 		}
-		question := interrogationBinaryMarker.ReplaceAllString(numbered[1], "")
-		if !binaryQuestion(question, closedQuestionContract) {
+		question := markerPattern.ReplaceAllString(numbered[1], "")
+		if !binaryQuestion(question, gold.closedInterrogationContract()) {
 			return AgentInterrogation{}, true, fmt.Errorf("%w: question %d", constants.ErrEvaluationInterrogationNotBinary, i+1)
 		}
 		interrogation.Questions[i] = question

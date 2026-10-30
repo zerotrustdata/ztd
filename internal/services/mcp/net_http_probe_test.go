@@ -10,11 +10,14 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"net"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func TestNetHTTPProbeTool_Metadata(t *testing.T) {
@@ -70,6 +73,9 @@ func TestNetHTTPProbeTool_Execute_BlockedURLs(t *testing.T) {
 		{"private ip 10.x", "http://10.0.0.1"},
 		{"private ip 192.168.x", "http://192.168.1.1"},
 		{"link-local", "http://169.254.1.1"},
+		{"unspecified ipv4", "http://0.0.0.0:11434/"},
+		{"unspecified ipv6", "http://[::]:11434/"},
+		{"multicast", "http://224.0.0.1/"},
 	}
 
 	for _, tt := range tests {
@@ -92,8 +98,16 @@ func TestNetHTTPProbeTool_Execute_NetworkError(t *testing.T) {
 	tool := &NetHTTPProbeTool{}
 	ctx := context.Background()
 
-	// Use a non-existent domain that won't resolve but passes validation
-	args := json.RawMessage(`{"url": "http://non-existent-domain-12345.example.com"}`)
+	// Hermetic (INV-TEST-RUN-02): a closed loopback port (allowlisted for the test)
+	// passes URL validation and fails at dial time, with no DNS lookup.
+	setPrivateIPAllowlistForTest(t, []string{"127.0.0.0/8"})
+	t.Cleanup(resetPrivateIPAllowlistForTest)
+	host, port := closedLoopbackEndpoint(t)
+	rawURL := "http://" + net.JoinHostPort(host, strconv.Itoa(port))
+	_, valErr := validateHTTPRequestURL(rawURL)
+	require.NoError(t, valErr)
+
+	args := json.RawMessage(`{"url": "` + rawURL + `"}`)
 	result, err := tool.Execute(ctx, args)
 	require.NoError(t, err)
 	require.Len(t, result.Content, 1)
@@ -102,7 +116,8 @@ func TestNetHTTPProbeTool_Execute_NetworkError(t *testing.T) {
 	err = json.Unmarshal([]byte(result.Content[0].Text), &probeResult)
 	require.NoError(t, err)
 	require.NotEmpty(t, probeResult.Error)
-	require.NotContains(t, probeResult.Error, "URL validation failed")
+	require.NotContains(t, probeResult.Error, constants.ErrMCPValidateURLPrivateAddress.Error())
+	require.NotContains(t, probeResult.Error, constants.ErrMCPValidateURLLoopbackAddress.Error())
 	require.GreaterOrEqual(t, probeResult.LatencyMs, 0.0)
 }
 

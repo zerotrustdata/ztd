@@ -3,8 +3,8 @@ doc_id: devs
 title: Developer Guidelines
 audience: maintainers and coding agents
 status: current
-version: v1.5.0
-last_updated: 2026-10-28
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - go.mod
   - Makefile
@@ -136,7 +136,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-ERR-05 | MUST use a centralized `constants.Err*` for a known failure mode, `fmt.Errorf` with runtime values for a dynamic error, and a one-off `fmt.Errorf` in tests only when the injected cause has no production meaning. |
 | INV-ERR-06 | MUST NOT compare rendered error strings when `errors.Is`, `errors.As`, or a typed status is available. |
 
-Gateway API clients decode failed responses with `api.DecodeGatewayError`, which returns an `api.StatusError`. Use `errors.As` to inspect its HTTP status and `errors.Is` for recognized Gateway sentinels, including publication recovery errors and authentication failures. HTTP 404 matches `constants.ErrNotFound`; text mentioning a status code does not. When adding context to a platform error and an underlying cause, wrap both with `%w` so callers can inspect either identity.
+Gateway API clients decode failed responses with `api.DecodeGatewayError`, which returns an `api.StatusError`. Use `errors.As` to inspect its HTTP status and `errors.Is` for recognized Gateway sentinels, including CLI session, mTLS certificate revocation, platform enrollment, and public feed sentinels. HTTP 404 matches `constants.ErrNotFound`; text mentioning a status code does not. When adding context to a platform error and an underlying cause, wrap both with `%w` so callers can inspect either identity.
 
 ### Typed contracts (`INV-TYPE`)
 
@@ -240,9 +240,9 @@ Selection, timeouts, race settings, fixtures, and CI scope live in [Testing Guid
 | INV-MCP-01 | A native MCP tool MUST implement `mcp.NativeTool` and MUST execute only for a verified `MCP_CALL` envelope, on the executing runtime's own native tool host, which `OperatorPubSubService` builds with `mcp.NewOperatorNativeToolHandler` (`internal/services/pubsub/pubsub_commands.go`) using the Gateway's embedded Operator ID in gateway mode and the Operator's own ID otherwise. Tool names referenced outside the tool's own file MUST come from the `constants.MCPTool*` names. |
 | INV-MCP-02 | The native registry is not an outbound Operator tool server (`INV-BOUND-04`): an outbound Operator exposes no MCP listener and runs registry tools only after its own L4/L5, never through `mcp.GatewayService`. Witness-only Operators run only the event-receipt reads (`INV-OP-CAP-01` in `docs/architecture/operator.md`). |
 | INV-MCP-03 | `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go` is the inventory. Documentation MUST NOT duplicate the tool list. |
+| INV-MCP-04 | Registration MUST be explicit in `RegisterNativeTools`. MUST NOT register a native tool from `init`. Registry construction MUST return errors. |
 
 The network and Kubernetes tools encode their typed JSON text results through `marshalResult` in `internal/services/mcp/tool_result.go`. Encoding failures wrap `constants.ErrMCPMarshalResult` and the original JSON error with the calling tool's name.
-| INV-MCP-04 | Registration MUST be explicit in `RegisterNativeTools`. MUST NOT register a native tool from `init`. Registry construction MUST return errors. |
 
 ### Contribution (`INV-CONTRIB`)
 

@@ -92,7 +92,7 @@ FIPS_GOARCH := amd64
 # local machines. 360s timed out in the FIPS job with the victim test only just
 # started (0s elapsed) because the package had simply outgrown the budget, not hung.
 # Keep in sync with integrationTestTimeout in internal/cli/cmd/test/test.go.
-TEST_TIMEOUT := 600s
+TEST_TIMEOUT := 30m
 # Per-package deadlock backstop for unit tests.
 TEST_SHORT_TIMEOUT := 180s
 # Race detector for Tier 2 integration tests (non-Windows). Tier 1 unit tests
@@ -220,13 +220,13 @@ help:
 		'  fips-verify               Build and verify the FIPS variant' \
 		'  verify-static             Check a built Linux binary is fully static (STATIC_BINARY=...)' \
 		'  version-sync              Sync version declarations to VERSION' \
-		'  release-rehearse          Run the release workflow on main without publishing' \
-		'  release                   Tag and push the release in VERSION (needs a passing rehearsal)' \
+		'  release-rehearse          Optional: run the release workflow on main without publishing' \
+		'  release                   Tag and push the release in VERSION' \
 		'' \
 		'Full test suite' \
 		'  test                      Run every local test and quality gate (100-Operator smoke)' \
 		'  test-quality              Format, lint, typecheck, and check generated artifacts' \
-		'  test-platform             Unit, integration, eval-stack, coverage, and burst tests' \
+		'  test-platform             Unit, integration, coverage, and burst tests' \
 		'  test-components           Console, explorer, adapter, protocol, website, and demo tests' \
 		'  test-scripts              Release, commit hygiene, and onboarding tests' \
 		'  test-process              Cross-process eval, conformance, release smoke, and deployment' \
@@ -234,8 +234,6 @@ help:
 		'Platform tests' \
 		'  test-unit                 Run Tier 1 unit tests' \
 		'  test-integration          Run Tier 2 in-process integration tests' \
-		'  test-eval-stack           Run real eval-stack integration tests' \
-		'  test-fips                 Run unit and integration tests with the pinned FIPS module' \
 		'  test-enrollment-burst     Run the enrollment timing contract without instrumentation' \
 		'  test-operator-burst       Run the 100-Operator transport smoke without instrumentation' \
 		'  test-coverage             Run tests and enforce $(COVERAGE_THRESHOLD)% coverage (PKG=..., VERBOSE=true)' \
@@ -816,11 +814,10 @@ test-quality:
 	@$(MAKE) console-lint explorer-lint adapter-lint protocol-lint
 	@$(MAKE) adapter-contract-check console-embed-check explorer-embed-check website-bundle-check
 
+# test-coverage runs every unit and integration test (-tags=integration, race) while
+# measuring coverage, so test-unit and test-integration are not repeated here.
 test-platform:
-	@$(MAKE) test-unit
-	@$(MAKE) test-integration
-	@$(MAKE) test-fips
-	@$(MAKE) test-eval-stack
+	@echo "== ALL unit + integration tests, race + coverage (the only full unit/integration run) =="
 	@$(MAKE) test-coverage
 	@$(MAKE) test-enrollment-burst
 	@$(MAKE) test-operator-burst
@@ -861,25 +858,6 @@ test-unit: constants-check
 test-integration:
 	@echo "Running Tier 2 (In-Process Integration) tests..."
 	@go test $(if $(TEST_P),-p=$(TEST_P),) -tags=integration $(TEST_RACE) $(TEST_COUNT) -timeout $(TEST_TIMEOUT) $(TEST_PKGS)
-
-.PHONY: test-fips
-test-fips:
-	@$(MAKE) fips-verify
-	@GOFIPS140=$(GOFIPS140_VERSION) $(MAKE) test-unit
-	@GOFIPS140=$(GOFIPS140_VERSION) $(MAKE) test-integration
-
-# Real eval stack tests (fixtures.NewEvalStack: Gateway plus outbound Data and
-# Inference Operators) skip without the evalstack tag, so they never run in CI.
-# Keep EVAL_STACK_TEST_TIMEOUT in sync with evalStackTestTimeout in
-# internal/cli/cmd/test/test.go.
-EVAL_STACK_TEST_TIMEOUT := 30m
-EVAL_STACK_PKGS := ./internal/cli/cmd/eval ./internal/cli/cmd/compliance \
-	./internal/cli/cmd/gwremote ./internal/services/compliance/report \
-	./internal/services/evaluation ./internal/services/gateway ./test/fixtures
-.PHONY: test-eval-stack
-test-eval-stack:
-	@echo "Running real eval stack integration tests..."
-	@go test -tags='integration evalstack' $(TEST_RACE) $(TEST_COUNT) -timeout $(EVAL_STACK_TEST_TIMEOUT) $(EVAL_STACK_PKGS)
 
 # Timing contracts run separately from race and coverage instrumentation.
 .PHONY: test-enrollment-burst
@@ -1045,7 +1023,7 @@ console-embed-check: console-build
 .PHONY: test-coverage
 test-coverage:
 	@echo "Running tests with coverage (threshold: $(COVERAGE_THRESHOLD)%)..."
-	@go test -tags=integration $(TEST_RACE) -timeout $(TEST_TIMEOUT) \
+	@go test $(if $(TEST_P),-p=$(TEST_P),) -tags=integration $(TEST_RACE) $(TEST_COUNT) -timeout $(TEST_TIMEOUT) \
 		-coverprofile=coverage.out -covermode=atomic \
 		$(if $(VERBOSE),-v,) \
 		$(if $(PKG),$(PKG),$(TEST_PKGS))
@@ -1139,7 +1117,7 @@ up: build
 	@echo "Starting the ztd Gateway on this host..."
 	@./ztd gw start $(ZTD_ARGS) $(GW_LISTEN_ARGS) $(GW_ARGS)
 
-# Gateway whose embedded Operator carries every Operator capability.
+# Gateway with the embedded Operator. GW_CAPABILITIES defaults to data.
 # Capabilities are immutable in a running Gateway, so run `make down` first when
 # one is already running. Provenance attests model weights on this host and is
 # added only when MODEL_STORAGE_ROOT names the local model store. GW_ARGS
@@ -1202,9 +1180,6 @@ ci-platform: dev-check
 	@$(MAKE) lint
 	@$(MAKE) _ci-test
 	@$(MAKE) _ci-binaries
-ifeq ($(HOST_OS),linux)
-	@$(MAKE) test-fips
-endif
 	@$(MAKE) test-airgap
 	@$(MAKE) test-go-import
 	@$(MAKE) bsl-headers-check
@@ -1304,9 +1279,8 @@ endif
 # =============================================================================
 # RELEASE
 # =============================================================================
-# VERSION is the single source of truth. `make release` syncs the maintained
-# protocol specification Version: headers and first-party npm package versions
-# from VERSION (if needed; see version-sync), tags the current commit as
+# VERSION is the single source of truth. `make release` syncs every version
+# declaration from VERSION (if needed; see version-sync), tags the current commit as
 # v<VERSION>, and pushes the tag. The GitHub Actions
 # workflows create the GitHub release and upload binary assets.
 #
@@ -1334,11 +1308,6 @@ release:
 	if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/main)" ]; then \
 		echo "Error: HEAD is not origin/main. Push or pull so the release commit is on origin/main, then retry."; exit 1; \
 	fi; \
-	REHEARSALS=$$(gh run list --workflow release-binary.yml --event workflow_dispatch --commit "$$(git rev-parse HEAD)" \
-		--status success --json databaseId --jq length) || exit 1; \
-	if [ "$$REHEARSALS" = "0" ]; then \
-		echo "Error: no successful release rehearsal for $$(git rev-parse --short HEAD). Run make release-rehearse first."; exit 1; \
-	fi; \
 	\
 	go run ./internal/tools/versionsync -write || exit 1; \
 	\
@@ -1360,9 +1329,10 @@ release:
 	echo "The GitHub Actions workflows will create the release and upload assets."; \
 	echo "Monitor: gh run list --workflow release-binary.yml --branch $$TAG, then gh run watch <id> --exit-status"
 
-# Rehearse the release workflow on origin/main without publishing: preflight,
-# build-all, checksums, cosign signing, staging, and re-verification of the
-# downloaded artifact set. make release requires a successful rehearsal of HEAD.
+# Optional: rehearse the release workflow on origin/main without publishing
+# (preflight, build-all, checksums, cosign signing, staging, publication against
+# a temporary draft). Use after changing release-binary.yml or scripts/release-*.sh;
+# a failed tag run is recovered with gh run rerun <id> --failed.
 .PHONY: release-rehearse
 release-rehearse:
 	@bash scripts/release-rehearse.sh

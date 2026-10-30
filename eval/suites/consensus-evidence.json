@@ -1,12 +1,12 @@
 {
   "schema_version": "1.0.0",
   "id": "consensus-evidence",
-  "version": "1.7.0",
-  "description": "Consensus-compatible history grounding, read-only tool arguments, error-guided recovery, and contradiction handling. Search evidence, semantic interpretation, upstream identity, and concrete recovery checks use the corrected criteria from default-suite@1.27.0.",
+  "version": "1.8.0",
+  "description": "Consensus-compatible history grounding, read-only tool arguments, error-guided recovery, and contradiction handling. Search evidence, semantic interpretation, upstream identity, and concrete recovery checks use the corrected criteria from default-suite@1.30.0. Grading contract v4 requires the requested answer and accepts every frozen Triage label.",
   "scenarios": [
     {
       "scenario_id": "tool-select-investigation",
-      "scenario_version": "2.5.0",
+      "scenario_version": "2.6.0",
       "category": "tool_selection",
       "public_description": "Answer from the recorded history of this investigation.",
       "grading_method": "deterministic",
@@ -130,7 +130,7 @@
           }
         ],
         "require_receipt_id_action_citation": false,
-        "grading_contract": "grading-contract.v3",
+        "grading_contract": "grading-contract.v4",
         "prompt_hint": {
           "hinted_tools": [
             "event_receipt_list"
@@ -140,7 +140,7 @@
     },
     {
       "scenario_id": "tool-select-file-read",
-      "scenario_version": "2.5.0",
+      "scenario_version": "2.6.0",
       "category": "tool_selection",
       "public_description": "Find a setting in the active checkout configuration.",
       "grading_method": "deterministic",
@@ -286,7 +286,7 @@
           "tool_call"
         ],
         "require_receipt_id_action_citation": false,
-        "grading_contract": "grading-contract.v3",
+        "grading_contract": "grading-contract.v4",
         "prompt_hint": {
           "hinted_tools": [
             "read_file"
@@ -304,7 +304,7 @@
     },
     {
       "scenario_id": "tool-select-grep",
-      "scenario_version": "2.5.0",
+      "scenario_version": "2.6.0",
       "category": "tool_selection",
       "public_description": "Choose directory search instead of listing or command execution for a pattern search.",
       "grading_method": "deterministic",
@@ -479,7 +479,7 @@
           "tool_call"
         ],
         "require_receipt_id_action_citation": false,
-        "grading_contract": "grading-contract.v3",
+        "grading_contract": "grading-contract.v4",
         "prompt_hint": {
           "hinted_tools": [
             "search_directory"
@@ -503,7 +503,7 @@
     },
     {
       "scenario_id": "tool-arg-grep-pattern",
-      "scenario_version": "2.5.0",
+      "scenario_version": "2.6.0",
       "category": "tool_argument",
       "public_description": "Provide a valid grep pattern and bounded search target.",
       "grading_method": "deterministic",
@@ -658,7 +658,7 @@
           "tool_call"
         ],
         "require_receipt_id_action_citation": false,
-        "grading_contract": "grading-contract.v3",
+        "grading_contract": "grading-contract.v4",
         "prompt_hint": {
           "hinted_tools": [
             "search_directory"
@@ -682,7 +682,7 @@
     },
     {
       "scenario_id": "tool-arg-file-path",
-      "scenario_version": "2.5.0",
+      "scenario_version": "2.6.0",
       "category": "tool_argument",
       "public_description": "Provide the correct workspace file path for a read operation.",
       "grading_method": "deterministic",
@@ -824,7 +824,7 @@
           "tool_call"
         ],
         "require_receipt_id_action_citation": false,
-        "grading_contract": "grading-contract.v3",
+        "grading_contract": "grading-contract.v4",
         "prompt_hint": {
           "hinted_tools": [
             "read_file"
@@ -842,7 +842,7 @@
     },
     {
       "scenario_id": "verify-contradiction",
-      "scenario_version": "2.5.1",
+      "scenario_version": "2.6.0",
       "category": "verification",
       "public_description": "Check whether two health reports agree.",
       "grading_method": "deterministic",
@@ -961,12 +961,12 @@
           "model_inference"
         ],
         "require_receipt_id_action_citation": false,
-        "grading_contract": "grading-contract.v3"
+        "grading_contract": "grading-contract.v4"
       }
     },
     {
       "scenario_id": "recovery-tool-failure",
-      "scenario_version": "2.5.0",
+      "scenario_version": "2.6.0",
       "category": "recovery",
       "public_description": "Recover when a requested workspace file is missing.",
       "grading_method": "deterministic",
@@ -1115,7 +1115,7 @@
           "recovery"
         ],
         "require_receipt_id_action_citation": false,
-        "grading_contract": "grading-contract.v3",
+        "grading_contract": "grading-contract.v4",
         "prompt_hint": {
           "hinted_tools": [
             "read_file"
@@ -1133,7 +1133,7 @@
     },
     {
       "scenario_id": "recovery-error-guided-retry",
-      "scenario_version": "2.5.0",
+      "scenario_version": "2.6.0",
       "category": "recovery",
       "public_description": "Retry a failed search using the error the platform returned.",
       "grading_method": "deterministic",
@@ -1304,7 +1304,7 @@
           "recovery"
         ],
         "require_receipt_id_action_citation": false,
-        "grading_contract": "grading-contract.v3",
+        "grading_contract": "grading-contract.v4",
         "prompt_hint": {
           "hinted_tools": [
             "search_directory"

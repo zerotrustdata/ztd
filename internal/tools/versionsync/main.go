@@ -10,6 +10,7 @@
 //
 //   - protocol/docs: "Version: v<VERSION>" spec headers
 //   - first-party package.json files and their package-lock.json root versions
+//   - README.md version badge and the website homepage hero chip
 //
 // Usage:
 //
@@ -32,6 +33,11 @@ import (
 var (
 	npmPackages  = []string{"console", "evaluation-explorer", "ztd-adapter", "protocol/node", "website"}
 	protocolDocs = []string{"a2a.md", "constants.md", "mcp.md", "spec.md"}
+	// pages are the user-facing version strings outside the protocol and npm manifests.
+	pages = []declaration{
+		newDeclaration("README.md version badge", "README.md", `badge/version-v(?P<v>[0-9.]+)-`),
+		newDeclaration("website/src/index.html hero chip", "website/src/index.html", `ztd <b>v(?P<v>[^<]+)</b>`),
+	}
 
 	semverPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
 	// The top-level "version" key is the only one indented by exactly two spaces.
@@ -196,11 +202,12 @@ func platformVersion(root string) (string, error) {
 }
 
 func declarations(root string) ([]declaration, error) {
-	decls := make([]declaration, 0, len(protocolDocs)+3*len(npmPackages))
+	decls := make([]declaration, 0, len(protocolDocs)+len(pages)+3*len(npmPackages))
 	for _, doc := range protocolDocs {
 		rel := "protocol/docs/" + doc
 		decls = append(decls, newDeclaration(rel+" Version header", rel, docVersionHeader))
 	}
+	decls = append(decls, pages...)
 	npm, err := npmDeclarations(root)
 	if err != nil {
 		return nil, err

@@ -59,11 +59,14 @@ func (t *NetEndpointPingTool) Execute(ctx context.Context, args json.RawMessage)
 	if req.Host == "" || req.Port <= 0 {
 		return CallToolResult{}, fmt.Errorf("net_endpoint_ping: %w", constants.ErrMCPHostPortRequired)
 	}
+	if err := validateProbeHost(req.Host); err != nil {
+		return CallToolResult{}, fmt.Errorf("net_endpoint_ping: %w", err)
+	}
 
 	address := net.JoinHostPort(req.Host, strconv.Itoa(req.Port))
 	start := time.Now()
 
-	dialer := &net.Dialer{Timeout: constants.DefaultNetworkTimeout}
+	dialer := &net.Dialer{Timeout: constants.DefaultNetworkTimeout, Control: rejectRestrictedDial}
 	if deadline, ok := ctx.Deadline(); ok {
 		dialer.Timeout = time.Until(deadline)
 		if dialer.Timeout <= 0 {

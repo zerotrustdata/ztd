@@ -3,8 +3,8 @@ doc_id: diagram-gateway-fleet-topology
 title: "Diagram: Gateway Fleet Host Topology"
 audience: maintainers, architects, and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - internal/services/gateway/
   - internal/services/network/
@@ -26,7 +26,7 @@ Depicts the standard fleet topology: a centralized Governance Gateway (Policy De
 ```mermaid
 graph TD
     subgraph Clients ["Clients — Ingress Boundaries"]
-        MCP["MCP Clients<br/>(Claude Code · Codex · Goose · Gemini)"]
+        MCP["MCP Clients<br/>(Claude Code · Codex · Devin · Goose · Gemini)"]
         CLI["CLI / Enrolled App<br/>(Direct envelope / governed dispatch)"]
         Browser["Browser<br/>(Console SPA served by Gateway)"]
     end
@@ -34,7 +34,7 @@ graph TD
     GW["Governance Gateway (PDP)<br/>HTTP :8080 plaintext discovery · HTTPS :8443 TLS 1.3<br/>PKI · L1–L3 · Pub/Sub Broker · SSE"]
 
     subgraph Fleet ["Sovereign Hosts — Outbound-Only PEP"]
-        O1["Governed Operator · data<br/>cmd:&lt;operator-id&gt;:&lt;session-id&gt;"]
+        O1["Governed Operator · data<br/>cmd:&lt;operator_id&gt;:&lt;operator_session_id&gt;"]
         O2["Governed Operator · inference"]
         D1[("Per-Operator Local Store<br/>SQLite events DB · Commitment Ledger")]
         D2[("Per-Operator Local Store<br/>SQLite events DB · Commitment Ledger")]
@@ -54,7 +54,7 @@ graph TD
 
 ## Ingress Paths
 
-| Path | Primary Client | Gateway Surface | Executing Execution Point (PEP) |
+| Path | Primary Client | Gateway Surface | Policy Execution Point (PEP) |
 | :--- | :--- | :--- | :--- |
 | **Gateway MCP / A2A** | AI Agents, MCP Tools | `/mcp`, `/api/v1/a2a/call` | Embedded Operator substrate or outbound Operator, per operator type |
 | **Governed HTTP Dispatch** | Enrolled Applications | `POST /api/v1/operators/commands` | Embedded Operator substrate or outbound Operator (cmd channel), per operator type |
@@ -66,4 +66,4 @@ graph TD
 - **Unified Binary, Distinct Modes**: A single static binary (`ztd`) runs as Gateway (`ztd gw start`) or Operator (`ztd operator start`). Gateway mode embeds an in-process Operator substrate for local execution.
 - **Listener Isolation**: Remote Operators establish outbound WebSocket connections to the Gateway pub/sub broker (`/api/v1/pubsub/stream`). Operators expose no inbound listeners; `ztd operator start` has no listen flags.
 - **Gateway Auxiliary Listeners**: Defaults from `ztd gw start --help`: `--listen-host` 127.0.0.1; public spectator private listener 127.0.0.1:8081 and public listener 127.0.0.1:8082; eval explorer 127.0.0.1:5173; pprof disabled unless `--pprof-listen` is set.
-- **Sovereign Audit Storage (LFEA)**: Each Operator strictly owns its local SQLite events database and Commitment Ledger under `.ztd/`. Receipts published back to the Gateway are best-effort projections and never override local state.
+- **Local-First Events Architecture (LFEA)**: Each Operator strictly owns its local SQLite events database and Commitment Ledger under `.ztd/`. Receipts published back to the Gateway are best-effort projections and never override local state.

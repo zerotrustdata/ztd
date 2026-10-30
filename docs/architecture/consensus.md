@@ -3,8 +3,8 @@ doc_id: consensus
 title: Consensus Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.5.0
-last_updated: 2026-10-28
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - internal/services/governance/l2_consensus.go
   - internal/services/governance/l4_warden.go
@@ -118,7 +118,7 @@ An absent L2 proof (or empty L2 metadata with no set ID) yields `L2_PROOF_MISSIN
 
 | ID | Rule |
 | :--- | :--- |
-| INV-CON-RCPT-01 | The L4 Warden decides the L2 status once and the L5 EventReceipt `L2Status` field MUST copy it: `L2_STATUS_REQUIRED_VALID` when an L2 proof is present and verified (also where L2 is not enforced, as audit evidence), `L2_STATUS_REQUIRED_FAILED` when L2 is enforced and fails, or `L2_STATUS_NOT_REQUIRED` when L2 is not enforced for the action (the posture does not require it, the action is bootstrap-exempt, or the action is not a state change on its target under INV-CON-WARD-11), and when no valid proof is present. L5 never recomputes it from posture. |
+| INV-CON-RCPT-01 | The L4 Warden decides the L2 status once and the L5 EventReceipt `L2Status` field MUST copy it: `L2_STATUS_REQUIRED_VALID` when an L2 proof is present and verified (also where L2 is not enforced, as audit evidence), `L2_STATUS_REQUIRED_FAILED` when L2 is enforced and fails, or `L2_STATUS_NOT_REQUIRED` when L2 is not enforced for the action (the posture does not require it, the action is bootstrap-exempt, or the action is not a state change on its target under INV-CON-WARD-11) and no valid proof is present. L5 never recomputes it from posture. |
 | INV-CON-RCPT-02 | L4 verification MUST produce `DeterministicStageEvidence` for protocol L2 recording stage outcome (`VERIFIED`, `FAILED`, or `NOT_REQUIRED`) and the SHA-256 `L2SignatureDigest` over the sorted, canonically encoded set of `L2Vote.consensus_signature` values. |
 
 ## Owned surfaces
@@ -132,7 +132,7 @@ An absent L2 proof (or empty L2 metadata with no set ID) yields `L2_PROOF_MISSIN
 | Consensus binding resolution (Gateway admission and L5 write) | `internal/models/consensus_binding.go` (`ResolveConsensusBinding`, `ResolveConsensusMembership`) | Unit tests in `consensus_binding_test.go` |
 | Tribunal vote producer and provider router | `internal/services/gateway/tribunal_consensus_deliberator.go` (`TribunalConsensusDeliberator`, `consensusDeliberatorRouter`) | `tribunal_consensus_deliberator_test.go`, `consensus_deliberation_integration_test.go` |
 | Tribunal vote prompt and strict decoder | `internal/services/tribunal/consensus_vote.go` (`ConsensusVotePrompt`, `ParseConsensusVote`), `internal/services/tribunal/types.go` (`ConsensusMemberAppID`) | `consensus_vote_test.go`, `consensus_member_test.go` |
-| Member vote records and reads | `internal/models/consensus_vote.go` (`ConsensusVoteRecord`), `internal/services/gateway/audit_controller.go` (`handleAuditConsensusVotes`), `internal/cli/operator/consensus_votes.go` (`ztd audit votes`, votes on an `operator run` `L2_QUORUM_NOT_MET` rejection) | `TestTribunalConsensusRecordsEveryMemberVote`, `TestAuditController_EventsAndReportNeverReturnRawContent`, `consensus_votes_test.go` |
+| Member vote records and reads | `internal/models/consensus_vote.go` (`ConsensusVoteRecord`), `internal/services/gateway/audit_controller.go` (`handleAuditConsensusVotes`), `internal/cli/cmd/audit/audit.go` (`ztd audit votes`), `internal/cli/operator/consensus_votes.go` (votes on an `operator run` `L2_QUORUM_NOT_MET` rejection) | `TestTribunalConsensusRecordsEveryMemberVote`, `TestAuditController_EventsAndReportNeverReturnRawContent`, `consensus_votes_test.go` |
 | Tribunal member signer | `internal/cli/auth/tribunal_consensus_signer.go` (`TribunalConsensusSigner`) | `tribunal_consensus_signer_integration_test.go` |
 | L2 wire fields | `protocol/proto/ztd/common/v1/common.proto` (payload `consensus_provider`, `consensus_model_tag`, `consensus_model_digest`) | `make proto-generate` |
 | L4 Warden L2 verification & `OperatorL2Trust` | `internal/services/governance/l2_consensus.go`, `internal/services/governance/l4_warden.go` | Integration tests in `l4_warden_consensus_test.go` |
@@ -179,7 +179,7 @@ Consensus management commands:
 
 `ztd consensus enroll tribunal --model <tag> [--quorum 3]` runs these steps:
 1. Resolves a local model digest from the frozen model registry and fails if it cannot. An explicitly allowed hosted decision model instead requires an exact Jev version with an empty digest (INV-CON-POL-06).
-2. For each `tribunal-*` member not yet enrolled, runs application enrollment with a generated Ed25519 signing key and waits for the owner decision. Members already enrolled are skipped, so a re-run resumes.
+2. For each `tribunal-*` member whose sealed signing key does not exist locally, runs application enrollment with a generated Ed25519 signing key and waits for the owner decision. Members with an existing sealed signing key are skipped, so a re-run resumes.
 3. Submits the `PLATFORM_ENROLLMENT_BIND_CONSENSUS` bind with `provider=tribunal`, the pinned model tag and digest, and the quorum, then waits for the decision.
 
 Under `ratify` or `notary`, each approval is an L3 passkey step whose URL the command prints. Each member's private key is sealed on the Gateway host (INV-CON-POL-07).
@@ -235,8 +235,7 @@ An `INFERENCE` dispatched through `DispatchService` is not a state change, so it
 
 ### Decision Model Votes (Opt-in)
 
-Tribunal bindings default to generative votes. A binding with `vote_kind: decision` instead sends typed System One questions through the same governed `INFERENCE` action and signed receipt path. 
-The binding freezes a stable `inference_operator_id`, model identity, and five member thresholds. Local models require a SHA-256 digest; hosted Jev requires an explicit version (`jev-X.Y.Z`), an empty digest, and `allow_hosted`. Thresholds default to 0.9 at enrollment and require a rebind to change. The pinned Operator MUST be active and advertise the bound decision model and backend. An unavailable or ambiguous pinned Operator produces no vote; dispatch MUST NOT fall back to another Operator.
+Tribunal bindings default to generative votes. A binding with `vote_kind: decision` instead sends typed System One questions through the same governed `INFERENCE` action and signed receipt path. The binding freezes a stable `inference_operator_id`, model identity, and five member thresholds. Local models require a SHA-256 digest; hosted Jev requires an explicit version (`jev-X.Y.Z`), an empty digest, and `allow_hosted`. Thresholds default to 0.9 at enrollment and require a rebind to change. The pinned Operator MUST be active and advertise the bound decision model and backend. An unavailable or ambiguous pinned Operator produces no vote; dispatch MUST NOT fall back to another Operator.
 
 Each member asks fixed atomic yes/no questions over the decoded envelope and its context: Axiom checks intent, Concord checks context, Variance checks target and blast radius, Pragma checks necessity, proportionality and reversibility, and Nemesis checks exfiltration, persistence, privilege escalation and evasion. Every gate must meet the member threshold to approve. Nemesis uses `1 - p(hazard)` as its approval probability. Vote records retain the probabilities, thresholds and outcomes. Transport failures produce no vote. The existing Ed25519 vote bytes, quorum verification and L4 enforcement remain unchanged. The members share one model; independent keys and distinct questions do not establish independent model judgments.
 
@@ -245,6 +244,7 @@ The wire contract supports typed `noul`, `choice` and `score` requests and resul
 A dedicated outbound Inference Operator declares its decision models with `operator start --decision-model`; `--decision-only` excludes it from ordinary chat selection. Enrollment uses `consensus enroll tribunal --vote-kind decision --model <tag> --inference-operator <stable-id>`. Evaluation preflight (`ValidateConsensusProviderIsolation`, `internal/services/evaluation/consensus_provider_isolation.go`) refuses a decision binding whose Inference Operator is the campaign's Operator or whose endpoint matches the campaign provider's canonical endpoint, and fails closed on an unknown endpoint (`ErrEvaluationConsensusProviderShared`). Different URLs cannot prove physical separation behind aliases, so that still requires operator verification.
 
 Hosted Jev additionally requires `--allow-hosted-decision` on the Operator and `--allow-hosted` on the binding. Both default off. The backend reads the sealed runtime keystore entry `typesafe_jev_api_key` at execution time; it accepts no API key through request fields, environment variables or CLI flags. Without a provisioned vault credential, execution fails closed. Requests use only `https://api.typesafe.ai/v1/systemone` with redirects disabled. Signed result metadata records the origin, version, normalized outbound request hash, explicit consent and `hosted-unpinned` provenance; a version string is not a locally verified weight digest.
+
 ### Gateway Ingress Deliberation Routing
 
 ```mermaid

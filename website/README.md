@@ -18,6 +18,8 @@ The homepage markup and CSS live in `src/index.html`; its behavior lives in `src
 
 The homepage's “Watch it LIVE” button links to `https://opendevops.ai`. The homepage includes a Contact section (`#contact`), linked from the closing call-to-action paragraph. It publishes Danny's email, `danny@zerotrustdata.io`, as a clickable email link in both the Contact section and the footer.
 
+The Proofs section's terminal screenshots open in a scrollable dialog with zoom controls; without JavaScript, each screenshot links directly to the image.
+
 ## Payments
 
 The homepage does not link to `/buy/`. `npm run check` fails if one appears. The Worker still answers a direct `/buy/<sku>` request with a 303 redirect to that SKU's Stripe Payment Link from `src/payment-links.json`, and unknown SKUs return 404. `STRIPE_API_KEY=rk_live_... scripts/stripe-payment-links.sh --live` creates or reconciles the Stripe products, prices, and Payment Links with the Stripe CLI and rewrites that file. Without `--live`, the script runs in Stripe test mode and prints the mapping without writing it. To change a price, edit the script's catalog and run it again. The new price takes over the lookup key, and the old link is deactivated. The script logs each SKU as it goes. If any Stripe call fails, including when the CLI prints text instead of JSON (an expired or missing key), it prints the failing call and the CLI's output, then exits without writing the file.

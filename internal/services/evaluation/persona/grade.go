@@ -262,12 +262,24 @@ func gradeRouter(labels *RouterLabels, out *evalv1.RouterOutput) (Status, FailCl
 	if labels == nil {
 		return unlabeled()
 	}
-	if norm(out.GetComplexity()) != norm(labels.Complexity) ||
-		norm(out.GetIntent()) != norm(labels.Intent) ||
-		norm(out.GetPosture()) != norm(labels.Posture) {
+	if !routerLabelMatches(out.GetComplexity(), labels.Complexity, labels.ComplexityAlternatives) ||
+		!routerLabelMatches(out.GetIntent(), labels.Intent, labels.IntentAlternatives) ||
+		!routerLabelMatches(out.GetPosture(), labels.Posture, labels.PostureAlternatives) {
 		return fail(FailLabelMismatch)
 	}
 	return pass()
+}
+
+func routerLabelMatches(output, expected string, alternatives []string) bool {
+	if len(alternatives) == 0 {
+		return norm(output) == norm(expected)
+	}
+	for _, allowed := range alternatives {
+		if norm(output) == norm(allowed) {
+			return true
+		}
+	}
+	return false
 }
 
 // gradeCandidate screens the typed candidate through the same MCP_CALL L1 path as live dispatch.

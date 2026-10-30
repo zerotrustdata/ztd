@@ -3,8 +3,8 @@ doc_id: cloud_deployment
 title: Cloud VM Deployment Guide
 audience: maintainers and coding agents
 status: current
-version: v1.5.0
-last_updated: 2026-10-29
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - deploy/cloud_gateway/
   - internal/cli/cmd/gw/
@@ -111,7 +111,7 @@ The recommended production approach defines infrastructure declaratively in `dep
    ```bash
    make deploy
    ```
-   The makefile builds the static Linux binary from source, transfers it to `/usr/local/bin/ztd`, restarts `ztd-gateway`, and verifies the `/healthz` probe.
+   The `deploy` target in `deploy/cloud_gateway/Makefile` builds the static Linux binary from source, transfers it to `/usr/local/bin/ztd`, restarts `ztd-gateway`, and verifies the `/healthz` probe.
 
 ### Manual Cloud VM Provisioning (GCP CLI Example)
 
@@ -217,6 +217,7 @@ ExecStartPre=/bin/sh -c 'ssh-agent -a /run/ztd/ssh-agent.sock && SSH_AUTH_SOCK=/
 
 ExecStart=/usr/local/bin/ztd gw start \
     --follow \
+    --accept-unrecoverable \
     --listen-host 0.0.0.0 \
     --http-port 8080 \
     --https-port 8443 \
@@ -318,7 +319,7 @@ Governed Operators (PEPs) establish outbound-only mTLS WebSocket connections to 
 
 ```bash
 # Connect and enroll a remote Operator
-ztd operator start --gateway https://<GATEWAY_DOMAIN_OR_PUBLIC_IP>:8443
+ztd operator start --endpoint <GATEWAY_DOMAIN_OR_PUBLIC_IP>
 ```
 
 All command dispatches, health heartbeats, and signed event receipts flow across the persistent WebSocket channel.
@@ -328,7 +329,7 @@ All command dispatches, health heartbeats, and signed event receipts flow across
 - **Hosting Gateway in Ephemeral Serverless Environments**: Running `ztd gw` inside standard Cloudflare Workers, ephemeral containers, or stateless micro-VMs without persistent local block storage causes state-root and PKI loss on container recycling.
 - **Enabling Edge Proxying (Orange Cloud) on Port 8443**: Terminating TLS at an upstream CDN/edge proxy breaks end-to-end mTLS authentication for Governed Operators and CLIs.
 - **Neglecting Headless Keystore Initialization**: Running `ztd gw` on a headless Linux host without `ssh-agent` or with missing SSH identity causes immediate startup failure with `ErrKeyStoreOSKeyringRequired`.
-- **Conflating Gateway Ingress with Mirror Ingress**: Exposing port 8443 through an ingress proxy strips mTLS, but exposing the anonymous public mirror port 8082 via Cloudflare Tunnel is recommended for CDN caching and DDoS mitigation.
+- **Conflating Gateway Ingress with Mirror Ingress**: Exposing port 8443 through an ingress proxy strips mTLS, but exposing the anonymous public mirror port 8082 through a Cloudflare Tunnel MAY be used for CDN caching and DDoS mitigation (`INV-DEPLOY-NET-04`).
 - **Hardcoding Loopback in Public Deployments**: Omitting `--listen-host 0.0.0.0` or using `--cert-mode localhost` on a public server prevents remote Operators from establishing secure TLS connections.
 
 ## Links out

@@ -758,7 +758,7 @@ func newInferenceConfig(enabled bool, opts LoadOptions) (InferenceConfig, error)
 	if cfg.LlamaCppModelRoot == "" {
 		return InferenceConfig{}, constants.ErrInferenceLlamaCppModelRootRequired
 	}
-	if cfg.KeepAlive != "-1" && cfg.KeepAlive != "0" {
+	if cfg.KeepAlive != constants.InferenceDefaultKeepAlive && cfg.KeepAlive != constants.InferenceUnloadKeepAlive {
 		return InferenceConfig{}, fmt.Errorf("config: inference keep-alive %q: %w", cfg.KeepAlive, constants.ErrInferenceLlamaCppKeepAliveInvalid)
 	}
 	return cfg, nil

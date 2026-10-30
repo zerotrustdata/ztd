@@ -50,6 +50,9 @@ import {
   TERMINAL_STATUSES,
   TOOL_SCORE_DIMENSIONS,
   LIFECYCLE_STATUSES,
+  LIVE_JUDGE_FAILURES,
+  LIVE_JUDGE_STATES,
+  LIVE_JUDGE_SUBJECTS,
   VERIFIER_STATES,
 } from '../src/contract/types';
 
@@ -78,6 +81,9 @@ type EnumName =
   | 'NativeMetricUnit'
   | 'SnapshotKind'
   | 'LiveEventKind'
+  | 'LiveJudgeSubject'
+  | 'LiveJudgeState'
+  | 'LiveJudgeFailure'
   | 'FeedRecordType'
   | 'FreshnessState'
   | 'PublicUnavailableReason'
@@ -121,6 +127,9 @@ const tsEnums: Record<EnumName, readonly string[]> = {
   NativeMetricUnit: NATIVE_METRIC_UNITS,
   SnapshotKind: SNAPSHOT_KINDS,
   LiveEventKind: LIVE_EVENT_KINDS,
+  LiveJudgeSubject: LIVE_JUDGE_SUBJECTS,
+  LiveJudgeState: LIVE_JUDGE_STATES,
+  LiveJudgeFailure: LIVE_JUDGE_FAILURES,
   FeedRecordType: FEED_RECORD_TYPES,
   FreshnessState: FRESHNESS_STATES,
   PublicUnavailableReason: PUBLIC_UNAVAILABLE_REASONS,

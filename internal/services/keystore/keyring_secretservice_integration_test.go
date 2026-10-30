@@ -12,6 +12,7 @@ package keystore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -135,7 +136,25 @@ func TestSecretServiceKeyring_RealDaemonWithoutDefaultCollection(t *testing.T) {
 	// D-Bus activation starts gnome-keyring with only the in-memory session
 	// collection, the state of a host whose login keyring was never created.
 	_, err := newSecretServiceKeyring(dialSecretService)
+	if secretServiceNotActivatable(err) {
+		// gnome-keyring 48 (Debian 13) ships systemd user units and no D-Bus
+		// activation file, so this host cannot start the daemon on demand.
+		t.Skipf("org.freedesktop.secrets is not D-Bus activatable here: %v", err)
+	}
 	require.ErrorIs(t, err, constants.ErrKeyStoreNoDefaultCollection)
+}
+
+// secretServiceNotActivatable reports the D-Bus error a session bus returns
+// when no .service file provides org.freedesktop.secrets. The check is the
+// error name, not its rendered text.
+func secretServiceNotActivatable(err error) bool {
+	const serviceUnknown = "org.freedesktop.DBus.Error.ServiceUnknown"
+	var asPtr *dbus.Error
+	if errors.As(err, &asPtr) && asPtr != nil && asPtr.Name == serviceUnknown {
+		return true
+	}
+	var asVal dbus.Error
+	return errors.As(err, &asVal) && asVal.Name == serviceUnknown
 }
 
 func TestSecretServiceKeyring_StoreFailureHasGuidance(t *testing.T) {

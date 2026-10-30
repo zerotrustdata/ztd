@@ -159,6 +159,31 @@ func TestBuildAndVerifyDatabaseRoundTrip(t *testing.T) {
 	assert.Equal(t, records, gotRecords)
 }
 
+// TestBuildAndVerifyDatabaseCarriesJudgeEvents: an assignment's judge events
+// are proof content of its events database like any other live event.
+func TestBuildAndVerifyDatabaseCarriesJudgeEvents(t *testing.T) {
+	ctx := context.Background()
+	files := newTestFiles(t)
+	judged := liveEvent("event-judge", testRunID, testAssignmentID)
+	judged.SchemaVersion, judged.Kind = constants.ExplorerViewSchemaVersion, "judge_completed"
+	judged.TaskId, judged.VariantId, judged.Role = "tool-select-constraints", "gemma4-e2b", "primary"
+	judged.Judge = &evalv1.PublicLiveJudgeActivity{
+		JudgeVariantId: "qwen3-5-4b", ServedModelTag: "qwen3.5:4b", ModelDigest: strings.Repeat("a", 64),
+		Subject: evalv1.JudgeSubject_JUDGE_SUBJECT_FINAL_REPLY, Index: 1, Count: 1, RubricVersion: "diagnosis-quality-v3",
+		State: evalv1.JudgeActivityState_JUDGE_ACTIVITY_STATE_SCORED, Score: proto.Uint32(4), Rationale: "clear",
+		ProviderAttemptId: "judge-final_reply-1", TransactionId: "tx-1", UsageReported: true, PromptTokens: proto.Uint32(812),
+		TotalDurationNs: proto.Uint64(1_200_000_000), ExecutedAtUnixMs: proto.Int64(1_793_361_605_000),
+	}
+	records := append(validRecords(t), feedRecord(12, models.PublicFeedRecordTypeEvent, marshalEvent(t, judged)))
+
+	data, err := BuildDatabase(ctx, files, testHeader(), records)
+	require.NoError(t, err)
+
+	_, gotRecords, err := VerifyDatabase(ctx, data)
+	require.NoError(t, err)
+	assert.Equal(t, records, gotRecords)
+}
+
 func TestVerifyDatabaseRequiresImage(t *testing.T) {
 	_, _, err := VerifyDatabase(context.Background(), nil)
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)

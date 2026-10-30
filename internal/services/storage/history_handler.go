@@ -36,7 +36,7 @@ type eventsStoreInterface interface {
 // This allows for dependency injection and unit testing with mocks.
 // It also includes two-phase commit methods needed for integration test setup.
 type ledgerInterface interface {
-	GetFileHistory(filePath string, limit int, sessionID string) ([]FileHistoryEntry, error)
+	GetFileHistory(ctx context.Context, filePath string, limit int, sessionID string) ([]FileHistoryEntry, error)
 	RestoreFileFromCommit(target *fs.FileEditTarget, commitHash, sourceSessionID, operatorSessionID string) (*LedgerResult, error)
 	GetFileAtCommit(filePath, commitHash, sessionID string) (string, error)
 	GetDiffContent(hashBefore, hashAfter, filePath, sessionID string) (string, error)
@@ -169,7 +169,7 @@ func (hh *HistoryHandler) HandleFetchHistory(requestJSON []byte) (*operatorv1.Fe
 	return result, nil
 }
 
-func (hh *HistoryHandler) HandleFetchFileHistory(requestJSON []byte) (*operatorv1.FetchFileHistoryResult, error) {
+func (hh *HistoryHandler) HandleFetchFileHistory(ctx context.Context, requestJSON []byte) (*operatorv1.FetchFileHistoryResult, error) {
 	var request operatorv1.FetchFileHistoryRequested
 	if err := proto.Unmarshal(requestJSON, &request); err != nil {
 		return hh.fetchFileHistoryError(fmt.Errorf("invalid request format as protobuf FetchFileHistoryRequested: %w", err))
@@ -188,7 +188,7 @@ func (hh *HistoryHandler) HandleFetchFileHistory(requestJSON []byte) (*operatorv
 		"limit", limit,
 		"operator_session_id", request.OperatorSessionId)
 
-	history, err := hh.ledger.GetFileHistory(request.FilePath, limit, request.OperatorSessionId)
+	history, err := hh.ledger.GetFileHistory(ctx, request.FilePath, limit, request.OperatorSessionId)
 	if err != nil {
 		return hh.fetchFileHistoryError(fmt.Errorf("failed to get file history: %w", err))
 	}

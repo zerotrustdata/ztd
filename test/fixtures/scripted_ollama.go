@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync"
 	"testing"
 )
@@ -137,7 +138,17 @@ type ScriptedOllama struct {
 	next          int
 	served        map[string]string
 	resident      map[string]bool
+	chatResidency []OllamaChatResidency
+	released      []string
 	nextReplyGate *OllamaReplyGate
+}
+
+// OllamaChatResidency is what the provider held when one /api/chat request
+// arrived: the requested model and the other models already resident.
+type OllamaChatResidency struct {
+	Model string
+	// Others lists the resident models besides Model, sorted.
+	Others []string
 }
 
 // OllamaReplyGate blocks one chat reply after the scripted request arrives.
@@ -216,6 +227,23 @@ func (p *ScriptedOllama) ChatRequests() []json.RawMessage {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return append([]json.RawMessage(nil), p.requests...)
+}
+
+// ChatResidency returns the provider residency each /api/chat request found
+// on arrival, in arrival order, so a test can assert which models shared the
+// provider with each turn.
+func (p *ScriptedOllama) ChatResidency() []OllamaChatResidency {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]OllamaChatResidency(nil), p.chatResidency...)
+}
+
+// ReleasedModels returns every model tag a keep-alive 0 release unloaded, in
+// release order.
+func (p *ScriptedOllama) ReleasedModels() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]string(nil), p.released...)
 }
 
 // HoldNextReply blocks the next /api/chat request until the returned gate is
@@ -313,6 +341,14 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 			reply := p.replies[p.next]
 			p.requests = append(p.requests, body)
 			p.next++
+			others := []string{}
+			for name, resident := range p.resident {
+				if resident && name != request.Model {
+					others = append(others, name)
+				}
+			}
+			slices.Sort(others)
+			p.chatResidency = append(p.chatResidency, OllamaChatResidency{Model: request.Model, Others: others})
 			p.resident[request.Model] = true
 			gate := p.nextReplyGate
 			p.nextReplyGate = nil
@@ -365,6 +401,7 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 			}
 			p.mu.Lock()
 			p.resident[request.Model] = false
+			p.released = append(p.released, request.Model)
 			p.mu.Unlock()
 			_ = json.NewEncoder(w).Encode(struct {
 				Model      string `json:"model"`

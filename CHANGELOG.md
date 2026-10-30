@@ -11,6 +11,12 @@ compatible with the previous release in the same minor series. See `INV-REL-VER-
 
 ---
 
+## v1.7.x
+
+| Version | Date | Description | Notes |
+|---------|------|-------------|-------|
+| 1.7.0 | 2026-10-30 | Signed judge evidence and live activity, evaluation correctness and model residency, enrollment diagnostics, network probe address restrictions, and release reliability. | [v1.7.0](docs/release_notes/v1.7.x/v1.7.0.md) |
+
 ## v1.6.x
 
 | Version | Date | Description | Notes |

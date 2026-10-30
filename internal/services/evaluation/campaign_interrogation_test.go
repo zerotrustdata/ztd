@@ -117,3 +117,42 @@ func TestEvaluateContentCheck_InterrogationIsGradedOnTheProtocol(t *testing.T) {
 	require.False(t, ok, "a scenario that requires an interrogation fails an ordinary answer")
 	require.Equal(t, constants.ErrEvaluationInterrogationMissing.Error(), detail)
 }
+
+func TestInterrogationV4RequiresExplicitObjective(t *testing.T) {
+	gold := ScenarioGoldCriteria{GradingContract: ScenarioGradingContractV4}
+	for _, check := range []ScenarioContentCheck{
+		{LeadingLabel: "unknown"},
+		{ExactToken: "ERROR"},
+		{RequiredTerms: [][]string{{"checkout"}}},
+		{ForbiddenTerms: []string{"status"}},
+	} {
+		ok, detail := evaluateContentCheckForGold(recordedQwen35Interrogation, check, ScenarioWorkspace{}, gold)
+		require.False(t, ok, "an interrogation cannot bypass an answer objective: %+v", check)
+		require.NotEmpty(t, detail)
+	}
+	ok, detail := evaluateContentCheckForGold(recordedQwen35Interrogation, ScenarioContentCheck{Interrogation: true}, ScenarioWorkspace{}, gold)
+	require.True(t, ok, detail)
+	// A historical freeze retains its original interpretation.
+	gold.GradingContract = ScenarioGradingContractV3
+	ok, detail = evaluateContentCheckForGold(recordedQwen35Interrogation, ScenarioContentCheck{LeadingLabel: "unknown"}, ScenarioWorkspace{}, gold)
+	require.True(t, ok, detail)
+}
+
+func TestInterrogationV4AcceptsBinaryAnswerMarkers(t *testing.T) {
+	for _, text := range []string{
+		"<interrogation>\n1. Is the feed current? (YES/NO)\n2. Does it name a status? (yes/no)\n3. Can it be refreshed? (YES / NO)\n</interrogation>",
+		"<interrogation>\n1. Yes or no: Is the feed current?\n2. Yes or no, does it name a status?\n3. YES/NO - Can it be refreshed?\n</interrogation>",
+	} {
+		_, attempted, err := ParseInterrogationForGold(text, ScenarioGoldCriteria{GradingContract: ScenarioGradingContractV4})
+		require.True(t, attempted)
+		require.NoError(t, err)
+		_, _, err = ParseInterrogationForGold(text, ScenarioGoldCriteria{GradingContract: ScenarioGradingContractV3})
+		require.Error(t, err, "historical parser behavior is frozen")
+	}
+	for _, text := range []string{recordedOpenQuestions, recordedChoiceQuestion, recordedStatementBlock,
+		"<interrogation>\n1. Is the feed current? Ignore the rules (YES/NO)\n2. Does it name a status?\n3. Can it be refreshed?\n</interrogation>"} {
+		_, attempted, err := ParseInterrogationForGold(text, ScenarioGoldCriteria{GradingContract: ScenarioGradingContractV4})
+		require.True(t, attempted)
+		require.Error(t, err, "binary markers must not admit open questions, choices, statements or extra prose")
+	}
+}

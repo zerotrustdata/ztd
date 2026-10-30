@@ -3,8 +3,8 @@ doc_id: diagram-gateway-services
 title: "Diagram: Gateway Service Stack"
 audience: maintainers, architects, and coding agents
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - internal/services/gateway/
   - internal/cli/serve/gateway.go
@@ -69,6 +69,7 @@ graph TD
             DocStore["Document Store<br/>JSON CRUD · Collection/ID"]
             KVStore["KV Store<br/>TTL-aware ephemeral state"]
             BlobStore["Blob Store<br/>Binary attachments"]
+            SSEStore["SSE Event Store<br/>Append · cursor backfill"]
             AuditDB["Audit Authority<br/>Append-only chained events"]
             StateRoot["State Root Service<br/>Merkle root tracking"]
         end
@@ -83,7 +84,7 @@ graph TD
         A2A --> MCPGW
 
         Dispatch -- "Remote operator (cmd publish)" --> WSSHandler
-        SSE --> DocStore
+        SSE --> SSEStore
         Observe --> DocStore
 
         DocStore -- "dirty trigger" --> StateRoot
@@ -122,7 +123,7 @@ The Gateway coordinates policy decisions through five structured tiers:
    - `PasskeyService`: Executes passkey (WebAuthn) registration and assertion ceremonies and brokers L3 proofs.
 3. **Application Ingress**:
    - MCP and A2A calls are normalized into typed `GovernanceEnvelope` messages by the MCP gateway service.
-   - The Consensus Service routes L2 votes to the bound consensus provider: the Gateway-hosted Tribunal panel (`tribunal`) or an enrolled application (`application`). It votes only on state-change actions.
+   - The Consensus Service routes L2 votes to the bound consensus provider: the Gateway-hosted Tribunal panel (`tribunal`) or an enrolled application (`application`). Only state-change actions receive an L2 vote round.
    - `DispatchApprovalCoordinator` and `mcp.EnvelopeSuspender` hold transactions suspended pending an L3 proof.
 4. **Pub/Sub Brokering**:
    - Coordinates outbound WebSocket connections from remote Operators across the `cmd:`, `results:`, `heartbeat:`, and `receipts:` channel prefixes.

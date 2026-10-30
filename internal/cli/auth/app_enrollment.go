@@ -473,6 +473,62 @@ func LoadAppIdentity(fileSvc fs.RuntimeFileService, cfg *config.Config, appName 
 	return &tlsCert, nil
 }
 
+// AppIdentityState is the local enrollment state of an application identity.
+type AppIdentityState string
+
+const (
+	AppIdentityAbsent   AppIdentityState = "absent"
+	AppIdentityPending  AppIdentityState = "pending"
+	AppIdentityExpired  AppIdentityState = "expired"
+	AppIdentityEnrolled AppIdentityState = "enrolled"
+)
+
+// InspectAppIdentity reports the local enrollment state of appName from its
+// public certificate and the presence of a pending enrollment attempt. It
+// unseals nothing and does not contact the Gateway, so it can say which setup
+// step comes next; LoadAppIdentity stays the authority on whether the
+// identity can authenticate.
+func InspectAppIdentity(fileSvc fs.RuntimeFileService, cfg *config.Config, appName string) (AppIdentityState, error) {
+	if err := models.ValidateAppName(appName); err != nil {
+		return "", err
+	}
+	if fileSvc == nil || cfg == nil {
+		return "", constants.ErrInternal
+	}
+
+	certRel, err := fileSvc.RelFromAbs(cfg.AppCertFile(appName))
+	if err != nil {
+		certRel = cfg.AppCertFile(appName)
+	}
+	certPEM, err := fileSvc.ReadFile(context.Background(), certRel)
+	switch {
+	case err == nil:
+		block, _ := pem.Decode(certPEM)
+		if block == nil {
+			return "", fmt.Errorf("%w: app certificate for %q is not PEM", constants.ErrAppIdentityNotFound, appName)
+		}
+		leaf, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return "", fmt.Errorf("%w: failed to parse certificate for %q: %w", constants.ErrAppIdentityNotFound, appName, err)
+		}
+		if time.Now().After(leaf.NotAfter) {
+			return AppIdentityExpired, nil
+		}
+		return AppIdentityEnrolled, nil
+	case !isNotFound(err):
+		return "", fmt.Errorf("app identity %q: read certificate: %w", appName, err)
+	}
+
+	pending, err := fileSvc.FileExists(context.Background(), appPendingStatePath(appName))
+	if err != nil {
+		return "", fmt.Errorf("app identity %q: check pending enrollment: %w", appName, err)
+	}
+	if pending {
+		return AppIdentityPending, nil
+	}
+	return AppIdentityAbsent, nil
+}
+
 // HasValidAppIdentity returns true if an unexpired, trusted certificate exists for appName.
 func HasValidAppIdentity(fileSvc fs.RuntimeFileService, cfg *config.Config, appName string) bool {
 	_, err := LoadAppIdentity(fileSvc, cfg, appName)
@@ -482,7 +538,11 @@ func HasValidAppIdentity(fileSvc fs.RuntimeFileService, cfg *config.Config, appN
 // --- Internal Implementation ---
 
 func (c *AppPlatformEnrollmentClient) pendingStatePath() string {
-	return filepath.Join(constants.PkiDirname, constants.PkiSubdirPendingEnroll, fmt.Sprintf("app_%s.json", c.appName))
+	return appPendingStatePath(c.appName)
+}
+
+func appPendingStatePath(appName string) string {
+	return filepath.Join(constants.PkiDirname, constants.PkiSubdirPendingEnroll, fmt.Sprintf("app_%s.json", appName))
 }
 
 func (c *AppPlatformEnrollmentClient) loadPendingState(relPath string) (*appPendingState, error) {

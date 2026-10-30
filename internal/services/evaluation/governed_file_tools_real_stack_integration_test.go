@@ -52,7 +52,7 @@ func governedFileToolsCatalog() (*evalv1.EvaluationScenarioCatalog, map[string]e
 		if scenario.GetScenarioId() != governedFileToolsScenarioID {
 			continue
 		}
-		scenario.AllowedTools = []string{constants.MCPToolFileEdit, constants.MCPToolFileDiff, constants.MCPToolRestoreFile}
+		scenario.AllowedTools = []string{constants.MCPToolFileEdit, constants.MCPToolFileDiff, constants.MCPToolRestoreFile, constants.MCPToolFileHistory}
 		scenario.ExpectedTools = []string{constants.MCPToolFileEdit}
 		scenario.ForbiddenTools = nil
 		scenario.TrajectoryPolicy = evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_FIRST_CHOICE
@@ -139,6 +139,13 @@ func TestCampaignAgentExecutorIntegration_GovernedFileEditDiffRestoreVerifyAndGr
 			if err != nil {
 				return fixtures.OllamaReply{Failure: err.Error()}
 			}
+			return toolReply(constants.MCPToolFileHistory, fileToolArguments(mcp.FileHistoryRequest{FilePath: path, Limit: 50}))
+		}},
+		{Respond: func(fixtures.OllamaChatRequest) fixtures.OllamaReply {
+			path, err := filePath()
+			if err != nil {
+				return fixtures.OllamaReply{Failure: err.Error()}
+			}
 			return toolReply(constants.MCPToolFileDiff, fileToolArguments(mcp.FileDiffRequest{FilePath: path}))
 		}},
 		{Respond: func(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
@@ -196,18 +203,18 @@ func TestCampaignAgentExecutorIntegration_GovernedFileEditDiffRestoreVerifyAndGr
 		}
 	}
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "failure=%s invalid=%s", result.GetFailureReason(), result.GetInvalidEvidenceDetail())
-	require.Equal(t, 5, env.stack.Provider.ChatCount())
+	require.Equal(t, 6, env.stack.Provider.ChatCount())
 	trace := executorLoadTrace(t, env, result)
 	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace), "trace verification is offline and checks the signed typed action payloads")
 	tampered := *trace
 	tampered.ToolCalls = append([]evaluation.AgentToolCall(nil), trace.ToolCalls...)
 	tampered.ToolCalls[0].ResultJSON += "tampered"
 	require.Error(t, evaluation.VerifyAgentTraceEvidence(&tampered), "offline verification rejects tool output that no longer matches its signed receipt")
-	require.Len(t, trace.ToolCalls, 4)
-	require.Equal(t, []string{constants.MCPToolFileEdit, constants.MCPToolFileDiff, constants.MCPToolFileDiff, constants.MCPToolRestoreFile}, []string{
-		trace.ToolCalls[0].ToolName, trace.ToolCalls[1].ToolName, trace.ToolCalls[2].ToolName, trace.ToolCalls[3].ToolName,
+	require.Len(t, trace.ToolCalls, 5)
+	require.Equal(t, []string{constants.MCPToolFileEdit, constants.MCPToolFileHistory, constants.MCPToolFileDiff, constants.MCPToolFileDiff, constants.MCPToolRestoreFile}, []string{
+		trace.ToolCalls[0].ToolName, trace.ToolCalls[1].ToolName, trace.ToolCalls[2].ToolName, trace.ToolCalls[3].ToolName, trace.ToolCalls[4].ToolName,
 	})
-	wantActions := []string{string(constants.ActionTypeFileEdit), string(constants.ActionTypeFetchFileDiff), string(constants.ActionTypeFetchFileDiff), string(constants.ActionTypeRestoreFile)}
+	wantActions := []string{string(constants.ActionTypeFileEdit), string(constants.ActionTypeFetchFileHistory), string(constants.ActionTypeFetchFileDiff), string(constants.ActionTypeFetchFileDiff), string(constants.ActionTypeRestoreFile)}
 	operator, err := env.stack.Gateway.Service.GetRegistrationService().GetOperator(t.Context(), env.dataOperatorID)
 	require.NoError(t, err)
 	publicKey, err := models.DecodeActuatorPublicKey(operator.GetActuatorPublicKey())
@@ -226,10 +233,13 @@ func TestCampaignAgentExecutorIntegration_GovernedFileEditDiffRestoreVerifyAndGr
 	require.NoError(t, protojson.Unmarshal([]byte(trace.ToolCalls[0].Receipt.GetResultSummary()), &editResult))
 	assert.Equal(t, "replace", editResult.GetOperation())
 	assert.Equal(t, trace.Workspace.Root+"/services/checkout/config.yaml", editResult.GetFilePath())
-	assert.Contains(t, trace.ToolCalls[1].Receipt.GetResultSummary(), "ledger_hash_before")
-	assert.Contains(t, trace.ToolCalls[2].Receipt.GetResultSummary(), "diff_content")
+	assert.Contains(t, trace.ToolCalls[2].Receipt.GetResultSummary(), "ledger_hash_before")
+	assert.Contains(t, trace.ToolCalls[3].Receipt.GetResultSummary(), "diff_content")
+	var historyResult operatorv1.FetchFileHistoryResult
+	require.NoError(t, protojson.Unmarshal([]byte(trace.ToolCalls[1].Receipt.GetResultSummary()), &historyResult))
+	assert.GreaterOrEqual(t, len(historyResult.GetHistory()), 2, "governed history exposes restorable snapshots")
 	var restoreResult operatorv1.RestoreFileResult
-	require.NoError(t, protojson.Unmarshal([]byte(trace.ToolCalls[3].Receipt.GetResultSummary()), &restoreResult))
+	require.NoError(t, protojson.Unmarshal([]byte(trace.ToolCalls[4].Receipt.GetResultSummary()), &restoreResult))
 	assert.Equal(t, trace.Workspace.Root+"/services/checkout/config.yaml", restoreResult.GetFilePath())
 
 	var fileStateGrade, roleGrade *evalv1.DeterministicGrade

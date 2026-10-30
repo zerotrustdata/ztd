@@ -95,9 +95,9 @@ func BuildHomogeneousAssignmentMatrix(req HomogeneousScheduleRequest) ([]*evalv1
 }
 
 // assignmentExecutionLess is the single execution order for assignments.
-// Homogeneous assignments run model by model, so the provider keeps one model
-// resident while it works through every scenario, role, and repetition before
-// the next model loads. System assignments run stack by stack. Both lanes use
+// Homogeneous assignments run model by model, so each assignment reloads the
+// same model after the judge releases it, and the next model loads only after
+// every scenario, role, and repetition of this one. System assignments run stack by stack. Both lanes use
 // the frozen catalog workflow order; identity breaks any remaining ties.
 func assignmentExecutionLess(left, right *evalv1.EvaluationAssignment, scenarioOrder map[string]int) bool {
 	leftTarget, rightTarget := left.GetHomogeneous(), right.GetHomogeneous()

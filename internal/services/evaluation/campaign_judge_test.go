@@ -16,6 +16,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -84,20 +85,54 @@ func TestJudgeVariant_EveryAssignmentIsJudgedByTheFrozenJudge(t *testing.T) {
 
 // TestVerifyAssignmentJudge_EveryGradeNamesTheFrozenJudge: a stored grade or
 // grader call attributed to any model other than the campaign's frozen judge,
-// such as the subject grading itself, does not verify.
+// such as the subject grading itself, does not verify, and neither does a
+// judged result from a campaign without a frozen judge.
 func TestVerifyAssignmentJudge_EveryGradeNamesTheFrozenJudge(t *testing.T) {
 	binding := CampaignExecutionBinding{JudgeVariant: testJudgeRegistryVariant("gemma4-e4b", DefaultJudgeServedModelTag)}
 	judged := &evalv1.EvaluationAssignmentResult{
-		SemanticGrades: []*evalv1.SemanticGrade{{GradeId: "a:diagnosis-quality", JudgeVariantId: "gemma4-e4b"}},
-		GraderCalls:    []*evalv1.GraderModelCallRecord{{GraderCallId: "g1", JudgeVariantId: "gemma4-e4b"}},
+		SemanticGrades: []*evalv1.SemanticGrade{{GradeId: "a:diagnosis-quality", CriterionId: diagnosisQualityCriterionID, JudgeVariantId: "gemma4-e4b"}},
 	}
-	assert.Empty(t, verifyAssignmentJudge(binding, judged))
+	assert.Empty(t, verifyAssignmentJudge(CampaignAssignmentVerificationRequest{Binding: binding}, judged))
 
 	selfGraded := &evalv1.EvaluationAssignmentResult{
 		SemanticGrades: []*evalv1.SemanticGrade{{GradeId: "a:diagnosis-quality", JudgeVariantId: "qwen3-4b"}},
 		GraderCalls:    []*evalv1.GraderModelCallRecord{{GraderCallId: "g1", JudgeVariantId: "qwen3-4b"}},
 	}
-	assert.Len(t, verifyAssignmentJudge(binding, selfGraded), 2)
+	failures := verifyAssignmentJudge(CampaignAssignmentVerificationRequest{Binding: binding}, selfGraded)
+	assert.Contains(t, failures, `semantic grade a:diagnosis-quality judged by "qwen3-4b", not the frozen judge "gemma4-e4b"`)
+	assert.Contains(t, failures, `grader call g1 made by "qwen3-4b", not the frozen judge "gemma4-e4b"`)
 
-	assert.Empty(t, verifyAssignmentJudge(CampaignExecutionBinding{}, selfGraded), "a campaign frozen before pinned judging keeps its stored attribution")
+	assert.Equal(t, []string{"judged result has no frozen campaign judge"}, verifyAssignmentJudge(CampaignAssignmentVerificationRequest{}, selfGraded))
+	assert.Empty(t, verifyAssignmentJudge(CampaignAssignmentVerificationRequest{}, &evalv1.EvaluationAssignmentResult{}), "an unjudged result needs no judge")
+}
+
+// TestVerifyGraderCalls_EveryGraderCallCarriesItsSignedEvidence: a grader call
+// without its signed result and receipt, one that names no evidence-bound
+// grade, and an evidence-bound grade without its grader call do not verify.
+func TestVerifyGraderCalls_EveryGraderCallCarriesItsSignedEvidence(t *testing.T) {
+	req := heterogeneousLiteRequest(t)
+	req.Binding.JudgeVariant = testJudgeRegistryVariant("gemma4-e4b", DefaultJudgeServedModelTag)
+	verify := CampaignAssignmentVerificationRequest{Assignment: req.Assignment, Binding: req.Binding, AgentTrace: &AgentTrace{Inference: agentTraceRuntime(req.Binding.Topology.Inference)}}
+	ref := &compliancev1.ComplianceEvidenceReference{ArtifactId: "receipt:tx-1"}
+
+	stripped := &evalv1.EvaluationAssignmentResult{
+		SemanticGrades: []*evalv1.SemanticGrade{{GradeId: "a:diagnosis-quality", CriterionId: diagnosisQualityCriterionID, GraderCallRef: ref}},
+		GraderCalls:    []*evalv1.GraderModelCallRecord{{GraderCallId: "g1", CriterionId: diagnosisQualityCriterionID}},
+	}
+	failures := verifyGraderCalls(verify, stripped)
+	require.Len(t, failures, 1)
+	assert.Contains(t, failures[0], "grader call g1: signed judge evidence")
+
+	orphan := &evalv1.EvaluationAssignmentResult{
+		GraderCalls: []*evalv1.GraderModelCallRecord{{GraderCallId: "g1", CriterionId: memoryQualityCriterionID}},
+	}
+	assert.Equal(t, []string{`grader call g1 names no evidence-bound semantic grade or repeats "memory-quality"`}, verifyGraderCalls(verify, orphan))
+
+	uncited := &evalv1.EvaluationAssignmentResult{
+		SemanticGrades: []*evalv1.SemanticGrade{{GradeId: "a:memory-quality", CriterionId: memoryQualityCriterionID, GraderCallRef: ref}},
+	}
+	assert.Equal(t, []string{"semantic grade a:memory-quality cites a grader call it does not have"}, verifyGraderCalls(verify, uncited))
+
+	verify.AgentTrace = nil
+	assert.Equal(t, []string{"grader calls require the persisted agent trace"}, verifyGraderCalls(verify, uncited))
 }

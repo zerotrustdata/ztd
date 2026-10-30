@@ -20,6 +20,7 @@ import (
 // version was released with; never re-pin an old version.
 var quickstartCatalogDigestPins = map[string]string{
 	"1.0.0": "ccc67ab63e97e53efc50871b9c33e44fb1681a11e6763f78b868e624ed195a48",
+	"1.1.0": "1ad710b02e9294ae561f1741777561d911bb2900b879098c8b546354b51421a5",
 }
 
 // The quickstart suite must stay one fast, deterministic cell: one Primary-only

@@ -22,6 +22,10 @@ import {
   LIFECYCLE_STATUSES,
   type LiveEvent,
   LIVE_EVENT_KINDS,
+  LIVE_JUDGE_FAILURES,
+  LIVE_JUDGE_STATES,
+  LIVE_JUDGE_SUBJECTS,
+  type LiveJudgeActivity,
   type MetricValue,
   type ModelSummary,
   MODEL_ROLES,
@@ -179,7 +183,7 @@ export function assertObject(value: unknown, path: string): asserts value is Rec
   assert(isObject(value), path, `expected object`);
 }
 
-function assertEnum<T extends string>(
+export function assertEnum<T extends string>(
   value: unknown,
   set: readonly T[],
   path: string,
@@ -249,7 +253,11 @@ const SUITE_FIELDS = [...ENVELOPE_FIELDS, 'suite_id', 'display_name', 'task_coun
 const EVALUATION_FIELDS = [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'run_status', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'run_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'headline_metrics', 'evidence_link', 'native_result'] as const;
 const ASSIGNMENT_FIELDS = [...ENVELOPE_FIELDS, 'assignment_id', 'run_id', 'task_id', 'scenario_id', 'variant_id', 'role', 'repetition', 'scenario_category', 'evaluation_unit', 'stack_id', 'scenario_summary', 'semantic_grade_summaries', 'activity_summary', 'evidence_bindings', 'benchmark_observations', 'terminal_status', 'metric_values', 'missingness_reason', 'stage_summary', 'resource_summary', 'verification_disposition', 'verification_metadata', 'model_response', 'failure_output', 'role_transcripts', 'trajectory_outcome', 'guided_retry_count', 'failure_reason', 'tools_declared'] as const;
 const METHODOLOGY_FIELDS = [...ENVELOPE_FIELDS, 'metric_definitions', 'suite_definitions', 'limitations'] as const;
-const LIVE_EVENT_FIELDS = [...ENVELOPE_FIELDS, 'event_id', 'run_id', 'assignment_id', 'task_id', 'variant_id', 'role', 'lifecycle_status', 'terminal_status', 'completed', 'total', 'stage_label', 'metric_delta', 'feed_sequence'] as const;
+const LIVE_EVENT_FIELDS = [...ENVELOPE_FIELDS, 'event_id', 'run_id', 'assignment_id', 'task_id', 'variant_id', 'role', 'lifecycle_status', 'terminal_status', 'completed', 'total', 'stage_label', 'metric_delta', 'judge', 'feed_sequence'] as const;
+const LIVE_JUDGE_FIELDS = ['judge_variant_id', 'served_model_tag', 'model_digest', 'subject', 'criterion_id', 'index', 'count', 'rubric_version', 'state', 'score', 'rationale', 'failure', 'provider_attempt_id', 'transaction_id', 'usage_reported', 'prompt_tokens', 'completion_tokens', 'thinking_tokens', 'cache_tokens', 'load_duration_ns', 'prompt_eval_duration_ns', 'generation_duration_ns', 'total_duration_ns', 'time_to_first_token_ns', 'finish_reason', 'executed_at_unix_ms', 'dispatch_elapsed_ns'] as const;
+const LIVE_JUDGE_TOKEN_FIELDS = ['prompt_tokens', 'completion_tokens', 'thinking_tokens', 'cache_tokens'] as const;
+const LIVE_JUDGE_DURATION_FIELDS = ['load_duration_ns', 'prompt_eval_duration_ns', 'generation_duration_ns', 'total_duration_ns', 'time_to_first_token_ns', 'executed_at_unix_ms', 'dispatch_elapsed_ns'] as const;
+const LIVE_JUDGE_KINDS: readonly string[] = ['judge_started', 'judge_completed'];
 const ASSIGNMENT_TERMINAL_STATUSES = [...TERMINAL_STATUSES, 'running', 'queued'] as const;
 
 /** Reports whether a supported schema version is at or after a revision.
@@ -1062,6 +1070,55 @@ export function isMethodologySnapshot(value: unknown): asserts value is Methodol
   assertStringArray(value.limitations, 'methodology_snapshot.limitations');
 }
 
+/** The judge block rules publicdisclosure.validateLiveJudgeActivity enforces. */
+function assertLiveJudgeActivity(value: unknown, completed: boolean, path: string): asserts value is LiveJudgeActivity {
+  assertObject(value, path);
+  rejectUnknown(value, LIVE_JUDGE_FIELDS, path);
+  for (const field of ['judge_variant_id', 'served_model_tag', 'model_digest', 'rubric_version'] as const) {
+    assertString(value[field], `${path}.${field}`);
+    assert(value[field] !== '', `${path}.${field}`, 'must not be empty');
+  }
+  assertEnum(value.subject, LIVE_JUDGE_SUBJECTS, `${path}.subject`);
+  assertEnum(value.state, LIVE_JUDGE_STATES, `${path}.state`);
+  assertOptional(value.failure, `${path}.failure`, (failure) => assertEnum(failure, LIVE_JUDGE_FAILURES, `${path}.failure`));
+  const criterion = value.subject === 'criterion';
+  assertOptional(value.criterion_id, `${path}.criterion_id`, assertString);
+  assert(criterion === (value.criterion_id !== undefined && value.criterion_id !== ''), `${path}.criterion_id`, 'set exactly for a criterion judgment');
+  assertInteger(value.index, `${path}.index`);
+  assertInteger(value.count, `${path}.count`);
+  assert(value.index >= 1 && value.index <= value.count, `${path}.index`, 'must be within 1..count');
+  assertOptional(value.rationale, `${path}.rationale`, assertString);
+  for (const field of ['provider_attempt_id', 'transaction_id', 'finish_reason'] as const) assertOptional(value[field], `${path}.${field}`, assertString);
+  assert(typeof value.usage_reported === 'boolean', `${path}.usage_reported`, 'expected boolean');
+  for (const field of [...LIVE_JUDGE_TOKEN_FIELDS, ...LIVE_JUDGE_DURATION_FIELDS]) {
+    assertOptional(value[field], `${path}.${field}`, assertInteger);
+    if (value[field] !== undefined) assert((value[field] as number) >= 0, `${path}.${field}`, 'must be >= 0');
+  }
+  assertOptional(value.score, `${path}.score`, assertInteger);
+  if (!value.usage_reported) assert(LIVE_JUDGE_TOKEN_FIELDS.every((field) => value[field] === undefined), path, 'tokens require usage_reported');
+  if (!completed) {
+    const present = Object.keys(value).filter((key) => value[key] !== undefined && value[key] !== false);
+    const allowed: readonly string[] = ['judge_variant_id', 'served_model_tag', 'model_digest', 'subject', 'criterion_id', 'index', 'count', 'rubric_version', 'state', 'provider_attempt_id'];
+    assert(value.state === 'judging' && value.provider_attempt_id !== undefined && present.every((key) => allowed.includes(key)), path, 'judge_started carries only the judge, the judgment, and its attempt');
+    return;
+  }
+  switch (value.state) {
+    case 'met':
+    case 'not_met':
+      assert(criterion && value.score === undefined, `${path}.state`, 'met and not_met are criterion verdicts without a score');
+      break;
+    case 'scored':
+      assert(!criterion && value.score !== undefined && value.score >= 1 && value.score <= 5, `${path}.score`, 'scored is a quality verdict with a score in 1..5');
+      break;
+    case 'failed':
+      assert(value.failure !== undefined && value.score === undefined && value.rationale === undefined, `${path}.failure`, 'a failed judgment carries its failure code and no verdict');
+      return;
+    default:
+      throw new ValidationError('invalid judge_completed state', `${path}.state`);
+  }
+  assert(value.failure === undefined && value.transaction_id !== undefined && value.provider_attempt_id !== undefined, path, 'a judge verdict carries its attempt and transaction and no failure');
+}
+
 export function isLiveEvent(value: unknown): asserts value is LiveEvent {
   assertObject(value, 'live_event');
   rejectUnknown(value, LIVE_EVENT_FIELDS, 'live_event');
@@ -1083,6 +1140,13 @@ export function isLiveEvent(value: unknown): asserts value is LiveEvent {
   if (value.metric_delta !== undefined) {
     assertObject(value.metric_delta, 'live_event.metric_delta');
     for (const [key, metric] of Object.entries(value.metric_delta)) assertMetricValue(metric, `live_event.metric_delta.${key}`);
+  }
+  if (LIVE_JUDGE_KINDS.includes(value.kind as string)) {
+    assert(value.assignment_id !== undefined && value.task_id !== undefined && value.variant_id !== undefined && value.role !== undefined, 'live_event', 'a judge event names its assignment row and graded subject');
+    assert(value.metric_delta === undefined && value.stage_label === undefined && value.lifecycle_status === 'running', 'live_event', 'a judge event carries no metric or stage label and is running');
+    assertLiveJudgeActivity(value.judge, value.kind === 'judge_completed', 'live_event.judge');
+  } else {
+    assert(value.judge === undefined, 'live_event.judge', 'judge is set only on judge events');
   }
   assertOptional(value.feed_sequence, 'live_event.feed_sequence', assertInteger);
   if (value.feed_sequence !== undefined) assert(value.feed_sequence >= 0, 'live_event.feed_sequence', 'must be >= 0');

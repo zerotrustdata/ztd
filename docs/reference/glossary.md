@@ -3,8 +3,8 @@ doc_id: glossary
 title: ztd Glossary
 audience: developers, maintainers, and coding agents
 status: current
-version: v1.5.0
-last_updated: 2026-10-29
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - protocol/
   - internal/services/
@@ -64,7 +64,7 @@ The admission-gating **State Root** read from `StateRootService`. It is the root
 
 ## Canonical Gateway Database
 
-The Gateway's primary SQLite database, `ztd.db` (`constants.DbFilename`), opened in WAL mode via `sqliteutil` and managed by `CanonicalDBService` (`internal/services/gateway/gateway_db.go`). Its canonical schema, `internal/services/gateway/db/schema.sql`, creates `documents`, `kv_store`, `blobs`, the state-commitment tables (`state_commitment_dirty`, `state_leaves`, `state_nodes`, `state_commitment`), and `sse_events`. The stores opened over the same database create their own tables: `storage.ReplayStore` creates `nonces`, the Local-First Events Store creates `sessions`, `events` (which holds the **Execution Record**), `file_mutation_log`, and `commitment_ledger`, and `suspended_transaction_store.go` creates `suspended_transactions`. The public mirror is a separate file, `public-mirror/mirror.db` (`constants.PublicMirrorDBPath`). Remote Operator databases are distinct; each maintains an independent lifecycle and sovereignty boundary.
+The Gateway's primary SQLite database, `ztd.db` (`constants.DbFilename`), opened in WAL mode via `sqliteutil` and managed by `CanonicalDBService` (`internal/services/gateway/gateway_db.go`). Its canonical schema, `internal/services/gateway/db/schema.sql`, creates `documents`, `kv_store`, `blobs`, the state-commitment tables (`state_commitment_dirty`, `state_leaves`, `state_nodes`, `state_commitment`), and `sse_events`. The stores opened over the same database create their own tables: `storage.ReplayStore` creates `nonces`, the Local-First Events Store creates `sessions`, `events` (which holds the **Execution Record**), `file_mutation_log`, `commitment_ledger`, and `audit_chain_checkpoints`, and `suspended_transaction_store.go` creates `suspended_transactions`. The public mirror is a separate file, `public-mirror/mirror.db` (`constants.PublicMirrorDBPath`). Remote Operator databases are distinct; each maintains an independent lifecycle and sovereignty boundary.
 
 ---
 
@@ -94,7 +94,7 @@ The canonical mechanism for dispatching host operations across Governed Operator
 
 ## Commitment Attestation
 
-The canonical protobuf `ztd.operator.v1.CommitmentAttestation`. Before execution, the L5 Auditor signs a record binding the transaction ID and hash, state root at commit, action type, target resource, canonical digests of L2 consensus votes, Warden intent signatures, and human Notary signatures, the prior commitment hash, committed timestamp, and Auditor key ID. Its canonical SHA-256 hash becomes the cryptographic link chained by the next attestation.
+The canonical protobuf `ztd.operator.v1.CommitmentAttestation`. Before execution, the L5 Actuator signs a record with its Auditor key, binding the transaction ID and hash, state root at commit, action type, target resource, canonical digests of L2 consensus votes, Warden intent signatures, and human Notary signatures, the prior commitment hash, committed timestamp, and Auditor key ID. Its canonical SHA-256 hash becomes the cryptographic link chained by the next attestation.
 
 ---
 
@@ -201,7 +201,7 @@ The canonical protobuf container `ztd.common.v1.GovernanceEnvelope` for all gove
 - **Intent**: routing `event_type`, typed protobuf `payload` bytes, structured `intent_data`, `action_type`, and `target_resource`.
 - **State and replay defense**: `state_merkle_root`, `nonce`, `transaction_hash`, and `protocol_version`.
 - **Governance proofs**: `governance` (`GovernanceMetadata`, wrapping `L1Metadata`, `L2Metadata`, `L3Metadata`).
-- **Application context**: `case_id`, `investigation_id`, `task_id`, `system_fingerprint`, `tenant_id`, and `binding_persona`.
+- **Application context**: `case_id`, `investigation_id`, `task_id`, `system_fingerprint`, `tenant_id`, `binding_persona`, `evaluation_run_id`, and `evaluation_assignment_id` (evaluation display correlation, not authorization).
 - **Policy metadata**: the Gateway-selected governance `posture`.
 
 Client-facing surfaces serialize the envelope with protojson. The deterministic transaction hash covers normalized intent, state, and identity fields; posture is policy metadata and is excluded from transaction hash canonicalization.
@@ -249,7 +249,7 @@ Periodic health and status telemetry sent by a Governed Operator to the Gateway 
 
 ## Inference Dispatch (Governed Inference)
 
-The governed model-inference dispatch subsystem (`internal/services/inference/`). It routes model generation requests (`InferenceDispatchRequest`) to the Inference Operator's provider backend (Ollama). The dispatcher rejects an unspecified model role (`InferenceModelRole`), enforces campaign model-registry bindings and SHA-256 model digests (`VerifyModelRegistryBinding`), and returns token usage, finish reason and timing in an `InferenceResult` wrapped in an `InferenceDispatchResponse`. Dispatched inference requests are governed envelopes and pass through the L1–L5 pipeline and model-boundary token scrubbing.
+The governed model-inference dispatch subsystem (`internal/services/inference/`). It routes model generation requests (`InferenceDispatchRequest`) to the Inference Operator's provider backend (Ollama or llama.cpp). The dispatcher rejects an unspecified model role (`InferenceModelRole`), enforces campaign model-registry bindings and SHA-256 model digests (`VerifyModelRegistryBinding`), and returns token usage, finish reason and timing in an `InferenceResult` wrapped in an `InferenceDispatchResponse`. Dispatched inference requests are governed envelopes and pass through the L1–L5 pipeline and model-boundary token scrubbing.
 
 ---
 
@@ -261,7 +261,7 @@ A typed, machine-evaluable security requirement defined in the FedRAMP 20x catal
 
 ## L1 Doctrine (L1Doctrine)
 
-The technical hard-gate governance layer (`internal/services/governance/l1_doctrine.go`). It validates decoded typed payloads against protobuf field-option regex rules (`forbidden_patterns`), bundled JSON doctrine sets, and deterministic threat analysis covering shell commands and MCP arguments, including MITRE ATT&CK patterns. L1 is enforced across all governance postures. The executing Operator's **L4 Warden** runs it on every envelope before dispatch. The Gateway also runs it on governed HTTP dispatch (`DispatchService.Dispatch`); MCP, A2A, and direct envelope submission have no Gateway-side L1 call.
+The technical hard-gate governance layer (`internal/services/governance/l1_doctrine.go`). It validates decoded typed payloads against protobuf field-option regex rules (`forbidden_patterns`), bundled JSON doctrine sets, and deterministic threat analysis covering shell commands and MCP arguments, including MITRE ATT&CK patterns. L1 is enforced across all governance postures. The executing Operator's **L4 Warden** runs it on every envelope before dispatch. The Gateway also runs it on governed HTTP dispatch (`DispatchService.Dispatch`). The MCP service applies the same `L1Doctrine` as a threat scanner to field values (`scanForForbiddenPatterns` in `internal/services/mcp/gateway.go`); A2A and direct envelope submission have no Gateway-side L1 call.
 
 ---
 
@@ -280,9 +280,9 @@ The human-authorization layer for mutations under `ratify` and `notary` postures
 ## L4 Warden (L4Warden)
 
 The fail-closed pre-dispatch verifier on the Operator substrate (`internal/services/governance/l4_warden.go`). It executes a strict five-step verification sequence:
-1. Reserves the in-flight lock and durably reserves the nonce in the SQLite replay store (`ReserveNonce`), verifying expiry.
+1. Reserves the in-flight lock and durably reserves the nonce in the SQLite replay store (`ReserveNonce`).
 2. Performs stateless validation: verifies envelope structure, decodes payload, ensures action type and payload match, recomputes the transaction hash, and re-runs L1 Doctrine.
-3. Performs state binding: requires a nonempty `envelope.state_merkle_root` and compares it with the admission snapshot carried in context for Gateway-dispatched envelopes (`ContextKeyStateMerkleRoot`); that root is itself bound by the transaction hash recomputed in step 2 and the proofs verified in step 4. Direct submissions without dispatch context must match the current local root from `StateRootProvider`. Outbound verification performs no Gateway state lookup.
+3. Performs state binding: verifies envelope expiry and requires a nonempty `envelope.state_merkle_root` and compares it with the admission snapshot carried in context for Gateway-dispatched envelopes (`ContextKeyStateMerkleRoot`); that root is itself bound by the transaction hash recomputed in step 2 and the proofs verified in step 4. Direct submissions without dispatch context must match the current local root from `StateRootProvider`. Outbound verification performs no Gateway state lookup.
 4. Performs posture validation: reads `envelope.posture` and verifies L2 Consensus votes and L3 Notary proofs according to posture rules.
 5. Emits linked `DeterministicStageEvidence` and returns a `VerifiedTransaction` to L5 Actuator.
 
@@ -406,7 +406,9 @@ The canonical protobuf `ztd.operator.v1.ReceiptPersistenceAttestation`, signed b
 
 ## Recovery key
 
-The master key, shown once when a gateway or operator runtime creates it, encoded so a person can write it down. It is the only offline copy. `gw start` and `operator start` store it in the OS key store only after the operator types it back. `gw recover` and `operator recover` install a saved copy. Losing the recovery key and the OS key store makes that runtime unrecoverable. See [Recovery key](../architecture/encryption.md#recovery-key) (`INV-ENC-STORE-07`).
+The master key, shown once when a gateway or operator runtime creates it, encoded so a person can write it down. It is the only offline copy. `gw start`, `gw restart`, and `operator start` store it in the OS key store only after the operator retypes it. `gw recover` and `operator recover` install a saved copy. Losing the recovery key and the OS key store makes that runtime unrecoverable. See [Recovery key](../architecture/encryption.md#recovery-key) (`INV-ENC-STORE-07`).
+
+---
 
 ## Replay Protection
 

@@ -18,15 +18,17 @@ import (
 )
 
 // The catalog-wide revision binds the aligned prompts, roles, and evidence contracts.
-const scenarioVersion = "2.5.0"
+const scenarioVersion = "2.6.0"
 
 // Security scenarios include every scored role; Lite receives supplied evidence.
-const securityScenarioVersion = "2.5.0"
+const securityScenarioVersion = "2.6.0"
 
-// verifyContradictionScenarioVersion corrects the 2.5.0 gold, which expected
-// "yes" to a prompt that asks whether conflicting reports agree, and states the
-// graded health values in the prompt.
-const verifyContradictionScenarioVersion = "2.5.1"
+// verifyContradictionScenarioVersion retains the corrected "no" answer from
+// 2.5.1 and binds the current grading contract.
+const verifyContradictionScenarioVersion = "2.6.0"
+
+// techLogParseScenarioVersion accepts the service name within a sentence.
+const techLogParseScenarioVersion = "2.6.1"
 
 var (
 	rolesAll              = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE}
@@ -130,7 +132,7 @@ func baseGold(expectedBehavior string, rolePrimary, roleAssistant, roleLite, hom
 		RecoveryExpectation:            ScenarioRecoveryExpectation{Expected: false, Detail: "No recovery path is required for the nominal success case."},
 		RequireReceiptIDActionCitation: boolPointer(false),
 		RequiredEvidenceTypes:          evidenceTypes,
-		GradingContract:                ScenarioGradingContractV3,
+		GradingContract:                ScenarioGradingContractV4,
 	}
 }
 
@@ -486,7 +488,7 @@ func toolArgShellCommand() ScenarioBlueprint {
 
 func techLogParse() ScenarioBlueprint {
 	gold := baseGold(
-		"The answer is only the service name checkout-api, not its upstream payments host.",
+		"The answer names the service checkout-api, not its upstream payments host.",
 		"Primary extracts the service name checkout-api from the log in the designated role.",
 		"Assistant extracts the service name checkout-api without inventing services.",
 		"Triage classifies the initial request; the designated reasoner extracts the service name from the log.",
@@ -494,9 +496,9 @@ func techLogParse() ScenarioBlueprint {
 		"Heterogeneous lane scores the final analysis against the same inline content.",
 		[]string{"model_inference"},
 	)
-	gold.ContentCheck = &ScenarioContentCheck{ExactLabels: []string{"checkout-api"}}
+	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"checkout-api"}}, ForbiddenTerms: []string{"payments"}}
 	return ScenarioBlueprint{
-		ScenarioID: "tech-log-parse", ScenarioVersion: scenarioVersion,
+		ScenarioID: "tech-log-parse", ScenarioVersion: techLogParseScenarioVersion,
 		EligibleRoles:     rolesPrimaryAssistant,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS,
 		PublicDescription: "Extract the service that reported the error from a log line.",
@@ -564,17 +566,17 @@ func techConfigDiff() ScenarioBlueprint {
 		ScenarioID: "tech-config-diff", ScenarioVersion: scenarioVersion,
 		EligibleRoles:     rolesPrimaryAssistant,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS,
-		PublicDescription: "Spot the mismatched timeout value between two configs.",
+		PublicDescription: "Compare the timeout change between old and new configurations.",
 		GradingMethod:     gradingDeterministic,
 		TrajectoryPolicy:  policyAnswer,
 		RequiredConcepts:  []string{"configuration-analysis"},
 		Input: ScenarioInputFixture{
-			UserPrompt: "Review the before and after service configs. What changed, and what effect could it have on requests?",
+			UserPrompt: "Compare the old and new configurations of the same service. What changed, and what effect could it have on requests?",
 			InlineContext: []ScenarioInlineContent{
-				inlineEvidence("config", "service-a", "timeout_seconds=30\nretries=2"),
-				inlineEvidence("config", "service-b", "timeout_seconds=5\nretries=2"),
+				inlineEvidence("config", "old-config", "timeout_seconds=30\nretries=2"),
+				inlineEvidence("config", "new-config", "timeout_seconds=5\nretries=2"),
 			},
-			Seed: InvestigationSeed{CaseTitle: "Timeout drift between services"},
+			Seed: InvestigationSeed{CaseTitle: "Service timeout configuration change"},
 		},
 		Gold: gold,
 	}

@@ -371,6 +371,7 @@ func TestTestIntegrationCmd_RunFlagAppendsRegexp(t *testing.T) {
 
 	assert.Contains(t, captured, "-tags=integration")
 	assert.Contains(t, captured, "-count=1")
+	assert.Contains(t, captured, "30m0s")
 	assert.Contains(t, captured, "./internal/services/gateway")
 	assert.NotContains(t, captured, "./...")
 	if runtime.GOOS != "windows" {

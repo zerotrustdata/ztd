@@ -331,7 +331,7 @@ func (d *TribunalConsensusDeliberator) publishVote(ctx context.Context, env *com
 	}
 	completed, total := uint32(0), uint32(0)
 	body, err := evalv1.MarshalCanonical(&evalv1.PublicLiveEvent{
-		SchemaVersion:   "1.10.0",
+		SchemaVersion:   constants.ExplorerViewSchemaVersion,
 		Kind:            "stage_updated",
 		DatasetId:       "ds-live-" + runID,
 		QualityState:    "live_in_progress",

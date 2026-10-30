@@ -3,8 +3,8 @@ doc_id: docs
 title: Documentation Guide
 audience: maintainers and coding agents
 status: current
-version: v1.5.0
-last_updated: 2026-10-28
+version: v1.6.0
+last_updated: 2026-10-30
 owners:
   - docs/
   - protocol/docs/
@@ -31,7 +31,7 @@ do_not_use_for:
   - Platform coding invariants and error contracts (docs/devs/devs.md)
   - Runtime and package ownership maps (docs/devs/codemap.md)
   - Test execution tiers, fixtures, and CI scope (docs/devs/tests.md)
-  - Release execution, native evaluation acceptance, and signed evidence (docs/devs/release_process.md)
+  - Release preparation, signing, and publication (docs/devs/release_process.md)
   - Diagnostics, failure modes, and recovery procedures (docs/devs/troubleshooting.md)
 ---
 
@@ -178,7 +178,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Code Map](codemap.md): Package and runtime ownership maps, assignable code surfaces, agent boundaries, and directory structure.
 - [Documentation Guide](docs.md): Documentation invariants, audit workflows, generated outputs, AI agent digestibility, context caching optimizations, and documentation catalog.
 - [Testing Guide](tests.md): Four-tier test model, execution commands, fixture lifecycles, and testing invariants.
-- [Release Process](release_process.md): Version synchronization, multi-agent orchestration roles, release compliance evidence, smoke gates, and publication workflow.
+- [Release Process](release_process.md): Version synchronization, release smoke gate, signing, and publication workflow.
 - [Troubleshooting Guide](troubleshooting.md): Diagnostics, failure modes, and recovery procedures.
 - [Cloud VM Deployment Guide](cloud_deployment.md): Architecture, prerequisites, provisioning, firewall configuration, systemd daemonization, and DNS setup for hosting the Gateway on cloud VMs.
 
@@ -272,6 +272,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Commercial License and Services Terms](../../website/content/terms.md): Commercial license plans, production limits, and services terms for purchases on zerotrustdata.io, published at `/terms/`.
 - [Evaluation Explorer Runbook](../../evaluation-explorer/RUNBOOK.md): Operational runbook for developing and building the Evaluation Explorer SPA.
 - [Evaluation Explorer Contract](../../evaluation-explorer/src/contract/CONTRACT.md): Browser view contract, canonical schema validators, and release provenance rules.
+- [Criterion Judge Calibration](../../eval/judge-calibration/README.md): Recorded diagnostic cases and controlled judge comparison procedure.
 - [Evaluation Campaign README](../../eval/README.md): Evaluation campaign data layout, fixtures, and directory conventions.
 - [Frontend Adapter Contract Pack](../../ztd-adapter/contract-pack/README.md): Audited frontend adapter contract pack reference and integration guide.
 - [Frontend Contract Pack Builder Prompt](../../ztd-adapter/contract-pack/builder-prompt.md): AI prompt specification for generating conforming observe frontends.
@@ -318,6 +319,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.4.0 Compliance Evidence CSV](../release_notes/v1.4.x/v1.4.0-compliance-evidence.csv): Generated compliance evidence CSV projection for v1.4.0.
 - [v1.4.1 Release Notes](../release_notes/v1.4.x/v1.4.1.md): Operator capability defaults and ownership, Tribunal evaluation fixes, public mirror improvements, and Evaluation Explorer startup changes.
 - [v1.5.0 Release Notes](../release_notes/v1.5.x/v1.5.0.md): Trust and evidence integrity, removal of ungoverned data API writes, signed audit checkpoints, judge-scored evals, and the llama.cpp inference provider.
+- [v1.7.0 Release Notes](../release_notes/v1.7.x/v1.7.0.md): Signed judge evidence and live activity, evaluation correctness and model residency, enrollment diagnostics, network probe address restrictions, and release reliability.
 - [v1.6.0 Release Notes](../release_notes/v1.6.x/v1.6.0.md): Typed agent personas, Tribunal stage tiers and Lite L2 votes, Lite Triage and Interrogator, the tool-calling probe, and no-masking evaluation prompts.
 
 ## Procedures
@@ -457,7 +459,7 @@ make website-test
 - [Developer Guidelines](devs.md): coding invariants and repository standards.
 - [Code Map](codemap.md): package and runtime ownership maps.
 - [Testing Guide](tests.md): test execution tiers and testing invariants.
-- [Release Process](release_process.md): versioning, compliance bundles, and release workflow.
+- [Release Process](release_process.md): versioning, signing, and release workflow.
 - [Troubleshooting Guide](troubleshooting.md): diagnostics and recovery procedures.
 - [System Architecture Overview](../architecture/overview.md): platform architecture and component boundaries.
 - [Glossary](../reference/glossary.md): canonical platform definitions and vocabulary.

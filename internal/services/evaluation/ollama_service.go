@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -245,7 +246,7 @@ func dispatchOllamaBashCommand(
 	}
 	caseID := strings.TrimSpace(maintenance.CaseID)
 	if caseID == "" {
-		caseID = "ollama-model-maintenance"
+		caseID = constants.ProviderModelMaintenanceCaseID
 	}
 	executionID := maintenance.NewID(executionPrefix)
 	payload, err := MarshalOllamaModelCommandPayload(OllamaModelCommandDispatchRequest{
@@ -297,7 +298,7 @@ func dispatchOllamaTypedQuery(
 	}
 	caseID := strings.TrimSpace(maintenance.CaseID)
 	if caseID == "" {
-		caseID = "ollama-model-maintenance"
+		caseID = constants.ProviderModelMaintenanceCaseID
 	}
 	request := OllamaModelCommandDispatchRequest{
 		TargetOperatorSessionID: maintenance.TargetOperatorSessionID,
@@ -326,7 +327,7 @@ func PullOllamaModel(ctx context.Context, dispatcher OllamaModelCommandDispatche
 	if err != nil {
 		return fmt.Errorf("evaluation: pull Ollama model: %w", err)
 	}
-	err = dispatchOllamaBashCommand(ctx, dispatcher, maintenance, command, "ollama-model-pull", "ollama-pull")
+	err = dispatchOllamaBashCommand(ctx, dispatcher, maintenance, command, constants.ProviderModelPullInvestigationID, "ollama-pull")
 	return err
 }
 
@@ -336,7 +337,7 @@ func CopyOllamaModel(ctx context.Context, dispatcher OllamaModelCommandDispatche
 	if err != nil {
 		return fmt.Errorf("evaluation: copy Ollama model: %w", err)
 	}
-	err = dispatchOllamaBashCommand(ctx, dispatcher, maintenance, command, "ollama-model-copy", "ollama-copy")
+	err = dispatchOllamaBashCommand(ctx, dispatcher, maintenance, command, constants.ProviderModelCopyInvestigationID, "ollama-copy")
 	return err
 }
 
@@ -354,7 +355,7 @@ func ListOllamaProviderInventory(ctx context.Context, dispatcher OllamaModelComm
 		maintenance,
 		constants.ActionTypeOllamaModelInventory,
 		payload,
-		"ollama-model-inventory",
+		constants.ProviderModelInventoryInvestigationID,
 		executionID,
 		ValidateOllamaModelInventoryResult,
 	)
@@ -364,9 +365,72 @@ func ListOllamaProviderInventory(ctx context.Context, dispatcher OllamaModelComm
 	return inference.ProviderModelInventoryEntriesFromProto(result.InventoryResult.GetEntries()), nil
 }
 
-// ReadOllamaProviderResidency queries typed /api/ps residency through the exact
+// ModelResidencyRelease is one provider residency release: every model
+// resident on the Inference Operator's provider outside Retain is unloaded.
+type ModelResidencyRelease struct {
+	// RunID is the case that scopes the residency read and release receipts.
+	RunID string
+	// Retain lists the served model tags that stay resident. An empty Retain
+	// releases every resident model.
+	Retain []string
+}
+
+// ModelResidencyReleaser releases provider model residency, so the provider
+// holds only the models the next phase of a run dispatches.
+type ModelResidencyReleaser interface {
+	ReleaseAllExcept(ctx context.Context, release ModelResidencyRelease) ([]string, error)
+}
+
+// ProviderModelResidency releases model residency on one Inference Operator
+// session through governed typed residency and release commands, which the
+// Operator serves from its configured provider.
+type ProviderModelResidency struct {
+	dispatcher              OllamaModelCommandDispatcher
+	targetOperatorSessionID string
+	newID                   func(string) string
+}
+
+// NewProviderModelResidency builds the residency releaser for the Inference
+// Operator session targetOperatorSessionID.
+func NewProviderModelResidency(dispatcher OllamaModelCommandDispatcher, targetOperatorSessionID string, newID func(string) string) (*ProviderModelResidency, error) {
+	if dispatcher == nil || targetOperatorSessionID == "" || newID == nil {
+		return nil, fmt.Errorf("evaluation: provider model residency: %w", constants.ErrMissingRequiredField)
+	}
+	return &ProviderModelResidency{dispatcher: dispatcher, targetOperatorSessionID: targetOperatorSessionID, newID: newID}, nil
+}
+
+// ReleaseAllExcept reads the provider's residency and sends one governed batch
+// release for every resident model outside release.Retain. The Operator
+// validates the full set, unloads it, and verifies absence before the release
+// completes. It returns the released tags; when nothing outside Retain is
+// resident it dispatches no release.
+func (r *ProviderModelResidency) ReleaseAllExcept(ctx context.Context, release ModelResidencyRelease) ([]string, error) {
+	if release.RunID == "" {
+		return nil, fmt.Errorf("evaluation: release provider models: %w", constants.ErrMissingRequiredField)
+	}
+	maintenance := OllamaModelMaintenanceContext{TargetOperatorSessionID: r.targetOperatorSessionID, CaseID: release.RunID, NewID: r.newID}
+	residency, err := readProviderResidency(ctx, r.dispatcher, maintenance)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: release provider models: %w", err)
+	}
+	var modelTags []string
+	for _, name := range residency.Names() {
+		if !slices.Contains(release.Retain, name) {
+			modelTags = append(modelTags, name)
+		}
+	}
+	if len(modelTags) == 0 {
+		return nil, nil
+	}
+	if err := releaseProviderModels(ctx, r.dispatcher, maintenance, modelTags); err != nil {
+		return nil, fmt.Errorf("evaluation: release provider models: %w", err)
+	}
+	return modelTags, nil
+}
+
+// readProviderResidency queries typed provider residency through the exact
 // Inference Operator session.
-func ReadOllamaProviderResidency(ctx context.Context, dispatcher OllamaModelCommandDispatcher, maintenance OllamaModelMaintenanceContext) (inference.ProviderResidency, error) {
+func readProviderResidency(ctx context.Context, dispatcher OllamaModelCommandDispatcher, maintenance OllamaModelMaintenanceContext) (inference.ProviderResidency, error) {
 	executionID := maintenance.NewID("ollama-residency")
 	payload, err := MarshalOllamaModelResidencyPayload(executionID)
 	if err != nil {
@@ -378,55 +442,38 @@ func ReadOllamaProviderResidency(ctx context.Context, dispatcher OllamaModelComm
 		maintenance,
 		constants.ActionTypeOllamaModelResidency,
 		payload,
-		"ollama-model-residency",
+		constants.ProviderModelResidencyInvestigationID,
 		executionID,
 		ValidateOllamaModelResidencyResult,
 	)
 	if err != nil {
 		return inference.ProviderResidency{}, err
 	}
-	residency := inference.ProviderResidencyFromProto(result.ResidencyResult)
-	for _, model := range residency.Models {
-		if model.Name == "" {
-			return inference.ProviderResidency{}, fmt.Errorf("evaluation: read Ollama provider residency: %w", constants.ErrInferenceProviderResponseInvalid)
-		}
-	}
-	return residency, nil
+	return inference.ProviderResidencyFromProto(result.ResidencyResult)
 }
 
-// ReleaseOllamaModels sends one governed typed batch release to the exact
-// Inference Operator session. The Operator validates the full set, unloads it,
-// and verifies absence before this command completes.
-func ReleaseOllamaModels(ctx context.Context, dispatcher OllamaModelCommandDispatcher, targetOperatorSessionID, runID string, modelTags []string, newID func(string) string) error {
-	if dispatcher == nil || targetOperatorSessionID == "" || runID == "" || newID == nil || len(modelTags) == 0 {
-		return fmt.Errorf("evaluation: release Ollama models: %w", constants.ErrMissingRequiredField)
-	}
+// releaseProviderModels sends one governed typed batch release of modelTags
+// to the exact Inference Operator session.
+func releaseProviderModels(ctx context.Context, dispatcher OllamaModelCommandDispatcher, maintenance OllamaModelMaintenanceContext, modelTags []string) error {
 	for _, modelTag := range modelTags {
 		if err := operatorcapability.ValidateServedModelTag(modelTag); err != nil {
-			return fmt.Errorf("evaluation: release Ollama models: %w", err)
+			return err
 		}
 	}
-	executionID := newID("ollama-release")
+	executionID := maintenance.NewID("ollama-release")
 	payload, err := MarshalOllamaModelReleasePayload(executionID, modelTags)
 	if err != nil {
-		return fmt.Errorf("evaluation: release Ollama models: %w", err)
+		return err
 	}
-	request := OllamaModelCommandDispatchRequest{
-		TargetOperatorSessionID: targetOperatorSessionID,
-		ActionType:              constants.ActionTypeOllamaModelRelease,
-		Payload:                 payload,
-		TimeoutSeconds:          60,
-		ExecutionID:             executionID,
-		CaseID:                  runID,
-		InvestigationID:         "ollama-model-release",
-		TaskID:                  newID("ollama-release-task"),
-	}
-	result, err := dispatcher.DispatchOllamaModelCommand(ctx, request)
-	if err != nil {
-		return fmt.Errorf("evaluation: release Ollama models: %w", err)
-	}
-	if err := ValidateOllamaModelReleaseResult(result); err != nil {
-		return fmt.Errorf("evaluation: release Ollama models: %w", err)
-	}
-	return nil
+	_, err = dispatchOllamaTypedQuery(
+		ctx,
+		dispatcher,
+		maintenance,
+		constants.ActionTypeOllamaModelRelease,
+		payload,
+		constants.ProviderModelReleaseInvestigationID,
+		executionID,
+		ValidateOllamaModelReleaseResult,
+	)
+	return err
 }

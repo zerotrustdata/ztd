@@ -326,7 +326,7 @@ func TestHistoryHandler_FetchFileHistory(t *testing.T) {
 	// Fetch file history
 	requestJSON := testutil.BuildFetchFileHistoryRequestedPayload(t, "exec-123", testFilePath, 10, operatorSessionID)
 
-	response, err := hh.HandleFetchFileHistory(requestJSON)
+	response, err := hh.HandleFetchFileHistory(t.Context(), requestJSON)
 	require.NoError(t, err)
 
 	assert.True(t, response.Success)
@@ -361,7 +361,7 @@ func TestHistoryHandler_FetchFileHistoryValidationErrors(t *testing.T) {
 				requestJSON = testutil.BuildFetchFileHistoryRequestedPayload(t, "exec-123", tc.filePath, tc.limit, tc.sessionID)
 			}
 
-			response, err := hh.HandleFetchFileHistory(requestJSON)
+			response, err := hh.HandleFetchFileHistory(t.Context(), requestJSON)
 			require.Error(t, err)
 
 			assert.False(t, response.Success)
@@ -388,7 +388,7 @@ func TestHistoryHandler_FetchFileHistoryDefaultLimit(t *testing.T) {
 	// Request with limit=0 (use same session ID as mirroring)
 	requestJSON := testutil.BuildFetchFileHistoryRequestedPayload(t, "exec-123", testFilePath, 0, "operator_session")
 
-	response, err := hh.HandleFetchFileHistory(requestJSON)
+	response, err := hh.HandleFetchFileHistory(t.Context(), requestJSON)
 	require.NoError(t, err)
 
 	assert.True(t, response.Success)

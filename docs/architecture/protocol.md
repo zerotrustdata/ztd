@@ -3,8 +3,8 @@ doc_id: protocol
 title: Protocol Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.5.0
-last_updated: 2026-10-28
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - protocol/
   - internal/constants/
@@ -61,9 +61,9 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | --- | --- |
-| INV-PROT-VER-01 | The root `VERSION` file is the sole source of truth for platform and protocol version numbers. The declarations that `internal/tools/versionsync` checks MUST remain in exact string synchronization with it: the protocol document headers (`protocol/docs/a2a.md`, `protocol/docs/constants.md`, `protocol/docs/mcp.md`, `protocol/docs/spec.md`) and the `version` declarations in `package.json` and `package-lock.json` for first-party npm packages (`console`, `evaluation-explorer`, `ztd-adapter`, `protocol/node`, and `website`). |
+| INV-PROT-VER-01 | The root `VERSION` file is the sole source of truth for platform and protocol version numbers. The declarations that `internal/tools/versionsync` checks MUST remain in exact string synchronization with it: the protocol document headers (`protocol/docs/a2a.md`, `protocol/docs/constants.md`, `protocol/docs/mcp.md`, `protocol/docs/spec.md`), the `version` declarations in `package.json` and `package-lock.json` for first-party npm packages (`console`, `evaluation-explorer`, `ztd-adapter`, `protocol/node`, and `website`), the `README.md` version badge, and the hero chip in `website/src/index.html`. |
 | INV-PROT-VER-02 | Go protocol packages are part of the root module `github.com/zerotrustdata/ztd` (`go.mod`) and are versioned exclusively through root git tags of the form `vX.Y.Z`. External consumers resolve them with `go get github.com/zerotrustdata/ztd@vX.Y.Z`. Release tooling creates no `protocol/v*` tags. |
-| INV-PROT-VER-03 | The release target `make release` MUST run from clean `main` at `origin/main` after a successful release-workflow rehearsal for that commit. It MUST fail closed if version synchronization leaves uncommitted changes, if the release notes document `docs/release_notes/v<MAJOR_MINOR>.x/v<VERSION>.md` is missing, or if the local tag `v<VERSION>` already exists. |
+| INV-PROT-VER-03 | The release target `make release` MUST run from clean `main` at `origin/main`. It MUST fail closed if version synchronization leaves uncommitted changes, if the release notes document `docs/release_notes/v<MAJOR_MINOR>.x/v<VERSION>.md` is missing, or if the local tag `v<VERSION>` already exists. |
 | INV-PROT-VER-04 | The CI step `Verify Version Sync` in job `ci` of `.github/workflows/build-and-test.yml` MUST run `make version-sync-check` on pushes and pull requests to `main`, terminating the build if any version declaration diverges from `VERSION`. |
 
 ### Protobuf and Wire Schemas (`INV-PROT-SCHEMA`)
@@ -71,7 +71,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-PROT-SCHEMA-01 | Protobuf schemas in `protocol/proto/ztd/` are the canonical source of truth for wire structures. Generated Go code under `protocol/proto/ztd/` and generated TypeScript code under `protocol/node/src/gen/` MUST NOT be hand-edited and MUST only be updated through `make proto-generate`. |
-| INV-PROT-SCHEMA-02 | Client-facing surfaces (HTTP API, WebSocket pub/sub, receipts, audit exports) MUST carry `GovernanceEnvelope` as canonical protojson. Raw binary protobuf is restricted to internal encodings. |
+| INV-PROT-SCHEMA-02 | Client-facing surfaces that carry governed transactions (governed HTTP endpoints, WebSocket pub/sub, receipts, audit exports) MUST carry `GovernanceEnvelope` as canonical protojson. Raw binary protobuf is restricted to internal encodings. |
 | INV-PROT-SCHEMA-03 | Protobuf code generation MUST use Buf configured via `protocol/proto/buf.yaml`, the root `buf.gen.yaml` (Go), and `protocol/node/buf.gen.yaml` (TypeScript). The build MUST rely on `buf generate` rather than requiring a standalone `protoc` compiler binary. |
 
 ### Constants Registries and Schemas (`INV-PROT-CONST`)
@@ -130,7 +130,7 @@ Incoming Ingress (MCP / A2A / governed HTTP dispatch / direct envelope submissio
                       └── State: state_merkle_root
 ```
 
-- **Wire Format**: Client-facing endpoints (HTTP, WebSocket pub/sub, receipt logs) transmit `GovernanceEnvelope` as canonical protojson (`INV-PROT-SCHEMA-02`). Raw binary protobuf is restricted to internal encodings (`INV-PROT-SCHEMA-02`).
+- **Wire Format**: Client-facing endpoints that carry governed transactions (governed HTTP endpoints, WebSocket pub/sub, receipt logs) transmit `GovernanceEnvelope` as canonical protojson (`INV-PROT-SCHEMA-02`). Raw binary protobuf is restricted to internal encodings (`INV-PROT-SCHEMA-02`).
 - **Code Generation via Buf**: Managed entirely through Buf CLI (`protocol/proto/buf.yaml` defines module `buf.build/ztd/platform`):
   - `make proto-go`: Emits Go structs to `protocol/proto/ztd/` using `protoc-gen-go` and generates API documentation to `protocol/docs/reference/api/` using `protoc-gen-doc`.
   - `make proto-node`: Emits TypeScript stubs to `protocol/node/src/gen/` using `@bufbuild/protoc-gen-es`.
@@ -144,8 +144,8 @@ To allow cross-platform cryptographic signing and verification, ztd enforces str
    - `internal/services/governance.CanonicalizeEventReceipt` formats `EventReceipt` into deterministic UTF-8 JSON.
    - Keys follow the declaration order of the internal `canonicalReceipt` struct, not lexicographic order. Enum fields serialize as integers, fields tagged `omitempty` are omitted at zero value, and the output contains no whitespace.
    - Typed failure fields are signed: `failure_code` (`ReceiptFailureCode`) and `rejection_code` (`GovernanceRejectionCode`, `EventReceipt` field 18). Both are bound into the signature, and `rejection_code` is omitted when `GOVERNANCE_REJECTION_CODE_UNSPECIFIED` (`omitempty`). Enum values are defined in `protocol/proto/ztd/operator/v1/operator.proto`.
-   - `GovernanceRejection` (`error`, `receipt`) is the body for an L4 rejection. The MCP endpoint returns it as JSON-RPC `error.data` (`internal/services/mcp/mcp_endpoint.go`). `receipt` can be checked with `VerifyEventReceiptSignature`.
-   - `IngressRefusalCode` and `IngressRefusal` (`code`, `error`) are the pre-envelope refusal body, and JSON-RPC `error.data` on MCP and A2A. A refusal carries no receipt.
+   - `GovernanceRejection` (`error`, `receipt`, `consensus_inferences`) is the body for an L4 rejection. The MCP endpoint returns it as JSON-RPC `error.data` (`internal/services/mcp/mcp_endpoint.go`). `receipt` can be checked with `VerifyEventReceiptSignature`.
+   - `IngressRefusalCode` and `IngressRefusal` (`code`, `error`, `consensus_inferences`) are the pre-envelope refusal body, and JSON-RPC `error.data` on MCP and A2A. A refusal carries no receipt.
    - `GovernedDispatchResult` (`transaction_id`, `event_type`, `action_type`, `result_payload`, `inference_result`, `receipt`, `consensus_inferences`, `request_envelope`) is the HTTP 200 body of governed dispatch. `request_envelope` preserves the original admitted intent; its canonical transaction hash lets offline consumers bind the signed receipt to the exact request payload.
    - `InferenceDispatchFailure` (`error`, `code`, `receipt`, `observation_receipts`) is the failure body of `POST /api/v1/inference/dispatch`. `receipt` is present only when dispatch reached the executing Operator and that Operator signed a `FAILED` receipt (a governance rejection, or a failed execution whose commitment the Operator's ledger holds). `observation_receipts` carries the verified signed observer receipts for the attempt in dispatch order.
    - `VerifyEventReceiptSignature` verifies an Ed25519 signature over these exact canonical bytes.
@@ -155,7 +155,7 @@ To allow cross-platform cryptographic signing and verification, ztd enforces str
    - Uses protobuf field names through protojson, compacts whitespace, and omits proto3 zero-value scalar fields.
    - `UnmarshalCanonical` rejects any payload whose raw bytes differ from its canonical re-encoding.
    - `ConformanceRunRecord`, `ConformanceVerdictSet` and their evidence messages (`ConformanceCaseEvidence`, `ConformanceObservation`, `CanaryManifest`, `ConformanceAnchor`) hold the governance-conformance suite: raw evidence per case and the verdict set, kept as separate messages.
-   - `AgentRole`, `AgentStep` and `AgentTrace` define the agent trace shape. This protobuf `AgentTrace` is the protobuf projection (`AgentTrace.ToProto`) of the campaign executor's persisted evidence envelope, whose JSON schema is `agent-trace.v10` (`agent-trace.v9` before `content_judgments` recorded the pinned judge's verdicts on judged content criteria, `agent-trace.v8` before harness-owned governed observations and admitted request evidence, `agent-trace.v7` before Tribunal-approved tool arguments were recorded, `agent-trace.v6` before per-call model bindings and complete inference results were recorded, `agent-trace.v5` before investigation identity and authoritative retrieval evidence were recorded, `agent-trace.v4` before held repetition context was recorded, `agent-trace.v3` before exact model input was captured; `internal/services/evaluation/campaign_agent_trace.go`) and which the assignment audit publication references as `ztd.eval.v1.PublicAssignmentAgentTrace` (`assignmentAgentTraceRef` in `internal/services/evaluation/assignment_audit_publication.go`), bound by `AgentTraceSHA256`. `AgentTrace.ToProto` (`internal/services/evaluation/campaign_agent_trace.go`) produces the protobuf form.
+   - `AgentRole`, `AgentStep` and `AgentTrace` define the agent trace shape. This protobuf `AgentTrace` is the protobuf projection (`AgentTrace.ToProto`) of the campaign executor's persisted evidence envelope, whose JSON schema is `agent-trace.v11` (`agent-trace.v10` before the frozen persona the designated role ran under was recorded, `agent-trace.v9` before `content_judgments` recorded the pinned judge's verdicts on judged content criteria, `agent-trace.v8` before harness-owned governed observations and admitted request evidence, `agent-trace.v7` before Tribunal-approved tool arguments were recorded, `agent-trace.v6` before per-call model bindings and complete inference results were recorded, `agent-trace.v5` before investigation identity and authoritative retrieval evidence were recorded, `agent-trace.v4` before held repetition context was recorded, `agent-trace.v3` before exact model input was captured; `internal/services/evaluation/campaign_agent_trace.go`) and which the assignment audit publication references as `ztd.eval.v1.PublicAssignmentAgentTrace` (`assignmentAgentTraceRef` in `internal/services/evaluation/assignment_audit_publication.go`), bound by `AgentTraceSHA256`. `AgentTrace.ToProto` (`internal/services/evaluation/campaign_agent_trace.go`) produces the protobuf form.
    - `ContainmentResult` (`verdict`, `breaches`) is the red-team verdict for one attempt, reported apart from model quality.
 3. **Canonicalization Conformance Vectors**:
    - Pinned in `protocol/vectors/`:
@@ -213,8 +213,8 @@ Platform identities use the canonical SPIFFE trust domain `ztd.local` (`protocol
 
 All first-party components adhere strictly to the root `VERSION` file:
 
-1. **Check and Sync**: `internal/tools/versionsync` verifies that the `Version:` headers of `protocol/docs/a2a.md`, `constants.md`, `mcp.md`, and `spec.md`, and the `package.json` and `package-lock.json` root versions of first-party npm packages, match `VERSION`. Verified with `make version-sync-check`.
-2. **Release Target**: `make release` requires clean `main` at `origin/main` and a successful release-workflow rehearsal for that commit. It runs version sync, requires a clean working tree and release notes, then tags and pushes `v<VERSION>`. See [Release Process](../devs/release_process.md) for the full workflow.
+1. **Check and Sync**: `internal/tools/versionsync` verifies that the `Version:` headers of `protocol/docs/a2a.md`, `constants.md`, `mcp.md`, and `spec.md`, the `package.json` and `package-lock.json` root versions of first-party npm packages, the `README.md` version badge, and the website hero chip match `VERSION`. Verified with `make version-sync-check`.
+2. **Release Target**: `make release` requires clean `main` at `origin/main`. It runs version sync, requires a clean working tree and release notes, then tags and pushes `v<VERSION>`. See [Release Process](../devs/release_process.md) for the full workflow.
 
 ## Anti-patterns
 

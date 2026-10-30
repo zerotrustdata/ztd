@@ -72,7 +72,7 @@ func TestReceiptCitationRequirementPreservesLegacyGoldAndHonorsExplicitFalse(t *
 	newCatalogGold := baseGold("", "", "", "", "", "", nil)
 	require.NotNil(t, newCatalogGold.RequireReceiptIDActionCitation)
 	assert.False(t, *newCatalogGold.RequireReceiptIDActionCitation)
-	assert.Equal(t, ScenarioGradingContractV3, newCatalogGold.GradingContract)
+	assert.Equal(t, ScenarioGradingContractV4, newCatalogGold.GradingContract)
 
 	newGold := ScenarioGoldCriteria{RequireReceiptIDActionCitation: boolPointer(false)}
 	assert.False(t, newGold.requiresReceiptIDActionCitation(true), "new prompt with no citation instruction does not require a literal citation")
@@ -442,6 +442,39 @@ func TestGradeScenario_FormationLiteUsesTriageClassificationOnly(t *testing.T) {
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grades[triageGradeCriterionID].GetStatus())
 	assert.NotContains(t, grades, "scenario-content")
 	assert.NotContains(t, grades, "trajectory")
+}
+
+func TestGradePlayerCriteriaV4AcceptsEveryFrozenTriageLabel(t *testing.T) {
+	for _, tc := range []struct {
+		name                        string
+		contract                    ScenarioGradingContract
+		complexity, intent, posture string
+		pass                        bool
+	}{
+		{"second complexity", ScenarioGradingContractV4, "complex", "information", "normal", true},
+		{"second intent", ScenarioGradingContractV4, "simple", "action", "normal", true},
+		{"second posture", ScenarioGradingContractV4, "simple", "information", "escalated", true},
+		{"unaccepted label", ScenarioGradingContractV4, "simple", "unknown", "normal", false},
+		{"historical first-label rule", ScenarioGradingContractV3, "complex", "information", "normal", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			players := &ScenarioPlayerExpectations{Triage: &TriageExpectation{
+				Complexity: []constants.TriageComplexity{constants.TriageComplexitySimple, constants.TriageComplexityComplex},
+				Intent:     []constants.TriageIntent{constants.TriageIntentInformation, constants.TriageIntentAction},
+				Posture:    []constants.TriagePosture{constants.TriagePostureNormal, constants.TriagePostureEscalated},
+			}}
+			req := playerGradingErrorRequest(players)
+			req.ScenarioGold.GradingContract = tc.contract
+			trace := routerTrace(evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN)
+			trace.Steps[0].GetRouter().Complexity = tc.complexity
+			trace.Steps[0].GetRouter().Intent = tc.intent
+			trace.Steps[0].GetRouter().Posture = tc.posture
+			grades, err := (homogeneousGrader{req: req, view: agentGradingView{Trace: trace}}).gradePlayerCriteria()
+			require.NoError(t, err)
+			require.Len(t, grades, 1)
+			assert.Equal(t, tc.pass, grades[0].GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grades[0].GetDetail())
+		})
+	}
 }
 
 func TestParseTriageResultRequiresCompleteTypedJSON(t *testing.T) {

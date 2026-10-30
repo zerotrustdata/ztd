@@ -41,6 +41,9 @@ expect_gate() {
   if [ "$1" -eq 2 ] && ! grep -q 'is blocked' "$tmp/err"; then
     fail "$2: deny should explain itself on stderr"
   fi
+  if [ "$1" -eq 2 ] && ! grep -q '/ztd:setup' "$tmp/err"; then
+    fail "$2: deny should point to /ztd:setup"
+  fi
 }
 
 # call <tool_name> [tool_input-json]: a PreToolUse input in Claude Code's field order.
@@ -99,16 +102,35 @@ out=$(env -i PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR=/proj CLAUDE_PLUGIN_OPTION_AP
   fail "session-start exits 0"
 case $out in *'mcp__plugin_ztd_ztd__'*) ;; *) fail "session-start names the tool prefix" ;; esac
 case $out in *'/proj'*) ;; *) fail "session-start names the project directory" ;; esac
-case $out in *'ztd_root is not set'*) ;; *) fail "session-start flags unset ztd_root" ;; esac
+case $out in *'Configure the plugin ztd_root option'*) ;; *) fail "session-start flags unset ztd_root" ;; esac
 
 count=$((count + 1))
 mkdir -p "$tmp/root/.ztd"
-out=$(env -i PATH=/usr/bin:/bin CLAUDE_PLUGIN_OPTION_ZTD_ROOT="$tmp/root" sh "$session")
-case $out in *'Setup needed'*) fail "session-start is quiet when .ztd exists" ;; esac
+cat >"$tmp/fake-ztd-ready" <<'EOF'
+#!/bin/sh
+[ "$*" = 'mcp stdio --app claude --check' ] || exit 9
+printf 'ready: application "claude" is enrolled\n'
+EOF
+chmod +x "$tmp/fake-ztd-ready"
+out=$(env -i PATH=/usr/bin:/bin CLAUDE_PLUGIN_OPTION_ZTD_ROOT="$tmp/root" \
+  CLAUDE_PLUGIN_OPTION_ZTD_BINARY="$tmp/fake-ztd-ready" sh "$session") || fail "session-start ready exits 0"
+case $out in *'Setup needed — next step:'*'App identity: claude'*'Ready. ready: application "claude" is enrolled'*) ;; *) fail "session-start reports ready app and check result" ;; esac
 
 count=$((count + 1))
-out=$(env -i PATH=/usr/bin:/bin CLAUDE_PLUGIN_OPTION_ZTD_ROOT="$tmp/missing" sh "$session")
-case $out in *'has no .ztd directory'*) ;; *) fail "session-start flags a root without .ztd" ;; esac
+cat >"$tmp/fake-ztd-not-ready" <<'EOF'
+#!/bin/sh
+printf 'application "claude" is not enrolled\nEnroll it with:\nztd auth enroll app claude\n'
+exit 1
+EOF
+chmod +x "$tmp/fake-ztd-not-ready"
+out=$(env -i PATH=/usr/bin:/bin CLAUDE_PLUGIN_OPTION_ZTD_ROOT="$tmp/root" \
+  CLAUDE_PLUGIN_OPTION_ZTD_BINARY="$tmp/fake-ztd-not-ready" sh "$session") || fail "session-start not-ready exits 0"
+case $out in *'application "claude" is not enrolled'*'ztd auth enroll app claude'*) ;; *) fail "session-start prints the next setup command" ;; esac
+
+count=$((count + 1))
+out=$(env -i PATH=/usr/bin:/bin CLAUDE_PLUGIN_OPTION_ZTD_ROOT="$tmp/root" \
+  CLAUDE_PLUGIN_OPTION_ZTD_BINARY="$tmp/no-such-ztd" sh "$session") || fail "session-start missing binary exits 0"
+case $out in *'Install ztd or set the plugin ztd_binary option'*) ;; *) fail "session-start explains missing binary" ;; esac
 
 # --- mcp-stdio.sh
 # expect_bridge <label> <stderr-substring> <args...>

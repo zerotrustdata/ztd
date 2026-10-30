@@ -128,18 +128,14 @@ func testIntegrationCmdWithRunner(runner e2eCommandRunner) *cobra.Command {
 	var runRegexp string
 	var pkg string
 	var verbose bool
-	var evalStack bool
 
 	cmd := &cobra.Command{
 		Use:   "integration",
 		Short: "Run Tier 2 (In-Process Integration) tests",
-		Long:  `Run in-process integration tests with the 'integration' build tag. These tests run the gateway in-process against real on-disk SQLite databases, local PKI generation, and local pubsub. Use --pkg and --run to select a package and tests by regular expression. Tests that build a real eval stack (Gateway plus outbound Data and Inference Operators) skip unless --eval-stack adds the 'evalstack' build tag; CI does not run them.`,
+		Long:  `Run in-process integration tests with the 'integration' build tag. These tests run the gateway in-process against real on-disk SQLite databases, local PKI generation, and local pubsub. Use --pkg and --run to select a package and tests by regular expression.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !cmd.Flags().Changed("pkg") && !cmd.Flags().Changed("run") {
 				target := "test-integration"
-				if evalStack {
-					target = "test-eval-stack"
-				}
 				fmt.Println("make " + target)
 
 				// Delegate to the Makefile so the CLI and repository test target share
@@ -158,11 +154,7 @@ func testIntegrationCmdWithRunner(runner e2eCommandRunner) *cobra.Command {
 
 			fmt.Println("Running Tier 2 (In-Process Integration) tests...")
 
-			tags, timeout := "-tags=integration", integrationTestTimeout
-			if evalStack {
-				tags, timeout = "-tags=integration evalstack", evalStackTestTimeout
-			}
-			testArgs := []string{"test", tags, "-count=1", "-timeout", timeout.String()}
+			testArgs := []string{"test", "-tags=integration", "-count=1", "-timeout", integrationTestTimeout.String()}
 			if verbose {
 				testArgs = append(testArgs, "-v")
 			}
@@ -194,7 +186,6 @@ func testIntegrationCmdWithRunner(runner e2eCommandRunner) *cobra.Command {
 	cmd.Flags().StringVar(&pkg, "pkg", "./...", "Package pattern selecting which integration test package to compile and run")
 	cmd.Flags().StringVar(&runRegexp, "run", "", "Regular expression selecting which integration tests to run (passed to go test -run)")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Show each integration test as it runs (passed to go test -v)")
-	cmd.Flags().BoolVar(&evalStack, "eval-stack", false, "Run the real eval stack tests (evalstack build tag) that CI skips")
 
 	return cmd
 }
@@ -205,11 +196,7 @@ type e2eCommandRunner func(ctx context.Context, name string, args ...string) (in
 
 // integrationTestTimeout is the per-package Tier 2 deadline. It must match
 // TEST_TIMEOUT in the Makefile, which CI uses.
-const integrationTestTimeout = 600 * time.Second
-
-// evalStackTestTimeout is the per-package deadline for real eval stack tests.
-// It must match EVAL_STACK_TEST_TIMEOUT in the Makefile.
-const evalStackTestTimeout = 30 * time.Minute
+const integrationTestTimeout = 30 * time.Minute
 
 // defaultE2ETimeout bounds the approved-stack suite. Long scenarios such as the
 // Operator fleet soak raise it with --timeout.

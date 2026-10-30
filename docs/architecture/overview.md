@@ -3,8 +3,8 @@ doc_id: overview
 title: Platform Architecture Overview
 audience: maintainers and coding agents
 status: current
-version: v1.5.0
-last_updated: 2026-10-29
+version: v1.7.0
+last_updated: 2026-10-30
 owners:
   - cmd/ztd/
   - internal/cli/
@@ -217,7 +217,7 @@ ztd provides five distinct ingress channels:
 2. **Agent-to-Agent (A2A)**: JSON-RPC endpoint at `POST /api/v1/a2a/call` for cross-agent skill invocation wrapped in `A2A_CALL` envelopes.
 3. **Governed HTTP Dispatch**: Authenticated applications post registered request event types and serialized protobuf payloads to `POST /api/v1/operators/commands`. The Gateway validates session identity, derives `action_type`, attaches posture, and publishes to the Operator command channel. When L3 proof is required, the Gateway suspends the envelope and holds the request until a human approves or denies it, or the approval expires.
 4. **Direct Envelope Submission**: Pre-constructed envelopes submitted via `POST /api/v1/governance/envelopes` with pre-gathered L2/L3 proofs. The Gateway does not synthesize missing proofs; unproved transactions fail closed at L4.
-5. **CLI-Directed Execution**: Enrolled operators bound via `ztd operator bind` receive parallel commands dispatched through `ztd operator run`.
+5. **CLI-Directed Execution**: Operator sessions bound to the CLI session via `ztd operator bind` receive parallel commands dispatched through `ztd operator run`.
 
 The reference binary includes a native tool registry, populated by `RegisterNativeTools` in `internal/services/mcp/native_tool_registry.go`. The tool list is not duplicated here; see the registry source for the current set.
 
@@ -243,14 +243,14 @@ The network topology strictly isolates management, application, observation, and
 | **8081** | HTTP | Gateway | Loopback Only | Private ingest listener for exporting public spectator mirror feeds |
 | **8082** | HTTP | Public Mirror | Anonymous / Public | Public spectator mirror serving sanitized feeds, SSE, and content-addressed proofs |
 | **5173 default** | HTTP | Gateway Explorer | Loopback Only | Optional evaluation Explorer SPA when enabled/configured |
-| **11434**| HTTP | Ollama Provider | Localhost / Private LAN | Model provider. The Gateway uses it for embedded inference (`gw start --inference-ollama-endpoint`), and Operators use it for model maintenance (`--inference-ollama-endpoint`). Default `http://127.0.0.1:11434` (`constants.InferenceOllamaDefaultPort`). |
+| **11434**| HTTP | Ollama Provider | Localhost / Private LAN | Model provider. The Gateway uses it for embedded inference (`gw start --inference-ollama-endpoint`), and Operators use it for model maintenance (`--inference-ollama-endpoint`). Default is the `ZTD_OLLAMA_ENDPOINT` value when set, otherwise `http://127.0.0.1:11434` (`constants.InferenceOllamaDefaultPort`). |
 
 The Gateway's HTTP and HTTPS values are defaults. After configuration validation, startup checks availability and may bind both listeners at the same higher offset; the selected values are persisted in the launch profile. Auxiliary mirror and Explorer listeners have separate loopback defaults and may be configured independently.
 
 Certificates are issued under the `ztd.local` SPIFFE trust domain:
 - Operator: `spiffe://ztd.local/operator/<organization_id>/<operator_id>/<operator_session_id>`
 - CLI: `spiffe://ztd.local/cli/<user_id>/<cli_session_id>`
-- App Workload: `spiffe://ztd.local/app/<app_id>`
+- App Workload: `spiffe://ztd.local/app/<operator_id>`
 - Human User: `spiffe://ztd.local/user/<user_id>`
 - Gateway Hub: `spiffe://ztd.local/hub/operator-listen`
 - Gateway Peer: `spiffe://ztd.local/gateway/<gateway_id>`
@@ -291,7 +291,7 @@ The Gateway operates an SSE streaming infrastructure for live observation:
 Observation operates across strict trust tiers:
 1. **Private Observe API**: Authenticated Gateway endpoints serving raw operational telemetry to authorized operators and CLI clients.
 2. **Evaluation Explorer**: Optional Gateway auxiliary listener, loopback port 5173 by default, providing evaluation campaign views when enabled/configured.
-3. **Public Spectator Mirror**: Operates on loopback port 8082 as a read-only, sanitized mirror. The Gateway exports public-safe event projections over internal port 8081. All credentials, paths, identities, and private payloads are scrubbed prior to export.
+3. **Public Spectator Mirror**: Operates on port 8082 (loopback by default) as a read-only, sanitized mirror. The Gateway exports public-safe event projections over internal port 8081. All credentials, paths, identities, and private payloads are scrubbed prior to export.
 
 ### Protocol Contracts and Code Generation
 
@@ -305,7 +305,7 @@ The protocol library (`protocol/`) establishes the canonical platform contracts:
 The platform provides a built-in compliance evidence engine:
 - **Framework Mapping**: Protocol catalogs in `protocol/constants/compliance/` map platform controls to FedRAMP 20x and NIST SP 800-53 Rev. 5. COSAiS AI security overlays map to platform KSI definitions. The FedRAMP and NIST crosswalk is embedded from `protocol/constants/compliance/fedramp-nist-crosswalk.json` ([Compliance Alignment Reference](../reference/compliance-alignment.md)).
 - **Evidence Graphs**: Evaluation and runtime evidence is imported into a content-addressed evidence graph verified via `ztd compliance evidence-graph verify --eval-run <run-id>`.
-- **Release Preparation**: `ztd compliance release-prepare` derives the assessment scope from `VERSION`, git, and the running binary digest, reads the runtime database read-only, generates a public signed bundle, verifies it offline, and projects the verified bundle into `docs/release_notes/vX.Y.x/`. The command does not commit or tag.
+- **Release Preparation**: `ztd compliance release-prepare` derives the assessment scope from `VERSION`, git, and the running binary digest, reads the runtime database read-only, generates a public signed bundle, verifies it offline, and projects the verified bundle into `docs/release_notes/vX.Y.x/`. The command does not commit or tag. Its trust policies record a first-party engineering assessment and never confer external attestation.
 
 ### Host Deployment Topology
 

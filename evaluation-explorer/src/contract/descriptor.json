@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.10.0",
+  "schema_version": "1.11.0",
   "enums": {
     "ReleaseBasis": ["recorded", "asserted", "unknown"],
     "QualityState": [
@@ -154,8 +154,13 @@
       "metric_updated",
       "evaluation_completed",
       "evaluation_failed",
-      "evaluation_stopped"
+      "evaluation_stopped",
+      "judge_started",
+      "judge_completed"
     ],
+    "LiveJudgeSubject": ["criterion", "final_reply", "memory"],
+    "LiveJudgeState": ["judging", "met", "not_met", "scored", "failed"],
+    "LiveJudgeFailure": ["request_invalid", "dispatch_failed", "response_mismatch", "result_digest", "verdict_invalid", "receipt_unverified"],
     "FeedRecordType": [
       "projection",
       "event",

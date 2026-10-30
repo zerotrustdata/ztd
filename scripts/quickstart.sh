@@ -100,7 +100,13 @@ else
         ztd_ui_info "It wants your Mac login password, not a ztd account. Choose Always Allow. A GUI session is required."
     fi
     if ! ztd_quickstart_run "Gateway start" ztd_cli gw start --capabilities data ${GW_EXTRA[@]+"${GW_EXTRA[@]}"}; then
-        if grep -qiE 'keyring|keystore|secret service|ssh-agent|master key' "$LOG"; then
+        if grep -q -- '--accept-unrecoverable' "$LOG" || grep -q 'recovery key is saved from a terminal' "$LOG"; then
+            echo >&2
+            ztd_ui_warn "The first start needs a terminal so you can save the recovery key." >&2
+            echo "    Rerun make quickstart in a terminal and type the key back." >&2
+            echo "    A throwaway runtime can skip the key with:" >&2
+            echo "      make quickstart QUICKSTART_ARGS='-- --accept-unrecoverable'" >&2
+        elif grep -qiE 'keyring|keystore|secret service|ssh-agent' "$LOG"; then
             echo >&2
             if [[ "$(uname -s)" == Darwin ]]; then
                 ztd_ui_warn "macOS Keychain did not release the vault master key." >&2

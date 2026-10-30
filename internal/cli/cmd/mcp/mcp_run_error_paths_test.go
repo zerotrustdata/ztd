@@ -8,6 +8,7 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -248,6 +249,44 @@ func TestBuildGatewayConn_FlagResolution(t *testing.T) {
 		conn, err := buildGatewayConn(fileSvc, cfg, flags)
 		require.NoError(t, err)
 		assert.NotNil(t, conn)
+	})
+}
+
+// ─── --app identity readiness ─────────────────────────────────────────────────
+
+func TestBuildGatewayConn_AppNotEnrolled(t *testing.T) {
+	newEnv := func(t *testing.T) (fs.RuntimeFileService, *config.Config) {
+		t.Helper()
+		tempDir := testutil.TempDir(t)
+		fileSvc, err := fs.NewRuntimeFileService(tempDir, slog.Default())
+		require.NoError(t, err)
+		return fileSvc, &config.Config{ProjectRoot: tempDir, RuntimeDir: tempDir}
+	}
+
+	t.Run("absent names login and enroll", func(t *testing.T) {
+		fileSvc, cfg := newEnv(t)
+		_, err := buildGatewayConn(fileSvc, cfg, stdioCredentialFlags{App: "claude"})
+		require.ErrorIs(t, err, constants.ErrAppIdentityNotFound)
+		assert.Contains(t, err.Error(), "ztd login")
+		assert.Contains(t, err.Error(), "ztd auth enroll app claude")
+	})
+
+	t.Run("pending names approve", func(t *testing.T) {
+		fileSvc, cfg := newEnv(t)
+		pending := filepath.Join(constants.PkiDirname, constants.PkiSubdirPendingEnroll, "app_claude.json")
+		require.NoError(t, fileSvc.WriteFile(testutil.Context(t), pending, []byte("sealed"), constants.PermFilePrivate))
+		_, err := buildGatewayConn(fileSvc, cfg, stdioCredentialFlags{App: "claude"})
+		require.ErrorIs(t, err, constants.ErrAppIdentityNotFound)
+		assert.Contains(t, err.Error(), "ztd auth enroll approve")
+	})
+
+	t.Run("check reports a missing trust bundle first", func(t *testing.T) {
+		fileSvc, cfg := newEnv(t)
+		var out bytes.Buffer
+		err := checkStdioBridge(&out, fileSvc, cfg, stdioCredentialFlags{App: "claude"})
+		require.ErrorIs(t, err, constants.ErrFailedToReadTrustBundle)
+		assert.Contains(t, err.Error(), "ztd gw start")
+		assert.Empty(t, out.String())
 	})
 }
 

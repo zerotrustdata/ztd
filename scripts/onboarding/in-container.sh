@@ -131,7 +131,9 @@ scenario_quickstart() {
     ssh-keygen -q -t ed25519 -N '' -f "$agent_dir/agent_key"
     ssh-add -q "$agent_dir/agent_key"
 
-    expect "first quickstart exits 0" in_new_terminal quickstart.log "make quickstart"
+    # No terminal to save a recovery key in a disposable container.
+    expect "first quickstart exits 0" in_new_terminal quickstart.log \
+        "make quickstart QUICKSTART_ARGS='-- --accept-unrecoverable'"
     expect_log quickstart.log 'hello from ztd'
     expect_log quickstart.log "You're running ztd"
     expect "second quickstart exits 0" in_new_terminal quickstart-rerun.log "make quickstart"

@@ -70,13 +70,9 @@ type EvalStack struct {
 
 // NewEvalStack builds an isolated Gateway, bootstrap owner, wire witness, and
 // distinct real Data and Inference Operators. All component cleanup is owned
-// by the underlying fixtures' t.Cleanup registrations. Outside the evalstack
-// build tag the test is skipped: real eval stacks are not part of CI.
+// by the underlying fixtures' t.Cleanup registrations.
 func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 	t.Helper()
-	if !evalStackEnabled {
-		t.Skip("real eval stack tests run only under the evalstack build tag: ./ztd test integration --eval-stack")
-	}
 	posture := opts.Posture
 	if posture == "" {
 		posture = constants.PostureDoctrine
