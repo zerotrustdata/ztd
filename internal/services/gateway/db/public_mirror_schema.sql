@@ -72,6 +72,23 @@ CREATE TABLE IF NOT EXISTS assignment_event_records (
 
 CREATE INDEX IF NOT EXISTS idx_public_mirror_assignment_event_records_assignment_sequence ON assignment_event_records(source_id, run_id, assignment_id, sequence);
 
+-- History filter index over retained records: one row per record, naming the
+-- `kind` and `dataset_id` its JSON body carries ('' when absent or undecodable),
+-- so a filtered history read seeks instead of decoding every record. Rows are
+-- written and pruned with their records in the same transaction.
+CREATE TABLE IF NOT EXISTS record_filters (
+    source_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    dataset_id TEXT NOT NULL,
+    PRIMARY KEY (source_id, sequence)
+);
+
+-- One index per filter shape, each ending in sequence so a page reads in order.
+CREATE INDEX IF NOT EXISTS idx_public_mirror_record_filters_dataset_kind ON record_filters(source_id, dataset_id, kind, sequence);
+CREATE INDEX IF NOT EXISTS idx_public_mirror_record_filters_dataset ON record_filters(source_id, dataset_id, sequence);
+CREATE INDEX IF NOT EXISTS idx_public_mirror_record_filters_kind ON record_filters(source_id, kind, sequence);
+
 -- Current records outlive replay-history retention. Their original signed
 -- batches remain while referenced, preserving independently verifiable bytes.
 CREATE TABLE IF NOT EXISTS snapshot_batches (

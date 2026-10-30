@@ -1546,7 +1546,13 @@ func (m *PublicMirrorServer) handleHistory(w http.ResponseWriter, r *http.Reques
 	after := cursor
 scan:
 	for {
-		records, err := m.store.recordsAfter(r.Context(), sourceID, after, summary.HighWaterSequence, pageSize)
+		var records []models.PublicFeedRecord
+		var err error
+		if recordKind != "" || datasetID != "" {
+			records, err = m.store.filteredRecordsAfter(r.Context(), sourceID, after, summary.HighWaterSequence, recordKind, datasetID, pageSize)
+		} else {
+			records, err = m.store.recordsAfter(r.Context(), sourceID, after, summary.HighWaterSequence, pageSize)
+		}
 		if err != nil {
 			m.writeStoreUnavailable(w, "mirror: read history", err)
 			return

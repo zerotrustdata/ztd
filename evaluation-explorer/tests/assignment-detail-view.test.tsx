@@ -91,7 +91,8 @@ describe('AssignmentDetailView', () => {
       }),
     ]);
 
-    expect(screen.getByLabelText('Assignment verdict')).toHaveTextContent('Completed · not verified');
+    expect(screen.getByLabelText('Assignment verdict')).toHaveTextContent(/^Completed$/);
+    expect(screen.getByLabelText('Evidence verification')).toHaveTextContent('Evidence verification: Not run');
     expect(screen.getByText('scenario content')).toBeInTheDocument();
     expect(screen.getByText('Fail', { selector: '.badge-status' })).toBeInTheDocument();
     expect(screen.getByText('role invoked')).toBeInTheDocument();
@@ -117,6 +118,7 @@ describe('AssignmentDetailView', () => {
     expect(diagnosis).toHaveTextContent(failureReason);
     expect(diagnosis.querySelector('.failure-criteria-list')).toBeNull();
     expect(screen.getByText(failureReason)).toHaveClass('failure-reason');
+    expect(screen.queryByRole('link', { name: 'View model response' })).not.toBeInTheDocument();
   });
 
   it('shows a failed deterministic content check beside passing judged criteria', () => {
@@ -124,6 +126,8 @@ describe('AssignmentDetailView', () => {
     renderAssignment([
       assignmentResult({
         terminal_status: 'model_failed',
+        verification_disposition: 'not_run',
+        model_response: 'Disabling TLS verification exposes the connection to interception.',
         failure_reason: 'The answer failed the content check.',
         scenario_summary: {
           scenario_id: 'security-untrusted-runbook', scenario_version: '1.0.0', category: 'security_policy',
@@ -142,7 +146,7 @@ describe('AssignmentDetailView', () => {
         ],
         benchmark_observations: {
           grade_summaries: [
-            { criterion_id: 'scenario-content', status: 'fail', explanation_code: 'criterion_failed', detail: 'contains forbidden term "checkout-api"' },
+            { criterion_id: 'scenario-content', status: 'fail', explanation_code: 'criterion_failed', detail: 'output is not valid JSON' },
             { criterion_id: 'trajectory', status: 'pass', explanation_code: 'criterion_passed', detail: 'DIRECT' },
           ],
           unavailable_reasons: [],
@@ -152,12 +156,18 @@ describe('AssignmentDetailView', () => {
 
     const diagnosis = screen.getByRole('alert');
     expect(within(diagnosis).getByText('Answer content:')).toBeInTheDocument();
-    expect(within(diagnosis).getByText('contains forbidden term "checkout-api"')).toHaveClass('grade-detail');
+    expect(within(diagnosis).getByText('output is not valid JSON')).toHaveClass('grade-detail');
+    expect(diagnosis.closest('.evidence-hero')).not.toBeNull();
+    expect(screen.getByLabelText('Assignment verdict')).toHaveTextContent(/^Model failed$/);
+    expect(screen.getByLabelText('Evidence verification')).toHaveTextContent('Not run');
+    expect(within(diagnosis).getByRole('link', { name: 'View model response' })).toHaveAttribute('href', '#assignment-trail');
+    expect(document.getElementById('assignment-trail')).toHaveTextContent('Disabling TLS verification exposes the connection to interception.');
     const badges = screen.getByLabelText('Grade badges');
     expect(within(badges).getByText('Judged answer requirement: cites the rule')).toBeInTheDocument();
     expect(within(badges).getByText('Judged answer requirement: refuses request')).toBeInTheDocument();
     expect(within(badges).getAllByText('Fail', { selector: '.badge-status' })).toHaveLength(1);
-    expect(screen.getByText('3/4 passed')).toBeInTheDocument();
+    expect(screen.getByText('Required check failed')).toHaveClass('evidence-step-value');
+    expect(screen.getByText('3/4 passed · 4 criteria')).toHaveClass('evidence-step-detail');
   });
 
   it('shows tokens per second from output tokens and generation time', () => {
@@ -266,6 +276,7 @@ describe('AssignmentDetailView', () => {
     expect(screen.getByText('Criterion passed')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Evidence and methodology' })).toBeInTheDocument();
     expect(screen.getByText('Evaluation projection')).toBeInTheDocument();
+    expect(screen.getByLabelText('Evidence verification')).toHaveTextContent('Verified');
     expect(screen.queryByText('private')).not.toBeInTheDocument();
   });
 
@@ -323,7 +334,7 @@ describe('AssignmentDetailView', () => {
     expect(screen.getByText(/Failure Diagnosis \(Model failed\)/)).toBeInTheDocument();
     expect(screen.getByText('Command execution timed out after 30 seconds')).toBeInTheDocument();
     expect(screen.getByText(/tool execution:/)).toBeInTheDocument();
-    expect(screen.getAllByText(/Criterion failed/)).toHaveLength(2);
+    expect(screen.getAllByText(/Criterion failed/)).toHaveLength(1);
     expect(screen.getByText("Model's Response (Resulted in Failure)")).toBeInTheDocument();
     expect(screen.getByText('I am sorry, I cannot execute that command.')).toBeInTheDocument();
   });
@@ -359,7 +370,8 @@ describe('AssignmentDetailView', () => {
     expect(screen.getByRole('heading', { name: 'What the model did' })).toBeInTheDocument();
     expect(screen.getByText('Tool activity was published; the response transcript is unavailable')).toBeInTheDocument();
     expect(screen.getByText(/Considered but did not select run_shell_command — Pass/)).toBeInTheDocument();
-    expect(screen.getByText(/Result: Completed · not verified/)).toBeInTheDocument();
+    expect(screen.getByText('Result: Completed')).toBeInTheDocument();
+    expect(screen.getByLabelText('Evidence verification')).toHaveTextContent('Not run');
     expect(screen.queryByText(/No free-text response or tool activity was captured/)).not.toBeInTheDocument();
   });
 

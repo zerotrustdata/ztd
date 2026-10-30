@@ -762,7 +762,15 @@ function gradedChainValue(assignment: AssignmentResult): ChainValue {
       : statuses.has('unavailable')
         ? 'info'
         : 'ok';
-  return { value: `${passed}/${chips.length} passed`, tone, detail: countLabel(chips.length, 'criterion', 'criteria') };
+  const requiredFailed = assignment.scenario_summary?.criteria.some((criterion) =>
+    criterion.required && chips.some((chip) => chip.criterion_id === criterion.criterion_id && chip.status === 'fail'),
+  );
+  const value = statuses.has('fail')
+    ? requiredFailed ? 'Required check failed' : 'Check failed'
+    : statuses.has('invalid_evidence')
+      ? 'Invalid evidence'
+      : passed === chips.length ? 'Checks passed' : 'Checks incomplete';
+  return { value, tone, detail: `${passed}/${chips.length} passed · ${countLabel(chips.length, 'criterion', 'criteria')}` };
 }
 
 function verifiedChainValue(assignment: AssignmentResult): ChainValue {

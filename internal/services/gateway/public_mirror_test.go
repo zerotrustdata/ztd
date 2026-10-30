@@ -35,6 +35,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/sqliteutil"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -650,6 +651,9 @@ func TestMirror_RetentionPrunesOldestHistoryAndRecoversChain(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, retained, 2)
 	assert.Equal(t, int64(2), retained[0].Sequence)
+	var filterCount int
+	require.NoError(t, env.store.db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM record_filters WHERE source_id = ? AND sequence < 2`, env.sourceID).Scan(&filterCount))
+	assert.Zero(t, filterCount, "pruned records keep no history filter rows")
 
 	mirror2 := env.reopenMirror()
 	require.NoError(t, mirror2.SetMaxRetainedBatches(2))
@@ -1194,6 +1198,58 @@ func TestMirror_History_FiltersByDatasetBeforePagination(t *testing.T) {
 	assert.Equal(t, http.StatusOK, status)
 	assert.Empty(t, absent.Items)
 	assert.False(t, absent.HasMore)
+}
+
+// Records stored before the history filter index existed are indexed when the
+// store opens, so filtered history reads still find them.
+func TestMirrorStore_OpenIndexesUnfilteredRecords(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	ctx := context.Background()
+	records := []models.PublicFeedRecord{
+		env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": "ds-live-run-a"})),
+		env.makeRecord(2, models.NewPublicFeedObject(map[string]string{"kind": "assignment_result", "dataset_id": "ds-live-run-b"})),
+		env.makeRecord(3, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": "ds-live-run-b"})),
+	}
+	_, resp := env.sendIngest(env.buildBatch(records, constants.PublicFeedZeroHashHex))
+	require.True(t, resp.Accepted)
+	_, err := env.store.db.ExecContext(ctx, `DELETE FROM record_filters`)
+	require.NoError(t, err)
+
+	env.reopenMirror()
+
+	var filterCount int
+	require.NoError(t, env.store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM record_filters`).Scan(&filterCount))
+	assert.Equal(t, len(records), filterCount)
+	found, err := env.store.filteredRecordsAfter(ctx, env.sourceID, 0, 3, "catalog_snapshot", "ds-live-run-b", 10)
+	require.NoError(t, err)
+	require.Len(t, found, 1)
+	assert.Equal(t, int64(3), found[0].Sequence)
+}
+
+// A filtered history read seeks a filter index on its filter values, not a
+// range over every retained record of the source, and never scans records.
+func TestMirrorStore_FilteredRecordsQuerySeeksIndex(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	for _, tc := range []struct{ kind, datasetID, index string }{
+		{kind: "catalog_snapshot", datasetID: "ds-live-run-a", index: "idx_public_mirror_record_filters_dataset_kind "},
+		{kind: "catalog_snapshot", index: "idx_public_mirror_record_filters_kind "},
+		{datasetID: "ds-live-run-a", index: "idx_public_mirror_record_filters_dataset "},
+	} {
+		query, args := filteredRecordsQuery(env.sourceID, 0, 100, tc.kind, tc.datasetID, 1)
+		plan, err := sqliteutil.MaterializeRows(context.Background(), env.store.db, "EXPLAIN QUERY PLAN "+query, args, func(rows *sql.Rows) (string, error) {
+			var id, parent, unused int
+			var detail string
+			err := rows.Scan(&id, &parent, &unused, &detail)
+			return detail, err
+		})
+		require.NoError(t, err)
+		usesFilterIndex := false
+		for _, detail := range plan {
+			assert.False(t, strings.HasPrefix(detail, "SCAN"), "kind=%q dataset=%q plan %v", tc.kind, tc.datasetID, plan)
+			usesFilterIndex = usesFilterIndex || strings.Contains(detail, tc.index)
+		}
+		assert.True(t, usesFilterIndex, "kind=%q dataset=%q plan %v", tc.kind, tc.datasetID, plan)
+	}
 }
 
 // ---------------------------------------------------------------------------

@@ -657,10 +657,10 @@ func (c *CampaignPublicationCoordinator) PublishRunCatchUpWithVerification(ctx c
 
 // loadBoundRunVerification resolves the persisted run-level verification report
 // for summary construction. A missing or legacy unbound report yields nil. A
-// bound report that no longer applies on an in-progress run is ignored so
-// partial campaign verify does not block continued execute/publish. Once every
-// scheduled assignment is settled, a non-applicable bound report fails closed
-// rather than producing a downgrade.
+// bound report that no longer applies on an in-progress run, or that verified
+// fewer assignments than have settled since, is ignored so partial campaign
+// verify does not block continued execute/publish. Any other non-applicable
+// report on a settled run fails closed rather than producing a downgrade.
 func (c *CampaignPublicationCoordinator) loadBoundRunVerification(ctx context.Context, runID string, run *evalv1.EvaluationRun, assignments []*evalv1.EvaluationAssignment, results map[string]*evalv1.EvaluationAssignmentResult) (*evalv1.EvaluationVerificationReport, error) {
 	report, err := c.store.LoadCampaignVerification(ctx, runID)
 	if err != nil {
@@ -714,11 +714,12 @@ func (c *CampaignPublicationCoordinator) boundRunVerification(ctx context.Contex
 }
 
 // bindRunVerification returns the report when it applies to the run's persisted
-// evidence. A report that does not apply while the run still has unsettled
-// assignments is not bound (nil), so a stale partial verification never blocks
-// continued execute or publish. Once every scheduled assignment is settled, a
-// non-applicable report fails closed with ErrEvidenceScopeMismatch rather than
-// producing a downgrade.
+// evidence. A report that does not apply is not bound (nil) while the run still
+// has unsettled assignments, or when it verified fewer assignments than have
+// settled since, so a stale partial verification never blocks continued
+// execute or publish. A settled run whose report covers its whole verified
+// population yet does not apply fails closed with ErrEvidenceScopeMismatch
+// rather than producing a downgrade.
 func bindRunVerification(
 	run *evalv1.EvaluationRun,
 	spec *evalv1.EvaluationCampaignSpec,
@@ -742,7 +743,7 @@ func bindRunVerification(
 	if err != nil {
 		return nil, err
 	}
-	if !RunAggregateComplete(assignments, results, state) {
+	if !RunAggregateComplete(assignments, results, state) || report.GetVerifiedAssignmentCount() < applicability.VerifiedAssignmentCount {
 		return nil, nil
 	}
 	return nil, fmt.Errorf("persisted report does not apply to run evidence: %w", constants.ErrEvidenceScopeMismatch)
