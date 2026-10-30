@@ -3,8 +3,8 @@ doc_id: docs
 title: Documentation Guide
 audience: maintainers and coding agents
 status: current
-version: v1.5.0
-last_updated: 2026-10-28
+version: v1.6.0
+last_updated: 2026-10-30
 owners:
   - docs/
   - protocol/docs/
@@ -178,7 +178,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [Code Map](codemap.md): Package and runtime ownership maps, assignable code surfaces, agent boundaries, and directory structure.
 - [Documentation Guide](docs.md): Documentation invariants, audit workflows, generated outputs, AI agent digestibility, context caching optimizations, and documentation catalog.
 - [Testing Guide](tests.md): Four-tier test model, execution commands, fixture lifecycles, and testing invariants.
-- [Release Process](release_process.md): Version synchronization, multi-agent orchestration roles, release compliance evidence, smoke gates, and publication workflow.
+- [Release Process](release_process.md): Version synchronization, multi-agent orchestration roles, optional compliance reporting, smoke gates, and publication workflow.
 - [Troubleshooting Guide](troubleshooting.md): Diagnostics, failure modes, and recovery procedures.
 - [Cloud VM Deployment Guide](cloud_deployment.md): Architecture, prerequisites, provisioning, firewall configuration, systemd daemonization, and DNS setup for hosting the Gateway on cloud VMs.
 

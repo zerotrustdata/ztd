@@ -179,6 +179,7 @@ func newEvalRunStack(t *testing.T, opts evalRunOptions) *evalRunStack {
 	truncated := &evalv1.EvaluationScenarioCatalog{
 		SchemaVersion: catalog.GetSchemaVersion(),
 		CatalogRef:    catalog.GetCatalogRef(),
+		Personas:      catalog.GetPersonas(),
 		Scenarios:     []*evalv1.EvaluationScenarioDefinition{target},
 	}
 	truncated.CatalogDigest, err = evaluation.ComputeScenarioCatalogDigest(truncated)

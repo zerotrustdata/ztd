@@ -4,7 +4,7 @@ title: Release Process
 audience: maintainers and coding agents
 status: current
 version: v1.6.0
-last_updated: 2026-10-29
+last_updated: 2026-10-30
 owners:
   - VERSION
   - Makefile
@@ -38,7 +38,7 @@ related:
   - docs/devs/docs.md
   - docs/devs/troubleshooting.md
   - docs/guides/ux_smoke_test.md
-when_to_read: Preparing, auditing, generating compliance evidence for, and executing a platform release.
+when_to_read: Preparing, auditing, and executing a platform release; generating compliance evidence when explicitly requested.
 do_not_use_for:
   - Coding invariants and style guidelines (docs/devs/devs.md)
   - Documentation audit workflow and documentation catalog (docs/devs/docs.md)
@@ -51,7 +51,7 @@ do_not_use_for:
 
 ## Purpose
 
-Defines the release preparation, change inventory, documentation reconciliation, version synchronization, compliance evidence generation, multi-agent orchestration roles, and release publication workflow for the ztd platform and protocol packages.
+Defines release preparation, change inventory, documentation reconciliation, version synchronization, multi-agent orchestration roles, and release publication for the ztd platform and protocol packages. Compliance report generation remains available as a standalone workflow and is run only when explicitly requested.
 
 ## Quick index
 
@@ -60,7 +60,6 @@ Defines the release preparation, change inventory, documentation reconciliation,
 - [Invariants](#invariants)
   - [Separation of duties (`INV-REL-DUTY`)](#separation-of-duties-inv-rel-duty)
   - [Version synchronization (`INV-REL-VER`)](#version-synchronization-inv-rel-ver)
-  - [Compliance evidence (`INV-REL-COMP`)](#compliance-evidence-inv-rel-comp)
   - [Release smoke evidence (`INV-REL-SMOKE`)](#release-smoke-evidence-inv-rel-smoke)
   - [Multi-agent release orchestration (`INV-REL-ORCH`)](#multi-agent-release-orchestration-inv-rel-orch)
 - [Owned surfaces](#owned-surfaces)
@@ -84,7 +83,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 
 | ID | Rule |
 | :--- | :--- |
-| INV-REL-DUTY-01 | The AI coding agent MUST NOT run `git commit`, `git push`, `gh pr create`, or `make release`. The agent prepares the working tree, audits docs, generates compliance evidence, and hands back the prepared tree to the release owner. |
+| INV-REL-DUTY-01 | The AI coding agent MUST NOT run `git commit`, `git push`, `gh pr create`, or `make release`. The agent prepares the working tree, audits docs, and hands back the prepared tree to the release owner. |
 | INV-REL-DUTY-02 | The release owner MUST review prepared changes, commit, open and merge the PR, pull the merged `main` branch locally, and execute `make release` to tag and push. |
 
 ### Version synchronization (`INV-REL-VER`)
@@ -102,14 +101,6 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-REL-VER-09 | The first line of `docs/release_notes/vX.Y.x/vX.Y.Z.md` MUST be `## [X.Y.Z] - YYYY-MM-DD - <Title>`, where `<Title>` is a short title-case phrase naming what the release delivers (for example `Onboarding and Host Configuration`), and `YYYY-MM-DD` is the planned tag date in UTC. A version number alone is not a title, and `Unreleased` is not a date. The `CHANGELOG.md` row carries the same date. |
 | INV-REL-VER-10 | While the major version is 1, a release that breaks a CLI, wire, or evidence contract, or that requires the Gateway and Operators to upgrade together, MUST bump the minor version (`v1.Y+1.0`). A patch release (`v1.Y.Z+1`) MUST be compatible with the previous release in the same minor series. The `CHANGELOG.md` preamble states this rule. |
 
-### Compliance evidence (`INV-REL-COMP`)
-
-| ID | Rule |
-| :--- | :--- |
-| INV-REL-COMP-01 | Every release MUST include a signed, verified public compliance report bundle and its canonical projections (`vX.Y.Z-compliance-evidence.md` and `vX.Y.Z-compliance-evidence.csv`) in `docs/release_notes/vX.Y.x/`. |
-| INV-REL-COMP-02 | Report trust policies and evidence trust policies MUST be external to the report bundle. Supplying external trust does not replace first-party engineering assessment. |
-| INV-REL-COMP-03 | Compliance projections MUST match canonical renderings in the bundle (`report.md` and `report.csv`). |
-
 ### Release smoke evidence (`INV-REL-SMOKE`)
 
 | ID | Rule |
@@ -118,7 +109,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | INV-REL-SMOKE-02 | The runner MUST create and own an isolated Gateway and dedicated data Operator through the supported enrollment/deployment lifecycle. It MUST exercise governed `FILE_EDIT` with exact Operator-local receipt verification and read-back, and embedded governed document create/merge preserving fields not included in the merge. |
 | INV-REL-SMOKE-03 | The data Operator MUST run in its dedicated runtime, and `report all` MUST read that Operator's populated `.ztd` stores. A report against Gateway state, an empty runtime, or stores combined from different runtime roots is not release evidence. |
 | INV-REL-SMOKE-04 | Release smoke acceptance requires non-empty local receipts, commitments, and file mutations in both Operator and Gateway runtimes; `commitment_chain`, `git_merkle_root`, `file_mutation_linkage`, and `receipt_commitment_crosslink` MUST be `PASS` in each runtime report; every `verification_summary.csv` row MUST be `PASS` (any `FAIL`, `SKIPPED`, or unrecognized result rejects the run); and the scenario receipts listed in `docs/guides/ux_smoke_test.md` MUST be present and completed. |
-| INV-REL-SMOKE-05 | Smoke artifacts are engineering acceptance evidence, not the signed public compliance bundle required by `INV-REL-COMP-01`. A passing smoke run does not replace release compliance preparation or expand claims of tested `doctrine` posture. |
+| INV-REL-SMOKE-05 | Smoke artifacts are engineering acceptance evidence and do not expand claims of tested `doctrine` posture. |
 | INV-REL-SMOKE-06 | The runner MUST retain command logs, metadata, per-runtime reports, and a summary identifying binary SHA-256, source revision and dirty state, platform, posture, ingress, runtime roots, local signed receipts, and start/end times. `make ci` is not a substitute for runtime smoke acceptance. |
 
 ### Multi-agent release orchestration (`INV-REL-ORCH`)
@@ -127,7 +118,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | :--- | :--- |
 | INV-REL-ORCH-01 | Multi-agent release preparation MUST be led by a coordinating Lead Release Orchestrator delegating strictly to specialized Lite Subagents (`flash_lite`). Subagents MUST adhere strictly to their predetermined role identity, purpose, and path scope specified in this document. Inventing ad-hoc roles or unconstrained free-form task assignments is prohibited. |
 | INV-REL-ORCH-02 | Lite Subagents MUST operate strictly within their assigned surface paths defined in [Assignable code surfaces and agent boundaries](codemap.md#assignable-code-surfaces-and-agent-boundaries). Modifying files outside the assigned surface is prohibited. |
-| INV-REL-ORCH-03 | The release orchestration pipeline MUST adhere strictly to sequential phase barriers (Phase 1 through Phase 7). Downstream subagents MUST NOT be dispatched until prerequisite phase validation criteria are fully satisfied. |
+| INV-REL-ORCH-03 | The release orchestration pipeline MUST adhere strictly to sequential phase barriers (Phase 1 through Phase 6). Downstream subagents MUST NOT be dispatched until prerequisite phase validation criteria are fully satisfied. |
 | INV-REL-ORCH-04 | Every Lite Subagent MUST return a structured completion deliverable confirming executed command exit codes, mutated files, and verification status. The Lead Orchestrator MUST verify these deliverables before advancing the pipeline. |
 
 ## Owned surfaces
@@ -149,7 +140,6 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Cross-process conformance loop qualification | `internal/cli/cmd/test/conformance_loop.go`, `internal/cli/cmd/test/conformance_loop_e2e_test.go` | `./ztd test conformance-loop` |
 | Live Tier 4 evaluation loop (explicit provider run) | `internal/cli/cmd/test/eval_loop_live_e2e_test.go` | `./ztd test eval-loop --live-ollama-endpoint <url> --live-model <name>` |
 | Smoke evidence artifacts | `<root>/` | `evidence/smoke-summary.json`, `reports/{gateway,worker}/`, and logs under `logs/` |
-| Compliance projection | `docs/release_notes/vX.Y.x/vX.Y.Z-compliance-evidence.md`, `.csv` | `ztd compliance release-evidence` |
 | Tag and push target | `Makefile` (`make release`) | Release owner only on merged `main` |
 
 ### Release agent roles and surface ownership
@@ -162,7 +152,6 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | **Frontend Embed & Web Asset Builder** (`rel-frontend-embed`) | `flash_lite` (Lite ONLY) | `surface-frontend` | `console/`, `evaluation-explorer/`, `ztd-adapter/`, `website/`, `internal/services/gateway/console/static/`, `internal/services/gateway/explorer/static/` | Fresh explorer and console embeds containing `VERSION`, passing `make console-embed-check`, fresh `website/dist/` |
 | **Release Notes & Documentation Auditor** (`rel-docs-notes`) | `flash_lite` (Lite ONLY) | `surface-docs` | `docs/release_notes/vX.Y.x/vX.Y.Z.md`, `CHANGELOG.md`, affected documents under `docs/`, `AGENTS.md`, `CLAUDE.md` | Authored `vX.Y.Z.md` release notes, updated `CHANGELOG.md` row, and audited documentation metadata |
 | **Release Smoke & Qualification Runner** (`rel-smoke-qual`) | `flash_lite` (Lite ONLY) | `surface-release-ci`, `surface-tests` | `bin/`, `.ztd/operators/release-smoke-*`, `test-results/` | Built candidate binary, passing `./ztd test release-smoke`, passing eval loop, and passing conformance loop |
-| **Compliance Evidence Generator** (`rel-compliance-gen`) | `flash_lite` (Lite ONLY) | `surface-release-ci` | `release-evidence/<version>/report-bundle/`, `docs/release_notes/vX.Y.x/*-compliance-evidence.*` | Sealed compliance bundle, projected `vX.Y.Z-compliance-evidence.md` and `.csv` |
 | **Release Rehearsal & Verification Auditor** (`rel-rehearsal-audit`) | `flash_lite` (Lite ONLY) | `surface-release-ci` | `scripts/release-*.sh`, `.github/workflows/`, repo-wide lint and unit test runners | Passing `make test-release-scripts`, `./ztd test lint`, `./ztd test unit`, and verified rehearsal runbook |
 
 ## Procedures
@@ -173,7 +162,7 @@ To achieve rapid, error-free, and reproducible release preparation, the release 
 
 1. **Lead Release Orchestrator (Parent Agent)**: Ingests the release target (e.g. `v1.4.2`), performs diff analysis, enforces phase barriers, dispatches predetermined tasks to specialized Lite Subagents, validates deliverables at each phase barrier, and compiles the final handoff for the human Release Owner.
 2. **Lite Subagents (`flash_lite` ONLY)**: Each subagent is invoked with `Model: flash_lite`, a dedicated role title, strict path boundaries from [Assignable code surfaces and agent boundaries](codemap.md#assignable-code-surfaces-and-agent-boundaries), and an immutable instruction list. Lite models are mandatory because their focused execution avoids context window saturation, eliminates conversational drift, and prevents unauthorized edits outside their assigned boundary (`INV-REL-ORCH-02`).
-3. **Phase Barrier Synchronization**: The release sequence is organized into 7 distinct phases. Subagents in parallel phases operate on strictly disjoint surfaces. No phase may begin until all prerequisite phase validation criteria pass (`INV-REL-ORCH-03`).
+3. **Phase Barrier Synchronization**: The release sequence is organized into 6 distinct phases. Subagents in parallel phases operate on strictly disjoint surfaces. No phase may begin until all prerequisite phase validation criteria pass (`INV-REL-ORCH-03`).
 
 ```mermaid
 flowchart TD
@@ -188,11 +177,9 @@ flowchart TD
   P3B --> B3
   B3 --> P4["Phase 4: Candidate Build & Qualification<br/>(Role: rel-smoke-qual)"]
   P4 --> B4{"Barrier 4: Smoke & Conformance PASS"}
-  B4 --> P5["Phase 5: Compliance Evidence<br/>(Role: rel-compliance-gen)"]
-  P5 --> B5{"Barrier 5: Sealed Bundle & Projections"}
-  B5 --> P6["Phase 6: Rehearsal Audit & Verification<br/>(Role: rel-rehearsal-audit)"]
-  P6 --> B6{"Barrier 6: All Suites PASS"}
-  B6 --> P7["Phase 7: Human Release Owner Handoff<br/>(Lead Orchestrator)"]
+  B4 --> P5["Phase 5: Rehearsal Audit & Verification<br/>(Role: rel-rehearsal-audit)"]
+  P5 --> B5{"Barrier 5: All Suites PASS"}
+  B5 --> P6["Phase 6: Human Release Owner Handoff<br/>(Lead Orchestrator)"]
 ```
 
 ### Predetermined Lite Agent Role Specifications
@@ -277,7 +264,7 @@ Every Lite Subagent MUST be launched using `invoke_subagent` with `Model: flash_
 - **Strict Boundary**: MUST NOT modify production code, manifests, or test scripts.
 - **Predetermined Task Instructions**:
   1. Determine minor series directory `docs/release_notes/vX.Y.x/`. If release starts a new minor series, create directory and table header in `CHANGELOG.md` (`INV-REL-VER-04`).
-  2. Create `docs/release_notes/vX.Y.x/vX.Y.Z.md` with required header `## [X.Y.Z] - YYYY-MM-DD - <Title>` (`INV-REL-VER-09`) and standard sections: Overview, Added, Changed, Removed, Fixed, Qualification evidence, Compatibility (`INV-REL-VER-10`), Tests, Documentation, Compliance Evidence, Deferred.
+  2. Create `docs/release_notes/vX.Y.x/vX.Y.Z.md` with required header `## [X.Y.Z] - YYYY-MM-DD - <Title>` (`INV-REL-VER-09`) and standard sections: Overview, Added, Changed, Removed, Fixed, Qualification evidence, Compatibility (`INV-REL-VER-10`), Tests, Documentation, Deferred.
   3. Add release row under `## vX.Y.x` in `CHANGELOG.md` linking to `vX.Y.Z.md`.
   4. Walk documentation catalog in `docs/devs/docs.md` for documents affected by the change inventory. For audited documents, update `last_updated: YYYY-MM-DD` and `version: vX.Y.Z` (`INV-DOC-FMT-02`).
   5. Audit `AGENTS.md` and `CLAUDE.md` to ensure all build, test, and CLI commands match current code.
@@ -310,42 +297,14 @@ Every Lite Subagent MUST be launched using `invoke_subagent` with `Model: flash_
   - Content summary of `evidence/smoke-summary.json`.
   - Exit status of `eval-loop` and `conformance-loop`.
 
----
-
-#### Role 6: Compliance Evidence Generator (`rel-compliance-gen`)
-
-- **Identity**: `Compliance Evidence Generator`
-- **Model**: `flash_lite`
-- **Surface**: `surface-release-ci`
-- **Assigned Paths**: `release-evidence/<version>/report-bundle/`, `docs/release_notes/vX.Y.x/*-compliance-evidence.*`
-- **Purpose**: Generate, seal, verify, and project the signed public compliance evidence bundle.
-- **Prerequisite**: Phase 4 complete (candidate binary built and passing smoke).
-- **Strict Boundary**: MUST NOT modify application logic.
-- **Predetermined Task Instructions**:
-  1. Execute compliance preparation using candidate binary:
-     ```bash
-     ./ztd compliance release-prepare --repo-root .
-     ```
-  2. Verify that the sealed public bundle was exported under `release-evidence/<version>/report-bundle/`.
-  3. Verify that canonical evidence projections were created under `docs/release_notes/vX.Y.x/`:
-     - `vX.Y.Z-compliance-evidence.md`
-     - `vX.Y.Z-compliance-evidence.csv`
-  4. Verify that projections match canonical bundle contents (`INV-REL-COMP-03`).
-- **Deliverable Contract**:
-  - Bundle hash and verification status.
-  - Paths of generated projection files.
-  - Compliance summary metrics for inclusion in release notes.
-
----
-
-#### Role 7: Release Rehearsal & Verification Auditor (`rel-rehearsal-audit`)
+#### Role 6: Release Rehearsal & Verification Auditor (`rel-rehearsal-audit`)
 
 - **Identity**: `Release Rehearsal & Verification Auditor`
 - **Model**: `flash_lite`
 - **Surface**: `surface-release-ci`
 - **Assigned Paths**: `scripts/release-*.sh`, `.github/workflows/`, test suites
 - **Purpose**: Execute repository verification suite, test release automation scripts, and audit CI/CD workflow configurations.
-- **Prerequisite**: Phase 5 complete.
+- **Prerequisite**: Phase 4 complete (candidate build and qualification gates).
 - **Strict Boundary**: Read-only validation; MUST NOT push or trigger live publication.
 - **Predetermined Task Instructions**:
   1. Run release script regression suite: `make test-release-scripts`.
@@ -363,7 +322,7 @@ Every Lite Subagent MUST be launched using `invoke_subagent` with `Model: flash_
 
 ### Phased Multi-Agent Orchestration Sequence (e.g. Bumping to v1.4.2)
 
-When an AI Orchestrator receives a release directive (such as "Bump version to v1.4.2 and prepare release"), it executes this predetermined 7-phase sequence:
+When an AI Orchestrator receives a release directive (such as "Bump version to v1.4.2 and prepare release"), it executes this predetermined 6-phase sequence:
 
 #### Phase 1: Scoping & Change Inventory (Lead Orchestrator)
 
@@ -402,24 +361,15 @@ Dispatch sequentially:
 
 *Barrier Check 4*: Candidate binary built. Smoke summary is `PASS`. Conformance and eval loops pass.
 
-#### Phase 5: Compliance Evidence Generation & Sealing (Sequential Lite Dispatch)
+#### Phase 5: Release Rehearsal & Verification Audit (Sequential Lite Dispatch)
 
 Dispatch sequentially:
-- **Subagent 6**: `invoke_subagent` with `Role: "Compliance Evidence Generator"`, `Model: flash_lite`.
-  - Instruct to run `./ztd compliance release-prepare --repo-root .`.
-  - Verify that `docs/release_notes/v1.4.x/v1.4.2-compliance-evidence.md` and `.csv` are created and match canonical bundle.
-
-*Barrier Check 5*: Compliance bundle sealed and projections verified.
-
-#### Phase 6: Release Rehearsal & Verification Audit (Sequential Lite Dispatch)
-
-Dispatch sequentially:
-- **Subagent 7**: `invoke_subagent` with `Role: "Release Rehearsal & Verification Auditor"`, `Model: flash_lite`.
+- **Subagent 6**: `invoke_subagent` with `Role: "Release Rehearsal & Verification Auditor"`, `Model: flash_lite`.
   - Instruct to run `make test-release-scripts`, `./ztd test lint`, and `./ztd test unit`.
 
-*Barrier Check 6*: All test suites pass. Rehearsal scripts verified.
+*Barrier Check 5*: All test suites pass. Rehearsal scripts verified.
 
-#### Phase 7: Human Release Owner Handoff (Lead Orchestrator)
+#### Phase 6: Human Release Owner Handoff (Lead Orchestrator)
 
 1. The Lead Orchestrator inspects the working tree to verify that only expected release files are modified.
 2. The Lead Orchestrator MUST NOT run git commands (`INV-REL-DUTY-01`).
@@ -485,8 +435,6 @@ The publish job in `.github/workflows/release-binary.yml` publishes the 23-file 
 - Running `make release` from a feature branch or with unmerged changes (`INV-REL-DUTY-02`).
 - Pushing a release tag by hand instead of `make release`, or tagging before `make release-rehearse` passes on that commit.
 - Updating document metadata without auditing entire document against code (`INV-DOC-FMT-02` in [Documentation Guide](docs.md)).
-- Recording a source revision for a Gateway built from a different commit (`INV-REL-COMP-01`).
-- Hand-editing compliance projections instead of generating through `ztd compliance release-evidence` (`INV-REL-COMP-01`, `INV-REL-COMP-03`).
 - Leaving README, contributor installation examples, or the website homepage hero chip in `website/src/index.html` pinned to a release other than `VERSION`, or agent instructions pointing to removed commands (`INV-REL-VER-08`).
 - Bumping `VERSION` without rebuilding Explorer embed, leaving the "(current)" release label stale (`INV-REL-VER-06`).
 - Release notes headed with a bare version number or `Unreleased` instead of a release date and title (`INV-REL-VER-09`).
@@ -494,7 +442,6 @@ The publish job in `.github/workflows/release-binary.yml` publishes the 23-file 
 - Treating `make ci` as release smoke acceptance, or failing to retain maintained runner evidence roots (`INV-REL-SMOKE-01`, `INV-REL-SMOKE-06`).
 - Treating scenario exit status alone as smoke acceptance without verifying signed receipts, governed read-back, and populated data Operator stores (`INV-REL-SMOKE-02`, `INV-REL-SMOKE-04`).
 - Generating release smoke reports from Gateway `.ztd` trees when mutations executed in dedicated data Operator runtimes (`INV-REL-SMOKE-03`).
-- Substituting smoke CSVs for signed and offline-verified public compliance bundles (`INV-REL-SMOKE-05`, `INV-REL-COMP-01`).
 - Adding `CLOUDFLARE_*` secrets to the `release` or `production` environment; they shadow the repository secrets that rehearsals verify.
 - Writing `latest.json` before GitHub release publication, or without verifying versioned prefix completeness.
 - Overwriting or deleting published `v<version>/` prefixes to change served versions. Roll back by rewriting `latest.json`.

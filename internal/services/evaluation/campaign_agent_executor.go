@@ -132,7 +132,7 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	// Residency commands are governed actions with their own receipts, so the
 	// provider is set for this assignment before the ledger sentinel opens.
 	if err := e.releaseAllExcept(ctx, req, "assignment", run.modelTags()); err != nil {
-		return nil, err
+		return nil, assignmentExecutionError("evaluation: assignment residency", err)
 	}
 	assignment := req.Assignment
 	sentinelPath := run.workspace.SentinelPath()
@@ -240,11 +240,12 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 }
 
 // releaseAllExcept releases every provider model outside retain before the
-// named phase of an assignment dispatches. A failed release is a harness
-// failure, never graded against the model.
+// named phase dispatches. The caller classifies a failed release: inside an
+// assignment it is a harness failure, never graded against the model; before
+// the tool-calling probe it stops the run.
 func (e *CampaignAgentExecutor) releaseAllExcept(ctx context.Context, req AssignmentExecutionRequest, phase string, retain []string) error {
 	if _, err := e.residency.ReleaseAllExcept(ctx, ModelResidencyRelease{RunID: req.Assignment.GetRunId(), Retain: retain}); err != nil {
-		return assignmentExecutionError("evaluation: release provider models before "+phase, err)
+		return fmt.Errorf("evaluation: release provider models before %s: %w", phase, err)
 	}
 	return nil
 }
@@ -256,7 +257,7 @@ func (e *CampaignAgentExecutor) releaseAllExceptJudge(ctx context.Context, req A
 	if err != nil {
 		return err
 	}
-	return e.releaseAllExcept(ctx, req, "judge", []string{variant.GetServedModelTag()})
+	return assignmentExecutionError("evaluation: judge residency", e.releaseAllExcept(ctx, req, "judge", []string{variant.GetServedModelTag()}))
 }
 
 // qualityJudgeRequired reports whether scoreWithJudge dispatches the judge for

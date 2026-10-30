@@ -873,8 +873,8 @@ test-fips:
 # Keep EVAL_STACK_TEST_TIMEOUT in sync with evalStackTestTimeout in
 # internal/cli/cmd/test/test.go.
 EVAL_STACK_TEST_TIMEOUT := 30m
-EVAL_STACK_PKGS := ./internal/cli/cmd/eval ./internal/cli/cmd/compliance \
-	./internal/cli/cmd/gwremote ./internal/services/compliance/report \
+EVAL_STACK_PKGS := ./internal/cli/cmd/eval \
+	./internal/cli/cmd/gwremote \
 	./internal/services/evaluation ./internal/services/gateway ./test/fixtures
 .PHONY: test-eval-stack
 test-eval-stack:

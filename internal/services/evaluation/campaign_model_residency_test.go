@@ -172,6 +172,8 @@ func TestCampaignAgentExecutor_ToolCallingProbeReleasesOtherModelsFirst(t *testi
 	_, err = executor.ProbeToolCalling(t.Context(), req)
 
 	require.ErrorIs(t, err, constants.ErrInferenceModelReleaseFailed)
+	require.ErrorIs(t, err, constants.ErrEvaluationToolCallingProbeFailed)
+	assert.NotErrorIs(t, err, constants.ErrEvaluationAssignmentExecutionFailed, "a failed probe release stops the run; it is never recoverable")
 	require.Len(t, residency.releases, 1)
 	assert.Equal(t, formationTags(req), residency.releases[0].Retain)
 	assert.Zero(t, inference.dispatched, "the probe never dispatches while other models hold the provider")

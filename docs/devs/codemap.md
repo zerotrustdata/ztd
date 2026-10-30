@@ -3,8 +3,8 @@ doc_id: codemap
 title: ztd Code Map
 audience: maintainers and coding agents
 status: current
-version: v1.5.0
-last_updated: 2026-10-29
+version: v1.6.0
+last_updated: 2026-10-30
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
@@ -157,7 +157,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | `demos/` | End-to-end multi-agent scenario demonstrations (e.g. `demos/zero-trust-paper-company/`). |
 | `deploy/` | Reference infrastructure deployment configurations (e.g. `deploy/cloud_gateway/`). |
 | `claude-plugin/` | Claude Code plugin: marketplace hooks, scripts, skills, and validation tests. |
-| `release-evidence/` | Git-ignored local output of `ztd compliance release-prepare` (`release-evidence/<version>/report-bundle/`). Not committed; procedure: [Release Process](release_process.md). |
+| `release-evidence/` | Git-ignored local output of the optional `ztd compliance release-prepare` workflow (`release-evidence/<version>/report-bundle/`). Not committed; run only when explicitly requested. |
 | `docs/` | Architecture, guides, references, developer docs, and release notes. |
 | `scripts/` | Validation, generation, release, onboarding, and build support scripts. Host lifecycle entry points are root Makefile targets (`quickstart`, `up`, `up-public`, `gw`, `gw-public`, `operator`, `status`, `down`). `scripts/configure-gateway-lan.ps1` is the Windows-to-WSL Gateway LAN helper. `scripts/ci/` holds onboarding smoke and operator deploy lifecycle workflows. Catalog: [Automation Scripts](../architecture/scripts.md). |
 | `website/` | Static site generator and Cloudflare Worker packaging. Source overview is root `README.md`. |
@@ -176,7 +176,7 @@ To enable deterministic multi-agent delegation, parallel execution without merge
 | **Frontends, Adapters & Web Distribution** (`surface-frontend`) | `console/`, `evaluation-explorer/`, `ztd-adapter/`, `website/`, `internal/services/gateway/console/static/`, `internal/services/gateway/explorer/static/` | Frontend Embed & Web Asset Builder | Browser SPAs (React + TypeScript + Vite), observe-frontend contract pack, Cloudflare Worker + Astro website, and Gateway-embedded production asset builds. Hand edits in frontend source trees; static embed trees refreshed exclusively via build targets (`INV-REL-VER-06`, `INV-REL-VER-07`, `INV-DOC-GEN-04`, `INV-DOC-GEN-06`). | `make console-lint console-test console-embed-check && make explorer-lint explorer-test explorer-embed && make website-test website-build` |
 | **Evaluation, Conformance & Benchmarks** (`surface-eval`) | `eval/`, `internal/services/evaluation/`, `internal/cli/cmd/eval/`, `examples/eval/` | Evaluation & Benchmark Engineer / Eval Qualification Agent | Evaluation campaign schemas, test scenarios, benchmark datasets, model tournament logic, cross-process eval loop qualification, and governance conformance runner (`INV-REL-VER-05`). | `./ztd test eval-loop`, `./ztd test conformance-loop` |
 | **Integrations, Plugins & Examples** (`surface-examples`) | `examples/` (`examples/external-console/`, `examples/governance-envelope/`, `examples/mcp-client-configs/`, `examples/workload-identity/`), `demos/`, `claude-plugin/` | Integrations & Plugins Agent | Standalone runnable reference code, Claude Code integration hooks and skills, external client configurations, and sample application demonstrations. | `make claude-plugin-test`, targeted example execution |
-| **Release Orchestration, CI/CD & Compliance Evidence** (`surface-release-ci`) | `VERSION`, `Makefile`, `.github/workflows/`, `scripts/`, `internal/tools/versionsync/`, `internal/tools/ztdbinaries/`, `internal/tools/treehash/`, `release-evidence/` | Lead Release Orchestrator / Version Synchronizer / Compliance Evidence Generator / Smoke Runner | Platform version synchronization, GitHub Actions workflow definitions, release verification and preflight scripts, smoke test harness orchestration, and signed compliance bundle generation (`INV-REL-DUTY`, `INV-REL-VER`, `INV-REL-COMP`, `INV-REL-SMOKE`). | `make version-sync-check && make test-release-scripts && ./ztd test release-smoke && ./ztd compliance release-prepare` |
+| **Release Orchestration & CI/CD** (`surface-release-ci`) | `VERSION`, `Makefile`, `.github/workflows/`, `scripts/`, `internal/tools/versionsync/`, `internal/tools/ztdbinaries/`, `internal/tools/treehash/`, `release-evidence/` | Lead Release Orchestrator / Version Synchronizer / Smoke Runner | Platform version synchronization, GitHub Actions workflow definitions, release verification and preflight scripts, and smoke test harness orchestration (`INV-REL-DUTY`, `INV-REL-VER`, `INV-REL-SMOKE`). Signed compliance bundles remain available through the standalone compliance CLI when explicitly requested. | `make version-sync-check && make test-release-scripts && ./ztd test release-smoke` |
 | **Test Suites & Fixtures** (`surface-tests`) | `test/` (`test/e2e/`, `test/fixtures/`, `test/capacity/`), `internal/tools/chaos/` | Quality & Test Engineer | Cross-package Tier 2 integration suites, Tier 3 e2e suites, test fixtures, fault injection, and chaos harnesses. | `./ztd test integration`, `./ztd test e2e`, `./ztd test chaos` |
 
 ### Process entry
@@ -414,7 +414,7 @@ Schemas reside in `protocol/proto/ztd/`. Wire requirements: [Protocol Specificat
 | Runtime path constants | `internal/constants/paths.go` | |
 | External path reference | `protocol/constants/compliance_paths.json` | |
 
-Evidence scope and signed artifacts are owned by [Release Process](release_process.md). Control-alignment prose is [Compliance Alignment](../reference/compliance-alignment.md).
+Evidence scope and signed artifacts are owned by [Release Process](release_process.md); report generation is an opt-in standalone workflow. Control-alignment prose is [Compliance Alignment](../reference/compliance-alignment.md).
 
 ### Other product components
 
