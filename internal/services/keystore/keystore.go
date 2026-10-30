@@ -273,7 +273,11 @@ func (k *Keystore) InstallRecoveryKey(key []byte) (stored bool, err error) {
 		}
 		return false, constants.ErrKeyStoreRecoveryConflict
 	}
-	if !errors.Is(err, constants.ErrKeyStoreKeyNotFound) {
+	// An ssh-agent seal whose sealing key is no longer loaded still holds a
+	// master key nobody can read. That is the case a saved recovery key exists
+	// for: treat it as an empty store, and let verifySealedSecrets prove the
+	// key before the seal is rewritten under the key the agent holds now.
+	if !errors.Is(err, constants.ErrKeyStoreKeyNotFound) && !errors.Is(err, constants.ErrKeyStoreSSHAgentKeyMissing) {
 		return false, fmt.Errorf("%w: %w", constants.ErrKeyStoreRetrieveFailed, err)
 	}
 	if err := k.verifySealedSecrets(key); err != nil {

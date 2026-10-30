@@ -146,7 +146,7 @@ make build
 ./ztd operator run --all-active --cmd 'echo hello from ztd'
 ```
 
-`make up` builds and starts the Gateway alone. `make gw` starts it with every embedded Operator capability. Both listen on loopback (`127.0.0.1`) only, so just this host can reach them. Use `make up-public` or `make gw-public` when Operators on other hosts must enroll; see [Local or LAN-reachable Gateway](#local-or-lan-reachable-gateway).
+`make up` builds and starts the Gateway alone. `make gw` starts it with the embedded Operator (`GW_CAPABILITIES`, default `data`). Both listen on loopback (`127.0.0.1`) only, so just this host can reach them. Use `make up-public` or `make gw-public` when Operators on other hosts must enroll; see [Local or LAN-reachable Gateway](#local-or-lan-reachable-gateway).
 
 ### Gateway and Operators track
 
@@ -313,21 +313,21 @@ A successful run prints `Verified OK`. Do not run a binary when either check fai
 make up
 ```
 
-**Start the Gateway with its embedded Operator carrying every capability:**
+**Start the Gateway with its embedded Operator:**
 
 ```bash
 make gw
 ```
 
-`make gw` starts the Gateway in a single process and passes `GW_CAPABILITIES` (default `data,inference,observer`) to `--capabilities` on its embedded Operator. The embedded Operator defaults to Data only when no capabilities are specified; the `make gw` default explicitly enables Data, Inference, and Observer. Setting `MODEL_STORAGE_ROOT` to the local model store adds the Provenance capability and passes the path as `--model-storage-root`:
+`make gw` starts the Gateway in a single process and passes `GW_CAPABILITIES` (default `data`) to `--capabilities` on its embedded Operator. Add capabilities for one run with `GW_CAPABILITIES`, for example `data,inference,observer`. Setting `MODEL_STORAGE_ROOT` to the local model store adds the Provenance capability and passes the path as `--model-storage-root`:
 
 ```bash
-make gw MODEL_STORAGE_ROOT=/srv/ollama/models
+make gw GW_CAPABILITIES=data,inference,observer MODEL_STORAGE_ROOT=/srv/ollama/models
 ```
 
 The Inference capability uses `ZTD_OLLAMA_ENDPOINT` from `.env` (see [Configure `.env`](#configure-env)); `GW_ARGS='--inference-ollama-endpoint http://<ollama-host>:11434'` overrides it for one run.
 
-Capabilities are fixed when the Gateway starts. Run `make down` before `make gw` to change them; `gw start` against a running Gateway with different flags lists the differences and exits nonzero. `make gw` ends with the `gw status` output:
+Capabilities are fixed when the Gateway starts. Run `make down` before `make gw` to change them; `gw start` against a running Gateway with different flags lists the differences and exits nonzero. `make gw` ends with the `gw status` output. This sample is that command with inference, observer, and a model store, not the `data` default:
 
 ```text
 Gateway  online (PID 29424)

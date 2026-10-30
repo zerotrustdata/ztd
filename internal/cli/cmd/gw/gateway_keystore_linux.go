@@ -81,6 +81,10 @@ func recoverGatewayKeystore(cmd *cobra.Command, recovery gatewayKeystoreRecovery
 		return fmt.Errorf("gateway: check master key: %w", unlockErr)
 	}
 	cmd.PrintErrf("[ztd] The vault requires SSH key %s.\n", required.Fingerprint)
+	if errors.Is(unlockErr, constants.ErrKeyStoreSSHAgentKeyMissing) {
+		cmd.PrintErrln("[ztd] If that key is gone, install the recovery key saved at first start:")
+		cmd.PrintErrln("  " + getBinaryName() + " gw recover")
+	}
 	keyPath, err := recovery.findKey(required.Fingerprint)
 	if err != nil {
 		return fmt.Errorf("gateway: recover master key: %w; %w", unlockErr, err)

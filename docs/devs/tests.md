@@ -3,7 +3,7 @@ doc_id: tests
 title: Testing Guide
 audience: maintainers and coding agents
 status: current
-version: v1.5.0
+version: v1.6.0
 last_updated: 2026-10-28
 owners:
   - internal/cli/cmd/test/

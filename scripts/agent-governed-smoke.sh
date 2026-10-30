@@ -95,6 +95,32 @@ case "$uname_m" in
     *) die "unsupported architecture: $uname_m" ;;
 esac
 
+require_cmd() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        die "$2"
+    fi
+}
+
+require_cmd ssh-add "ssh-add is required (OpenSSH). Install openssh-client, then rerun make test-agent-smoke."
+if ! ssh-add -l >/dev/null 2>&1; then
+    require_cmd ssh-keygen "ssh-keygen is required to create this smoke's throwaway agent key. Install openssh-client, or start an ssh-agent that already holds a key (ssh-add -l)."
+    require_cmd ssh-agent "ssh-agent is required. Install openssh-client, or export SSH_AUTH_SOCK for an agent that already holds a key."
+fi
+if [ "$BACKEND" = "ollama" ] && ! command -v ollama >/dev/null 2>&1; then
+    require_cmd curl "ollama is not on PATH and curl is required to install it. Install ollama or curl, then rerun make test-agent-smoke."
+    if ! curl -fsS -o /dev/null "http://127.0.0.1:11434/api/tags" 2>/dev/null; then
+        case "$uname_s" in
+            Linux)
+                require_cmd zstd "ollama is not installed and zstd is required to unpack it. Install zstd, or install ollama and start it on 127.0.0.1:11434."
+                ;;
+            Darwin)
+                require_cmd unzip "ollama is not installed and unzip is required to unpack it. Install unzip, or install ollama and start it on 127.0.0.1:11434."
+                ;;
+        esac
+        log "ollama is not on PATH and nothing is listening on 127.0.0.1:11434; the smoke will install a copy under the smoke root"
+    fi
+fi
+
 cleanup() {
     status=$?
     if [ -n "$sampler_pid" ]; then
@@ -256,13 +282,58 @@ esac
 
 peak_file="$SMOKE_ROOT/evidence/peak-rss-kb"
 echo 0 >"$peak_file"
+smoke_pid=$$
+# Count only this smoke's processes: the script tree, the throwaway agent it
+# started, and the Gateway pid file under the smoke root. A host-wide match on
+# /ztd or ollama would include unrelated runtimes.
 (
     while true; do
-        rss="$(ps -axo rss=,command= | awk '
-            /awk/ { next }
-            /ollama/ || /llama-server/ || /(^|\/)goose( |$)/ || /\/ztd( |$)/ { s += $1 }
-            END { print s + 0 }
+        gwpid=""
+        if [ -f "$SMOKE_ROOT/.ztd/pids/operator.pid" ]; then
+            gwpid="$(tr -d '[:space:]' <"$SMOKE_ROOT/.ztd/pids/operator.pid" 2>/dev/null || true)"
+        fi
+        agent_pid=""
+        if [ "${started_agent:-0}" -eq 1 ]; then
+            agent_pid="${SSH_AGENT_PID:-}"
+        fi
+        rss="$(ps -axo pid=,ppid=,rss=,command= | awk \
+            -v root="$SMOKE_ROOT" -v self="$smoke_pid" -v gw="$gwpid" \
+            -v ollama="${ollama_pid:-}" -v llama="${llama_pid:-}" -v agent="$agent_pid" '
+            {
+                pid = $1 + 0
+                ppid = $2 + 0
+                rss = $3 + 0
+                cmd = ""
+                for (i = 4; i <= NF; i++) cmd = cmd (i == 4 ? "" : " ") $i
+                n = n + 1
+                p_pid[n] = pid
+                p_ppid[n] = ppid
+                p_rss[n] = rss
+                p_cmd[n] = cmd
+            }
+            END {
+                if (self > 0) seed[self] = 1
+                if (gw > 0) seed[gw] = 1
+                if (ollama > 0) seed[ollama] = 1
+                if (llama > 0) seed[llama] = 1
+                if (agent > 0) seed[agent] = 1
+                changed = 1
+                while (changed) {
+                    changed = 0
+                    for (i = 1; i <= n; i++) {
+                        if (seed[p_pid[i]]) continue
+                        if (seed[p_ppid[i]] || (root != "" && index(p_cmd[i], root) > 0)) {
+                            seed[p_pid[i]] = 1
+                            changed = 1
+                        }
+                    }
+                }
+                s = 0
+                for (i = 1; i <= n; i++) if (seed[p_pid[i]]) s += p_rss[i]
+                print s + 0
+            }
         ')"
+        rss="${rss:-0}"
         cur="$(cat "$peak_file")"
         if [ "$rss" -gt "$cur" ]; then
             echo "$rss" >"$peak_file"
@@ -271,6 +342,13 @@ echo 0 >"$peak_file"
     done
 ) &
 sampler_pid=$!
+
+# A fresh runtime on a Linux ssh-agent seal runs the recovery-key ceremony, which
+# needs a terminal; `ztd mcp agent run` has none here and would refuse every
+# attempt. This root is throwaway, so create its master key unrecoverable.
+log "starting the smoke Gateway (throwaway root, --accept-unrecoverable)"
+(cd "$SMOKE_ROOT" && "$ZTD" gw start --accept-unrecoverable >"$SMOKE_ROOT/logs/gw-start.txt" 2>&1) \
+    || die "gateway start failed (see $SMOKE_ROOT/logs/gw-start.txt)"
 
 log "running governed goose task (up to ${ATTEMPTS} attempts, timeout ${AGENT_TIMEOUT}s each)"
 agent_start="$(date +%s)"

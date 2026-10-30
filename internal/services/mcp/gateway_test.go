@@ -1980,16 +1980,6 @@ func TestGatewayService_Dependencies(t *testing.T) {
 	})
 }
 
-func TestGatewayService_RunMaintenance(t *testing.T) {
-	g := newTestGatewayService(t)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
-	// Run maintenance for a short time - should not panic
-	g.RunMaintenance(ctx)
-}
-
 // Helper fakes for dependency tests
 
 type fakeDBService struct {

@@ -66,7 +66,7 @@ func (e *CampaignAgentExecutor) ProbeToolCalling(ctx context.Context, req Assign
 	dispatch.ScenarioId = toolCallingProbeScenario
 	response, err := e.inference.DispatchInference(ctx, dispatch)
 	if err != nil {
-		return nil, assignmentExecutionError("tool-calling eligibility probe dispatch", err)
+		return nil, toolCallingProbeError("dispatch", err)
 	}
 	evidence := &evalv1.ModelToolCallingProbeEvidence{
 		VariantId: run.variant.GetVariantId(), Request: dispatch, Response: response,
@@ -75,9 +75,19 @@ func (e *CampaignAgentExecutor) ProbeToolCalling(ctx context.Context, req Assign
 		InferenceSessionId:  req.Binding.Topology.Inference.OperatorSessionID,
 	}
 	if err := verifyToolCallingProbeEvidence(req.Assignment.GetRunId(), req.Binding.ModelRegistryDigest, run.variant, evidence); err != nil {
-		return nil, assignmentExecutionError("tool-calling eligibility probe evidence", err)
+		return nil, toolCallingProbeError("evidence", err)
 	}
 	return evidence, nil
+}
+
+// toolCallingProbeError marks a probe dispatch or evidence failure. It must
+// not use ErrEvaluationAssignmentExecutionFailed: that sentinel is recoverable
+// and would let the run continue without a verified probe.
+func toolCallingProbeError(scope string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w: %s: %w", constants.ErrEvaluationToolCallingProbeFailed, scope, err)
 }
 
 func assignmentToolCallingVariant(req AssignmentExecutionRequest) (*evalv1.ModelVariant, error) {
