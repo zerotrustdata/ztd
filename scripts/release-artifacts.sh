@@ -70,6 +70,15 @@ cmd_list_binaries() {
 	expected_binaries
 }
 
+expected_files() {
+	local names name
+	names=$(expected_binaries)
+	for name in $names; do
+		printf '%s\n' "$name" "$name.sha256" "$name.sigstore.json"
+	done
+	printf '%s\n' checksums-sha256.txt ztd-binaries.json
+}
+
 cmd_checksums() {
 	local dir=$1 names
 	need sha256sum
@@ -160,15 +169,40 @@ identity() {
 	echo "https://github.com/${GITHUB_WORKFLOW_REF}"
 }
 
+sign_binary() (
+	local binary=$1 id=$2 scratch bundle attempt
+	scratch=$(ztd_scratch_dir "$ROOT" ztd-release-sign) || die "cannot create signing scratch directory"
+	trap 'rm -rf "$scratch"' EXIT
+	bundle="$scratch/bundle.sigstore.json"
+	# A new process generates a new ephemeral key and certificate. Retrying only
+	# the failed Rekor request can produce HTTP 409 after a lost successful reply.
+	# Never publish an old or partial bundle left by an unsuccessful attempt.
+	rm -f "$binary.sigstore.json"
+	for attempt in 1 2 3; do
+		rm -f "$bundle"
+		if cosign sign-blob --yes --timeout 2m "$binary" --bundle "$bundle"; then
+			[ -s "$bundle" ] || die "signing produced no signature bundle: $binary"
+			cosign verify-blob --bundle "$bundle" \
+				--certificate-identity "$id" \
+				--certificate-oidc-issuer "$OIDC_ISSUER" \
+				"$binary" >/dev/null || die "signature verification failed: $binary"
+			mv "$bundle" "$binary.sigstore.json"
+			return
+		fi
+		echo "release-artifacts: signing $binary failed (attempt $attempt/3)" >&2
+		[ "$attempt" -eq 3 ] || sleep "$((attempt * 5))"
+	done
+	die "signing failed after 3 attempts: $binary"
+)
+
 cmd_sign() {
-	local dir=$1 names name
+	local dir=$1 names name id
 	need cosign
+	id=$(identity)
 	names=$(expected_binaries)
 	for name in $names; do
 		[ -s "$dir/$name" ] || die "missing binary: $name"
-		# Keyless signing: the Fulcio certificate is embedded in the bundle.
-		cosign sign-blob --yes "$dir/$name" \
-			--bundle "$dir/$name.sigstore.json"
+		sign_binary "$dir/$name" "$id"
 	done
 	cmd_verify_signatures "$dir"
 }
@@ -189,15 +223,29 @@ cmd_verify_signatures() {
 	echo "verified signature bundles for all binaries (identity: $id)"
 }
 
+cmd_verify_set() {
+	local dir=$1 expected actual file
+	expected=$(expected_files | sort)
+	actual=$(
+		shopt -s dotglob
+		for file in "$dir"/*; do
+			[ -f "$file" ] && [ ! -L "$file" ] || die "non-regular file in release set: $file"
+			printf '%s\n' "${file##*/}"
+		done | sort
+	)
+	[ "$actual" = "$expected" ] || die "release set does not contain exactly the catalog artifacts: $dir"
+	cmd_verify "$@"
+	cmd_verify_signatures "$dir"
+}
+
 cmd_stage() {
-	local dir=$1 out=$2 names name
-	names=$(expected_binaries)
+	local dir=$1 out=$2 files name
+	files=$(expected_files)
 	rm -rf "$out"
 	mkdir -p "$out"
-	for name in $names; do
-		cp "$dir/$name" "$dir/$name.sha256" "$dir/$name.sigstore.json" "$out/"
+	for name in $files; do
+		cp "$dir/$name" "$out/"
 	done
-	cp "$dir/checksums-sha256.txt" "$dir/ztd-binaries.json" "$out/"
 	set -- "$out"/*
 	echo "staged $# files in $out"
 }
@@ -208,6 +256,7 @@ usage: release-artifacts.sh <subcommand> [args]
   list-binaries
   checksums <bin-dir>
   verify <bin-dir> <version> <revision>
+  verify-set <release-dir> <version> <revision>
   sign <bin-dir>
   verify-signatures <bin-dir>
   stage <bin-dir> <out-dir>
@@ -223,6 +272,7 @@ main() {
 		list-binaries) cmd_list_binaries ;;
 		checksums) [ $# -eq 1 ] || usage; cmd_checksums "$1" ;;
 		verify) [ $# -eq 3 ] || usage; cmd_verify "$1" "$2" "$3" ;;
+		verify-set) [ $# -eq 3 ] || usage; cmd_verify_set "$1" "$2" "$3" ;;
 		sign) [ $# -eq 1 ] || usage; cmd_sign "$1" ;;
 		verify-signatures) [ $# -eq 1 ] || usage; cmd_verify_signatures "$1" ;;
 		stage) [ $# -eq 2 ] || usage; cmd_stage "$1" "$2" ;;
