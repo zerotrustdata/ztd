@@ -974,6 +974,24 @@ export interface ModelSuiteRow {
   latency_p50_ms?: number;
 }
 
+/** Roll up verifier states across multiple evaluation runs. */
+function aggregateVerifierState(states: VerifierState[]): VerifierState | undefined {
+  if (states.length === 0) return undefined;
+  if (states.includes('failed')) return 'failed';
+  if (states.every((s) => s === 'passed')) return 'passed';
+  if (states.includes('not_run')) return 'not_run';
+  if (states.every((s) => s === 'not_applicable')) return 'not_applicable';
+  return states[0];
+}
+
+/** Roll up quality states across multiple evaluation runs. */
+function aggregateQualityState(qualities: QualityState[]): QualityState | undefined {
+  if (qualities.length === 0) return undefined;
+  const unique = new Set(qualities);
+  if (unique.size === 1) return qualities[0];
+  return qualities.find((q) => q !== 'exploratory_verified') ?? qualities[0];
+}
+
 /** Per-suite results for one model, derived from its assignment records.
  *  Sorted by suite display name for deterministic ordering. */
 export function modelSuiteRows(
@@ -982,6 +1000,7 @@ export function modelSuiteRows(
   evaluations: EvaluationSummary[],
   suites: SuiteSummary[],
 ): ModelSuiteRow[] {
+  const evalByRun = new Map(evaluations.map((e) => [e.run_id, e]));
   const suiteByRun = new Map(evaluations.map((e) => [e.run_id, e.suite_id]));
   const suiteMeta = new Map(suites.map((s) => [s.suite_id, s]));
   const groups = new Map<string, { runIds: Set<string>; items: AssignmentResult[] }>();
@@ -999,22 +1018,49 @@ export function modelSuiteRows(
   const rows: ModelSuiteRow[] = [];
   for (const [suiteId, group] of groups) {
     const meta = suiteMeta.get(suiteId);
-    const passes = group.items.map(assignmentPass).filter((v): v is number => v !== undefined);
-    const latencies = group.items
-      .map((a) => a.resource_summary?.latency_ms?.value)
-      .filter((v): v is number => v !== undefined);
+    const runEvals = Array.from(group.runIds)
+      .map((id) => evalByRun.get(id))
+      .filter((e): e is EvaluationSummary => Boolean(e));
+    const verifierState = meta?.verifier_state ?? aggregateVerifierState(runEvals.map((e) => e.verifier_state));
+    const qualityState = meta?.quality_state ?? aggregateQualityState(runEvals.map((e) => e.quality_state));
+
+    let passed = 0;
+    let eligible = 0;
+    let modelFailed = 0;
+    let missing = 0;
+    const latencies: number[] = [];
+
+    for (let i = 0; i < group.items.length; i++) {
+      const item = group.items[i]!;
+      const pass = assignmentPass(item);
+      if (pass !== undefined) {
+        eligible++;
+        passed += pass;
+      }
+      const lat = item.resource_summary?.latency_ms?.value;
+      if (lat !== undefined) {
+        latencies.push(lat);
+      }
+      if (item.terminal_status === 'model_failed') {
+        modelFailed++;
+      }
+      if (item.missingness_reason !== undefined && item.missingness_reason !== null) {
+        missing++;
+      }
+    }
+
     rows.push({
       suite_id: suiteId,
       display_name: meta?.display_name ?? (suiteId || 'Unknown suite'),
       run_ids: Array.from(group.runIds).sort(),
-      verifier_state: meta?.verifier_state,
-      quality_state: meta?.quality_state,
+      verifier_state: verifierState,
+      quality_state: qualityState,
       total: group.items.length,
-      eligible: passes.length,
-      passed: passes.reduce((acc, v) => acc + v, 0),
-      pass_rate: passes.length > 0 ? passes.reduce((acc, v) => acc + v, 0) / passes.length : undefined,
-      model_failed: group.items.filter((a) => a.terminal_status === 'model_failed').length,
-      missing: group.items.filter((a) => a.missingness_reason !== undefined && a.missingness_reason !== null).length,
+      eligible,
+      passed,
+      pass_rate: eligible > 0 ? passed / eligible : undefined,
+      model_failed: modelFailed,
+      missing,
       latency_p50_ms: percentile(latencies, 0.5),
     });
   }

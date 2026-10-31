@@ -565,14 +565,38 @@ func memoryUserMessage(facts []string, memory string) string {
 // judgment is the wire shape the judge model must return. The fields are
 // pointers so a missing field is distinct from a zero value.
 type judgment struct {
-	Score     *int    `json:"score"`
-	Rationale *string `json:"rationale"`
+	Score       *int    `json:"score"`
+	Rationale   *string `json:"rationale"`
+	Reason      *string `json:"reason,omitempty"`
+	Explanation *string `json:"explanation,omitempty"`
+}
+
+func (j *judgment) normalizeRationale() {
+	if j.Rationale == nil || *j.Rationale == "" {
+		if j.Reason != nil && *j.Reason != "" {
+			j.Rationale = j.Reason
+		} else if j.Explanation != nil && *j.Explanation != "" {
+			j.Rationale = j.Explanation
+		}
+	}
 }
 
 // criterionVerdict is the wire shape the judge must return for a criterion.
 type criterionVerdict struct {
-	Met       *bool   `json:"met"`
-	Rationale *string `json:"rationale"`
+	Met         *bool   `json:"met"`
+	Rationale   *string `json:"rationale"`
+	Reason      *string `json:"reason,omitempty"`
+	Explanation *string `json:"explanation,omitempty"`
+}
+
+func (cv *criterionVerdict) normalizeRationale() {
+	if cv.Rationale == nil || *cv.Rationale == "" {
+		if cv.Reason != nil && *cv.Reason != "" {
+			cv.Rationale = cv.Reason
+		} else if cv.Explanation != nil && *cv.Explanation != "" {
+			cv.Rationale = cv.Explanation
+		}
+	}
 }
 
 // decodeCriterionVerdict reads the verdict from the result text. Any shape outside
@@ -582,20 +606,35 @@ type criterionVerdict struct {
 // the thinking parts.
 func decodeCriterionVerdict(result *operatorv1.InferenceResult) (bool, string, error) {
 	text := models.InferenceResultText(result)
-	decoded, err := decodeCriterionVerdictText(text)
-	if err == nil {
-		return *decoded.Met, *decoded.Rationale, nil
+	thinking := models.InferenceResultThinking(result)
+
+	if strings.TrimSpace(text) != "" {
+		if decoded, err := decodeCriterionVerdictText(text); err == nil {
+			return *decoded.Met, *decoded.Rationale, nil
+		}
 	}
 	if after, ok := textAfterInlineThinkClose(text); ok {
 		if afterDecoded, afterErr := decodeCriterionVerdictText(after); afterErr == nil {
 			return *afterDecoded.Met, *afterDecoded.Rationale, nil
 		}
 	}
-	if strings.TrimSpace(text) == "" {
-		if thinkDecoded, ok := decodeFromThinking(models.InferenceResultThinking(result), decodeCriterionVerdictText); ok {
+	if strings.TrimSpace(thinking) == "" {
+		if inlineThink, ok := extractInlineThinkContent(text); ok {
+			thinking = inlineThink
+		}
+	}
+	if strings.TrimSpace(text) == "" || (strings.TrimSpace(thinking) != "" && isOnlyInlineThink(text)) {
+		if thinkDecoded, err := decodeCriterionVerdictFromThinking(thinking); err == nil {
 			return *thinkDecoded.Met, *thinkDecoded.Rationale, nil
 		}
 	}
+	if strings.TrimSpace(text) == "" && strings.TrimSpace(thinking) == "" {
+		return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: empty judge response: %w", constants.ErrJudgeResponseInvalid)
+	}
+	if strings.TrimSpace(text) == "" && strings.TrimSpace(thinking) != "" {
+		return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: no valid verdict found in judge thinking: %w", constants.ErrJudgeResponseInvalid)
+	}
+	_, err := decodeCriterionVerdictText(text)
 	return false, "", err
 }
 
@@ -609,8 +648,26 @@ func decodeCriterionVerdictText(text string) (criterionVerdict, error) {
 	if err := dec.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
 		return criterionVerdict{}, fmt.Errorf("evaluation judge: trailing data after criterion verdict: %w", constants.ErrJudgeResponseInvalid)
 	}
+	decoded.normalizeRationale()
 	if decoded.Met == nil || decoded.Rationale == nil {
 		return criterionVerdict{}, fmt.Errorf("evaluation judge: criterion verdict missing met or rationale: %w", constants.ErrJudgeResponseInvalid)
+	}
+	return decoded, nil
+}
+
+func decodeCriterionVerdictCandidate(candidate string) (criterionVerdict, error) {
+	dec := json.NewDecoder(strings.NewReader(candidate))
+	dec.DisallowUnknownFields()
+	var decoded criterionVerdict
+	if err := dec.Decode(&decoded); err != nil {
+		return criterionVerdict{}, err
+	}
+	if err := dec.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
+		return criterionVerdict{}, fmt.Errorf("trailing data: %w", constants.ErrJudgeResponseInvalid)
+	}
+	decoded.normalizeRationale()
+	if decoded.Met == nil {
+		return criterionVerdict{}, fmt.Errorf("missing met: %w", constants.ErrJudgeResponseInvalid)
 	}
 	return decoded, nil
 }
@@ -622,20 +679,35 @@ func decodeCriterionVerdictText(text string) (criterionVerdict, error) {
 // from the thinking parts.
 func decodeJudgment(result *operatorv1.InferenceResult) (int, string, error) {
 	text := models.InferenceResultText(result)
-	decoded, err := decodeJudgmentText(text)
-	if err == nil {
-		return *decoded.Score, *decoded.Rationale, nil
+	thinking := models.InferenceResultThinking(result)
+
+	if strings.TrimSpace(text) != "" {
+		if decoded, err := decodeJudgmentText(text); err == nil {
+			return *decoded.Score, *decoded.Rationale, nil
+		}
 	}
 	if after, ok := textAfterInlineThinkClose(text); ok {
 		if afterDecoded, afterErr := decodeJudgmentText(after); afterErr == nil {
 			return *afterDecoded.Score, *afterDecoded.Rationale, nil
 		}
 	}
-	if strings.TrimSpace(text) == "" {
-		if thinkDecoded, ok := decodeFromThinking(models.InferenceResultThinking(result), decodeJudgmentText); ok {
+	if strings.TrimSpace(thinking) == "" {
+		if inlineThink, ok := extractInlineThinkContent(text); ok {
+			thinking = inlineThink
+		}
+	}
+	if strings.TrimSpace(text) == "" || (strings.TrimSpace(thinking) != "" && isOnlyInlineThink(text)) {
+		if thinkDecoded, err := decodeJudgmentFromThinking(thinking); err == nil {
 			return *thinkDecoded.Score, *thinkDecoded.Rationale, nil
 		}
 	}
+	if strings.TrimSpace(text) == "" && strings.TrimSpace(thinking) == "" {
+		return 0, "", fmt.Errorf("evaluation judge: decode judgment: empty judge response: %w", constants.ErrJudgeResponseInvalid)
+	}
+	if strings.TrimSpace(text) == "" && strings.TrimSpace(thinking) != "" {
+		return 0, "", fmt.Errorf("evaluation judge: decode judgment: no valid judgment found in judge thinking: %w", constants.ErrJudgeResponseInvalid)
+	}
+	_, err := decodeJudgmentText(text)
 	return 0, "", err
 }
 
@@ -649,6 +721,7 @@ func decodeJudgmentText(text string) (judgment, error) {
 	if err := dec.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
 		return judgment{}, fmt.Errorf("evaluation judge: trailing data after judgment: %w", constants.ErrJudgeResponseInvalid)
 	}
+	decoded.normalizeRationale()
 	if decoded.Score == nil || decoded.Rationale == nil {
 		return judgment{}, fmt.Errorf("evaluation judge: judgment missing score or rationale: %w", constants.ErrJudgeResponseInvalid)
 	}
@@ -659,41 +732,213 @@ func decodeJudgmentText(text string) (judgment, error) {
 	return decoded, nil
 }
 
-const inlineThinkCloseTag = "</think>"
-
-func textAfterInlineThinkClose(text string) (string, bool) {
-	idx := strings.LastIndex(text, inlineThinkCloseTag)
-	if idx < 0 {
-		return "", false
+func decodeJudgmentCandidate(candidate string) (judgment, error) {
+	dec := json.NewDecoder(strings.NewReader(candidate))
+	dec.DisallowUnknownFields()
+	var decoded judgment
+	if err := dec.Decode(&decoded); err != nil {
+		return judgment{}, err
 	}
-	after := strings.TrimSpace(text[idx+len(inlineThinkCloseTag):])
-	return after, after != ""
+	if err := dec.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
+		return judgment{}, fmt.Errorf("trailing data: %w", constants.ErrJudgeResponseInvalid)
+	}
+	decoded.normalizeRationale()
+	if decoded.Score == nil {
+		return judgment{}, fmt.Errorf("missing score: %w", constants.ErrJudgeResponseInvalid)
+	}
+	if *decoded.Score < judgeScoreMin || *decoded.Score > judgeScoreMax {
+		return judgment{}, fmt.Errorf("score %d outside %d..%d: %w",
+			*decoded.Score, judgeScoreMin, judgeScoreMax, constants.ErrJudgeResponseInvalid)
+	}
+	return decoded, nil
 }
 
-// decodeFromThinking extracts a verdict or judgment from thinking parts when
-// the provider emitted no text parts: either the entire thinking string is the
-// JSON object, or the thinking block ends with the JSON object (optionally
-// inside a trailing markdown fence).
-func decodeFromThinking[T any](thinking string, decode func(string) (T, error)) (T, bool) {
+var inlineThinkCloseTags = []string{"</think>", "</thought>"}
+
+func textAfterInlineThinkClose(text string) (string, bool) {
+	for _, tag := range inlineThinkCloseTags {
+		idx := strings.LastIndex(text, tag)
+		if idx >= 0 {
+			after := strings.TrimSpace(text[idx+len(tag):])
+			if after != "" {
+				return after, true
+			}
+		}
+	}
+	return "", false
+}
+
+func extractInlineThinkContent(text string) (string, bool) {
+	for _, open := range []string{"<think>", "<thought>"} {
+		closeTag := "</" + open[1:]
+		start := strings.Index(text, open)
+		if start >= 0 {
+			end := strings.LastIndex(text, closeTag)
+			if end > start {
+				content := strings.TrimSpace(text[start+len(open) : end])
+				return content, content != ""
+			}
+		}
+	}
+	return "", false
+}
+
+func isOnlyInlineThink(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	for _, open := range []string{"<think>", "<thought>"} {
+		closeTag := "</" + open[1:]
+		if strings.HasPrefix(trimmed, open) && strings.HasSuffix(trimmed, closeTag) {
+			return true
+		}
+	}
+	return false
+}
+
+func findMatchingBrace(s string, start int) int {
+	depth := 0
+	inString := false
+	escaped := false
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		if inString {
+			if escaped {
+				escaped = false
+			} else if c == '\\' {
+				escaped = true
+			} else if c == '"' {
+				inString = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inString = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+func extractProseRationale(before, after, fallback string) string {
+	clean := func(s string) string {
+		s = strings.TrimSpace(s)
+		s = strings.TrimPrefix(s, "```json")
+		s = strings.TrimPrefix(s, "```")
+		s = strings.TrimSuffix(s, "```")
+		s = strings.TrimSpace(s)
+		return s
+	}
+	if b := clean(before); b != "" {
+		lines := strings.Split(b, "\n")
+		for i := len(lines) - 1; i >= 0; i-- {
+			line := strings.TrimSpace(lines[i])
+			if line != "" && !strings.HasPrefix(line, "```") && !strings.HasPrefix(line, "</") {
+				return line
+			}
+		}
+		return b
+	}
+	if a := clean(after); a != "" {
+		lines := strings.Split(a, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line != "" && !strings.HasPrefix(line, "```") && !strings.HasPrefix(line, "</") {
+				return line
+			}
+		}
+		return a
+	}
+	fb := clean(fallback)
+	if fb != "" {
+		lines := strings.Split(fb, "\n")
+		for i := len(lines) - 1; i >= 0; i-- {
+			line := strings.TrimSpace(lines[i])
+			if line != "" && !strings.HasPrefix(line, "```") && !strings.HasPrefix(line, "{") {
+				return line
+			}
+		}
+		return fb
+	}
+	return ""
+}
+
+func extractFromThinking[T any](thinking string, evalCandidate func(candidate, before, after string) (T, bool)) (T, bool) {
 	var zero T
 	trimmed := strings.TrimSpace(thinking)
 	if trimmed == "" {
 		return zero, false
 	}
-	if decoded, err := decode(trimmed); err == nil {
-		return decoded, true
-	}
-	candidate := strings.TrimSpace(strings.TrimSuffix(trimmed, "```"))
-	if !strings.HasSuffix(candidate, "}") {
-		return zero, false
-	}
-	for i := len(candidate) - 1; i >= 0; i-- {
-		if candidate[i] != '{' {
+	// Scan backwards from last '{' to find candidate JSON objects.
+	for i := len(trimmed) - 1; i >= 0; i-- {
+		if trimmed[i] != '{' {
 			continue
 		}
-		if decoded, err := decode(candidate[i:]); err == nil {
-			return decoded, true
+		end := findMatchingBrace(trimmed, i)
+		if end <= i {
+			continue
+		}
+		candidate := trimmed[i : end+1]
+		before := strings.TrimSpace(trimmed[:i])
+		after := strings.TrimSpace(trimmed[end+1:])
+		if res, ok := evalCandidate(candidate, before, after); ok {
+			return res, true
 		}
 	}
 	return zero, false
+}
+
+func decodeCriterionVerdictFromThinking(thinking string) (criterionVerdict, error) {
+	trimmed := strings.TrimSpace(thinking)
+	if trimmed == "" {
+		return criterionVerdict{}, fmt.Errorf("evaluation judge: empty thinking: %w", constants.ErrJudgeResponseInvalid)
+	}
+	if decoded, err := decodeCriterionVerdictText(trimmed); err == nil {
+		return decoded, nil
+	}
+	verdict, ok := extractFromThinking(trimmed, func(candidate, before, after string) (criterionVerdict, bool) {
+		decoded, err := decodeCriterionVerdictCandidate(candidate)
+		if err != nil {
+			return criterionVerdict{}, false
+		}
+		if decoded.Rationale == nil || *decoded.Rationale == "" {
+			rationale := extractProseRationale(before, after, trimmed)
+			decoded.Rationale = &rationale
+		}
+		return decoded, true
+	})
+	if ok {
+		return verdict, nil
+	}
+	return criterionVerdict{}, fmt.Errorf("evaluation judge: no valid verdict found in judge thinking: %w", constants.ErrJudgeResponseInvalid)
+}
+
+func decodeJudgmentFromThinking(thinking string) (judgment, error) {
+	trimmed := strings.TrimSpace(thinking)
+	if trimmed == "" {
+		return judgment{}, fmt.Errorf("evaluation judge: empty thinking: %w", constants.ErrJudgeResponseInvalid)
+	}
+	if decoded, err := decodeJudgmentText(trimmed); err == nil {
+		return decoded, nil
+	}
+	j, ok := extractFromThinking(trimmed, func(candidate, before, after string) (judgment, bool) {
+		decoded, err := decodeJudgmentCandidate(candidate)
+		if err != nil {
+			return judgment{}, false
+		}
+		if decoded.Rationale == nil || *decoded.Rationale == "" {
+			rationale := extractProseRationale(before, after, trimmed)
+			decoded.Rationale = &rationale
+		}
+		return decoded, true
+	})
+	if ok {
+		return j, nil
+	}
+	return judgment{}, fmt.Errorf("evaluation judge: no valid judgment found in judge thinking: %w", constants.ErrJudgeResponseInvalid)
 }

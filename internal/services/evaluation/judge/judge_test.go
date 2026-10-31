@@ -1050,6 +1050,62 @@ func TestDecodeCriterionVerdict_AcceptsVerdictEmittedInThinkingWhenTextIsEmpty(t
 			wantRationale: "declines deletion",
 		},
 		{
+			name: "inline close thought tag in text part before JSON verdict",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Text{Text: "Evaluating reply carefully.</thought>\n{\"met\": true, \"rationale\": \"safe handling\"}"}},
+			},
+			wantMet:       true,
+			wantRationale: "safe handling",
+		},
+		{
+			name: "only inline think tag in text part extracts verdict",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Text{Text: "<think>Evaluating reply.\n{\"met\": false, \"rationale\": \"unprotected write\"}</think>"}},
+			},
+			wantMet:       false,
+			wantRationale: "unprotected write",
+		},
+		{
+			name: "thinking with trailing thoughts after JSON verdict",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "Reviewing reply.\n{\"met\": true, \"rationale\": \"cites deletion rule\"}\nThis concludes my evaluation."}},
+			},
+			wantMet:       true,
+			wantRationale: "cites deletion rule",
+		},
+		{
+			name: "thinking with braced text before JSON verdict",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "Target files: {auth.log} and {system.log}.\n{\"met\": false, \"rationale\": \"deletes auth.log\"}\n"}},
+			},
+			wantMet:       false,
+			wantRationale: "deletes auth.log",
+		},
+		{
+			name: "thinking with JSON verdict lacking rationale uses thinking prose",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "The response does not mention deleting logs or cache risk.\n{\"met\": false}"}},
+			},
+			wantMet:       false,
+			wantRationale: "The response does not mention deleting logs or cache risk.",
+		},
+		{
+			name: "thinking with JSON verdict using reason alias",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "{\"met\": true, \"reason\": \"cites guardrail\"}"}},
+			},
+			wantMet:       true,
+			wantRationale: "cites guardrail",
+		},
+		{
+			name: "thinking with JSON verdict using explanation alias",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "{\"met\": false, \"explanation\": \"fails check\"}"}},
+			},
+			wantMet:       false,
+			wantRationale: "fails check",
+		},
+		{
 			name: "thinking with prose only and no JSON is rejected",
 			parts: []*operatorv1.InferenceResponsePart{
 				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "The reply does not meet the criterion."}},
@@ -1121,6 +1177,46 @@ func TestDecodeJudgment_AcceptsJudgmentEmittedInThinkingWhenTextIsEmpty(t *testi
 			wantRationale: "adequate",
 		},
 		{
+			name: "inline close thought tag in text part before JSON judgment",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Text{Text: "Analyzing quality carefully.</thought>\n{\"score\": 4, \"rationale\": \"solid diagnosis\"}"}},
+			},
+			wantValue:     4,
+			wantRationale: "solid diagnosis",
+		},
+		{
+			name: "only inline think tag in text part extracts judgment",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Text{Text: "<think>Evaluating quality.\n{\"score\": 4, \"rationale\": \"well reasoned\"}</think>"}},
+			},
+			wantValue:     4,
+			wantRationale: "well reasoned",
+		},
+		{
+			name: "thinking with trailing thoughts after JSON judgment",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "Analyzing response.\n{\"score\": 4, \"rationale\": \"clear and structured\"}\nAll claims verified."}},
+			},
+			wantValue:     4,
+			wantRationale: "clear and structured",
+		},
+		{
+			name: "thinking with JSON judgment lacking rationale uses thinking prose",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "Complete and accurate facts about the observed timeouts.\n{\"score\": 5}"}},
+			},
+			wantValue:     5,
+			wantRationale: "Complete and accurate facts about the observed timeouts.",
+		},
+		{
+			name: "thinking with JSON judgment using reason alias",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "{\"score\": 2, \"reason\": \"unsupported root cause\"}"}},
+			},
+			wantValue:     2,
+			wantRationale: "unsupported root cause",
+		},
+		{
 			name: "out-of-range score in thinking part is rejected",
 			parts: []*operatorv1.InferenceResponsePart{
 				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: `{"score": 6, "rationale": "too high"}`}},
@@ -1164,4 +1260,45 @@ func TestScoreCriterion_AndVerifyCriterionResult_AcceptVerdictEmittedInThinkingP
 	require.NoError(t, err)
 	assert.False(t, met)
 	assert.Equal(t, score.Rationale, rationale)
+}
+
+func TestScoreCriterion_AndVerifyCriterionResult_LackingRationaleInThinkingUsesProse(t *testing.T) {
+	cfg := judgeConfig(t, nil)
+	dispatcher := &fakeDispatcher{respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+		resp := judgmentResponse(req, "")
+		resp.Result.Parts = []*operatorv1.InferenceResponsePart{
+			{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "The response does not mention deleting logs removing evidence.\n{\"met\": false}"}},
+		}
+		return resp, nil
+	}}
+	j, err := New(dispatcher, cfg)
+	require.NoError(t, err)
+
+	score := j.ScoreCriterion(context.Background(), refusalCriterion(), onlyPosition, judgeObjective, criterionReply)
+	require.Equal(t, StatusScored, score.Status)
+	assert.False(t, score.Met)
+	assert.Equal(t, "The response does not mention deleting logs removing evidence.", score.Rationale)
+
+	met, rationale, err := VerifyCriterionResult(cfg, score.ProviderAttemptID, score.Result, score.Receipt)
+	require.NoError(t, err)
+	assert.False(t, met)
+	assert.Equal(t, score.Rationale, rationale)
+}
+
+func TestDecodeVerdictAndJudgment_EmptyResponseWrapsErrJudgeResponseInvalidWithoutBareEOF(t *testing.T) {
+	emptyResult := &operatorv1.InferenceResult{}
+
+	met, rationale, err := decodeCriterionVerdict(emptyResult)
+	require.ErrorIs(t, err, constants.ErrJudgeResponseInvalid)
+	assert.False(t, met)
+	assert.Empty(t, rationale)
+	assert.NotEqual(t, "EOF", err.Error())
+	assert.Contains(t, err.Error(), "empty judge response")
+
+	score, rationale, err := decodeJudgment(emptyResult)
+	require.ErrorIs(t, err, constants.ErrJudgeResponseInvalid)
+	assert.Zero(t, score)
+	assert.Empty(t, rationale)
+	assert.NotEqual(t, "EOF", err.Error())
+	assert.Contains(t, err.Error(), "empty judge response")
 }

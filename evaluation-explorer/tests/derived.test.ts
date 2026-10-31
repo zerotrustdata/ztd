@@ -29,6 +29,7 @@ import {
   roleLeaderRows,
   modelRoleLeaderboardRows,
   modelOverallLeaderboardRows,
+  modelSuiteRows,
   restampStreamProgress,
   siblingRepetitions,
   streamProgressLabel,
@@ -1023,6 +1024,47 @@ describe('recentCampaignRows', () => {
   });
 });
 
+
+describe('modelSuiteRows', () => {
+  it('derives verifier and quality states from constituent evaluation runs when suite_summary is absent', () => {
+    const run = evaluationSummary({
+      dataset_id: 'ds-1',
+      run_id: 'run-1',
+      suite_id: 'default-suite',
+      verifier_state: 'passed',
+      quality_state: 'exploratory_verified',
+    });
+    const a1 = assignmentResult({
+      variant_id: 'model-a',
+      run_id: 'run-1',
+      terminal_status: 'completed',
+      metric_values: { pass: { value: 1 } },
+      resource_summary: { latency_ms: { value: 250 } },
+    });
+    const a2 = assignmentResult({
+      variant_id: 'model-a',
+      run_id: 'run-1',
+      terminal_status: 'model_failed',
+      metric_values: { pass: { value: 0 } },
+      resource_summary: { latency_ms: { value: 350 } },
+    });
+    const rows = modelSuiteRows('model-a', [a1, a2], [run], []);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      suite_id: 'default-suite',
+      display_name: 'default-suite',
+      verifier_state: 'passed',
+      quality_state: 'exploratory_verified',
+      total: 2,
+      eligible: 2,
+      passed: 1,
+      pass_rate: 0.5,
+      model_failed: 1,
+      missing: 0,
+      latency_p50_ms: 300,
+    });
+  });
+});
 
 describe('assignment event completeness', () => {
   it('retains distinct planned, scored, result and verified event IDs while removing exact duplicates', () => {

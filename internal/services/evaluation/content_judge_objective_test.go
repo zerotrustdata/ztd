@@ -39,7 +39,7 @@ func typedObjectiveRequest() AssignmentExecutionRequest {
 }
 
 // typedObjectiveTrace is the sealed trace of the scenario above: both seed
-// observations, then one call the agent made itself. The zero workspace renders
+// observations, then two calls the agent made itself. The zero workspace renders
 // the prompt unchanged because the prompt holds no workspace token.
 func typedObjectiveTrace() *AgentTrace {
 	return &AgentTrace{
@@ -58,6 +58,7 @@ func typedObjectiveTrace() *AgentTrace {
 		},
 		ToolCalls: []AgentToolCall{
 			{ToolName: "event_receipt_list", ArgumentsJSON: `{}`, ResultJSON: `{"receipts":[]}`, Success: true},
+			{ToolName: "read_file", ArgumentsJSON: `{"path":"app.log"}`, ResultJSON: `{"content":"timeout"}`, Success: true},
 		},
 	}
 }
@@ -84,7 +85,7 @@ func TestContentJudgeTypedObjective_CarriesSeedRecordsAndAgentCallsOnly(t *testi
 
 	// The platform record is shown, the chain-only seed is absent, and the
 	// agent's own call follows the seed records.
-	require.Len(t, objective.Records, 2)
+	require.Len(t, objective.Records, 3)
 	assert.Equal(t, judge.ObjectiveRecord{
 		Source:    judge.ObjectiveRecordPlatform,
 		Tool:      "run_shell_command",
@@ -99,6 +100,13 @@ func TestContentJudgeTypedObjective_CarriesSeedRecordsAndAgentCallsOnly(t *testi
 		Outcome:   "success",
 		Result:    `{"receipts":[]}`,
 	}, objective.Records[1])
+	assert.Equal(t, judge.ObjectiveRecord{
+		Source:    judge.ObjectiveRecordAgent,
+		Tool:      "read_file",
+		Arguments: `{"path":"app.log"}`,
+		Outcome:   "success",
+		Result:    `{"content":"timeout"}`,
+	}, objective.Records[2])
 }
 
 func TestContentJudgeMessages_RubricVersionFollowsTheGradingContract(t *testing.T) {
