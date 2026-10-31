@@ -231,7 +231,7 @@ func TestCampaignsCreate_RejectsEmptyRegistry(t *testing.T) {
 	env := newStoreRunEnv(t)
 	require.NoError(t, env.fileSvc(t).Remove(context.Background(), evaluation.DefaultModelInventoryRelPath))
 
-	_, err := env.run(t, "campaigns", "create", "eval-a", "--all")
+	_, err := env.run(t, "campaigns", "create", "eval-a", "qwen3:4b")
 	require.Error(t, err)
 	require.ErrorIs(t, err, constants.ErrEvaluationSelectionEmpty)
 	assert.Contains(t, err.Error(), "registry is empty")
@@ -246,10 +246,11 @@ func TestCampaignsCreate_RejectsConflictingModes(t *testing.T) {
 		want string
 	}{
 		{name: "the removed all-formations flag", args: []string{"campaigns", "create", "eval-f", "--all-formations"}, want: "unknown flag: --all-formations"},
-		{name: "the removed lane flag", args: []string{"campaigns", "create", "eval-f", "--all", "--lane", "system"}, want: "unknown flag: --lane"},
-		{name: "the removed seed flag", args: []string{"campaigns", "create", "eval-f", "--all", "--seed", "17"}, want: "unknown flag: --seed"},
+		{name: "the removed all-models selector", args: []string{"campaigns", "create", "eval-f", "--all"}, want: "unknown flag: --all"},
+		{name: "the removed lane flag", args: []string{"campaigns", "create", "eval-f", "qwen3:4b", "--lane", "system"}, want: "unknown flag: --lane"},
+		{name: "the removed seed flag", args: []string{"campaigns", "create", "eval-f", "qwen3:4b", "--seed", "17"}, want: "unknown flag: --seed"},
 		{name: "positional models with a filter", args: []string{"campaigns", "create", "eval-f", "qwen3:4b", "--family", "qwen"}, want: "cannot be combined"},
-		{name: "formation and model selectors are exclusive", args: []string{"campaigns", "create", "eval-f", "--formations", "heterogeneous-0001", "--all"}, want: "--formations cannot be combined"},
+		{name: "formation and model selectors are exclusive", args: []string{"campaigns", "create", "eval-f", "--formations", "heterogeneous-0001", "qwen3:4b"}, want: "--formations cannot be combined"},
 		{name: "formation repetitions are currently unsupported", args: []string{"campaigns", "create", "eval-f", "--formations", "heterogeneous-0001", "--reps", "2"}, want: "formation campaigns currently require one repetition"},
 	}
 	for _, test := range tests {
@@ -388,7 +389,7 @@ func TestCampaignsCreate_InvalidCampaignID(t *testing.T) {
 	// A colon is rejected at admission: it would pass here but fail every
 	// later evidence write, stranding the run after its first assignment.
 	for _, campaignID := range []string{"../escape", "eval-1022-13:30"} {
-		_, err := env.run(t, "campaigns", "create", campaignID, "--all")
+		_, err := env.run(t, "campaigns", "create", campaignID, "qwen3:4b")
 		require.Error(t, err, campaignID)
 		assert.ErrorIs(t, err, constants.ErrEvidencePathElementInvalid, campaignID)
 	}
@@ -493,7 +494,7 @@ func TestCampaignsCreate_RejectsMultiModelModelRoleCampaign(t *testing.T) {
 	judge.VariantId = "qwen3.5-4b"
 	writeTestFrozenInventory(t, env.root, append(threeModelRegistry(), judge)...)
 
-	_, err := env.run(t, "campaigns", "create", "eval-many", "--all")
+	_, err := env.run(t, "campaigns", "create", "eval-many", "--max-params", "8b")
 	require.Error(t, err)
 	require.ErrorIs(t, err, constants.ErrEvaluationCampaignSubjectInvalid)
 

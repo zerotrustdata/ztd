@@ -617,8 +617,8 @@ repetition fresh.
 model or formation an assignment executes, so no subject grades itself. Its
 digest is frozen from the model registry into the campaign.
 
-A model-role campaign takes a model selector (positional models, --family,
---max-params, or --all) and freezes exactly one model. A system campaign takes
+A model-role campaign takes a model selector (a positional model, --family, or
+--max-params) and freezes exactly one model. A system campaign takes
 one or more catalog formation IDs with --formations and freezes the registered
 models required by those formations. Formation campaigns currently support one
 repetition without held context. The selectors are mutually exclusive.
@@ -666,7 +666,7 @@ Examples:
 				return fmt.Errorf("evaluation: campaigns create: formation campaigns currently require one repetition without held context: %w", constants.ErrEvaluationFlagsInvalid)
 			}
 			if !formationsSet && !selector.IsSet() {
-				return fmt.Errorf("evaluation: campaigns create: name a model, or pass --family, --max-params, or --all: %w", constants.ErrEvaluationSelectionEmpty)
+				return fmt.Errorf("evaluation: campaigns create: name a model, or pass --family or --max-params: %w", constants.ErrEvaluationSelectionEmpty)
 			}
 			cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 			if err != nil {
@@ -739,7 +739,8 @@ Examples:
 	cmd.Flags().StringVar(&dataOperatorID, "data-operator", "", "Stable Data Operator ID required for a persistent investigation")
 	cmd.Flags().StringSliceVar(&formationIDs, "formations", nil, "Create a system-lane campaign from catalog formation IDs (comma-separated or repeat the flag)")
 	cmd.Flags().StringVar(&judgeTag, "judge", evaluation.DefaultJudgeServedModelTag, "Registry model (served tag) that judges every assignment in the campaign")
-	selector.bindFlags(cmd)
+	cmd.Flags().StringSliceVar(&selector.Family, "family", nil, "Select models by family (for example gemma4, granite); comma-separated or repeat the flag for multiple")
+	cmd.Flags().StringVar(&selector.MaxParams, "max-params", "", "Select models with at most this many parameters (for example 12b, 1.5B, 350m)")
 	return cmd
 }
 
