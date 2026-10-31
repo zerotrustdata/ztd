@@ -36,19 +36,19 @@ const chatTemplate = "{% for message in messages %}<|im_start|>{{ message.role }
 // WriteChatContainer converts stories260K with a ChatML template into
 // dir/name.jlm and returns the container path. scratch holds the source
 // GGUF and template and must not be dir.
-func WriteChatContainer(t testing.TB, scratch, dir, name string) string {
-	t.Helper()
+func WriteChatContainer(tb testing.TB, scratch, dir, name string) string {
+	tb.Helper()
 	src := filepath.Join(scratch, "stories260K.gguf")
 	if err := os.WriteFile(src, stories260K, constants.PermFilePrivate); err != nil {
-		t.Fatalf("jitllmtest: write source model: %v", err)
+		tb.Fatalf("jitllmtest: write source model: %v", err)
 	}
 	tmpl := filepath.Join(scratch, "chatml.jinja")
 	if err := os.WriteFile(tmpl, []byte(chatTemplate), constants.PermFilePrivate); err != nil {
-		t.Fatalf("jitllmtest: write chat template: %v", err)
+		tb.Fatalf("jitllmtest: write chat template: %v", err)
 	}
 	dst := filepath.Join(dir, name+".jlm")
 	if _, err := convert.FromGGUF(src, dst, jlm.Fingerprint{}, convert.WithChatTemplate(tmpl)); err != nil {
-		t.Fatalf("jitllmtest: convert stories260K: %v", err)
+		tb.Fatalf("jitllmtest: convert stories260K: %v", err)
 	}
 	return dst
 }

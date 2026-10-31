@@ -43,8 +43,8 @@ func TestJitLLMChatRequest_MapsMessagesToolsAndSampling(t *testing.T) {
 	parallel := false
 	topK := int32(-3)
 	req := models.GenerateRequest{
-		Model: "qwen",
-		Messages: textInferenceMessages("weather?"),
+		Model:             "qwen",
+		Messages:          textInferenceMessages("weather?"),
 		Tools:             []*operatorv1.InferenceToolDeclaration{{Name: "lookup", Description: "find it", JsonSchema: `{"type":"object"}`}},
 		ParallelToolCalls: &parallel,
 		Temperature:       0.2,
@@ -59,7 +59,8 @@ func TestJitLLMChatRequest_MapsMessagesToolsAndSampling(t *testing.T) {
 	assert.JSONEq(t, `[{"type":"function","function":{"name":"lookup","description":"find it","parameters":{"type":"object"}}}]`, string(chatReq.Tools))
 	assert.True(t, chatReq.SingleToolCall)
 
-	opts := chatReq.generateOptions()
+	opts, err := chatReq.generateOptions()
+	require.NoError(t, err)
 	assert.Equal(t, "qwen", opts.ModelID)
 	assert.True(t, opts.Prompt.Chat.AddGenerationPrompt)
 	assert.True(t, opts.Prompt.Chat.ToolChoice.Single)

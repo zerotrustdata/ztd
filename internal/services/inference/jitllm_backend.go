@@ -9,12 +9,13 @@ package inference
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
-	"math/rand/v2"
 	"path/filepath"
 	"strings"
 	"time"
@@ -156,16 +157,23 @@ func jitllmChatRequestFor(req models.GenerateRequest) (jitllmChatRequest, error)
 // generateOptions is the engine request for r. An unseeded request draws a
 // fresh seed, as the engine's own API does, so unseeded calls do not share
 // one sampled sequence.
-func (r jitllmChatRequest) generateOptions() server.GenerateOptions {
-	sampler := &model.Sampler{Temp: float64(r.Temperature), TopP: 1, Seed: rand.Int64()}
+func (r jitllmChatRequest) generateOptions() (server.GenerateOptions, error) {
+	var seed int64
+	if r.Seed == nil {
+		var randomSeed [8]byte
+		if _, err := rand.Read(randomSeed[:]); err != nil {
+			return server.GenerateOptions{}, fmt.Errorf("%s: generate: random seed: %w", jitllmComponent, err)
+		}
+		seed = int64(binary.LittleEndian.Uint64(randomSeed[:]))
+	} else {
+		seed = int64(*r.Seed)
+	}
+	sampler := &model.Sampler{Temp: float64(r.Temperature), TopP: 1, Seed: seed}
 	if r.TopP != nil {
 		sampler.TopP = float64(*r.TopP)
 	}
 	if r.TopK != nil {
 		sampler.TopK = max(int(*r.TopK), 0)
-	}
-	if r.Seed != nil {
-		sampler.Seed = int64(*r.Seed)
 	}
 	chat := &server.ChatInput{Messages: r.Messages, AddGenerationPrompt: true, Tools: r.Tools}
 	if len(r.Tools) > 0 {
@@ -178,7 +186,7 @@ func (r jitllmChatRequest) generateOptions() server.GenerateOptions {
 		Sampling:  sampler,
 		Stop:      r.Stop,
 		Grammar:   r.Grammar,
-	}
+	}, nil
 }
 
 // Generate runs one chat completion on the in-process engine and returns the
@@ -222,7 +230,11 @@ func (b *JitLLMBackend) Generate(ctx context.Context, req models.GenerateRequest
 	}
 	allowParallelToolCalls := req.ParallelToolCalls == nil || *req.ParallelToolCalls
 	run := newJitLLMRun(b, ctx, req, chatReq, stream, allowParallelToolCalls)
-	if err := b.engine.Generate(ctx, chatReq.generateOptions(), run.emit); err != nil {
+	opts, err := chatReq.generateOptions()
+	if err != nil {
+		return nil, err
+	}
+	if err := b.engine.Generate(ctx, opts, run.emit); err != nil {
 		if run.err != nil {
 			return nil, run.err
 		}

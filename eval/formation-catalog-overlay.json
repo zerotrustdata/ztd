@@ -196,7 +196,7 @@
     {
       "id": "formation-lite",
       "display_name": "formation-lite",
-      "description": "Light quickstart formation: granite4:1b-h primary, llama3.2:1b assistant, gemma3:1b lite",
+      "description": "Light quickstart formation: granite4:1b-h primary, llama3.2:1b assistant, granite4:350m lite",
       "max_vram_mib": 6144,
       "primary": {
         "variant_id": "granite4-1b-h",
@@ -227,18 +227,18 @@
         "model_digest": "baf6a787fdffd633537aa2eb51cfd54cb93ff08e28040095462bb63daf552878"
       },
       "lite": {
-        "variant_id": "gemma3-1b",
-        "display_name": "gemma3:1b",
-        "provider": "gemma3",
-        "family": "gemma3",
+        "variant_id": "granite4-350m",
+        "display_name": "granite4:350m",
+        "provider": "granite",
+        "family": "granite",
         "provider_class": "ollama",
-        "served_model_tag": "gemma3:1b",
+        "served_model_tag": "granite4:350m",
         "trust": "sovereign",
-        "quantization": "Q4_K_M",
-        "parameter_count": 999885952,
-        "estimated_model_vram_mib": 596,
+        "quantization": "BF16",
+        "parameter_count": 352380000,
+        "estimated_model_vram_mib": 672,
         "estimated_kv_cache_mib": 256,
-        "model_digest": "83be9dbf9dd6ea077de84d4fbaeb094dae9f266ca1b302f04e1c803bea566a79"
+        "model_digest": "5eee845b49c4b72ef9e385463a1e2ea9f6f937e08b019f3bbecec12bc1927221"
       }
     }
   ],
