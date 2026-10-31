@@ -576,41 +576,124 @@ type criterionVerdict struct {
 }
 
 // decodeCriterionVerdict reads the verdict from the result text. Any shape outside
-// {"met": bool, "rationale": string} is ErrJudgeResponseInvalid.
+// {"met": bool, "rationale": string} is ErrJudgeResponseInvalid. When a
+// thinking-by-default model emits its JSON verdict inside the thinking stream
+// without closing </think> (leaving text parts empty), the verdict is read from
+// the thinking parts.
 func decodeCriterionVerdict(result *operatorv1.InferenceResult) (bool, string, error) {
-	dec := json.NewDecoder(strings.NewReader(models.InferenceResultText(result)))
+	text := models.InferenceResultText(result)
+	decoded, err := decodeCriterionVerdictText(text)
+	if err == nil {
+		return *decoded.Met, *decoded.Rationale, nil
+	}
+	if after, ok := textAfterInlineThinkClose(text); ok {
+		if afterDecoded, afterErr := decodeCriterionVerdictText(after); afterErr == nil {
+			return *afterDecoded.Met, *afterDecoded.Rationale, nil
+		}
+	}
+	if strings.TrimSpace(text) == "" {
+		if thinkDecoded, ok := decodeFromThinking(models.InferenceResultThinking(result), decodeCriterionVerdictText); ok {
+			return *thinkDecoded.Met, *thinkDecoded.Rationale, nil
+		}
+	}
+	return false, "", err
+}
+
+func decodeCriterionVerdictText(text string) (criterionVerdict, error) {
+	dec := json.NewDecoder(strings.NewReader(text))
 	dec.DisallowUnknownFields()
 	var decoded criterionVerdict
 	if err := dec.Decode(&decoded); err != nil {
-		return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: %w: %w", constants.ErrJudgeResponseInvalid, err)
+		return criterionVerdict{}, fmt.Errorf("evaluation judge: decode criterion verdict: %w: %w", constants.ErrJudgeResponseInvalid, err)
 	}
 	if err := dec.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
-		return false, "", fmt.Errorf("evaluation judge: trailing data after criterion verdict: %w", constants.ErrJudgeResponseInvalid)
+		return criterionVerdict{}, fmt.Errorf("evaluation judge: trailing data after criterion verdict: %w", constants.ErrJudgeResponseInvalid)
 	}
 	if decoded.Met == nil || decoded.Rationale == nil {
-		return false, "", fmt.Errorf("evaluation judge: criterion verdict missing met or rationale: %w", constants.ErrJudgeResponseInvalid)
+		return criterionVerdict{}, fmt.Errorf("evaluation judge: criterion verdict missing met or rationale: %w", constants.ErrJudgeResponseInvalid)
 	}
-	return *decoded.Met, *decoded.Rationale, nil
+	return decoded, nil
 }
 
 // decodeJudgment reads the judgment from the result text. Any shape outside
-// {"score": 1..5, "rationale": string} is ErrJudgeResponseInvalid.
+// {"score": 1..5, "rationale": string} is ErrJudgeResponseInvalid. When a
+// thinking-by-default model emits its JSON judgment inside the thinking stream
+// without closing </think> (leaving text parts empty), the judgment is read
+// from the thinking parts.
 func decodeJudgment(result *operatorv1.InferenceResult) (int, string, error) {
-	dec := json.NewDecoder(strings.NewReader(models.InferenceResultText(result)))
+	text := models.InferenceResultText(result)
+	decoded, err := decodeJudgmentText(text)
+	if err == nil {
+		return *decoded.Score, *decoded.Rationale, nil
+	}
+	if after, ok := textAfterInlineThinkClose(text); ok {
+		if afterDecoded, afterErr := decodeJudgmentText(after); afterErr == nil {
+			return *afterDecoded.Score, *afterDecoded.Rationale, nil
+		}
+	}
+	if strings.TrimSpace(text) == "" {
+		if thinkDecoded, ok := decodeFromThinking(models.InferenceResultThinking(result), decodeJudgmentText); ok {
+			return *thinkDecoded.Score, *thinkDecoded.Rationale, nil
+		}
+	}
+	return 0, "", err
+}
+
+func decodeJudgmentText(text string) (judgment, error) {
+	dec := json.NewDecoder(strings.NewReader(text))
 	dec.DisallowUnknownFields()
 	var decoded judgment
 	if err := dec.Decode(&decoded); err != nil {
-		return 0, "", fmt.Errorf("evaluation judge: decode judgment: %w: %w", constants.ErrJudgeResponseInvalid, err)
+		return judgment{}, fmt.Errorf("evaluation judge: decode judgment: %w: %w", constants.ErrJudgeResponseInvalid, err)
 	}
 	if err := dec.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
-		return 0, "", fmt.Errorf("evaluation judge: trailing data after judgment: %w", constants.ErrJudgeResponseInvalid)
+		return judgment{}, fmt.Errorf("evaluation judge: trailing data after judgment: %w", constants.ErrJudgeResponseInvalid)
 	}
 	if decoded.Score == nil || decoded.Rationale == nil {
-		return 0, "", fmt.Errorf("evaluation judge: judgment missing score or rationale: %w", constants.ErrJudgeResponseInvalid)
+		return judgment{}, fmt.Errorf("evaluation judge: judgment missing score or rationale: %w", constants.ErrJudgeResponseInvalid)
 	}
 	if *decoded.Score < judgeScoreMin || *decoded.Score > judgeScoreMax {
-		return 0, "", fmt.Errorf("evaluation judge: score %d outside %d..%d: %w",
+		return judgment{}, fmt.Errorf("evaluation judge: score %d outside %d..%d: %w",
 			*decoded.Score, judgeScoreMin, judgeScoreMax, constants.ErrJudgeResponseInvalid)
 	}
-	return *decoded.Score, *decoded.Rationale, nil
+	return decoded, nil
+}
+
+const inlineThinkCloseTag = "</think>"
+
+func textAfterInlineThinkClose(text string) (string, bool) {
+	idx := strings.LastIndex(text, inlineThinkCloseTag)
+	if idx < 0 {
+		return "", false
+	}
+	after := strings.TrimSpace(text[idx+len(inlineThinkCloseTag):])
+	return after, after != ""
+}
+
+// decodeFromThinking extracts a verdict or judgment from thinking parts when
+// the provider emitted no text parts: either the entire thinking string is the
+// JSON object, or the thinking block ends with the JSON object (optionally
+// inside a trailing markdown fence).
+func decodeFromThinking[T any](thinking string, decode func(string) (T, error)) (T, bool) {
+	var zero T
+	trimmed := strings.TrimSpace(thinking)
+	if trimmed == "" {
+		return zero, false
+	}
+	if decoded, err := decode(trimmed); err == nil {
+		return decoded, true
+	}
+	candidate := strings.TrimSpace(strings.TrimSuffix(trimmed, "```"))
+	if !strings.HasSuffix(candidate, "}") {
+		return zero, false
+	}
+	for i := len(candidate) - 1; i >= 0; i-- {
+		if candidate[i] != '{' {
+			continue
+		}
+		if decoded, err := decode(candidate[i:]); err == nil {
+			return decoded, true
+		}
+	}
+	return zero, false
 }

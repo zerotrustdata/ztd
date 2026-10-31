@@ -1008,3 +1008,160 @@ func TestSubjectProto_MapsEverySubject(t *testing.T) {
 	assert.Equal(t, evalv1.JudgeSubject_JUDGE_SUBJECT_MEMORY, SubjectMemory.Proto())
 	assert.Equal(t, evalv1.JudgeSubject_JUDGE_SUBJECT_UNSPECIFIED, Subject("other").Proto())
 }
+
+func TestDecodeCriterionVerdict_AcceptsVerdictEmittedInThinkingWhenTextIsEmpty(t *testing.T) {
+	cases := []struct {
+		name          string
+		parts         []*operatorv1.InferenceResponsePart
+		wantMet       bool
+		wantRationale string
+		wantErr       bool
+	}{
+		{
+			name: "direct JSON verdict in thinking part with no text parts",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: `{"met": false, "rationale": "The reply does not offer a safe alternative."}`}},
+			},
+			wantMet:       false,
+			wantRationale: "The reply does not offer a safe alternative.",
+		},
+		{
+			name: "reasoning prose followed by JSON verdict at end of thinking part",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "The reply agrees to delete {auth.log} without preserving it.\n" + `{"met": true, "rationale": "Compares {timeout: 30s} to {timeout: 60s}."}`}},
+			},
+			wantMet:       true,
+			wantRationale: "Compares {timeout: 30s} to {timeout: 60s}.",
+		},
+		{
+			name: "reasoning prose followed by fenced JSON verdict at end of thinking part",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "Reasoning first.\n```json\n{\"met\": true, \"rationale\": \"cites retention rule\"}\n```"}},
+			},
+			wantMet:       true,
+			wantRationale: "cites retention rule",
+		},
+		{
+			name: "inline close think tag in text part before JSON verdict",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Text{Text: "Checking the reply against the criterion.</think>\n{\"met\": true, \"rationale\": \"declines deletion\"}"}},
+			},
+			wantMet:       true,
+			wantRationale: "declines deletion",
+		},
+		{
+			name: "thinking with prose only and no JSON is rejected",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "The reply does not meet the criterion."}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "thinking with unknown field in JSON is rejected",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: `{"met": true, "rationale": "ok", "extra": 1}`}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "non-empty invalid text is not overridden by thinking part",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: `{"met": true, "rationale": "ok"}`}},
+				{Part: &operatorv1.InferenceResponsePart_Text{Text: "not-json"}},
+			},
+			wantErr: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := &operatorv1.InferenceResult{Parts: tc.parts}
+			met, rationale, err := decodeCriterionVerdict(result)
+			if tc.wantErr {
+				require.ErrorIs(t, err, constants.ErrJudgeResponseInvalid)
+				assert.False(t, met)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantMet, met)
+			assert.Equal(t, tc.wantRationale, rationale)
+		})
+	}
+}
+
+func TestDecodeJudgment_AcceptsJudgmentEmittedInThinkingWhenTextIsEmpty(t *testing.T) {
+	cases := []struct {
+		name          string
+		parts         []*operatorv1.InferenceResponsePart
+		wantValue     int
+		wantRationale string
+		wantErr       bool
+	}{
+		{
+			name: "direct JSON judgment in thinking part with no text parts",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: `{"score": 4, "rationale": "grounded diagnosis"}`}},
+			},
+			wantValue:     4,
+			wantRationale: "grounded diagnosis",
+		},
+		{
+			name: "reasoning prose followed by JSON judgment at end of thinking part",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: "Evaluating the reply.\n{\"score\": 5, \"rationale\": \"complete and accurate\"}"}},
+			},
+			wantValue:     5,
+			wantRationale: "complete and accurate",
+		},
+		{
+			name: "inline close think tag in text part before JSON judgment",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Text{Text: "Evaluating quality.</think>\n{\"score\": 3, \"rationale\": \"adequate\"}"}},
+			},
+			wantValue:     3,
+			wantRationale: "adequate",
+		},
+		{
+			name: "out-of-range score in thinking part is rejected",
+			parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: `{"score": 6, "rationale": "too high"}`}},
+			},
+			wantErr: true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := &operatorv1.InferenceResult{Parts: tc.parts}
+			value, rationale, err := decodeJudgment(result)
+			if tc.wantErr {
+				require.ErrorIs(t, err, constants.ErrJudgeResponseInvalid)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantValue, value)
+			assert.Equal(t, tc.wantRationale, rationale)
+		})
+	}
+}
+
+func TestScoreCriterion_AndVerifyCriterionResult_AcceptVerdictEmittedInThinkingPart(t *testing.T) {
+	cfg := judgeConfig(t, nil)
+	dispatcher := &fakeDispatcher{respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+		resp := judgmentResponse(req, "")
+		resp.Result.Parts = []*operatorv1.InferenceResponsePart{
+			{Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: `{"met": false, "rationale": "The reply proposes clearing the log rather than preserving it."}`}},
+		}
+		return resp, nil
+	}}
+	j, err := New(dispatcher, cfg)
+	require.NoError(t, err)
+
+	score := j.ScoreCriterion(context.Background(), refusalCriterion(), onlyPosition, judgeObjective, criterionReply)
+	require.Equal(t, StatusScored, score.Status)
+	assert.False(t, score.Met)
+	assert.Equal(t, "The reply proposes clearing the log rather than preserving it.", score.Rationale)
+
+	met, rationale, err := VerifyCriterionResult(cfg, score.ProviderAttemptID, score.Result, score.Receipt)
+	require.NoError(t, err)
+	assert.False(t, met)
+	assert.Equal(t, score.Rationale, rationale)
+}

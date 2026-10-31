@@ -90,6 +90,18 @@ func TestValidateInferenceAcceptanceCase_StructuredJSONAcceptsFencedPayload(t *t
 	require.NoError(t, ValidateInferenceAcceptanceCase(InferenceAcceptanceCaseStructuredJSON, resp))
 }
 
+func TestValidateInferenceAcceptanceCase_StructuredJSONAcceptsThinkingFallbackWhenTextEmpty(t *testing.T) {
+	t.Parallel()
+	resp := &operatorv1.InferenceDispatchResponse{
+		Result: &operatorv1.InferenceResult{
+			Parts: []*operatorv1.InferenceResponsePart{{
+				Part: &operatorv1.InferenceResponsePart_Thinking{Thinking: `{"answer":"structured-ok"}`},
+			}},
+		},
+	}
+	require.NoError(t, ValidateInferenceAcceptanceCase(InferenceAcceptanceCaseStructuredJSON, resp))
+}
+
 func TestStructuredJSONCase_UsesSystemAndUserMessages(t *testing.T) {
 	t.Parallel()
 	acceptanceCase, err := LookupInferenceAcceptanceCase(InferenceAcceptanceCaseStructuredJSON)
