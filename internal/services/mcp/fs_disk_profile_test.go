@@ -575,7 +575,7 @@ func TestFSDiskProfileTool_Execute_SkipsUnreadableEntry(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root reads every directory, so no entry is unreadable")
 	}
-	root := t.TempDir()
+	root := testutil.TempDir(t)
 	require.NoError(t, os.WriteFile(filepath.Join(root, "readable.txt"), []byte("data"), 0o600))
 	locked := filepath.Join(root, "locked")
 	require.NoError(t, os.Mkdir(locked, 0o700))

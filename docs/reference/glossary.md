@@ -249,7 +249,7 @@ Periodic health and status telemetry sent by a Governed Operator to the Gateway 
 
 ## Inference Dispatch (Governed Inference)
 
-The governed model-inference dispatch subsystem (`internal/services/inference/`). It routes model generation requests (`InferenceDispatchRequest`) to the Inference Operator's provider backend (Ollama or llama.cpp). The dispatcher rejects an unspecified model role (`InferenceModelRole`), enforces campaign model-registry bindings and SHA-256 model digests (`VerifyModelRegistryBinding`), and returns token usage, finish reason and timing in an `InferenceResult` wrapped in an `InferenceDispatchResponse`. Dispatched inference requests are governed envelopes and pass through the L1–L5 pipeline and model-boundary token scrubbing.
+The governed model-inference dispatch subsystem (`internal/services/inference/`). It routes model generation requests (`InferenceDispatchRequest`) to the Inference Operator's provider backend (Ollama, llama.cpp, or jitllm). The dispatcher rejects an unspecified model role (`InferenceModelRole`), enforces campaign model-registry bindings and SHA-256 model digests (`VerifyModelRegistryBinding`), and returns token usage, finish reason and timing in an `InferenceResult` wrapped in an `InferenceDispatchResponse`. Dispatched inference requests are governed envelopes and pass through the L1–L5 pipeline and model-boundary token scrubbing.
 
 ---
 

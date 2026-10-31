@@ -165,9 +165,16 @@ func TestSelectInferenceOperator_BlendedDeploymentTypes(t *testing.T) {
 				OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityInference)}},
 			}), "")
 			if kind == constants.OperatorTypeEmbedded {
-				// The embedded Operator takes precedence over remote inference.
+				// The embedded Operator takes precedence over remote inference when untargeted,
+				// while an explicit remote session remains selectable.
 				require.NoError(t, err)
 				assert.Equal(t, "blend-session", selected.OperatorSessionID)
+				explicit, explicitErr := SelectInferenceOperator(append(operators, &operatorv1.OperatorDocument{
+					Id: "other", OperatorSessionId: "other-session", Status: string(constants.OperatorStatusActive),
+					OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityInference)}},
+				}), "other-session")
+				require.NoError(t, explicitErr)
+				assert.Equal(t, "other-session", explicit.OperatorSessionID)
 				return
 			}
 			require.ErrorIs(t, err, constants.ErrInferenceOperatorAmbiguous)

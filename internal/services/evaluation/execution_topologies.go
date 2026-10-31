@@ -183,7 +183,7 @@ func validateFormationModel(role FormationRole, model FormationModel) error {
 	switch model.Trust {
 	case FormationTrustSovereign:
 		if !isLocalProviderClass(model.ProviderClass) || model.Quantization == "" {
-			return fmt.Errorf("formation role %s: sovereign model must use a local provider (ollama or llamacpp) and declare quantization: %w", role, constants.ErrFormationInvalid)
+			return fmt.Errorf("formation role %s: sovereign model must use a local provider (ollama, llamacpp, or jitllm) and declare quantization: %w", role, constants.ErrFormationInvalid)
 		}
 		if !isSupportedLocalQuantization(model.Quantization) {
 			return fmt.Errorf("formation role %s: unsupported local quantization %q: %w", role, model.Quantization, constants.ErrFormationInvalid)
@@ -201,7 +201,7 @@ func validateFormationModel(role FormationRole, model FormationModel) error {
 // isLocalProviderClass reports whether class names a provider serving weights
 // the deployment holds, the only providers a sovereign role may use.
 func isLocalProviderClass(class string) bool {
-	return class == constants.InferenceProviderOllama || class == constants.InferenceProviderLlamaCpp
+	return class == constants.InferenceProviderOllama || class == constants.InferenceProviderLlamaCpp || class == constants.InferenceProviderJitLLM
 }
 
 // missingFields names the absent fields, sorted, or returns "" when none are.
@@ -218,7 +218,16 @@ func missingFields(absent map[string]bool) string {
 
 func isSupportedLocalQuantization(value string) bool {
 	quantization := strings.ToLower(strings.TrimSpace(value))
-	return strings.HasPrefix(quantization, "q4") || strings.HasPrefix(quantization, "q8")
+	switch {
+	case strings.HasPrefix(quantization, "q3"), strings.HasPrefix(quantization, "q4"),
+		strings.HasPrefix(quantization, "q5"), strings.HasPrefix(quantization, "q6"),
+		strings.HasPrefix(quantization, "q8"), strings.HasPrefix(quantization, "iq4"):
+		return true
+	case quantization == "f16", quantization == "bf16", quantization == "f32", quantization == "mxfp4", quantization == "tq2_0":
+		return true
+	default:
+		return false
+	}
 }
 
 // Effective bits per parameter for local GGUF weights, including the
@@ -234,10 +243,24 @@ const (
 func EstimateFormationModelVRAMMiB(parameterCount uint64, quantization string) uint64 {
 	var bits float64
 	switch q := strings.ToLower(strings.TrimSpace(quantization)); {
+	case strings.HasPrefix(q, "q3"):
+		bits = 3.5
+	case strings.HasPrefix(q, "iq4"), q == "mxfp4":
+		bits = 4.5
 	case strings.HasPrefix(q, "q4"):
 		bits = formationQ4BitsPerParameter
+	case strings.HasPrefix(q, "q5"):
+		bits = 5.5
+	case strings.HasPrefix(q, "q6"):
+		bits = 6.5
 	case strings.HasPrefix(q, "q8"):
 		bits = formationQ8BitsPerParameter
+	case q == "f16", q == "bf16":
+		bits = 16
+	case q == "f32":
+		bits = 32
+	case q == "tq2_0":
+		bits = 2.5
 	default:
 		return 0
 	}

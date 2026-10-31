@@ -18,6 +18,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
@@ -79,14 +80,12 @@ func (c *ModelProvenanceObservationCoordinator) synchronizeOperatorSubscription(
 	if c == nil || c.dispatch == nil || c.operatorLister == nil || c.pubsub == nil || c.windows == nil {
 		return constants.ErrServiceUnavailable
 	}
-	_ = ctx
-
 	operators, err := c.operatorLister.ListOperatorsForProvenance(ctx)
 	if err != nil {
 		c.logger.Warn("Model provenance observation: list operators failed", "error", err)
 		return err
 	}
-	selected, err := operatorcapability.SelectProvenanceOperator(operators, "")
+	selected, err := selectProvenanceOperatorForGateway(operators, dispatch.InferenceOperatorSessionFromContext(ctx))
 	if err != nil {
 		c.resetOperator()
 		switch {
@@ -137,6 +136,48 @@ func (c *ModelProvenanceObservationCoordinator) synchronizeOperatorSubscription(
 		"operator_session_id", operator.OperatorSessionID,
 		"results_channel", resultsChannel)
 	return nil
+}
+
+func selectProvenanceOperatorForGateway(operators []*operatorv1.OperatorDocument, inferenceSessionID string) (*operatorcapability.ProvenanceOperatorStatus, error) {
+	if inferenceSessionID != "" {
+		if selected, err := operatorcapability.SelectProvenanceOperator(operators, inferenceSessionID); err == nil {
+			return selected, nil
+		}
+		for _, op := range operators {
+			if op != nil && op.GetOperatorSessionId() == inferenceSessionID && op.GetSystemFingerprint() != "" {
+				if selected, err := operatorcapability.SelectProvenanceOperatorForHardware(operators, "", op.GetSystemFingerprint()); err == nil {
+					return selected, nil
+				}
+			}
+		}
+	}
+	selected, err := operatorcapability.SelectProvenanceOperator(operators, "")
+	if err == nil || !errors.Is(err, constants.ErrProvenanceOperatorAmbiguous) {
+		return selected, err
+	}
+
+	inference := make([]*operatorv1.OperatorDocument, 0, len(operators))
+	for _, op := range operators {
+		if constants.OperatorStatus(op.Status) == constants.OperatorStatusActive &&
+			(constants.OperatorType(op.OperatorType) == constants.OperatorTypeRemote || constants.OperatorType(op.OperatorType) == constants.OperatorTypeEmbedded) &&
+			op.RuntimeConfig != nil &&
+			operatorcapability.GetOperatorCapabilities(op).Has(constants.OperatorCapabilityInference) &&
+			op.SystemFingerprint != "" {
+			inference = append(inference, op)
+		}
+	}
+	if len(inference) != 1 {
+		return nil, err
+	}
+	selected, err = operatorcapability.SelectProvenanceOperatorForHardware(
+		operators,
+		"",
+		inference[0].SystemFingerprint,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("%w: no provenance operator matches the inference node fingerprint", constants.ErrProvenanceOperatorAmbiguous)
+	}
+	return selected, nil
 }
 
 func (c *ModelProvenanceObservationCoordinator) resetOperator() {

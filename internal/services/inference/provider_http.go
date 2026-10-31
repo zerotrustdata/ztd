@@ -92,6 +92,12 @@ func (p *providerHTTP) postJSON(ctx context.Context, op string, in any, apiPath 
 	return resp, nil
 }
 
+// Close releases the client's idle provider connections.
+func (p *providerHTTP) Close() error {
+	p.client.CloseIdleConnections()
+	return nil
+}
+
 // apiURL resolves a provider API path against the validated base endpoint.
 func (p *providerHTTP) apiURL(elem ...string) string {
 	return p.base.JoinPath(elem...).String()

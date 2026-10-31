@@ -35,6 +35,7 @@ type GatewayConfig struct {
 	InferenceOllamaEndpoint            string                         `json:"inference_ollama_endpoint,omitempty"`
 	InferenceLlamaCppEndpoint          string                         `json:"inference_llamacpp_endpoint,omitempty"`
 	InferenceLlamaCppModelRoot         string                         `json:"inference_llamacpp_model_root,omitempty"`
+	InferenceJitLLMModelRoot           string                         `json:"inference_jitllm_model_root,omitempty"`
 	InferenceKeepAlive                 string                         `json:"inference_keep_alive,omitempty"`
 	ProviderBoundaryObserverID         string                         `json:"provider_boundary_observer_id,omitempty"`
 	ProvenanceOperatorID               string                         `json:"provenance_operator_id,omitempty"`
@@ -152,6 +153,7 @@ func RunGateway(cfg GatewayConfig, vi VersionInfo) error {
 		InferenceOllamaEndpoint:              cfg.InferenceOllamaEndpoint,
 		InferenceLlamaCppEndpoint:            cfg.InferenceLlamaCppEndpoint,
 		InferenceLlamaCppModelRoot:           cfg.InferenceLlamaCppModelRoot,
+		InferenceJitLLMModelRoot:             cfg.InferenceJitLLMModelRoot,
 		InferenceKeepAlive:                   cfg.InferenceKeepAlive,
 		ProviderBoundaryObserverID:           cfg.ProviderBoundaryObserverID,
 		ProvenanceOperatorID:                 cfg.ProvenanceOperatorID,

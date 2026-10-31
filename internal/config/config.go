@@ -61,6 +61,7 @@ type LoadOptions struct {
 	InferenceOllamaEndpoint      string
 	InferenceLlamaCppEndpoint    string
 	InferenceLlamaCppModelRoot   string
+	InferenceJitLLMModelRoot     string
 	InferenceKeepAlive           string
 	InferenceAllowHostedDecision bool
 	InferenceDecisionModels      []string
@@ -76,8 +77,8 @@ type LoadOptions struct {
 	// or a llama-server --models-dir).
 	ProvenanceOperatorModelStorageRoot string
 	// ProvenanceOperatorModelStorageFormat is the store layout beneath the
-	// root: constants.ModelStorageFormatOllama (default) or
-	// constants.ModelStorageFormatLlamaCpp.
+	// root: constants.ModelStorageFormatOllama (default),
+	// constants.ModelStorageFormatLlamaCpp, or constants.ModelStorageFormatJitLLM.
 	ProvenanceOperatorModelStorageFormat string
 }
 
@@ -169,9 +170,11 @@ func (c GatewayConfig) A2AIngressEnabled() bool {
 }
 
 // InferenceConfig holds configuration for the inference backend
-// (ztdllama). The provider (Ollama or a llama.cpp llama-server router) owns
-// process lifecycle, VRAM management, model eviction, and multi-model
-// residency; the Inference Operator only acts as its HTTP client.
+// (ztdllama). An HTTP provider (Ollama or a llama.cpp llama-server router)
+// owns process lifecycle, VRAM management, model eviction, and multi-model
+// residency, and the Inference Operator acts as its client. With jitllm the
+// Inference Operator is the provider: it runs the jitllm engine in-process
+// and owns those duties itself.
 // The Inference Operator is a worker: it holds no model configuration. Each
 // governed request names the model it wants, chosen by the user in the Console.
 type InferenceConfig struct {
@@ -181,7 +184,8 @@ type InferenceConfig struct {
 	Enabled             bool
 
 	// Provider is the provider class the Inference Operator calls:
-	// constants.InferenceProviderOllama or constants.InferenceProviderLlamaCpp.
+	// constants.InferenceProviderOllama, constants.InferenceProviderLlamaCpp,
+	// or constants.InferenceProviderJitLLM.
 	Provider string
 
 	// OllamaEndpoint is the HTTP endpoint of the configured Ollama provider
@@ -196,9 +200,15 @@ type InferenceConfig struct {
 	// the served-model digest from the GGUF files it serves.
 	LlamaCppModelRoot string
 
+	// JitLLMModelRoot is the folder of .jlm containers the embedded jitllm
+	// engine serves. Setting it selects the jitllm provider; the engine loads
+	// a container from it on the first request naming the model, and the
+	// served-model digest is the SHA-256 of that file.
+	JitLLMModelRoot string
+
 	// KeepAlive is the provider keep-alive passed per request. Default "-1"
-	// keeps each requested model resident on the provider. A llama.cpp
-	// router accepts only "-1" (resident) or "0" (unload after the request).
+	// keeps each requested model resident on the provider. llama.cpp and
+	// jitllm accept only "-1" (resident) or "0" (unload after the request).
 	KeepAlive string
 }
 
@@ -330,6 +340,7 @@ type GatewayOptions struct {
 	InferenceOllamaEndpoint              string
 	InferenceLlamaCppEndpoint            string
 	InferenceLlamaCppModelRoot           string
+	InferenceJitLLMModelRoot             string
 	InferenceKeepAlive                   string
 	InferenceAllowHostedDecision         bool
 	InferenceDecisionModels              []string
@@ -463,7 +474,7 @@ func LoadGateway(opts GatewayOptions) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	inference, err := newInferenceConfig(capabilities.Has(constants.OperatorCapabilityInference), LoadOptions{InferenceOllamaEndpoint: opts.InferenceOllamaEndpoint, InferenceLlamaCppEndpoint: opts.InferenceLlamaCppEndpoint, InferenceLlamaCppModelRoot: opts.InferenceLlamaCppModelRoot, InferenceKeepAlive: opts.InferenceKeepAlive, InferenceAllowHostedDecision: opts.InferenceAllowHostedDecision, InferenceDecisionModels: opts.InferenceDecisionModels, InferenceDecisionOnly: opts.InferenceDecisionOnly})
+	inference, err := newInferenceConfig(capabilities.Has(constants.OperatorCapabilityInference), LoadOptions{InferenceOllamaEndpoint: opts.InferenceOllamaEndpoint, InferenceLlamaCppEndpoint: opts.InferenceLlamaCppEndpoint, InferenceLlamaCppModelRoot: opts.InferenceLlamaCppModelRoot, InferenceJitLLMModelRoot: opts.InferenceJitLLMModelRoot, InferenceKeepAlive: opts.InferenceKeepAlive, InferenceAllowHostedDecision: opts.InferenceAllowHostedDecision, InferenceDecisionModels: opts.InferenceDecisionModels, InferenceDecisionOnly: opts.InferenceDecisionOnly})
 	if err != nil {
 		return nil, err
 	}
@@ -727,9 +738,11 @@ func heartbeatIntervalOrDefault(d time.Duration) time.Duration {
 }
 
 // newInferenceConfig builds an InferenceConfig from LoadOptions, applying
-// defaults for unset fields. A llama.cpp endpoint selects the llama.cpp
-// provider and requires its model root; otherwise the provider is Ollama and
-// its endpoint defaults to loopback on the canonical Ollama port.
+// defaults for unset fields. A llama.cpp endpoint selects llama.cpp and
+// requires its model root; a jitllm model root selects the embedded jitllm
+// engine, which has no endpoint. Otherwise the provider is Ollama and its
+// endpoint defaults to loopback on the canonical Ollama port. At most one
+// provider may be selected.
 func newInferenceConfig(enabled bool, opts LoadOptions) (InferenceConfig, error) {
 	cfg := InferenceConfig{
 		Enabled:             enabled,
@@ -740,26 +753,41 @@ func newInferenceConfig(enabled bool, opts LoadOptions) (InferenceConfig, error)
 		OllamaEndpoint:      strings.TrimSpace(opts.InferenceOllamaEndpoint),
 		LlamaCppEndpoint:    strings.TrimSpace(opts.InferenceLlamaCppEndpoint),
 		LlamaCppModelRoot:   strings.TrimSpace(opts.InferenceLlamaCppModelRoot),
+		JitLLMModelRoot:     strings.TrimSpace(opts.InferenceJitLLMModelRoot),
 		KeepAlive:           cmp.Or(opts.InferenceKeepAlive, constants.InferenceDefaultKeepAlive),
 	}
-	if cfg.LlamaCppEndpoint == "" {
+	if cfg.LlamaCppEndpoint != "" && cfg.JitLLMModelRoot != "" {
+		return InferenceConfig{}, constants.ErrInferenceProviderConflict
+	}
+	switch {
+	case cfg.LlamaCppEndpoint != "":
+		cfg.Provider = constants.InferenceProviderLlamaCpp
+	case cfg.JitLLMModelRoot != "":
+		cfg.Provider = constants.InferenceProviderJitLLM
+	default:
 		if cfg.OllamaEndpoint == "" {
 			cfg.OllamaEndpoint = fmt.Sprintf("http://127.0.0.1:%d", constants.InferenceOllamaDefaultPort)
 		}
 		return cfg, nil
 	}
-	cfg.Provider = constants.InferenceProviderLlamaCpp
 	if !enabled {
 		return cfg, nil
 	}
 	if cfg.OllamaEndpoint != "" {
 		return InferenceConfig{}, constants.ErrInferenceProviderConflict
 	}
-	if cfg.LlamaCppModelRoot == "" {
-		return InferenceConfig{}, constants.ErrInferenceLlamaCppModelRootRequired
-	}
-	if cfg.KeepAlive != constants.InferenceDefaultKeepAlive && cfg.KeepAlive != constants.InferenceUnloadKeepAlive {
-		return InferenceConfig{}, fmt.Errorf("config: inference keep-alive %q: %w", cfg.KeepAlive, constants.ErrInferenceLlamaCppKeepAliveInvalid)
+	switch cfg.Provider {
+	case constants.InferenceProviderLlamaCpp:
+		if cfg.LlamaCppModelRoot == "" {
+			return InferenceConfig{}, constants.ErrInferenceLlamaCppModelRootRequired
+		}
+		if cfg.KeepAlive != constants.InferenceDefaultKeepAlive && cfg.KeepAlive != constants.InferenceUnloadKeepAlive {
+			return InferenceConfig{}, fmt.Errorf("config: inference keep-alive %q: %w", cfg.KeepAlive, constants.ErrInferenceLlamaCppKeepAliveInvalid)
+		}
+	case constants.InferenceProviderJitLLM:
+		if cfg.KeepAlive != constants.InferenceDefaultKeepAlive && cfg.KeepAlive != constants.InferenceUnloadKeepAlive {
+			return InferenceConfig{}, fmt.Errorf("config: inference keep-alive %q: %w", cfg.KeepAlive, constants.ErrInferenceJitLLMKeepAliveInvalid)
+		}
 	}
 	return cfg, nil
 }
@@ -781,7 +809,7 @@ func newProvenanceOperatorConfig(enabled bool, opts LoadOptions) (ProvenanceOper
 		return ProvenanceOperatorConfig{}, constants.ErrProvenanceModelStorageRootRequired
 	}
 	format := cmp.Or(strings.TrimSpace(opts.ProvenanceOperatorModelStorageFormat), constants.ModelStorageFormatOllama)
-	if format != constants.ModelStorageFormatOllama && format != constants.ModelStorageFormatLlamaCpp {
+	if format != constants.ModelStorageFormatOllama && format != constants.ModelStorageFormatLlamaCpp && format != constants.ModelStorageFormatJitLLM {
 		return ProvenanceOperatorConfig{}, fmt.Errorf("config: model storage format %q: %w", format, constants.ErrProvenanceModelStorageFormatInvalid)
 	}
 	operatorID := opts.ProvenanceOperatorID

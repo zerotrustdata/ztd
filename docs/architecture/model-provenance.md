@@ -23,9 +23,9 @@ do_not_use_for:
 
 ## Purpose
 
-Campaign verification compares each scored inference record's model variant digest against the attestation window stored for its `provider_attempt_id`. Inference dispatch sends governed BEGIN and FINALIZE commands to a **Provenance Operator** at the model storage host when a request carries both a served model tag and a model digest. That Operator resolves the served tag in its local model store, hashes weights locally, and returns a typed attestation window bound to the inference `provider_attempt_id`. The store is an Ollama model directory (manifest and content-addressed blobs) or a llama.cpp `--models-dir` (GGUF files), selected by `--model-storage-format`.
+Campaign verification compares each scored inference record's model variant digest against the attestation window stored for its `provider_attempt_id`. Inference dispatch sends governed BEGIN and FINALIZE commands to a **Provenance Operator** at the model storage host when a request carries both a served model tag and a model digest. That Operator resolves the served tag in its local model store, hashes weights locally, and returns a typed attestation window bound to the inference `provider_attempt_id`. The store is an Ollama model directory (manifest and content-addressed blobs), a llama.cpp `--models-dir` (GGUF files), or a jitllm models folder (`.jlm` containers), selected by `--model-storage-format`.
 
-This represents evaluation witness evidence, not an authorization gate. The Provenance Operator does not run inference, inspect prompts, sample provider hardware, or authorize execution. The Inference Operator remains the sole execution path to the configured model provider endpoint (Ollama or llama.cpp).
+This represents evaluation witness evidence, not an authorization gate. The Provenance Operator does not run inference, inspect prompts, sample provider hardware, or authorize execution. The Inference Operator remains the sole execution path to the configured model provider endpoint (Ollama, llama.cpp, or jitllm).
 
 ## Quick index
 
@@ -59,11 +59,11 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | ID | Rule |
 | --- | --- |
 | INV-PROV-ATTEST-01 | Attestation is triggered only for a dispatched inference request that carries a non-empty served model tag and a non-empty model digest. The Gateway does not send BEGIN or FINALIZE when the attempt ID, tag, or digest is empty. |
-| INV-PROV-ATTEST-02 | On FINALIZE, `OllamaStorageAttestor` reads the manifest via `ollama.ParseName`, computes its SHA-256 digest, and verifies every referenced blob under `blobs/sha256-<digest>` through the attestor's blob verifier. Under `--model-storage-format llamacpp`, `LlamaCppStorageAttestor` resolves the served tag beneath `--model-storage-root` with llama.cpp's models-dir rules, hashes each GGUF file the router loads through the same blob verifier, and composes the observed digest from the model's shard digests (`llamacpp.ComposeModelDigest`). |
+| INV-PROV-ATTEST-02 | On FINALIZE, `OllamaStorageAttestor` reads the manifest via `ollama.ParseName`, computes its SHA-256 digest, and verifies every referenced blob under `blobs/sha256-<digest>` through the attestor's blob verifier. Under `--model-storage-format llamacpp`, `LlamaCppStorageAttestor` resolves the served tag beneath `--model-storage-root` with llama.cpp's models-dir rules, hashes each GGUF file the router loads through the same blob verifier, and composes the observed digest from the model's shard digests (`llamacpp.ComposeModelDigest`). Under `--model-storage-format jitllm`, `JitLLMStorageAttestor` resolves the served tag to one `.jlm` file in that folder (filename stem or alias), hashes the whole file through the same blob verifier, and records that digest. |
 | INV-PROV-ATTEST-06 | A blob is streamed through SHA-256 once per file identity (file ID, size, modification time, change time). A later window checks only that identity and records `MODEL_WEIGHT_VERIFICATION_MODE_FILE_IDENTITY_UNCHANGED` with the `full_hash_completed_at_unix_ms` it rests on; a window that hashed records `MODEL_WEIGHT_VERIFICATION_MODE_FULL_HASH`. A changed or replaced file is hashed again before reuse, a blob whose identity moved during its hash fails attestation, and a hash is reusable only when the blob's identity predates the hash start by `ModelProvenanceBlobIdentitySettleWindow`. |
 | INV-PROV-ATTEST-07 | Concurrent windows for one blob share a single in-flight hash, and full hashes across blobs are bounded by `ModelProvenanceHashConcurrency`. Hash cost is per blob change, not per scored inference. |
 | INV-PROV-ATTEST-03 | A missing manifest or blob, invalid digest reference, content hash mismatch, or size mismatch fails attestation. A manifest digest that differs from the expected digest produces a window with `digest_match` false, and FINALIZE then fails with a digest mismatch, so no completion window is published. |
-| INV-PROV-ATTEST-04 | The Ollama attestation window records `MODEL_MANIFEST_VERIFICATION_STATUS_UNSIGNED`. The llama.cpp window records `MODEL_MANIFEST_VERIFICATION_STATUS_UNAVAILABLE` and no manifest digest, because a models directory has no manifest. The model provenance code contains no Sigstore, Cosign, or SPIFFE/SPIRE attestation. |
+| INV-PROV-ATTEST-04 | The Ollama attestation window records `MODEL_MANIFEST_VERIFICATION_STATUS_UNSIGNED`. The llama.cpp and jitllm windows record `MODEL_MANIFEST_VERIFICATION_STATUS_UNAVAILABLE` and no manifest digest, because those stores have no manifest. The model provenance code contains no Sigstore, Cosign, or SPIFFE/SPIRE attestation. |
 | INV-PROV-ATTEST-05 | A multi-runner tag stores a wrapper manifest whose layers include one `application/vnd.docker.distribution.manifest.v2+json` manifest per runner, and the served digest can name a runner manifest rather than the wrapper. When the expected digest is not the wrapper's own, the attestor attests the referenced runner manifest blob whose digest equals it: the blob's hash is verified and only its config and layers are attested. A digest the wrapper does not reference is a mismatch. |
 
 ### Evidence persistence and verification (`INV-PROV-PERSIST`)
@@ -84,6 +84,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Provenance Operator capability | `internal/services/operatorcapability/provenance_operator.go` | `./ztd test unit --pkg ./internal/services/operatorcapability` |
 | Ollama manifest attestation | `internal/services/inference/model_provenance/attestor.go` | `./ztd test unit --pkg ./internal/services/inference/model_provenance` |
 | llama.cpp GGUF attestation | `internal/services/inference/model_provenance/llamacpp_attestor.go` | `./ztd test integration --pkg ./internal/services/inference/model_provenance --run TestLlamaCppStorageAttestor` |
+| jitllm `.jlm` attestation | `internal/services/inference/model_provenance/jitllm_attestor.go` | `./ztd test integration --pkg ./internal/services/inference/model_provenance --run TestJitLLM` |
 | Protocol surface | `protocol/proto/ztd/eval/v1/eval.proto` | `ModelProvenanceAttestationWindow` schema |
 | Gateway attestation window persistence | `internal/services/inference/model_provenance/window_store.go` | `WindowStore.Load` and `WindowStore.Save` implementations |
 | Sealed campaign copy | `internal/services/evaluation/campaign_model_provenance.go` | `Store.SaveModelProvenanceWindow` and `Store.LoadModelProvenanceWindow`, run with `./ztd test unit --pkg ./internal/services/evaluation --run ModelProvenance` |
@@ -100,13 +101,13 @@ Campaign Gateway
            ▼                              ▼                              ▼
    Inference Operator             Provenance Operator            Observer Operator
    (inference capability)         (provenance capability)        (observer capability)
-   • Dispatches to Ollama API     • Manifest/GGUF reader         • Observer capability
+   • Dispatches to the provider    • Manifest, GGUF, or .jlm reader • Observer capability
                                   • Local weight blob hashing
                                   • AttestationWindow output
 ```
 
-- **Inference Operator**: The execution path that invokes Ollama inference. Capabilities are listed in [Operator Architecture](operator.md).
-- **Provenance Operator**: An independent witness that reads the model storage directory configured with `--model-storage-root`. Under the default `--model-storage-format ollama` that is an Ollama model directory (for example `~/.ollama/models`). Under `--model-storage-format llamacpp` it is a llama-server `--models-dir`. It attests that the served model tag maps to the weights named by the expected digest.
+- **Inference Operator**: The execution path that invokes the configured provider. Capabilities are listed in [Operator Architecture](operator.md).
+- **Provenance Operator**: An independent witness that reads the model storage directory configured with `--model-storage-root`. Under the default `--model-storage-format ollama` that is an Ollama model directory (for example `~/.ollama/models`). Under `--model-storage-format llamacpp` it is a llama-server `--models-dir`. Under `--model-storage-format jitllm` it is the jitllm models folder an Inference Operator's embedded engine serves. It attests that the served model tag maps to the weights named by the expected digest.
 - **Observer Operator**: Runs with the `observer` capability. Provenance Operator selection does not consider it.
 
 ## Attestation Flow and Storage Verification
@@ -117,13 +118,13 @@ Each inference attempt that carries a served model tag and model digest triggers
 1. Gateway sends BEGIN (provider_attempt_id, served_tag, expected_digest)
                           │
                           ▼
-2. Inference Operator executes scored model call against the configured provider (Ollama or llama.cpp)
+2. Inference Operator executes scored model call against the configured provider (Ollama, llama.cpp, or jitllm)
                           │
                           ▼
 3. Gateway sends FINALIZE to Provenance Operator
                           │
                           ▼
-4. Storage attestor. Ollama format (`OllamaStorageAttestor`) reads the manifest via ollama.ParseName. llama.cpp format (`LlamaCppStorageAttestor`) resolves the tag via `llamacpp.ResolveModel` and hashes GGUF files, with no manifest step.
+4. Storage attestor. Ollama format (`OllamaStorageAttestor`) reads the manifest via ollama.ParseName. llama.cpp format (`LlamaCppStorageAttestor`) resolves the tag via `llamacpp.ResolveModel` and hashes GGUF files, with no manifest step. jitllm format (`JitLLMStorageAttestor`) resolves the tag to one `.jlm` file and hashes that file, with no manifest step.
    ├── Computes SHA-256 of manifest file -> compares with expected_digest
    ├── Multi-runner tag: attests the referenced runner manifest named by expected_digest
    ├── Parses config and layer blobs (blobs/sha256-<digest>)

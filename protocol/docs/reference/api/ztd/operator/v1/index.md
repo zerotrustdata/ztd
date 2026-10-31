@@ -2623,7 +2623,8 @@ OperatorDocument.runtime_config.
 | inference_decision_only | [bool](#bool) |  |  |
 | inference_llamacpp_endpoint | [string](#string) |  | Approved remote llama.cpp llama-server URL (--inference-llamacpp-endpoint). |
 | inference_llamacpp_model_root | [string](#string) |  | llama-server --models-dir as seen by this Operator (--inference-llamacpp-model-root). |
-| provenance_operator_model_storage_format | [string](#string) |  | Model store layout under provenance_operator_model_storage_root (--model-storage-format: ollama or llamacpp). |
+| provenance_operator_model_storage_format | [string](#string) |  | Model store layout under provenance_operator_model_storage_root (--model-storage-format: ollama, llamacpp, or jitllm). |
+| inference_jitllm_model_root | [string](#string) |  | Folder of .jlm containers this Operator serves with its in-process jitllm engine (--inference-jitllm-model-root). Set, it selects jitllm, which has no provider endpoint. |
 
 
 

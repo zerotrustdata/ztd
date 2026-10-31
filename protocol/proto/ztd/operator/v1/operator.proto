@@ -443,8 +443,12 @@ message OperatorRuntimeConfig {
   // (--inference-llamacpp-model-root).
   string inference_llamacpp_model_root = 25;
   // Model store layout under provenance_operator_model_storage_root
-  // (--model-storage-format: ollama or llamacpp).
+  // (--model-storage-format: ollama, llamacpp, or jitllm).
   string provenance_operator_model_storage_format = 26;
+  // Folder of .jlm containers this Operator serves with its in-process jitllm
+  // engine (--inference-jitllm-model-root). Set, it selects jitllm, which has
+  // no provider endpoint.
+  string inference_jitllm_model_root = 27;
 }
 
 // OperatorDocument is the canonical Operator record. The Gateway owns and

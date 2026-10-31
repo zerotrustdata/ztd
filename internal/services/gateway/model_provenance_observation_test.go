@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
@@ -232,4 +233,29 @@ func TestModelProvenanceObservationCoordinator_ZeroProvenanceOperatorReportsNotF
 	)
 	require.ErrorIs(t, err, constants.ErrProvenanceOperatorNotFound)
 	assert.Nil(t, finalize)
+}
+
+func TestModelProvenanceObservationCoordinator_SelectsExecutingInferenceSessionAmongManyProvenanceOperators(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
+	windowStore, err := model_provenance.NewWindowStore(fileSvc)
+	require.NoError(t, err)
+	pubsubHandler := NewGatewayWebSocketHandler(logger)
+
+	allCaps := []string{"data", "inference", "provenance", "observer"}
+	coordinator := NewModelProvenanceObservationCoordinator(
+		&DispatchService{},
+		&stubModelProvenanceOperatorLister{operators: []*operatorv1.OperatorDocument{
+			{Id: "op-1", OperatorSessionId: "sess-1", Status: string(constants.OperatorStatusActive), OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: allCaps}},
+			{Id: "op-2", OperatorSessionId: "sess-2", Status: string(constants.OperatorStatusActive), OperatorType: string(constants.OperatorTypeRemote), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: allCaps}},
+		}},
+		pubsubHandler,
+		windowStore,
+		nil,
+		logger,
+	)
+
+	require.NoError(t, coordinator.synchronizeOperatorSubscription(dispatch.WithInferenceOperatorSession(context.Background(), "sess-2")))
+	require.NotNil(t, coordinator.operator)
+	assert.Equal(t, "sess-2", coordinator.operator.OperatorSessionID)
 }

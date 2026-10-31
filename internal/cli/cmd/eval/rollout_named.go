@@ -168,6 +168,27 @@ func validateRolloutCampaigns(cmd *cobra.Command, deps nativeEvalDeps, ids []str
 	return nil
 }
 
+func validateRolloutExecutionCampaigns(cmd *cobra.Command, deps nativeEvalDeps, ids []string) (map[string]bool, error) {
+	seen := make(map[string]bool, len(ids))
+	missing := make(map[string]bool)
+	sub := *cmd
+	sub.SetOut(io.Discard)
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if _, err := runStartFlow(&sub, deps, runStartFlowOptions{CampaignID: id, DryRun: true}); err != nil {
+			if errors.Is(err, constants.ErrNotFound) {
+				missing[id] = true
+				continue
+			}
+			return nil, fmt.Errorf("evaluation: rollout campaign %q: %w", id, err)
+		}
+	}
+	return missing, nil
+}
+
 type namedRolloutOptions struct {
 	Resume bool
 	DryRun bool
@@ -211,19 +232,33 @@ func runNamedRollout(cmd *cobra.Command, deps nativeEvalDeps, files fs.RuntimeFi
 		rollout.Executions = append(rollout.Executions, next)
 		execution = &rollout.Executions[len(rollout.Executions)-1]
 	}
-	indices := make([]int, 0, len(execution.Steps))
 	ids := make([]string, 0, len(execution.Steps))
-	for i, step := range execution.Steps {
-		if step.Status == evaluation.RolloutStepSucceeded {
+	for _, step := range execution.Steps {
+		if step.Status == evaluation.RolloutStepSucceeded || step.Status == evaluation.RolloutStepSkipped {
 			continue
 		}
-		indices = append(indices, i)
 		ids = append(ids, step.CampaignID)
 	}
 	// Validate the entire remaining sequence before applying the invocation's
-	// limit, so a missing or archived later campaign cannot start a partial batch.
-	if err := validateRolloutCampaigns(cmd, deps, ids); err != nil {
+	// limit, so an archived or invalid later campaign cannot start a partial batch.
+	// Removed campaigns are marked skipped and omitted from execution.
+	missing, err := validateRolloutExecutionCampaigns(cmd, deps, ids)
+	if err != nil {
 		return err
+	}
+	indices := make([]int, 0, len(execution.Steps))
+	var newlySkipped []int
+	for i := range execution.Steps {
+		step := &execution.Steps[i]
+		if step.Status == evaluation.RolloutStepSucceeded || step.Status == evaluation.RolloutStepSkipped {
+			continue
+		}
+		if missing[step.CampaignID] {
+			step.Status = evaluation.RolloutStepSkipped
+			newlySkipped = append(newlySkipped, i)
+			continue
+		}
+		indices = append(indices, i)
 	}
 	if opts.Until > 0 && len(indices) > opts.Until {
 		indices = indices[:opts.Until]
@@ -255,6 +290,9 @@ func runNamedRollout(cmd *cobra.Command, deps nativeEvalDeps, files fs.RuntimeFi
 	if output.JSONEnabled(cmd) {
 		// Keep stdout as one JSON document, including when a campaign fails.
 		sub.SetOut(cmd.ErrOrStderr())
+	}
+	for _, i := range newlySkipped {
+		sub.Printf("Rollout %s: campaign %d/%d: %s: skipped (campaign not found)\n", name, i+1, len(execution.Steps), execution.Steps[i].CampaignID)
 	}
 	var batchErr error
 	for _, i := range indices {

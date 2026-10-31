@@ -28,7 +28,8 @@ type InferenceOperatorStatus struct {
 	Status            string
 	InferenceEnabled  bool
 	// Provider is the provider class the Operator serves
-	// (constants.InferenceProviderOllama or constants.InferenceProviderLlamaCpp)
+	// (constants.InferenceProviderOllama, constants.InferenceProviderLlamaCpp,
+	// or constants.InferenceProviderJitLLM)
 	// and ProviderEndpoint its approved endpoint.
 	Provider         string
 	ProviderEndpoint string
@@ -94,7 +95,7 @@ func SelectInferenceOperatorForHardware(
 			eligible = append(eligible, op)
 		}
 	}
-	matches := operatorcapability.PreferEmbedded(activeInferenceOperatorDocs(eligible, systemFingerprint))
+	matches := activeInferenceOperatorDocs(eligible, systemFingerprint)
 	if sessionID != "" {
 		for _, op := range matches {
 			if op.GetOperatorSessionId() == sessionID {

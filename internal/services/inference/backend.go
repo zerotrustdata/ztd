@@ -6,12 +6,13 @@
 // released under the Apache License, Version 2.0.
 
 // Package inference owns the backend abstraction, the local provider HTTP
-// clients (Ollama and a llama.cpp llama-server router), and the governed
-// execution handler for local LLM inference (ztdllama). The provider owns
-// process lifecycle, VRAM management, model eviction, and multi-model
-// residency; the Go backend uses the provider's HTTP API for scored chat and
-// explicit campaign-boundary model release. Role routing remains a
-// config-and-payload concern.
+// clients (Ollama and a llama.cpp llama-server router), the in-process jitllm
+// engine, and the governed execution handler for local LLM inference
+// (ztdllama). An HTTP provider owns process lifecycle, VRAM management, model
+// eviction, and multi-model residency, and the Go backend uses its HTTP API
+// for scored chat and explicit campaign-boundary model release; with jitllm
+// the Operator owns them itself. Role routing remains a config-and-payload
+// concern.
 package inference
 
 import (
@@ -26,7 +27,7 @@ import (
 
 // Backend is the inference backend abstraction. Implementations send
 // generation requests to a local inference daemon (Ollama or llama-server)
-// and return the generated text, usage metadata, and finish reason. The
+// or run them on the in-process jitllm engine, and return the generated text, usage metadata, and finish reason. The
 // interface is intentionally minimal: the provider owns model loading,
 // residency, and eviction. Campaign-boundary release is a Provider
 // operation and is not part of the scored Backend contract.
@@ -51,12 +52,14 @@ type DecisionBackend interface {
 // Provider is the configured local inference provider of an Inference
 // Operator: scored generation and decisions plus the model inventory,
 // residency, and release operations the Operator's maintenance commands use.
+// The runtime that built the Provider closes it after its last request.
 type Provider interface {
 	Backend
 	DecisionBackend
 	ListProviderModelInventory(ctx context.Context) ([]ProviderModelInventoryEntry, error)
 	ReadResidency(ctx context.Context) (ProviderResidency, error)
 	ReleaseModels(ctx context.Context, models []string) error
+	Close() error
 }
 
 // NewProvider constructs the provider selected by cfg.Provider. One Provider
@@ -68,6 +71,8 @@ func NewProvider(cfg config.InferenceConfig, logger *slog.Logger) (Provider, err
 		return NewOllamaBackend(cfg.OllamaEndpoint, logger)
 	case constants.InferenceProviderLlamaCpp:
 		return NewLlamaCppBackend(cfg.LlamaCppEndpoint, cfg.LlamaCppModelRoot, logger)
+	case constants.InferenceProviderJitLLM:
+		return NewJitLLMBackend(cfg.JitLLMModelRoot, logger)
 	default:
 		return nil, fmt.Errorf("inference: provider %q: %w", cfg.Provider, constants.ErrInferenceProviderInvalid)
 	}

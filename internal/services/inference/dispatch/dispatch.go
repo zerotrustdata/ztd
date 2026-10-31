@@ -137,6 +137,29 @@ type ProvenanceObservationNotifier interface {
 	NotifyAttemptFinalize(ctx context.Context, requestorUserID, providerAttemptID, inferenceTransactionID, servedModelTag, expectedModelDigest, modelRegistryDigest, campaignID string, startedAtUnixMs, completedAtUnixMs int64, failed bool, retryCount uint32) (*operatorv1.EventReceipt, error)
 }
 
+type inferenceOperatorSessionKey struct{}
+
+// WithInferenceOperatorSession attaches the resolved inference Operator
+// session ID to ctx so observation and provenance coordinators can prefer
+// the executing runtime or its hardware when multiple witness-capable
+// Operators are active.
+func WithInferenceOperatorSession(ctx context.Context, sessionID string) context.Context {
+	if sessionID == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, inferenceOperatorSessionKey{}, sessionID)
+}
+
+// InferenceOperatorSessionFromContext returns the inference Operator session ID
+// attached by WithInferenceOperatorSession, or empty string if unset.
+func InferenceOperatorSessionFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	sessionID, _ := ctx.Value(inferenceOperatorSessionKey{}).(string)
+	return sessionID
+}
+
 // DispatchService is the platform-internal inference dispatch service on
 // the User Gateway. It is not a NativeTool and is not registered in the MCP
 // ToolRegistry. App workloads call DispatchInference to route
@@ -392,7 +415,7 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 		Timeout:                 RequestDeadline,
 		OnInferenceProgress:     req.OnProgress,
 		OnAdmitted: func(admitted context.Context) error {
-			beginErr = s.beginAttempt(admitted, req, &attempt)
+			beginErr = s.beginAttempt(WithInferenceOperatorSession(admitted, operatorSessionID), req, &attempt)
 			return beginErr
 		},
 	})
@@ -785,24 +808,6 @@ func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req Disp
 			op.OperatorSessionId != "" &&
 			constants.OperatorStatus(op.Status) == constants.OperatorStatusActive
 	}
-
-	var eligible []*operatorv1.OperatorDocument
-	for _, op := range operators {
-		if capable(op) {
-			eligible = append(eligible, op)
-		}
-	}
-	preferred := operatorcapability.PreferEmbedded(eligible)
-	// Keep the caller's explicit incapable-session error while preventing a
-	// shadow remote session from overriding an eligible embedded Operator.
-	if req.TargetOperatorSessionID != "" {
-		for _, op := range operators {
-			if op.GetOperatorSessionId() == req.TargetOperatorSessionID && !capable(op) {
-				return "", constants.ErrInferenceOperatorNotCapable
-			}
-		}
-	}
-	operators = preferred
 
 	if req.TargetOperatorID != "" {
 		var selected string

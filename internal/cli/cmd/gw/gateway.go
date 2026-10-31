@@ -60,6 +60,7 @@ type GatewayFlags struct {
 	InferenceOllamaEndpoint              string
 	InferenceLlamaCppEndpoint            string
 	InferenceLlamaCppModelRoot           string
+	InferenceJitLLMModelRoot             string
 	InferenceKeepAlive                   string
 	ProviderBoundaryObserverID           string
 	ProvenanceOperatorID                 string
@@ -106,11 +107,12 @@ func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 	cmd.Flags().StringVar(&f.InferenceOllamaEndpoint, "inference-ollama-endpoint", "", "Approved Ollama endpoint for embedded inference (default: ZTD_OLLAMA_ENDPOINT, else http://127.0.0.1:11434)")
 	cmd.Flags().StringVar(&f.InferenceLlamaCppEndpoint, "inference-llamacpp-endpoint", "", "Approved llama.cpp llama-server router endpoint for embedded inference; selects the llama.cpp provider instead of Ollama")
 	cmd.Flags().StringVar(&f.InferenceLlamaCppModelRoot, "inference-llamacpp-model-root", "", "llama-server --models-dir as seen by the Gateway (required with --inference-llamacpp-endpoint)")
-	cmd.Flags().StringVar(&f.InferenceKeepAlive, "inference-keep-alive", "", "Provider keep-alive duration (llama.cpp accepts -1 or 0)")
+	cmd.Flags().StringVar(&f.InferenceJitLLMModelRoot, "inference-jitllm-model-root", "", "Folder of .jlm containers the embedded Operator serves with its in-process jitllm engine; selects jitllm instead of Ollama")
+	cmd.Flags().StringVar(&f.InferenceKeepAlive, "inference-keep-alive", "", "Provider keep-alive duration (llama.cpp and jitllm accept -1 or 0)")
 	cmd.Flags().StringVar(&f.ProviderBoundaryObserverID, "provider-boundary-observer-id", "", "Stable observer identity")
 	cmd.Flags().StringVar(&f.ProvenanceOperatorID, "provenance-operator-id", "", "Stable provenance identity")
 	cmd.Flags().StringVar(&f.ProvenanceOperatorModelStorageRoot, "model-storage-root", "", "Root directory of the model weight store")
-	cmd.Flags().StringVar(&f.ProvenanceOperatorModelStorageFormat, "model-storage-format", "", "Model store layout under --model-storage-root: ollama (default) or llamacpp")
+	cmd.Flags().StringVar(&f.ProvenanceOperatorModelStorageFormat, "model-storage-format", "", "Model store layout under --model-storage-root: ollama (default), llamacpp, or jitllm")
 
 	cmd.Flags().StringVar(&f.Posture, "posture", string(constants.DefaultPosture), postureFlagHelp())
 	cmd.Flags().IntVar(&f.HTTPPort, "http-port", 0, "Plain HTTP port for bootstrap, PKI discovery and enrollment (default: from constants.Ports.OperatorHttp)")
@@ -156,10 +158,11 @@ func postureFlagHelp() string {
 
 // resolveGatewayFlags finalizes gateway flag values. Gateway configuration is
 // flag-only, except that the user_endpoint ZTD_OLLAMA_ENDPOINT supplies
-// --inference-ollama-endpoint when the flag is blank and no
-// --inference-llamacpp-endpoint selects llama.cpp.
+// --inference-ollama-endpoint when the flag is blank and neither
+// --inference-llamacpp-endpoint nor --inference-jitllm-model-root selects
+// another provider.
 func resolveGatewayFlags(f GatewayFlags) GatewayFlags {
-	f.InferenceOllamaEndpoint = config.InferenceOllamaEndpoint(f.InferenceOllamaEndpoint, f.InferenceLlamaCppEndpoint)
+	f.InferenceOllamaEndpoint = config.InferenceOllamaEndpoint(f.InferenceOllamaEndpoint, f.InferenceLlamaCppEndpoint, f.InferenceJitLLMModelRoot)
 	return f
 }
 
@@ -185,6 +188,7 @@ func gatewayFlagsToServeConfig(f GatewayFlags) serve.GatewayConfig {
 		InferenceOllamaEndpoint:              f.InferenceOllamaEndpoint,
 		InferenceLlamaCppEndpoint:            f.InferenceLlamaCppEndpoint,
 		InferenceLlamaCppModelRoot:           f.InferenceLlamaCppModelRoot,
+		InferenceJitLLMModelRoot:             f.InferenceJitLLMModelRoot,
 		InferenceKeepAlive:                   f.InferenceKeepAlive,
 		ProviderBoundaryObserverID:           f.ProviderBoundaryObserverID,
 		ProvenanceOperatorID:                 f.ProvenanceOperatorID,

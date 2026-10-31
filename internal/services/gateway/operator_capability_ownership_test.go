@@ -22,25 +22,30 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func TestOperatorRuntimeConfigRejectsDuplicateSingletonCapability(t *testing.T) {
-	for _, capability := range []constants.OperatorCapability{constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver} {
-		t.Run(string(capability), func(t *testing.T) {
-			store := newOperatorOwnershipStore(t)
-			reg := &RegistrationService{docStore: store}
-			for _, id := range []string{string(constants.DocIDEmbeddedOperator), "remote"} {
-				kind := constants.OperatorTypeRemote
-				if id == string(constants.DocIDEmbeddedOperator) {
-					kind = constants.OperatorTypeEmbedded
-				}
-				raw, err := models.MarshalOperatorDocument(&operatorv1.OperatorDocument{Id: id, Status: string(constants.OperatorStatusActive), OperatorType: string(kind), OperatorSessionId: id + "-session", Claimed: true})
-				require.NoError(t, err)
-				require.NoError(t, store.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionOperators), id, raw))
-			}
-			cfg := &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(capability)}}
-			require.NoError(t, reg.UpdateOperatorRuntimeConfig(t.Context(), string(constants.DocIDEmbeddedOperator), cfg))
-			err := reg.UpdateOperatorRuntimeConfig(t.Context(), "remote", cfg)
-			require.ErrorIs(t, err, constants.ErrOperatorCapabilityInUse)
+func TestOperatorRuntimeConfigAllowsManyOperatorsWithAllCapabilities(t *testing.T) {
+	allCapabilities := []string{
+		string(constants.OperatorCapabilityData),
+		string(constants.OperatorCapabilityInference),
+		string(constants.OperatorCapabilityProvenance),
+		string(constants.OperatorCapabilityObserver),
+	}
+	store := newOperatorOwnershipStore(t)
+	reg := &RegistrationService{docStore: store}
+	for _, id := range []string{string(constants.DocIDEmbeddedOperator), "remote-1", "remote-2", "remote-3"} {
+		kind := constants.OperatorTypeRemote
+		if id == string(constants.DocIDEmbeddedOperator) {
+			kind = constants.OperatorTypeEmbedded
+		}
+		raw, err := models.MarshalOperatorDocument(&operatorv1.OperatorDocument{
+			Id:                id,
+			Status:            string(constants.OperatorStatusActive),
+			OperatorType:      string(kind),
+			OperatorSessionId: id + "-session",
+			Claimed:           true,
 		})
+		require.NoError(t, err)
+		require.NoError(t, store.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionOperators), id, raw))
+		require.NoError(t, reg.UpdateOperatorRuntimeConfig(t.Context(), id, &operatorv1.OperatorRuntimeConfig{Capabilities: allCapabilities}))
 	}
 }
 
@@ -65,49 +70,62 @@ func ownershipOperator(id string, key int, capabilities ...constants.OperatorCap
 	}
 }
 
-func TestRegisterOperatorCombinedWitnessAndManyDataOperators(t *testing.T) {
+func TestRegisterOperatorManyOperatorsWithMixedAndFullCapabilities(t *testing.T) {
 	store := newOperatorOwnershipStore(t)
-	witness := ownershipOperator("beepboop", 1, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver)
-	require.NoError(t, store.RegisterOperator(t.Context(), witness))
-	for i := 0; i < 4; i++ {
-		require.NoError(t, store.RegisterOperator(t.Context(), ownershipOperator(fmt.Sprintf("data-%d", i), i+2)))
+	require.NoError(t, store.SetOperatorRuntimeConfig(t.Context(), string(constants.DocIDEmbeddedOperator), &operatorv1.OperatorRuntimeConfig{
+		Capabilities: []string{"data", "inference", "provenance", "observer"},
+	}))
+	all := []constants.OperatorCapability{
+		constants.OperatorCapabilityData,
+		constants.OperatorCapabilityInference,
+		constants.OperatorCapabilityProvenance,
+		constants.OperatorCapabilityObserver,
 	}
-	raw, err := store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperators), witness.GetId())
-	require.NoError(t, err)
-	saved, err := models.OperatorDocumentFromStore(raw)
-	require.NoError(t, err)
-	require.Equal(t, []string{"provenance", "observer"}, saved.GetOperatorCapabilities())
+	key := 1
+	for mask := 1; mask < 1<<len(all); mask++ {
+		var caps []constants.OperatorCapability
+		for i, capability := range all {
+			if mask&(1<<i) != 0 {
+				caps = append(caps, capability)
+			}
+		}
+		op := ownershipOperator(fmt.Sprintf("op-mask-%d", mask), key, caps...)
+		require.NoError(t, store.RegisterOperator(t.Context(), op))
+		key++
+	}
+	for i := 0; i < 6; i++ {
+		op := ownershipOperator(fmt.Sprintf("full-%d", i), key, all...)
+		require.NoError(t, store.RegisterOperator(t.Context(), op))
+		key++
+	}
 }
 
-func TestRegisterOperatorConcurrentSingletonOwnership(t *testing.T) {
-	for _, capability := range []constants.OperatorCapability{constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver} {
-		t.Run(string(capability), func(t *testing.T) {
-			store := newOperatorOwnershipStore(t)
-			const workers = 6
-			start := make(chan struct{})
-			results := make(chan error, workers)
-			var wg sync.WaitGroup
-			for i := 0; i < workers; i++ {
-				wg.Add(1)
-				go func(i int) {
-					defer wg.Done()
-					<-start
-					results <- store.RegisterOperator(t.Context(), ownershipOperator(fmt.Sprintf("op-%d", i), i+1, capability))
-				}(i)
-			}
-			close(start)
-			wg.Wait()
-			close(results)
-			successes := 0
-			for err := range results {
-				if err == nil {
-					successes++
-				} else {
-					require.ErrorIs(t, err, constants.ErrOperatorCapabilityInUse)
-				}
-			}
-			require.Equal(t, 1, successes)
-		})
+func TestRegisterOperatorConcurrentAllCapabilities(t *testing.T) {
+	store := newOperatorOwnershipStore(t)
+	const workers = 8
+	start := make(chan struct{})
+	results := make(chan error, workers)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			results <- store.RegisterOperator(t.Context(), ownershipOperator(
+				fmt.Sprintf("op-%d", i),
+				i+1,
+				constants.OperatorCapabilityData,
+				constants.OperatorCapabilityInference,
+				constants.OperatorCapabilityProvenance,
+				constants.OperatorCapabilityObserver,
+			))
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+	for err := range results {
+		require.NoError(t, err)
 	}
 }
 
@@ -122,11 +140,7 @@ func TestRegisterOperatorRejectsSharedActuatorAcrossOwners(t *testing.T) {
 	require.ErrorContains(t, err, "observer")
 }
 
-// A runtime that re-enrolls with an added capability keeps its working
-// directory and Actuator key. Its prior lease, even one whose fingerprint was
-// computed by an older build that hashed capabilities, is the same Operator:
-// the replacement takes over its claims, and other runtimes still cannot.
-func TestOperatorClaimsAllowCapabilityChangeReenrollment(t *testing.T) {
+func TestOperatorClaimsAllowCapabilityChangeReenrollmentAndCoexistingOperators(t *testing.T) {
 	store := newOperatorOwnershipStore(t)
 	first := ownershipOperator("witness", 1, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver)
 	first.SystemFingerprint = "fingerprint-with-capabilities"
@@ -136,18 +150,18 @@ func TestOperatorClaimsAllowCapabilityChangeReenrollment(t *testing.T) {
 	blended.SystemFingerprint = "fingerprint-by-location"
 	require.NoError(t, store.RegisterOperator(t.Context(), blended))
 
-	elsewhere := ownershipOperator("elsewhere", 2, constants.OperatorCapabilityProvenance)
-	require.ErrorIs(t, store.RegisterOperator(t.Context(), elsewhere), constants.ErrOperatorCapabilityInUse)
+	elsewhere := ownershipOperator("elsewhere", 2, constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver)
+	require.NoError(t, store.RegisterOperator(t.Context(), elsewhere))
 }
 
-func TestOperatorClaimsReserveAcrossOwnersUntilTermination(t *testing.T) {
+func TestOperatorActuatorKeyClaimReservesAcrossOwnersUntilTermination(t *testing.T) {
 	store := newOperatorOwnershipStore(t)
 	first := ownershipOperator("first", 1, constants.OperatorCapabilityInference)
 	first.Status = string(constants.OperatorStatusStopped)
 	require.NoError(t, store.RegisterOperator(t.Context(), first))
-	next := ownershipOperator("next", 2, constants.OperatorCapabilityInference)
+	next := ownershipOperator("next", 1, constants.OperatorCapabilityInference)
 	next.UserId = "another-owner"
-	require.ErrorIs(t, store.RegisterOperator(t.Context(), next), constants.ErrOperatorCapabilityInUse)
+	require.ErrorIs(t, store.RegisterOperator(t.Context(), next), constants.ErrOperatorActuatorKeyInUse)
 	_, err := store.DocUpdate(t.Context(), marshaler.CollectionName(constants.CollectionOperators), first.GetId(), json.RawMessage(`{"status":"terminated"}`))
 	require.NoError(t, err)
 	require.NoError(t, store.RegisterOperator(t.Context(), next))
@@ -161,22 +175,4 @@ func TestOperatorClaimsAllowSameFingerprintReenrollment(t *testing.T) {
 	replacement := ownershipOperator("replacement", 1, constants.OperatorCapabilityInference)
 	replacement.SystemFingerprint = first.SystemFingerprint
 	require.NoError(t, store.RegisterOperator(t.Context(), replacement))
-}
-
-func TestRegisterOperatorRequiresEmbeddedStartupRegistration(t *testing.T) {
-	store := newDocumentStoreService(t)
-	require.ErrorIs(t, store.RegisterOperator(t.Context(), ownershipOperator("remote", 1)), constants.ErrEmbeddedOperatorNotReady)
-	raw, err := models.MarshalOperatorDocument(&operatorv1.OperatorDocument{Id: string(constants.DocIDEmbeddedOperator), OperatorType: string(constants.OperatorTypeEmbedded)})
-	require.NoError(t, err)
-	require.NoError(t, store.DocSet(t.Context(), marshaler.CollectionName(constants.CollectionOperators), string(constants.DocIDEmbeddedOperator), raw))
-	require.ErrorIs(t, store.RegisterOperator(t.Context(), ownershipOperator("remote", 1)), constants.ErrEmbeddedOperatorNotReady)
-}
-
-func TestPendingEmbeddedOperatorReservesCapabilitiesBeforeFirstUser(t *testing.T) {
-	store := newOperatorOwnershipStore(t)
-	require.NoError(t, store.SetOperatorRuntimeConfig(t.Context(), string(constants.DocIDEmbeddedOperator), &operatorv1.OperatorRuntimeConfig{Capabilities: []string{"inference", "observer", "provenance"}}))
-	for i, capability := range []constants.OperatorCapability{constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver} {
-		require.ErrorIs(t, store.RegisterOperator(t.Context(), ownershipOperator(fmt.Sprintf("remote-%d", i), i+1, capability)), constants.ErrOperatorCapabilityInUse)
-	}
-	require.NoError(t, store.RegisterOperator(t.Context(), ownershipOperator("data", 5)))
 }

@@ -264,6 +264,9 @@ func printOperatorShow(cmd *cobra.Command, op *operatorv1.OperatorDocument) {
 			cmd.Printf("  llama.cpp endpoint: %s\n", op.RuntimeConfig.InferenceLlamacppEndpoint)
 			cmd.Printf("  llama.cpp models:   %s\n", op.RuntimeConfig.InferenceLlamacppModelRoot)
 		}
+		if op.RuntimeConfig.InferenceJitllmModelRoot != "" {
+			cmd.Printf("  jitllm models:   %s (in-process engine)\n", op.RuntimeConfig.InferenceJitllmModelRoot)
+		}
 		if op.RuntimeConfig.ProvenanceOperatorModelStorageRoot != "" {
 			cmd.Printf("  Model store:       %s (%s)\n", op.RuntimeConfig.ProvenanceOperatorModelStorageRoot, op.RuntimeConfig.ProvenanceOperatorModelStorageFormat)
 		}

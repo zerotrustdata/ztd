@@ -42,6 +42,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway/embedded"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/inference"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
@@ -94,6 +95,7 @@ type GatewayModeService struct {
 	orchestrator             *PasskeyOrchestrator
 	mcpGateway               *mcp.GatewayService
 	cmdSvc                   *pubsub.OperatorPubSubService
+	inferenceProvider        inference.Provider
 	envProc                  governance.EnvelopeProcessor
 	platformEnrollmentSvc    *PlatformEnrollmentService
 	dispatchSvc              *DispatchService
@@ -264,16 +266,15 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	if err := embeddedOperator.RegisterPending(ctx); err != nil {
 		return nil, err
 	}
-	// Establish the embedded capability claims first, before PKI, remote
-	// enrollment services, or listeners exist. The pending record reserves its
-	// singleton capabilities even before the first user claims it.
+	// Commit the embedded Operator's runtime configuration before PKI, remote
+	// enrollment services, or listeners exist.
 
 	// The embedded Operator executes in its own runtime directory.
 	if err := b.fileSvc.MkdirAll(ctx, filepath.Join(constants.OperatorsDirname, constants.EmbeddedOperatorDirname), constants.PermDirPrivate); err != nil {
 		return nil, fmt.Errorf("gateway: create embedded operator working directory: %w", err)
 	}
 	reg := NewRegistrationService(docStore, kvStore, pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, &cfg.Gateway)
-	if err := reg.UpdateOperatorRuntimeConfig(ctx, string(constants.DocIDEmbeddedOperator), &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(cfg.EffectiveOperatorCapabilities()), HttpPort: int32(cfg.HTTPPort), LocalDir: cfg.WorkDir, InferenceOllamaEndpoint: cfg.Inference.OllamaEndpoint, InferenceLlamacppEndpoint: cfg.Inference.LlamaCppEndpoint, InferenceLlamacppModelRoot: cfg.Inference.LlamaCppModelRoot, InferenceKeepAlive: cfg.Inference.KeepAlive, ProvenanceOperatorId: cfg.ProvenanceOperator.OperatorID, ProvenanceOperatorModelStorageRoot: cfg.ProvenanceOperator.ModelStorageRoot, ProvenanceOperatorModelStorageFormat: cfg.ProvenanceOperator.ModelStorageFormat, ProviderBoundaryObserverId: cfg.ProviderBoundaryObserver.ObserverID}); err != nil {
+	if err := reg.UpdateOperatorRuntimeConfig(ctx, string(constants.DocIDEmbeddedOperator), &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(cfg.EffectiveOperatorCapabilities()), HttpPort: int32(cfg.HTTPPort), LocalDir: cfg.WorkDir, InferenceOllamaEndpoint: cfg.Inference.OllamaEndpoint, InferenceLlamacppEndpoint: cfg.Inference.LlamaCppEndpoint, InferenceLlamacppModelRoot: cfg.Inference.LlamaCppModelRoot, InferenceJitllmModelRoot: cfg.Inference.JitLLMModelRoot, InferenceKeepAlive: cfg.Inference.KeepAlive, ProvenanceOperatorId: cfg.ProvenanceOperator.OperatorID, ProvenanceOperatorModelStorageRoot: cfg.ProvenanceOperator.ModelStorageRoot, ProvenanceOperatorModelStorageFormat: cfg.ProvenanceOperator.ModelStorageFormat, ProviderBoundaryObserverId: cfg.ProviderBoundaryObserver.ObserverID}); err != nil {
 		return nil, fmt.Errorf("gateway: embedded runtime config: %w", err)
 	}
 
@@ -370,6 +371,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		return nil, fmt.Errorf("gateway: outbound approval: %w", err)
 	}
 	cmdSvc := b.cmdSvc
+	var inferenceProvider inference.Provider
 	if cmdSvc == nil {
 		platformDeps := &pubsub.PlatformEnrollmentDeps{
 			DocStore:         docStore,
@@ -415,6 +417,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		if err != nil {
 			return nil, fmt.Errorf("gateway: embedded capability handlers: %w", err)
 		}
+		inferenceProvider = handlers.InferenceProvider
 
 		govModeDeps := &pubsub.GatewayModeDeps{
 			GovernanceCoreDeps:     govCore,
@@ -604,6 +607,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		extraIPs:                 extraIPs,
 		mcpGateway:               mcpGateway,
 		cmdSvc:                   cmdSvc,
+		inferenceProvider:        inferenceProvider,
 		envProc:                  cmdSvc,
 		platformEnrollmentSvc:    platformEnrollmentSvc,
 		dispatchSvc:              dispatchSvc,
@@ -1524,6 +1528,11 @@ func (ls *GatewayModeService) closeResources() {
 	}
 	if ls.pubsub != nil {
 		ls.pubsub.Close()
+	}
+	if ls.inferenceProvider != nil {
+		if err := ls.inferenceProvider.Close(); err != nil {
+			ls.logger.Error("Inference provider close error", "error", err)
+		}
 	}
 	if ls.db != nil {
 		if err := ls.db.Close(); err != nil {

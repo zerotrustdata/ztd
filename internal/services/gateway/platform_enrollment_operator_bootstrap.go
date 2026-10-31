@@ -260,7 +260,7 @@ func operatorBootstrapErrorFrame(err error) models.OperatorBootstrapFrame {
 // whose authority lapsed after approval is final even inside an issuance
 // failure: the Operator must not redial a completed request forever.
 func operatorBootstrapRetryable(err error) bool {
-	if errors.Is(err, constants.ErrPlatformEnrollmentInvalidDecision) || errors.Is(err, constants.ErrOperatorCapabilityInUse) || errors.Is(err, constants.ErrOperatorActuatorKeyInUse) {
+	if errors.Is(err, constants.ErrPlatformEnrollmentInvalidDecision) || errors.Is(err, constants.ErrOperatorActuatorKeyInUse) {
 		return false
 	}
 	return sqliteutil.IsBusyError(err) ||

@@ -57,24 +57,18 @@ func SelectProviderBoundaryObserverForHardware(
 	sessionID string,
 	systemFingerprint string,
 ) (*ProviderBoundaryObserverStatus, error) {
-	matches := ActiveProviderBoundaryObservers(PreferEmbedded(ActiveOperatorsWithCapability(operators, constants.OperatorCapabilityObserver)))
+	capable := ActiveOperatorsWithCapability(operators, constants.OperatorCapabilityObserver)
 	if systemFingerprint != "" {
-		filtered := make([]ProviderBoundaryObserverStatus, 0, len(matches))
-		for _, op := range operators {
-			if op.SystemFingerprint != systemFingerprint {
-				continue
-			}
-			for _, match := range matches {
-				if match.OperatorSessionID == op.OperatorSessionId {
-					filtered = append(filtered, match)
-					break
-				}
+		filtered := make([]*operatorv1.OperatorDocument, 0, len(capable))
+		for _, op := range capable {
+			if op.GetSystemFingerprint() == systemFingerprint {
+				filtered = append(filtered, op)
 			}
 		}
-		matches = filtered
+		capable = filtered
 	}
 	if sessionID != "" {
-		for _, match := range matches {
+		for _, match := range ActiveProviderBoundaryObservers(capable) {
 			if match.OperatorSessionID == sessionID {
 				selected := match
 				return &selected, nil
@@ -82,6 +76,7 @@ func SelectProviderBoundaryObserverForHardware(
 		}
 		return nil, fmt.Errorf("%w: session %s", constants.ErrProviderBoundaryObserverNotCapable, sessionID)
 	}
+	matches := ActiveProviderBoundaryObservers(PreferEmbedded(capable))
 	switch len(matches) {
 	case 0:
 		return nil, constants.ErrProviderBoundaryObserverNotFound

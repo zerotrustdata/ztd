@@ -353,3 +353,50 @@ func TestNamedRollout_CanceledCampaignEndsBatchAndRetriesFresh(t *testing.T) {
 		return nil
 	}))
 }
+
+func TestNamedRollout_RemovedCampaignsSkipped(t *testing.T) {
+	env := newNamedRolloutEnv(t)
+	env.mustRun(t, "campaigns", "create", "transient", "qwen3:4b")
+	env.mustRun(t, "rollout", "create", "mixed", "transient", "control", "longitudinal")
+
+	// Delete "transient" campaign from runtime files
+	require.NoError(t, env.fileSvc(t).RemoveAll(context.Background(), fmt.Sprintf("%s/%s", constants.EvaluationCampaignsPath, "transient")))
+
+	// Dry run omits the removed campaign
+	var plan namedRolloutPlan
+	require.NoError(t, env.runJSON(t, &plan, "rollout", "run", "mixed", "--dry-run"))
+	assert.Equal(t, []string{"control", "longitudinal"}, plan.Campaigns)
+
+	// Rollout run executes remaining campaigns and marks transient as skipped
+	var executed []string
+	require.NoError(t, runNamedRollout(env.cmd, env.deps, env.fileSvc(t), "mixed", namedRolloutOptions{Repeat: 1, Until: 1}, func(_ *cobra.Command, campaignID, _ string, _ bool) error {
+		executed = append(executed, campaignID)
+		return nil
+	}))
+	// Until: 1 executed 1 runnable campaign ("control"), skipping "transient"
+	assert.Equal(t, []string{"control"}, executed)
+
+	saved := loadTestRollout(t, env, "mixed")
+	require.Len(t, saved.Executions, 1)
+	require.Len(t, saved.Executions[0].Steps, 3)
+	assert.Equal(t, evaluation.RolloutStepSkipped, saved.Executions[0].Steps[0].Status)
+	assert.Empty(t, saved.Executions[0].Steps[0].Attempts)
+	assert.Equal(t, evaluation.RolloutStepSucceeded, saved.Executions[0].Steps[1].Status)
+	assert.Equal(t, evaluation.RolloutStepPending, saved.Executions[0].Steps[2].Status)
+
+	// Resume skips previously skipped and succeeded steps, executing the remaining step
+	executed = nil
+	require.NoError(t, runNamedRollout(env.cmd, env.deps, env.fileSvc(t), "mixed", namedRolloutOptions{Repeat: 1, Resume: true}, func(_ *cobra.Command, campaignID, _ string, _ bool) error {
+		executed = append(executed, campaignID)
+		return nil
+	}))
+	assert.Equal(t, []string{"longitudinal"}, executed)
+
+	saved = loadTestRollout(t, env, "mixed")
+	assert.Equal(t, evaluation.RolloutStepSkipped, saved.Executions[0].Steps[0].Status)
+	assert.Equal(t, evaluation.RolloutStepSucceeded, saved.Executions[0].Steps[1].Status)
+	assert.Equal(t, evaluation.RolloutStepSucceeded, saved.Executions[0].Steps[2].Status)
+
+	showOut := env.mustRun(t, "rollout", "show", "mixed")
+	assert.Contains(t, showOut, "transient: skipped")
+}

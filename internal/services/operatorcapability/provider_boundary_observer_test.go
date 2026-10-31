@@ -94,4 +94,21 @@ func TestSelectProviderBoundaryObserverForHardware(t *testing.T) {
 	selected, err := SelectProviderBoundaryObserverForHardware(operators, "", "hardware-target")
 	require.NoError(t, err)
 	assert.Equal(t, "sess-target", selected.OperatorSessionID)
+
+	withEmbedded := append([]*operatorv1.OperatorDocument{{
+		Id:                string(constants.DocIDEmbeddedOperator),
+		OperatorSessionId: "sess-embedded",
+		SystemFingerprint: "hardware-embedded",
+		Status:            string(constants.OperatorStatusActive),
+		OperatorType:      string(constants.OperatorTypeEmbedded),
+		RuntimeConfig:     &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityObserver)}},
+	}}, operators...)
+
+	selected, err = SelectProviderBoundaryObserver(withEmbedded, "sess-target")
+	require.NoError(t, err)
+	assert.Equal(t, "sess-target", selected.OperatorSessionID)
+
+	selected, err = SelectProviderBoundaryObserverForHardware(withEmbedded, "", "hardware-target")
+	require.NoError(t, err)
+	assert.Equal(t, "sess-target", selected.OperatorSessionID)
 }

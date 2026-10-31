@@ -16,9 +16,14 @@ import (
 
 // InferenceProvider returns the provider class and approved endpoint an
 // Inference Operator reported in its runtime config. An Operator serves exactly
-// one provider: a reported llama.cpp endpoint selects llama.cpp, otherwise the
-// provider is Ollama. The endpoint is blank when none was reported.
+// one provider. A reported jitllm model root selects jitllm, which the
+// Operator runs in-process and so has no endpoint; a llama.cpp endpoint
+// selects llama.cpp; otherwise the provider is Ollama. The endpoint is blank
+// when none was reported.
 func InferenceProvider(cfg *operatorv1.OperatorRuntimeConfig) (provider, endpoint string) {
+	if strings.TrimSpace(cfg.GetInferenceJitllmModelRoot()) != "" {
+		return constants.InferenceProviderJitLLM, ""
+	}
 	if llamaCpp := strings.TrimSpace(cfg.GetInferenceLlamacppEndpoint()); llamaCpp != "" {
 		return constants.InferenceProviderLlamaCpp, llamaCpp
 	}

@@ -62,6 +62,7 @@ func operatorDetailsLines(op *operatorv1.OperatorDocument, identity Identity) []
 			detailRow("Ollama", op.RuntimeConfig.InferenceOllamaEndpoint),
 			detailRow("llama.cpp", op.RuntimeConfig.InferenceLlamacppEndpoint),
 			detailRow("llama.cpp dir", op.RuntimeConfig.InferenceLlamacppModelRoot),
+			detailRow("jitllm dir", op.RuntimeConfig.InferenceJitllmModelRoot),
 			detailRow("Model store", op.RuntimeConfig.ProvenanceOperatorModelStorageRoot),
 			detailRow("Store format", op.RuntimeConfig.ProvenanceOperatorModelStorageFormat),
 		)

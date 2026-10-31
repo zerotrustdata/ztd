@@ -32,6 +32,11 @@ func TestNamedRolloutStorage_EncryptedBackupRoundTrip(t *testing.T) {
 	stored, err := f.raw.ReadFile(ctx, rolloutDefinitionPath(rollout.Name))
 	require.NoError(t, err)
 	assert.NotContains(t, string(stored), "longitudinal", "definitions and history must be encrypted by the evidence file service")
+
+	// Skipped step without run attempts is valid
+	rollout.Executions[0].Steps = append(rollout.Executions[0].Steps, RolloutStep{CampaignID: "longitudinal", Status: RolloutStepSkipped})
+	require.NoError(t, SaveNamedRollout(ctx, f.files, rollout))
+
 	report := f.create(t)
 	assert.Contains(t, reportPaths(report.Files), rolloutDefinitionPath(rollout.Name))
 	require.NoError(t, f.files.RemoveAll(ctx, constants.EvaluationDataPath))

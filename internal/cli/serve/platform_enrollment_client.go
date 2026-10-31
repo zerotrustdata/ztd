@@ -452,6 +452,7 @@ func operatorRuntimeConfig(cfg *config.Config) (json.RawMessage, error) {
 		InferenceOllamaEndpoint:              cfg.Inference.OllamaEndpoint,
 		InferenceLlamacppEndpoint:            cfg.Inference.LlamaCppEndpoint,
 		InferenceLlamacppModelRoot:           cfg.Inference.LlamaCppModelRoot,
+		InferenceJitllmModelRoot:             cfg.Inference.JitLLMModelRoot,
 		InferenceKeepAlive:                   cfg.Inference.KeepAlive,
 		InferenceAllowHostedDecision:         cfg.Inference.AllowHostedDecision,
 		InferenceDecisionModels:              cfg.Inference.DecisionModels,

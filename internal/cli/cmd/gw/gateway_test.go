@@ -107,6 +107,7 @@ func TestReExecArgsMatchStartCmdFlags(t *testing.T) {
 			ProvenanceOperatorModelStorageRoot:   "/models",
 			InferenceLlamaCppEndpoint:            "http://localhost:8080",
 			InferenceLlamaCppModelRoot:           "/gguf",
+			InferenceJitLLMModelRoot:             "/jlm",
 			ProvenanceOperatorModelStorageFormat: "llamacpp",
 
 			Posture:                           constants.Posture("doctrine"),
