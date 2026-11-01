@@ -235,10 +235,17 @@ The `ztd eval` command tree organizes platform evaluation across eleven subcomma
 
 `ztd eval runs start` and `ztd eval runs resume` pause after the current assignment when the first interrupt or a matching stop request arrives. If assignments remain queued, they exit with `ErrEvaluationRunStopped`; the run projects as `waiting` and can be resumed. A second interrupt cancels the current assignment. Only `ztd eval runs cancel` cancels queued assignments: it requests a stop, waits for the active assignment to finish, then stops the remainder and projects `cancelled`. Cancellation publishes stopped assignments and the run summary only with `runs cancel --publish`; it defaults to no publication independently of the start-time flag. The summary has `lifecycle_state` `stopped` once every assignment is terminal and any was stopped. `ztd eval rollout run --gate-smoke` screens each model with `smoke-suite` before the full run; `--promote-on-pass` follows a smoke pass with the full run in the same batch. The batch holds the rollout queue lock (INV-EVAL-CAMP-33), so queue edits and a second batch fail until it ends.
 
-Named rollouts sequence existing campaigns of any supported lane, suite, or condition. Define campaigns first, then save their IDs in execution order. In these examples, `campaign-1` and `campaign-2` are placeholders for existing campaign IDs from `ztd eval campaigns list`:
+Named rollouts sequence existing campaigns of any supported lane, suite, or condition. Define campaigns first, then save their IDs in execution order, or pass a model selector (`--all`, `--family`, `--max-params`, or positional models) with optional `--suite` and `--judge` to automatically freeze and sequence campaigns across models in parameter-count order. In these examples, `campaign-1` and `campaign-2` are placeholders for existing campaign IDs from `ztd eval campaigns list`:
 
 ```bash
+# Create from existing campaign IDs
 ztd eval rollout create my-rollout campaign-1 campaign-2
+
+# Or generate and sequence campaigns directly from model selectors
+ztd eval rollout create my-rollout --all --suite default-suite --judge qwen3.5:4b
+ztd eval rollout create my-rollout --family granite --suite smoke-suite
+ztd eval rollout create my-rollout --max-params 4b
+
 ztd eval rollout list
 ztd eval rollout show my-rollout
 ztd eval rollout update my-rollout campaign-2 campaign-1
