@@ -118,7 +118,7 @@ export function RunsPanel() {
                       let mPassed = 0;
                       let mFailed = 0;
                       let mNoVerdict = 0;
-                      let mTerminal = 0;
+                      let mTerminal: number;
                       let rolePassRate: string | undefined;
 
                       if (roleAssignments.length > 0) {
