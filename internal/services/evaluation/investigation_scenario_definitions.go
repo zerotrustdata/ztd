@@ -63,10 +63,10 @@ var investigationGoldReferences = map[string][]ScenarioGoldEvidenceReference{
 	},
 	"cron-disk-fill": {
 		{
-			ReferenceID:     "ref-cron-disk-report",
-			Description:     "Disk report showing 14G app-dump.log filling /var/tmp",
-			TargetResource:  "logs/disk-report.txt",
-			ExpectedContent: "app-dump.log",
+			ReferenceID:     "ref-cron-case-notes",
+			Description:     "Prior case notes identifying the unneeded app-dump debugging job and critical app-report job",
+			TargetResource:  "case-notes.json",
+			ExpectedContent: "app-dump",
 		},
 		{
 			ReferenceID:     "ref-cron-app-schedule",
@@ -161,6 +161,7 @@ func InvestigationScenarioToBlueprint(s *investigation.Scenario) (ScenarioBluepr
 
 	allowedTools := []string{
 		constants.MCPToolReadFile,
+		constants.MCPToolFileEdit,
 		constants.MCPToolFsDiskProfile,
 		constants.MCPToolSearchFile,
 		constants.MCPToolSearchDirectory,

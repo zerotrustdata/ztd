@@ -214,7 +214,7 @@ func TestCampaignLongitudinal_PlantedFaultFixturesEvaluateAcrossAllThreeScenario
 		},
 		{
 			scenarioID:    "cron-disk-fill",
-			readFiles:     []string{"cron/app.cron", "check.sh"},
+			readFiles:     []string{"case-notes.json", "cron/app.cron", "check.sh"},
 			backupSource:  "cron/app.cron",
 			backupPath:    "cron/app.cron.bak",
 			sedArgs:       []string{"-i", "/app-dump/d", "cron/app.cron"},
