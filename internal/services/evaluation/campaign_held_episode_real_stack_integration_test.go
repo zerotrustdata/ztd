@@ -389,12 +389,23 @@ func TestRealStackHeldRepetition_ReboundDataOperatorIsAHarnessFailure(t *testing
 
 	inferenceWorkload, err := env.stack.Inference.Workload()
 	require.NoError(t, err)
-	operators, _, err := env.gateway.ListOperators(ctx)
-	require.NoError(t, err)
-	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, inferenceWorkload.OperatorSessionID, replacementWorkload.OperatorID)
-	require.NoError(t, err)
-	topology, err = topology.WithAnchors(operators)
-	require.NoError(t, err)
+	var topology evaluation.CampaignOperatorTopology
+	require.Eventually(t, func() bool {
+		operators, _, err := env.gateway.ListOperators(ctx)
+		if err != nil {
+			return false
+		}
+		top, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, inferenceWorkload.OperatorSessionID, replacementWorkload.OperatorID)
+		if err != nil || top.DataWorkingDirectory == "" {
+			return false
+		}
+		top, err = top.WithAnchors(operators)
+		if err != nil {
+			return false
+		}
+		topology = top
+		return true
+	}, 10*time.Second, 50*time.Millisecond, "Gateway must record Data Operator heartbeat and topology")
 	rebound := env.binding
 	rebound.Topology = topology
 
