@@ -327,14 +327,15 @@ func logEvalLoopChatRequests(t *testing.T, requests []json.RawMessage) {
 }
 
 // evalLoopReplies is the scripted provider's answer sequence for the whole loop,
-// in chat order: the direct campaign's ERROR; then the Tribunal campaign's first
-// agent turn calling the intent tool, its eight member replies (five generations
-// where four agree and Nemesis dissents, one LOW marshal, one APPROVE audit, and the APPROVE of the
+// in chat order: the direct campaign's ERROR; then the Tribunal campaign's
+// tool-calling capability probe, its first agent turn calling the intent tool, its eight member replies
+// (five generations where four agree and Nemesis dissents, one LOW marshal, one APPROVE audit, and the APPROVE of the
 // contextual review that ratify and notary run once the command holds its L3
 // approval), and the final answer.
 func evalLoopReplies() []fixtures.OllamaReply {
 	replies := []fixtures.OllamaReply{
 		{Content: evalLoopDirectAnswer},
+		{ToolCalls: []fixtures.OllamaToolCall{{Name: "probe_echo", Arguments: json.RawMessage(`{"message":"capability-probe-tool"}`)}}},
 		{ToolCalls: []fixtures.OllamaToolCall{{Name: evalLoopIntentTool, Arguments: json.RawMessage(evalLoopTribunalProposal)}}},
 	}
 	for range 4 {
