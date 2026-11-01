@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"syscall"
 	"testing"
 	"time"
@@ -123,6 +124,16 @@ func TestIsProcessRunningWithFinder(t *testing.T) {
 		result := pm.isProcessRunningWithFinder(0, finder)
 		if result {
 			t.Error("expected false for PID 0")
+		}
+	})
+
+	t.Run("returns false for PID 1 or negative", func(t *testing.T) {
+		finder := &mockProcessFinder{}
+		if pm.isProcessRunningWithFinder(1, finder) {
+			t.Error("expected false for PID 1")
+		}
+		if pm.isProcessRunningWithFinder(-5, finder) {
+			t.Error("expected false for negative PID")
 		}
 	})
 
@@ -348,7 +359,7 @@ func TestFindOperatorProcessWithExecutor(t *testing.T) {
 	})
 
 	t.Run("passes correct arguments to command", func(t *testing.T) {
-		expectedPattern := fmt.Sprintf("^[^[:space:]]*ztd gw start.*--data-dir %s([[:space:]]|$)", fileSvc.Resolve(constants.DataDirname))
+		expectedPattern := fmt.Sprintf("^[^[:space:]]*ztd gw start.*--data-dir %s([[:space:]]|$)", regexp.QuoteMeta(fileSvc.Resolve(constants.DataDirname)))
 		executor := &mockCommandExecutor{
 			commandFunc: func(name string, args ...string) *exec.Cmd {
 				if name != "pgrep" {
@@ -409,6 +420,21 @@ func TestStopProcessWithDeps(t *testing.T) {
 		err := pm.stopProcessWithDeps(0, &mockProcessFinder{}, exits, 10*time.Second)
 		if err != nil {
 			t.Errorf("expected nil for PID 0, got %v", err)
+		}
+	})
+
+	t.Run("returns nil for PID 1 or negative", func(t *testing.T) {
+		exits := &mockExitWatchOpener{
+			openFunc: func(pid int) (exitWatcher, error) {
+				t.Error("exit watch should not open for PID <= 1")
+				return nil, errors.New("unexpected open")
+			},
+		}
+		if err := pm.stopProcessWithDeps(1, &mockProcessFinder{}, exits, 10*time.Second); err != nil {
+			t.Errorf("expected nil for PID 1, got %v", err)
+		}
+		if err := pm.stopProcessWithDeps(-1, &mockProcessFinder{}, exits, 10*time.Second); err != nil {
+			t.Errorf("expected nil for negative PID, got %v", err)
 		}
 	})
 
