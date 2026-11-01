@@ -204,6 +204,9 @@ func (pm *ProcessManager) readPID(filename string) (int, error) {
 	if _, err := fmt.Sscanf(string(pidData), "%d", &pid); err != nil {
 		return 0, fmt.Errorf("%w: %w", constants.ErrPIDReadFailed, err)
 	}
+	if pid <= 1 {
+		return 0, nil
+	}
 
 	return pid, nil
 }
@@ -851,7 +854,7 @@ func (pm *ProcessManager) OperatorStatus() (bool, int, error) {
 		return false, 0, err
 	}
 
-	if pid != 0 {
+	if pid > 1 {
 		if pm.isProcessRunning(pid) {
 			return true, pid, nil
 		}
@@ -865,7 +868,7 @@ func (pm *ProcessManager) OperatorStatus() (bool, int, error) {
 	} else {
 		pid = pm.findOperatorProcess()
 	}
-	if pid == 0 {
+	if pid <= 1 {
 		return false, 0, nil
 	}
 

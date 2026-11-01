@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -107,7 +108,7 @@ func (pm *ProcessManager) isProcessRunning(pid int) bool {
 
 // isProcessRunningWithFinder checks if a process is running using a provided processFinder (for testing)
 func (pm *ProcessManager) isProcessRunningWithFinder(pid int, finder processFinder) bool {
-	if pid == 0 {
+	if pid <= 1 {
 		return false
 	}
 
@@ -153,7 +154,7 @@ func (pm *ProcessManager) findOperatorProcess() int {
 // command line merely mentions `ztd gw start` never matches, and the calling
 // process is skipped so a `gw start --data-dir <dir>` never finds itself.
 func (pm *ProcessManager) findOperatorProcessWithExecutor(executor CommandExecutor) int {
-	pattern := fmt.Sprintf("^[^[:space:]]*ztd gw start.*--data-dir %s([[:space:]]|$)", pm.fileSvc.Resolve(constants.DataDirname))
+	pattern := fmt.Sprintf("^[^[:space:]]*ztd gw start.*--data-dir %s([[:space:]]|$)", regexp.QuoteMeta(pm.fileSvc.Resolve(constants.DataDirname)))
 	cmd := executor.Command("pgrep", "-f", pattern)
 	output, err := executor.Output(cmd)
 	if err != nil {
@@ -166,7 +167,7 @@ func (pm *ProcessManager) findOperatorProcessWithExecutor(executor CommandExecut
 		if err != nil {
 			return 0
 		}
-		if pid != self {
+		if pid > 1 && pid != self {
 			return pid
 		}
 	}
@@ -184,7 +185,7 @@ func (pm *ProcessManager) stopProcess(pid int, name string) error {
 // The exit watch opens before SIGTERM, so an exit between the signal and the
 // wait is still observed. A PID with no process has no watch and is already gone.
 func (pm *ProcessManager) stopProcessWithDeps(pid int, finder processFinder, exits exitWatchOpener, timeoutDur time.Duration) error {
-	if pid == 0 {
+	if pid <= 1 {
 		return nil
 	}
 

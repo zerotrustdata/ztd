@@ -60,7 +60,7 @@ func (t *ProcSignalSafeTool) Execute(ctx context.Context, args json.RawMessage) 
 		return CallToolResult{}, fmt.Errorf("%w", constants.ErrMCPProcSignalRequired)
 	}
 
-	denylist := []int{1, 2}
+	denylist := []int{1, 2, os.Getpid()}
 	for _, deniedPID := range denylist {
 		if req.PID == deniedPID {
 			result := ProcSignalSafeResult{
