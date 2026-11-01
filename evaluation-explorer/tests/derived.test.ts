@@ -26,13 +26,11 @@ import {
   verifierStateTone,
   recentCampaignRows,
   roleLabel,
-  roleLeaderRows,
   modelRoleLeaderboardRows,
   modelOverallLeaderboardRows,
   modelSuiteRows,
   restampStreamProgress,
   siblingRepetitions,
-  streamProgressLabel,
   upsertLiveEvent,
   visibleStreamEvents,
 } from '../src/views/derived';
@@ -282,7 +280,7 @@ function rankedModel(
   });
 }
 
-describe('roleLeaderRows', () => {
+describe('modelRoleLeaderboardRows', () => {
   it('pools all run assignments before scoring each model-role once', () => {
     const models = [
       { ...rankedModel('pooled', 'primary', { passRate: 0.5, latency: 1000, tokens: 100 }), dataset_id: 'ds-one' },
@@ -499,17 +497,19 @@ describe('roleLeaderRows', () => {
   });
 
   it('scores unmeasured Lite security as 50% and normalizes each role independently', () => {
-    const rows = roleLeaderRows([
+    const models = [
       rankedModel('lite-model', 'lite', { size: 2_000_000_000, passRate: 0.9, latency: 4000, tokens: 400 }),
       rankedModel('primary-model', 'primary', { size: 32_000_000_000, latency: 100, tokens: 10, security: 0.75 }),
-    ]);
-    expect(rows.map((row) => row.role)).toEqual(['primary', 'assistant', 'lite']);
-    const lite = rows[2]?.leader;
+    ];
+    const liteRows = modelRoleLeaderboardRows(models, 'lite');
+    const primaryRows = modelRoleLeaderboardRows(models, 'primary');
+    const assistantRows = modelRoleLeaderboardRows(models, 'assistant');
+    const lite = liteRows[0];
     expect(lite?.security).toBeUndefined();
     // 100 × 0.9² × √0.5
     expect(lite?.score).toBeCloseTo(81 * Math.SQRT1_2);
-    expect(rows[0]?.leader?.score).toBeCloseTo(100 * Math.sqrt(0.75));
-    expect(rows[1]?.leader).toBeUndefined();
+    expect(primaryRows[0]?.score).toBeCloseTo(100 * Math.sqrt(0.75));
+    expect(assistantRows).toHaveLength(0);
   });
 
   it('breaks equal scores by smaller size, then name', () => {
@@ -859,16 +859,6 @@ describe('visibleStreamEvents', () => {
     expect(completed?.completed).toBe(50);
     expect(completed?.total).toBe(75);
     expect(visible[0]?.event_id).toBe('security:done');
-  });
-
-  it('streamProgressLabel uses the event point-in-time progress fields', () => {
-    const event = liveEvent({
-      event_id: 'evt-live',
-      kind: 'assignment_completed',
-      completed: 50,
-      total: 75,
-    });
-    expect(streamProgressLabel(event)).toBe('50/75');
   });
 
   it('restamps progress from observed_at order so newest complete is N/N', () => {

@@ -108,7 +108,9 @@ func TestRegisterNativeTools_NilRegistry(t *testing.T) {
 
 func TestNativeTools_InterfaceCompliance(t *testing.T) {
 	registry := NewToolRegistry()
-	_ = RegisterNativeTools(registry)
+	if err := RegisterNativeTools(registry); err != nil {
+		t.Fatalf("RegisterNativeTools failed: %v", err)
+	}
 
 	tools := registry.List()
 	for _, tool := range tools {

@@ -9,7 +9,7 @@ package authcmd
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
@@ -33,7 +33,7 @@ func FailingClientFactory(err error) APIClientFactory {
 // PanickingClientFactory returns an API client factory that reports an error if called.
 func PanickingClientFactory() APIClientFactory {
 	return func(fs.RuntimeFileService, *config.Config) (APIClient, error) {
-		return nil, errors.New("clientFactory should not be called when fileSvcFactory fails")
+		return nil, fmt.Errorf("clientFactory should not be called when fileSvcFactory fails")
 	}
 }
 
@@ -47,5 +47,5 @@ func PanickingEnrollerFactory() EnrollerFactory {
 type panickingEnroller struct{}
 
 func (panickingEnroller) Enroll(context.Context, auth.EnrollmentOptions) (*auth.EnrollmentResult, error) {
-	return nil, errors.New("enrollerFactory should not be called on this code path")
+	return nil, fmt.Errorf("enrollerFactory should not be called on this code path")
 }

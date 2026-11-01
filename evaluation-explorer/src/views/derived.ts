@@ -377,12 +377,6 @@ export function visibleStreamEvents(
   return bounded.sort(compareStreamEventsNewestFirst);
 }
 
-/** Progress column for the live stream: point-in-time values stamped at ingest. */
-export function streamProgressLabel(event: LiveEvent): string {
-  if (event.total > 0) return `${event.completed}/${event.total}`;
-  return '—';
-}
-
 /** Linear-interpolation percentile over an unsorted list of observed values. */
 export function percentile(values: number[], p: number): number | undefined {
   const observed = values.filter((v) => Number.isFinite(v));
@@ -527,19 +521,6 @@ export function assignmentGradeChips(assignment: AssignmentResult): AssignmentGr
       gradeChipSortRank(left.status) - gradeChipSortRank(right.status) ||
       left.criterion_id.localeCompare(right.criterion_id),
   );
-}
-
-/** Combined terminal and verification label for the verdict strip. */
-export function assignmentVerdictLabel(
-  terminalStatus: AssignmentResult['terminal_status'],
-  verification: AssignmentResult['verification_disposition'],
-): string {
-  const terminal = terminalStatus.replace(/_/g, ' ').replace(/^./, (letter) => letter.toUpperCase());
-  if (verification === 'not_run') return `${terminal} · not verified`;
-  if (verification === 'passed') return `${terminal} · verified`;
-  if (verification === 'failed') return `${terminal} · verification failed`;
-  if (verification === 'not_applicable') return terminal;
-  return terminal;
 }
 
 export type EvidenceTone = 'ok' | 'info' | 'warn' | 'critical' | 'neutral';
@@ -910,37 +891,6 @@ export function resourceObservationMissing(assignment: AssignmentResult): boolea
   );
 }
 
-/** Distinct variants that produced at least one assignment in a run, with
- *  assignment counts, ordered by count then id for deterministic output. */
-export function runParticipants(
-  assignments: AssignmentResult[],
-): Array<{ variant_id: string; count: number }> {
-  const counts = new Map<string, number>();
-  for (const a of assignments) {
-    counts.set(a.variant_id, (counts.get(a.variant_id) ?? 0) + 1);
-  }
-  return Array.from(counts.entries())
-    .map(([variant_id, count]) => ({ variant_id, count }))
-    .sort((a, b) => b.count - a.count || a.variant_id.localeCompare(b.variant_id));
-}
-
-/** Variants with at least one assignment in runs of the given suite. Used by
- *  the model-catalog suite filter. */
-export function variantsInSuite(
-  suiteId: string,
-  assignments: AssignmentResult[],
-  evaluations: EvaluationSummary[],
-): Set<string> {
-  const runIds = new Set(
-    evaluations.filter((e) => e.suite_id === suiteId).map((e) => e.run_id),
-  );
-  const out = new Set<string>();
-  for (const a of assignments) {
-    if (runIds.has(a.run_id)) out.add(a.variant_id);
-  }
-  return out;
-}
-
 /** The runs that produced at least one assignment for a variant. This is
  *  the faithful model-to-run join (see module comment). */
 export function runsForVariant(
@@ -1067,88 +1017,6 @@ export function modelSuiteRows(
   return rows.sort((a, b) => a.display_name.localeCompare(b.display_name));
 }
 
-export interface RunModelRow {
-  variant_id: string;
-  total: number;
-  eligible: number;
-  passed: number;
-  pass_rate?: number;
-  model_failed: number;
-  missing: number;
-  latency_p50_ms?: number;
-  latency_p95_ms?: number;
-  input_tokens?: number;
-  output_tokens?: number;
-  retries?: number;
-}
-
-/** Per-variant results inside one run, derived from its assignments. */
-export function runModelRows(assignments: AssignmentResult[]): RunModelRow[] {
-  const groups = new Map<string, AssignmentResult[]>();
-  for (const a of assignments) {
-    const list = groups.get(a.variant_id) ?? [];
-    list.push(a);
-    groups.set(a.variant_id, list);
-  }
-  const rows: RunModelRow[] = [];
-  for (const [variant_id, items] of groups) {
-    const passes = items.map(assignmentPass).filter((v): v is number => v !== undefined);
-    const latencies = items
-      .map((a) => a.resource_summary?.latency_ms?.value)
-      .filter((v): v is number => v !== undefined);
-    const input = sumDefined(items.map((a) => a.resource_summary?.input_tokens?.value));
-    const output = sumDefined(items.map((a) => a.resource_summary?.output_tokens?.value));
-    const retries = sumDefined(items.map((a) => a.resource_summary?.retries?.value));
-    rows.push({
-      variant_id,
-      total: items.length,
-      eligible: passes.length,
-      passed: passes.reduce((acc, v) => acc + v, 0),
-      pass_rate: passes.length > 0 ? passes.reduce((acc, v) => acc + v, 0) / passes.length : undefined,
-      model_failed: items.filter((a) => a.terminal_status === 'model_failed').length,
-      missing: items.filter((a) => a.missingness_reason !== undefined && a.missingness_reason !== null).length,
-      latency_p50_ms: percentile(latencies, 0.5),
-      latency_p95_ms: percentile(latencies, 0.95),
-      input_tokens: input.observed > 0 ? input.total : undefined,
-      output_tokens: output.observed > 0 ? output.total : undefined,
-      retries: retries.observed > 0 ? retries.total : undefined,
-    });
-  }
-  return rows.sort((a, b) => (b.pass_rate ?? -1) - (a.pass_rate ?? -1) || a.variant_id.localeCompare(b.variant_id));
-}
-
-export interface ResourceSummary {
-  observed: number;
-  missing: number;
-  latency_p50_ms?: number;
-  latency_p95_ms?: number;
-  input_tokens?: number;
-  output_tokens?: number;
-  retries?: number;
-}
-
-/** Resource-observation aggregate over a set of assignments. `observed` and
- *  `missing` count assignments by whether any resource metric was observed,
- *  so the UI can disclose coverage honestly. */
-export function resourceSummary(assignments: AssignmentResult[]): ResourceSummary {
-  const latencies = assignments
-    .map((a) => a.resource_summary?.latency_ms?.value)
-    .filter((v): v is number => v !== undefined);
-  const input = sumDefined(assignments.map((a) => a.resource_summary?.input_tokens?.value));
-  const output = sumDefined(assignments.map((a) => a.resource_summary?.output_tokens?.value));
-  const retries = sumDefined(assignments.map((a) => a.resource_summary?.retries?.value));
-  const missing = assignments.filter(resourceObservationMissing).length;
-  return {
-    observed: assignments.length - missing,
-    missing,
-    latency_p50_ms: percentile(latencies, 0.5),
-    latency_p95_ms: percentile(latencies, 0.95),
-    input_tokens: input.observed > 0 ? input.total : undefined,
-    output_tokens: output.observed > 0 ? output.total : undefined,
-    retries: retries.observed > 0 ? retries.total : undefined,
-  };
-}
-
 export interface DiagnosticsInfo {
   /** Suites whose canonical verifier failed, with the runs that produced them. */
   failedSuites: Array<{
@@ -1211,53 +1079,6 @@ export function datasetDiagnostics(
   };
 }
 
-/** Shape of the optional working-selection block on the exploratory
- *  catalog_snapshot. Proposed contract addition for Worker 0; the view reads
- *  it defensively so nothing is fabricated while the field is absent. */
-export interface WorkingSelection {
-  selection_id?: string;
-  selection_policy?: string;
-  publication_eligible?: boolean;
-  roles: Partial<Record<ModelRole, string>>;
-  limitations: string[];
-}
-
-function isWorkingSelectionShape(value: unknown): value is {
-  selection_id?: string;
-  selection_policy?: string;
-  publication_eligible?: boolean;
-  roles?: Record<string, unknown>;
-  limitations?: unknown[];
-} {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const v = value as Record<string, unknown>;
-  if (v.roles !== undefined && (typeof v.roles !== 'object' || v.roles === null || Array.isArray(v.roles))) return false;
-  if (v.limitations !== undefined && !Array.isArray(v.limitations)) return false;
-  return true;
-}
-
-/** Extract the recorded working configuration from a catalog record, when
- *  the dataset carries it. Returns undefined when absent — the UI must not
- *  recompute the selection and label it as the recorded one. */
-export function readWorkingSelection(catalog: CatalogSnapshot | undefined): WorkingSelection | undefined {
-  if (!catalog) return undefined;
-  const raw = (catalog as unknown as Record<string, unknown>).working_selection;
-  if (!isWorkingSelectionShape(raw)) return undefined;
-  const roles: Partial<Record<ModelRole, string>> = {};
-  for (const [role, variant] of Object.entries(raw.roles ?? {})) {
-    if ((role === 'primary' || role === 'assistant' || role === 'lite') && typeof variant === 'string') {
-      roles[role] = variant;
-    }
-  }
-  return {
-    selection_id: typeof raw.selection_id === 'string' ? raw.selection_id : undefined,
-    selection_policy: typeof raw.selection_policy === 'string' ? raw.selection_policy : undefined,
-    publication_eligible: typeof raw.publication_eligible === 'boolean' ? raw.publication_eligible : undefined,
-    roles,
-    limitations: (raw.limitations ?? []).filter((l): l is string => typeof l === 'string'),
-  };
-}
-
 /** Other repetitions of the same task for the same variant within the run —
  *  the repeatability context for an assignment detail page. */
 export const SCENARIO_NOT_APPLICABLE_REASON = 'scenario_not_applicable';
@@ -1281,15 +1102,6 @@ export function siblingRepetitions(
         a.dataset_id === assignment.dataset_id,
     )
     .sort((a, b) => a.repetition - b.repetition || a.assignment_id.localeCompare(b.assignment_id));
-}
-
-/** Sum of observed provider retries for a variant — used by the model
- *  catalog retries column (model_summary carries no retry field). */
-export function modelRetries(variantId: string, assignments: AssignmentResult[]): number | undefined {
-  const r = sumDefined(
-    assignments.filter((a) => a.variant_id === variantId).map((a) => a.resource_summary?.retries?.value),
-  );
-  return r.observed > 0 ? r.total : undefined;
 }
 
 /** Display label for a catalog role key. */
@@ -1549,11 +1361,6 @@ export interface ModelOverallLeaderboardRow extends ModelLeaderboardRow {
   role_scores: Record<ModelRole, number>;
 }
 
-export interface RoleLeaderRow {
-  role: ModelRole;
-  leader?: ModelRoleLeaderboardRow;
-}
-
 /** A dataset with a single homogeneous run has an unambiguous run time.
  *  Multi-run and heterogeneous datasets cannot supply a per-model duration. */
 function modelRunSeconds(model: ModelSummary, evaluations: EvaluationSummary[]): number | undefined {
@@ -1738,25 +1545,4 @@ export function modelOverallLeaderboardRows(roleRows: ModelRoleLeaderboardRow[])
     });
   }
   return rows.sort(compareModelLeaderboardScores).map((row, index) => ({ ...row, rank: index + 1 }));
-}
-
-/** Top measured model per role bucket, in Primary → Assistant → Lite order. */
-export function roleLeaderRows(
-  models: ModelSummary[],
-  evaluations: EvaluationSummary[] = [],
-  assignments: AssignmentResult[] = [],
-): RoleLeaderRow[] {
-  return MODEL_ROLE_WIRE_ORDER.map((role) => ({
-    role,
-    leader: modelRoleLeaderboardRows(models, role, evaluations, assignments)[0],
-  }));
-}
-
-/** The distinct start dates (YYYY-MM-DD) across runs, for the date filter. */
-export function runStartDays(evaluations: EvaluationSummary[]): string[] {
-  const days = new Set<string>();
-  for (const e of evaluations) {
-    if (e.started_at && e.started_at.length >= 10) days.add(e.started_at.slice(0, 10));
-  }
-  return Array.from(days).sort();
 }
