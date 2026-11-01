@@ -283,6 +283,42 @@ func TestCampaignPublication_RebuildsJudgeEventsUnderTheLiveKeys(t *testing.T) {
 	assert.Less(t, firstJudge, firstTerminal, "judge events precede the assignment's terminal events")
 }
 
+func TestCampaignPublication_SkipsLegacyGraderCallsWithoutRubricOrSignedEvidence(t *testing.T) {
+	ctx := context.Background()
+	files := newCampaignRuntimeFileService(t)
+	store := NewStore(files)
+	saveJudgedCampaign(t, store)
+	assignment := judgeActivityAssignmentRecord()
+	require.NoError(t, store.SaveAssignment(ctx, assignment))
+	exporter := &recordingCampaignFeedExporter{}
+	coordinator := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter)
+
+	legacyCall := &evalv1.GraderModelCallRecord{
+		GraderCallId:   "legacy-grader-call-1",
+		AssignmentId:   assignment.GetAssignmentId(),
+		JudgeVariantId: judgeActivityJudge().GetVariantId(),
+	}
+	result := &evalv1.EvaluationAssignmentResult{
+		SchemaVersion:   CampaignSchemaVersion,
+		AssignmentId:    assignment.GetAssignmentId(),
+		RunId:           judgeActivityRunID,
+		CampaignId:      judgeActivityCampaignID,
+		Lane:            evalv1.EvaluationLane_EVALUATION_LANE_MODEL_ROLE,
+		LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
+		CompletedAt:     timestamppb.New(time.Unix(1_700_000_010, 0).UTC()),
+		GraderCalls:     []*evalv1.GraderModelCallRecord{legacyCall},
+	}
+	digest, err := ComputeAssignmentResultDigest(result)
+	require.NoError(t, err)
+	result.ResultDigest = digest
+	require.NoError(t, store.SaveAssignmentResult(ctx, result))
+
+	// Rebuilding live events for legacy grader calls must skip them and not fail with schema validation errors.
+	require.NoError(t, coordinator.PublishAssignmentLiveEvents(ctx, assignment, result))
+	events := judgeEventsOf(t, exporter.records)
+	assert.Empty(t, events, "legacy grader calls without signed evidence or rubric emit no judge events")
+}
+
 func TestRecordedJudgeScore_ReadsTheVerdictFromTheSignedResult(t *testing.T) {
 	cfg, err := campaignJudgeConfig(AssignmentExecutionRequest{Assignment: judgeActivityAssignmentRecord(), Binding: CampaignExecutionBinding{JudgeVariant: judgeActivityJudge()}}, nil)
 	require.NoError(t, err)
