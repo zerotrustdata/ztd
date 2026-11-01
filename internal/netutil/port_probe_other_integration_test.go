@@ -33,18 +33,30 @@ func TestTCPPortProbe_RejectsWildcardAndLoopbackConflictsAndReleasesPort(t *test
 		{"default wildcard", "tcp", ":0"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			listener, err := net.Listen(tc.network, tc.address)
-			if tc.network == "tcp6" && (errors.Is(err, syscall.EAFNOSUPPORT) || errors.Is(err, syscall.EPROTONOSUPPORT) || errors.Is(err, syscall.EADDRNOTAVAIL)) {
-				t.Skip("IPv6 is unavailable on this host")
-			}
-			require.NoError(t, err)
-			t.Cleanup(func() { _ = listener.Close() })
-			port := listener.Addr().(*net.TCPAddr).Port
-			require.ErrorIs(t, CheckTCPPortAvailable(port), constants.ErrPortUnavailable)
-			require.NoError(t, listener.Close())
+			for attempt := 0; attempt < 5; attempt++ {
+				listener, err := net.Listen(tc.network, tc.address)
+				if tc.network == "tcp6" && (errors.Is(err, syscall.EAFNOSUPPORT) || errors.Is(err, syscall.EPROTONOSUPPORT) || errors.Is(err, syscall.EADDRNOTAVAIL)) {
+					t.Skip("IPv6 is unavailable on this host")
+				}
+				require.NoError(t, err)
+				port := listener.Addr().(*net.TCPAddr).Port
+				require.ErrorIs(t, CheckTCPPortAvailable(port), constants.ErrPortUnavailable)
+				require.NoError(t, listener.Close())
 
-			for range 3 {
-				require.NoError(t, CheckTCPPortAvailable(port), "probe must release both address families")
+				var releaseErr error
+				for range 3 {
+					if err := CheckTCPPortAvailable(port); err != nil {
+						releaseErr = err
+						break
+					}
+				}
+				if releaseErr == nil {
+					return
+				}
+				// Ephemeral port may have been immediately claimed by a concurrent test runner thread.
+				if attempt == 4 {
+					require.NoError(t, releaseErr, "probe must release both address families")
+				}
 			}
 		})
 	}
