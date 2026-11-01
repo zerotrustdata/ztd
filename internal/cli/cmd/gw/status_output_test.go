@@ -335,7 +335,6 @@ func TestGatewayStatusListsEveryOperatorWithTypeCapabilitiesAndStartValues(t *te
 		{"inference", "--inference-ollama-endpoint", "http://192.168.1.2:11434"},
 		{"inference", "--inference-llamacpp-endpoint", "(default)"},
 		{"inference", "--inference-llamacpp-model-root", "(default)"},
-		{"inference", "--inference-jitllm-model-root", "(default)"},
 		{"inference", "--inference-keep-alive", "30m"},
 		{"provenance", "--model-storage-root", "/mnt/models"},
 		{"provenance", "--model-storage-format", "(default)"},

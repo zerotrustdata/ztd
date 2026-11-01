@@ -78,26 +78,4 @@ func TestNewProvenanceOperatorConfig_ModelStorageFormat(t *testing.T) {
 
 	_, err = newProvenanceOperatorConfig(true, LoadOptions{ProvenanceOperatorModelStorageRoot: "/models", ProvenanceOperatorModelStorageFormat: "safetensors"})
 	require.ErrorIs(t, err, constants.ErrProvenanceModelStorageFormatInvalid)
-
-	got, err = newProvenanceOperatorConfig(true, LoadOptions{ProvenanceOperatorModelStorageRoot: "/models", ProvenanceOperatorModelStorageFormat: constants.ModelStorageFormatJitLLM})
-	require.NoError(t, err)
-	assert.Equal(t, constants.ModelStorageFormatJitLLM, got.ModelStorageFormat)
-}
-
-func TestNewInferenceConfig_JitLLMModelRootSelectsEmbeddedEngine(t *testing.T) {
-	got, err := newInferenceConfig(true, LoadOptions{InferenceJitLLMModelRoot: " /models "})
-	require.NoError(t, err)
-	assert.Equal(t, constants.InferenceProviderJitLLM, got.Provider)
-	assert.Equal(t, "/models", got.JitLLMModelRoot)
-	assert.Empty(t, got.Endpoint(), "the embedded engine has no provider endpoint")
-	assert.Empty(t, got.OllamaEndpoint)
-
-	_, err = newInferenceConfig(true, LoadOptions{InferenceJitLLMModelRoot: "/models", InferenceLlamaCppEndpoint: "http://127.0.0.1:8080"})
-	require.ErrorIs(t, err, constants.ErrInferenceProviderConflict)
-
-	_, err = newInferenceConfig(true, LoadOptions{InferenceJitLLMModelRoot: "/models", InferenceOllamaEndpoint: "http://127.0.0.1:11434"})
-	require.ErrorIs(t, err, constants.ErrInferenceProviderConflict)
-
-	_, err = newInferenceConfig(true, LoadOptions{InferenceJitLLMModelRoot: "/models", InferenceKeepAlive: "5m"})
-	require.ErrorIs(t, err, constants.ErrInferenceJitLLMKeepAliveInvalid)
 }

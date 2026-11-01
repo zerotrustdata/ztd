@@ -58,7 +58,6 @@ var startupSettings = []startupSetting{
 	{flag: "inference-ollama-endpoint", value: func(c serve.GatewayConfig) string { return c.InferenceOllamaEndpoint }, env: constants.EnvVar.OllamaEndpoint},
 	{flag: "inference-llamacpp-endpoint", value: func(c serve.GatewayConfig) string { return c.InferenceLlamaCppEndpoint }},
 	{flag: "inference-llamacpp-model-root", value: func(c serve.GatewayConfig) string { return c.InferenceLlamaCppModelRoot }},
-	{flag: "inference-jitllm-model-root", value: func(c serve.GatewayConfig) string { return c.InferenceJitLLMModelRoot }},
 	{flag: "public-base-url", value: func(c serve.GatewayConfig) string { return c.PublicBaseURL }},
 	{flag: "cors-origin", value: func(c serve.GatewayConfig) string { return joinOrigins(c.AllowedOrigins) }},
 	{flag: "passkey-rp-id", value: func(c serve.GatewayConfig) string { return c.PasskeyRpID }},

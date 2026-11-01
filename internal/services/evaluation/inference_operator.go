@@ -28,8 +28,7 @@ type InferenceOperatorStatus struct {
 	Status            string
 	InferenceEnabled  bool
 	// Provider is the provider class the Operator serves
-	// (constants.InferenceProviderOllama, constants.InferenceProviderLlamaCpp,
-	// or constants.InferenceProviderJitLLM)
+	// (constants.InferenceProviderOllama or constants.InferenceProviderLlamaCpp)
 	// and ProviderEndpoint its approved endpoint.
 	Provider         string
 	ProviderEndpoint string

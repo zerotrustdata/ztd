@@ -291,9 +291,6 @@ func (pm *ProcessManager) BuildReExecArgs(opts OperatorStartOptions) ([]string, 
 	if opts.InferenceLlamaCppModelRoot != "" {
 		args = append(args, "--inference-llamacpp-model-root", opts.InferenceLlamaCppModelRoot)
 	}
-	if opts.InferenceJitLLMModelRoot != "" {
-		args = append(args, "--inference-jitllm-model-root", opts.InferenceJitLLMModelRoot)
-	}
 	if opts.InferenceKeepAlive != "" {
 		args = append(args, "--inference-keep-alive", opts.InferenceKeepAlive)
 	}

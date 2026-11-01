@@ -19,8 +19,7 @@ import (
 )
 
 // ValidateConsensusProviderIsolation refuses overlapping consensus and campaign providers.
-// An unknown endpoint fails closed. Different URLs cannot prove physical separation behind aliases;
-// an embedded jitllm engine is separate exactly when its Operator is.
+// An unknown endpoint fails closed. Different URLs cannot prove physical separation behind aliases.
 func ValidateConsensusProviderIsolation(binding *models.ConsensusPolicy, operators []*operatorv1.OperatorDocument, campaignOperatorID string) error {
 	if binding == nil || binding.EffectiveVoteKind() != models.ConsensusVoteKindDecision {
 		return nil
@@ -45,28 +44,20 @@ func ValidateConsensusProviderIsolation(binding *models.ConsensusPolicy, operato
 	if binding.AllowHosted {
 		a, err = canonicalInferenceEndpoint("https://api.typesafe.ai")
 	} else {
-		a, err = inferenceProviderIdentity(consensus)
+		_, endpoint := operatorcapability.InferenceProvider(consensus.GetRuntimeConfig())
+		a, err = canonicalInferenceEndpoint(endpoint)
 	}
 	if err != nil {
 		return invalid()
 	}
-	b, err := inferenceProviderIdentity(campaign)
+	_, campaignEndpoint := operatorcapability.InferenceProvider(campaign.GetRuntimeConfig())
+	b, err := canonicalInferenceEndpoint(campaignEndpoint)
 	if err != nil || a == b {
 		return invalid()
 	}
 	return nil
 }
 
-// inferenceProviderIdentity names the provider an Inference Operator calls:
-// its canonical endpoint, or for jitllm, which the Operator runs in-process,
-// the Operator itself.
-func inferenceProviderIdentity(op *operatorv1.OperatorDocument) (string, error) {
-	provider, endpoint := operatorcapability.InferenceProvider(op.GetRuntimeConfig())
-	if provider == constants.InferenceProviderJitLLM {
-		return constants.InferenceProviderJitLLM + ":" + op.GetId(), nil
-	}
-	return canonicalInferenceEndpoint(endpoint)
-}
 func canonicalInferenceEndpoint(raw string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u == nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {

@@ -118,13 +118,6 @@ For the llama.cpp provider on the embedded Operator, set the llama.cpp flags and
 make gw GW_CAPABILITIES=data,inference MODEL_STORAGE_ROOT=~/models GW_ARGS='--inference-llamacpp-endpoint http://192.168.1.2:8080 --inference-llamacpp-model-root ~/models --model-storage-format llamacpp'
 ```
 
-For jitllm, point the model root at a folder of `.jlm` containers. The Operator runs the engine itself, so there is no server to start. `eval models pull` still requires Ollama:
-
-```bash
-make operator OPERATOR_ARGS='--endpoint localhost --capabilities inference --inference-jitllm-model-root ~/jitllm/models --working-dir ~/.ztd-inference'
-make gw GW_CAPABILITIES=data,inference MODEL_STORAGE_ROOT=~/jitllm/models GW_ARGS='--inference-jitllm-model-root ~/jitllm/models --model-storage-format jitllm'
-```
-
 Capabilities are fixed when the Gateway starts. Run `make down` first to change them.
 
 With the embedded Operator serving both Data and Inference, a campaign under `consensus` or `notary` with a bound Tribunal is refused at preflight, before any run is created. The refusal names the fix: enroll and select a dedicated Inference Operator, then create a new run. Keep the Data Operator as the campaign's Data runtime.

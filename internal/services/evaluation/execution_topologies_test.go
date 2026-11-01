@@ -97,10 +97,6 @@ func TestFormationValidateSovereignRequiresLocalProviderClass(t *testing.T) {
 	formation.Primary.ProviderClass = constants.InferenceProviderLlamaCpp
 	require.NoError(t, formation.Validate())
 
-	formation = newTestFormation("jitllm-sovereign")
-	formation.Primary.ProviderClass = constants.InferenceProviderJitLLM
-	require.NoError(t, formation.Validate())
-
 	formation = newTestFormation("hosted-sovereign")
 	formation.Primary.ProviderClass = "openai"
 	require.ErrorIs(t, formation.Validate(), constants.ErrFormationInvalid)

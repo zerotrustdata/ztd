@@ -46,17 +46,6 @@ func TestDecisionConsensusProviderIsolation_ComparesLlamaCppEndpoints(t *testing
 	require.NoError(t, ValidateConsensusProviderIsolation(binding, ops, "campaign"), "a llama.cpp consensus provider is isolated from a separate Ollama campaign provider")
 }
 
-func TestDecisionConsensusProviderIsolation_EmbeddedJitLLMIsItsOperator(t *testing.T) {
-	binding := &models.ConsensusPolicy{ID: "consensus-binding", VoteKind: models.ConsensusVoteKindDecision, InferenceOperatorID: "consensus"}
-	ops := []*operatorv1.OperatorDocument{
-		{Id: "consensus", RuntimeConfig: &operatorv1.OperatorRuntimeConfig{InferenceJitllmModelRoot: "/srv/jlm"}},
-		{Id: "campaign", RuntimeConfig: &operatorv1.OperatorRuntimeConfig{InferenceJitllmModelRoot: "/srv/jlm"}},
-	}
-	require.NoError(t, ValidateConsensusProviderIsolation(binding, ops, "campaign"), "each Operator runs its own engine")
-	require.ErrorIs(t, ValidateConsensusProviderIsolation(binding, ops, "consensus"), constants.ErrEvaluationConsensusProviderShared)
-	ops[1].RuntimeConfig = &operatorv1.OperatorRuntimeConfig{InferenceOllamaEndpoint: "http://separate-host:11434"}
-	require.NoError(t, ValidateConsensusProviderIsolation(binding, ops, "campaign"))
-}
 func TestDecisionOnlyOperatorExcludedFromDefaultCampaignSelection(t *testing.T) {
 	ops := []*operatorv1.OperatorDocument{
 		{Id: "decision", OperatorType: string(constants.OperatorTypeRemote), OperatorSessionId: "decision-session", Status: string(constants.OperatorStatusActive), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{"inference"}, InferenceDecisionOnly: true}},

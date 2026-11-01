@@ -121,7 +121,7 @@ func StartOperator(ctx context.Context, opts ServeOperatorOptions, vi VersionInf
 		logger.Error("Refusing to start Operator", string(constants.ConnectionStateError), err)
 		return nil, startFailure(constants.ExitConfigError, err)
 	}
-	for _, modelRoot := range []string{opts.ProvenanceOperatorModelStorageRoot, opts.InferenceLlamaCppModelRoot, opts.InferenceJitLLMModelRoot} {
+	for _, modelRoot := range []string{opts.ProvenanceOperatorModelStorageRoot, opts.InferenceLlamaCppModelRoot} {
 		if err := refuseModelStoreRuntime(fileSvc.Resolve(""), modelRoot); err != nil {
 			logger.Error("Refusing to start Operator", string(constants.ConnectionStateError), err)
 			return nil, startFailure(constants.ExitConfigError, err)

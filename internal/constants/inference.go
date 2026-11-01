@@ -46,7 +46,6 @@ const (
 const (
 	InferenceProviderOllama   = "ollama"
 	InferenceProviderLlamaCpp = "llamacpp"
-	InferenceProviderJitLLM   = "jitllm"
 )
 
 // Model store layouts a Provenance Operator attests beneath its
@@ -56,8 +55,6 @@ const (
 	ModelStorageFormatOllama = "ollama"
 	// ModelStorageFormatLlamaCpp is a llama-server --models-dir of GGUF files.
 	ModelStorageFormatLlamaCpp = "llamacpp"
-	// ModelStorageFormatJitLLM is a jitllm models folder of .jlm containers.
-	ModelStorageFormatJitLLM = "jitllm"
 )
 
 // ModelWeightMediaTypeGGUF labels a GGUF weight file attested from a
@@ -67,12 +64,6 @@ const ModelWeightMediaTypeGGUF = "application/vnd.ggml.gguf"
 // ModelWeightFormatGGUF is the provider inventory weight format of a GGUF
 // model, the value Ollama reports in its model details.
 const ModelWeightFormatGGUF = "gguf"
-
-// ModelWeightMediaTypeJLM labels a jitllm container attested from a models folder.
-const ModelWeightMediaTypeJLM = "application/vnd.jitllm.jlm"
-
-// ModelWeightFormatJLM is the provider inventory weight format of a .jlm container.
-const ModelWeightFormatJLM = "jlm"
 
 const (
 	// Bound full blob hashes independently of the command-channel goroutine count.

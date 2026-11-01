@@ -183,7 +183,7 @@ func validateFormationModel(role FormationRole, model FormationModel) error {
 	switch model.Trust {
 	case FormationTrustSovereign:
 		if !isLocalProviderClass(model.ProviderClass) || model.Quantization == "" {
-			return fmt.Errorf("formation role %s: sovereign model must use a local provider (ollama, llamacpp, or jitllm) and declare quantization: %w", role, constants.ErrFormationInvalid)
+			return fmt.Errorf("formation role %s: sovereign model must use a local provider (ollama or llamacpp) and declare quantization: %w", role, constants.ErrFormationInvalid)
 		}
 		if !isSupportedLocalQuantization(model.Quantization) {
 			return fmt.Errorf("formation role %s: unsupported local quantization %q: %w", role, model.Quantization, constants.ErrFormationInvalid)
@@ -201,7 +201,7 @@ func validateFormationModel(role FormationRole, model FormationModel) error {
 // isLocalProviderClass reports whether class names a provider serving weights
 // the deployment holds, the only providers a sovereign role may use.
 func isLocalProviderClass(class string) bool {
-	return class == constants.InferenceProviderOllama || class == constants.InferenceProviderLlamaCpp || class == constants.InferenceProviderJitLLM
+	return class == constants.InferenceProviderOllama || class == constants.InferenceProviderLlamaCpp
 }
 
 // missingFields names the absent fields, sorted, or returns "" when none are.

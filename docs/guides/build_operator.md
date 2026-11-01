@@ -137,7 +137,6 @@ Run `./ztd operator start --help` for the complete flag set. The options below g
 3. **Capabilities**: Enable capabilities via `--capabilities`:
    - Inference Operator: `--capabilities inference --inference-ollama-endpoint <url>`
    - Inference and Provenance Operator on llama.cpp: `--capabilities inference,provenance --inference-llamacpp-endpoint <url> --inference-llamacpp-model-root <models-dir> --model-storage-root <models-dir> --model-storage-format llamacpp`. The llama.cpp endpoint selects the llama.cpp provider instead of Ollama, and `--inference-llamacpp-model-root` is required with it. Setting an Ollama endpoint beside llama.cpp fails. With llama.cpp, `--inference-keep-alive` accepts `-1` or `0`. `--model-storage-format` defaults to `ollama`.
-   - Inference and Provenance Operator on jitllm: `--capabilities inference,provenance --inference-jitllm-model-root <models-dir> --model-storage-root <models-dir> --model-storage-format jitllm`. The model root selects jitllm, and the Operator runs the jitllm engine in-process over that folder of `.jlm` files: there is no provider process to start, no endpoint, and no API key. Keep-alive accepts `-1` or `0`. One provider at a time.
    - Provenance Operator: `--capabilities provenance --model-storage-root <path>`
    - Observer Operator: `--capabilities observer --provider-boundary-observer-id <id>`
    - Data Operator: `--capabilities data`

@@ -4306,14 +4306,10 @@ type OperatorRuntimeConfig struct {
 	// (--inference-llamacpp-model-root).
 	InferenceLlamacppModelRoot string `protobuf:"bytes,25,opt,name=inference_llamacpp_model_root,json=inferenceLlamacppModelRoot,proto3" json:"inference_llamacpp_model_root,omitempty"`
 	// Model store layout under provenance_operator_model_storage_root
-	// (--model-storage-format: ollama, llamacpp, or jitllm).
+	// (--model-storage-format: ollama or llamacpp).
 	ProvenanceOperatorModelStorageFormat string `protobuf:"bytes,26,opt,name=provenance_operator_model_storage_format,json=provenanceOperatorModelStorageFormat,proto3" json:"provenance_operator_model_storage_format,omitempty"`
-	// Folder of .jlm containers this Operator serves with its in-process jitllm
-	// engine (--inference-jitllm-model-root). Set, it selects jitllm, which has
-	// no provider endpoint.
-	InferenceJitllmModelRoot string `protobuf:"bytes,27,opt,name=inference_jitllm_model_root,json=inferenceJitllmModelRoot,proto3" json:"inference_jitllm_model_root,omitempty"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	unknownFields                        protoimpl.UnknownFields
+	sizeCache                            protoimpl.SizeCache
 }
 
 func (x *OperatorRuntimeConfig) Reset() {
@@ -4489,13 +4485,6 @@ func (x *OperatorRuntimeConfig) GetInferenceLlamacppModelRoot() string {
 func (x *OperatorRuntimeConfig) GetProvenanceOperatorModelStorageFormat() string {
 	if x != nil {
 		return x.ProvenanceOperatorModelStorageFormat
-	}
-	return ""
-}
-
-func (x *OperatorRuntimeConfig) GetInferenceJitllmModelRoot() string {
-	if x != nil {
-		return x.InferenceJitllmModelRoot
 	}
 	return ""
 }
@@ -14586,8 +14575,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1f\n" +
 	"\voperator_id\x18\x02 \x01(\tR\n" +
 	"operatorId\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05error\"\xa1\n" +
-	"\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"\xe2\t\n" +
 	"\x15OperatorRuntimeConfig\x12\x1d\n" +
 	"\n" +
 	"cloud_mode\x18\x01 \x01(\bR\tcloudMode\x12%\n" +
@@ -14610,8 +14598,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x17inference_decision_only\x18\x17 \x01(\bR\x15inferenceDecisionOnly\x12>\n" +
 	"\x1binference_llamacpp_endpoint\x18\x18 \x01(\tR\x19inferenceLlamacppEndpoint\x12A\n" +
 	"\x1dinference_llamacpp_model_root\x18\x19 \x01(\tR\x1ainferenceLlamacppModelRoot\x12V\n" +
-	"(provenance_operator_model_storage_format\x18\x1a \x01(\tR$provenanceOperatorModelStorageFormat\x12=\n" +
-	"\x1binference_jitllm_model_root\x18\x1b \x01(\tR\x18inferenceJitllmModelRootJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\n" +
+	"(provenance_operator_model_storage_format\x18\x1a \x01(\tR$provenanceOperatorModelStorageFormatJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\n" +
 	"\x10\vJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eR\x15local_storage_enabledR\x11inference_enabledR\"provider_boundary_observer_enabledR\x1bprovenance_operator_enabledR\x06no_git\"\xfd\f\n" +
 	"\x10OperatorDocument\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +

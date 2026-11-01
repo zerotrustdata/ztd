@@ -59,7 +59,6 @@ type ServeOperatorOptions struct {
 	InferenceOllamaEndpoint      string
 	InferenceLlamaCppEndpoint    string
 	InferenceLlamaCppModelRoot   string
-	InferenceJitLLMModelRoot     string
 	InferenceKeepAlive           string
 	InferenceAllowHostedDecision bool
 	InferenceDecisionModels      []string
@@ -140,7 +139,6 @@ func buildOperatorLoadOptions(opts ServeOperatorOptions, operatorEndpoint, effec
 		InferenceOllamaEndpoint:      opts.InferenceOllamaEndpoint,
 		InferenceLlamaCppEndpoint:    opts.InferenceLlamaCppEndpoint,
 		InferenceLlamaCppModelRoot:   opts.InferenceLlamaCppModelRoot,
-		InferenceJitLLMModelRoot:     opts.InferenceJitLLMModelRoot,
 		InferenceKeepAlive:           opts.InferenceKeepAlive,
 		InferenceAllowHostedDecision: opts.InferenceAllowHostedDecision,
 		InferenceDecisionModels:      opts.InferenceDecisionModels, InferenceDecisionOnly: opts.InferenceDecisionOnly,

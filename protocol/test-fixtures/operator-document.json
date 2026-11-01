@@ -54,7 +54,6 @@
     "inference_decision_backend": "",
     "inference_decision_models": [],
     "inference_decision_only": false,
-    "inference_jitllm_model_root": "",
     "inference_keep_alive": "",
     "inference_llamacpp_endpoint": "",
     "inference_llamacpp_model_root": "",

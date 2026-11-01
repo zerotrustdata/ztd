@@ -118,8 +118,6 @@ func newModelProvenanceAttestor(cfg config.ProvenanceOperatorConfig) (model_prov
 		return model_provenance.NewOllamaStorageAttestor(cfg.ModelStorageRoot, cfg.OperatorID)
 	case constants.ModelStorageFormatLlamaCpp:
 		return model_provenance.NewLlamaCppStorageAttestor(cfg.ModelStorageRoot, cfg.OperatorID)
-	case constants.ModelStorageFormatJitLLM:
-		return model_provenance.NewJitLLMStorageAttestor(cfg.ModelStorageRoot, cfg.OperatorID)
 	default:
 		return nil, fmt.Errorf("model storage format %q: %w", cfg.ModelStorageFormat, constants.ErrProvenanceModelStorageFormatInvalid)
 	}

@@ -41,7 +41,6 @@ const (
 	flagInferenceEndpoint  = "--inference-ollama-endpoint"
 	flagLlamaCppEndpoint   = "--inference-llamacpp-endpoint"
 	flagLlamaCppModelRoot  = "--inference-llamacpp-model-root"
-	flagJitLLMModelRoot    = "--inference-jitllm-model-root"
 	flagInferenceKeepAlive = "--inference-keep-alive"
 	flagModelStorageRoot   = "--model-storage-root"
 	flagModelStorageFormat = "--model-storage-format"
@@ -59,7 +58,7 @@ var capabilityFlags = []struct {
 	capability constants.OperatorCapability
 	flags      []string
 }{
-	{constants.OperatorCapabilityInference, []string{flagInferenceEndpoint, flagLlamaCppEndpoint, flagLlamaCppModelRoot, flagJitLLMModelRoot, flagInferenceKeepAlive}},
+	{constants.OperatorCapabilityInference, []string{flagInferenceEndpoint, flagLlamaCppEndpoint, flagLlamaCppModelRoot, flagInferenceKeepAlive}},
 	{constants.OperatorCapabilityProvenance, []string{flagModelStorageRoot, flagModelStorageFormat, flagProvenanceID}},
 	{constants.OperatorCapabilityObserver, []string{flagObserverID}},
 }
@@ -110,13 +109,10 @@ func operatorStatusFromDocument(op *operatorv1.OperatorDocument) operatorStatus 
 	}
 	row.reportCustom(rc.LogLevel, rc.CloudMode, rc.CloudProvider)
 	// An Inference Operator serves exactly one provider; list only its flags.
-	switch {
-	case rc.InferenceJitllmModelRoot != "":
-		row.reported[flagJitLLMModelRoot] = rc.InferenceJitllmModelRoot
-	case rc.InferenceLlamacppEndpoint != "":
+	if rc.InferenceLlamacppEndpoint != "" {
 		row.reported[flagLlamaCppEndpoint] = rc.InferenceLlamacppEndpoint
 		row.reported[flagLlamaCppModelRoot] = rc.InferenceLlamacppModelRoot
-	default:
+	} else {
 		row.reported[flagInferenceEndpoint] = rc.InferenceOllamaEndpoint
 	}
 	row.reported[flagModelStorageRoot] = rc.ProvenanceOperatorModelStorageRoot
@@ -159,7 +155,6 @@ func (o *operatorStatus) fillFromProfile(cfg serve.GatewayConfig) {
 		flagInferenceEndpoint:  cfg.InferenceOllamaEndpoint,
 		flagLlamaCppEndpoint:   cfg.InferenceLlamaCppEndpoint,
 		flagLlamaCppModelRoot:  cfg.InferenceLlamaCppModelRoot,
-		flagJitLLMModelRoot:    cfg.InferenceJitLLMModelRoot,
 		flagInferenceKeepAlive: cfg.InferenceKeepAlive,
 		flagModelStorageRoot:   cfg.ProvenanceOperatorModelStorageRoot,
 		flagModelStorageFormat: cfg.ProvenanceOperatorModelStorageFormat,
