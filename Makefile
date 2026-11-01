@@ -27,6 +27,9 @@ export PATH := $(GO_BIN_DIR):$(USER_HOME_POSIX)/.local/bin:$(PATH)
 else
 export PATH := $(GO_BIN_DIR):$(USER_HOME_POSIX)/.local/bin:/usr/bin:$(PATH)
 endif
+ifneq ($(wildcard /snap/gnome-46-2404/current/usr/lib/x86_64-linux-gnu),)
+export LD_LIBRARY_PATH := /snap/gnome-46-2404/current/usr/lib/x86_64-linux-gnu$(if $(LD_LIBRARY_PATH),:$(LD_LIBRARY_PATH),)
+endif
 GOTOOLCHAIN ?= auto
 export GOTOOLCHAIN
 .DEFAULT_GOAL := help

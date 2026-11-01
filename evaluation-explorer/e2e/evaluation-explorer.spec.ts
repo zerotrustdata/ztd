@@ -191,7 +191,7 @@ test('loads native evaluations directly from the public mirror snapshot', async 
 });
 
 test('follows the evidence from a campaign through its assignment, model and task', async ({ page }) => {
-  const assignment = { ...fixtureEnrichedAssignmentResult, dataset_id: 'ds-live-navigation', run_id: 'navigation-run', assignment_id: 'navigation-assignment', variant_id: 'navigation-model' };
+  const assignment = { ...fixtureEnrichedAssignmentResult, task_id: 'instruction-review-vote-deny', scenario_id: 'instruction-review-vote-deny', dataset_id: 'ds-live-navigation', run_id: 'navigation-run', assignment_id: 'navigation-assignment', variant_id: 'navigation-model' };
   const model = { ...fixtureModelSummaries[0]!, dataset_id: assignment.dataset_id, variant_id: assignment.variant_id, role: assignment.role, display_name: 'Navigation model' };
   const run = { ...fixtureEvaluationSummaries[0]!, dataset_id: assignment.dataset_id, run_id: assignment.run_id, model_role_mapping: { [assignment.role]: assignment.variant_id } };
   await installMirror(page, [run, model, assignment]);
@@ -389,7 +389,7 @@ test('Evals tables keep sortable detail columns at desktop and mobile widths', a
     await page.getByRole('tab', { name: /Formations/ }).click();
     const formations = page.getByRole('table', { name: 'Formation catalog', exact: true });
     await expect(formations).toBeVisible();
-    await page.getByRole('searchbox', { name: 'Search formations' }).fill('Qwen Powerhouse');
+    await page.getByRole('searchbox', { name: 'Search formations' }).fill('formation-01');
     await expect(formations.locator('tbody tr')).toHaveCount(1);
     await expect(formations.locator('tbody a')).toHaveCount(3);
     await page.getByRole('searchbox', { name: 'Search formations' }).fill('');
