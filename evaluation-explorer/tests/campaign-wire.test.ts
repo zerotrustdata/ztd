@@ -89,6 +89,50 @@ describe('campaign projection wire contract', () => {
     });
   });
 
+  it('accepts run_id, assignment_id, and score_id exceeding 128 bytes up to 512 bytes', () => {
+    const longRunId = 'run-' + 'a'.repeat(200);
+    const longAssignmentId = 'assign-' + 'b'.repeat(200);
+    const longScoreId = `${longAssignmentId}:task-score`;
+
+    const lifecycle = {
+      ...lifecycleEnvelope,
+      record: {
+        ...lifecycleEnvelope.record,
+        run_id: longRunId,
+        assignment_id: longAssignmentId,
+      },
+    };
+    expect(decodeCampaignProjectionEnvelope(lifecycle)).toMatchObject({
+      message_type: 'PublicAssignmentLifecycleRecord',
+    });
+
+    const result = {
+      ...historicalResultEnvelope,
+      record: {
+        ...historicalResultEnvelope.record,
+        run_id: longRunId,
+        assignment_id: longAssignmentId,
+        decomposed_scores: [{ score_id: longScoreId, dimension: 'task_score', value: 1 }],
+      },
+    };
+    expect(decodeCampaignProjectionEnvelope(result)).toMatchObject({
+      message_type: 'PublicAssignmentResultProjection',
+    });
+  });
+
+  it('rejects run_id exceeding 512 bytes', () => {
+    const oversizedRunId = 'run-' + 'a'.repeat(510);
+    expect(() =>
+      decodeCampaignProjectionEnvelope({
+        ...lifecycleEnvelope,
+        record: {
+          ...lifecycleEnvelope.record,
+          run_id: oversizedRunId,
+        },
+      }),
+    ).toThrow(/expected 1-512 UTF-8 bytes/);
+  });
+
   it('accepts enriched result envelopes at version 1.1.0', () => {
     expect(decodeCampaignProjectionEnvelope(fixtureCampaignResultEnvelope)).toEqual(fixtureCampaignResultEnvelope);
   });
