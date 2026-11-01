@@ -48,6 +48,7 @@ const (
 	RolloutStepSucceeded = "succeeded"
 	RolloutStepFailed    = "failed"
 	RolloutStepStopped   = "stopped"
+	RolloutStepSkipped   = "skipped"
 )
 
 type RolloutStep struct {
@@ -104,7 +105,7 @@ func validateNamedRollout(rollout *NamedRollout) error {
 				return err
 			}
 			switch step.Status {
-			case RolloutStepPending:
+			case RolloutStepPending, RolloutStepSkipped:
 			case RolloutStepRunning, RolloutStepSucceeded, RolloutStepFailed, RolloutStepStopped:
 				if len(step.Attempts) == 0 {
 					return fmt.Errorf("evaluation: rollout step has no run reference: %w", constants.ErrEvaluationFlagsInvalid)

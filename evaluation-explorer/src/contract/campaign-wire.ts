@@ -438,8 +438,8 @@ function assertLifecycleRecord(value: unknown, path: string): asserts value is C
   assertObject(value, path);
   rejectUnknown(value, LIFECYCLE_FIELDS, path);
   assertWireReleaseProvenance(value, path);
-  assertString(value.assignment_id, `${path}.assignment_id`);
-  assertString(value.run_id, `${path}.run_id`);
+  assertString(value.assignment_id, `${path}.assignment_id`, 512);
+  assertString(value.run_id, `${path}.run_id`, 512);
   assertString(value.scenario_id, `${path}.scenario_id`);
   assertOptionalEnum(value.scenario_category, SCENARIO_CATEGORIES, `${path}.scenario_category`);
   assertOptionalEnum(value.lane, LANES, `${path}.lane`);
@@ -454,7 +454,7 @@ function assertLifecycleRecord(value: unknown, path: string): asserts value is C
 function assertScore(value: unknown, path: string): asserts value is Omit<WireScore, 'value'> & { value?: number } {
   assertObject(value, path);
   rejectUnknown(value, ['score_id', 'dimension', 'value', 'unit', 'direction', 'missing_data_policy'], path);
-  assertString(value.score_id, `${path}.score_id`);
+  assertString(value.score_id, `${path}.score_id`, 512);
   assertOptionalString(value.dimension, `${path}.dimension`);
   if (value.value !== undefined) {
     assert(typeof value.value === 'number' && Number.isFinite(value.value), `${path}.value`, 'expected finite number');
@@ -712,8 +712,8 @@ function assertResultRecord(value: unknown, path: string, version: CampaignEnvel
   assertObject(value, path);
   rejectUnknown(value, RESULT_FIELDS, path);
   assertWireReleaseProvenance(value, path);
-  assertString(value.assignment_id, `${path}.assignment_id`);
-  assertString(value.run_id, `${path}.run_id`);
+  assertString(value.assignment_id, `${path}.assignment_id`, 512);
+  assertString(value.run_id, `${path}.run_id`, 512);
   assertString(value.scenario_id, `${path}.scenario_id`);
   assertOptionalEnum(value.scenario_category, SCENARIO_CATEGORIES, `${path}.scenario_category`);
   assertOptionalEnum(value.lane, LANES, `${path}.lane`);

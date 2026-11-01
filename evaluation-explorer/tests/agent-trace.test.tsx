@@ -206,6 +206,39 @@ describe('verifyAgentTraceArtifact', () => {
     expect(trace.content_judgments).toBeUndefined();
   });
 
+  it('decodes seed observations with disclosure', async () => {
+    const platformRecord = {
+      kind: 'seed',
+      disclosure: 'platform_record',
+      call: { ...toolCallWith({}), call_id: 'scenario-observation-1', model_call_id: '', tool_name: 'event_receipt_list', arguments_json: '{"limit":20}', result_json: '{"receipts":[]}', success: true, receipt: { ...receipt('scenario-observation-1', 'MCP_CALL'), transaction_hash: 'a'.repeat(64) }, request_envelope: { transaction_hash: 'a'.repeat(64) } },
+    };
+    const chainOnly = {
+      kind: 'seed',
+      disclosure: 'chain_only',
+      call: { ...toolCallWith({}), call_id: 'scenario-observation-2', model_call_id: '', tool_name: 'event_receipt_list', arguments_json: '{"limit":20}', result_json: '{"receipts":[]}', success: true, receipt: { ...receipt('scenario-observation-2', 'MCP_CALL'), transaction_hash: 'a'.repeat(64) }, request_envelope: { transaction_hash: 'a'.repeat(64) } },
+    };
+    const body = sealedBody('agent-trace.v11', { model_calls: [v7Call()], observations: [platformRecord, chainOnly], persona: { id: 'sage', version: '1.0.0', digest: 'e'.repeat(64) } });
+    const trace = await verifyAgentTraceArtifact(body, scope(body));
+    expect(trace.observations).toMatchObject([
+      { kind: 'seed', disclosure: 'platform_record' },
+      { kind: 'seed', disclosure: 'chain_only' },
+    ]);
+  });
+
+  it('rejects invalid observation disclosure values and non-seed disclosure', async () => {
+    const invalidVal = sealedBody('agent-trace.v10', {
+      model_calls: [v7Call()],
+      observations: [{ kind: 'seed', disclosure: 'prose', call: toolCallWith({}) }],
+    });
+    await expect(verifyAgentTraceArtifact(invalidVal, scope(invalidVal))).rejects.toMatchObject({ path: 'agent_trace.observations[0].disclosure' });
+
+    const nonSeed = sealedBody('agent-trace.v10', {
+      model_calls: [v7Call()],
+      observations: [{ kind: 'probe', disclosure: 'platform_record', call: toolCallWith({}) }],
+    });
+    await expect(verifyAgentTraceArtifact(nonSeed, scope(nonSeed))).rejects.toMatchObject({ path: 'agent_trace.observations[0].disclosure' });
+  });
+
   it('rejects unknown v10 harness observation kinds', async () => {
     const body = sealedBody('agent-trace.v10', { model_calls: [v7Call()], observations: [{ kind: 'model_call', call: toolCallWith({}) }] });
     await expect(verifyAgentTraceArtifact(body, scope(body))).rejects.toMatchObject({ path: 'agent_trace.observations[0].kind' });
@@ -484,7 +517,7 @@ describe('AgentTraceSection', () => {
     const traceBody = sealedBody('agent-trace.v10', {
       model_calls: [],
       observations: [
-        { kind: 'seed', call: {
+        { kind: 'seed', disclosure: 'platform_record', call: {
           call_id: 'scenario-observation-1', model_call_id: '', tool_name: 'read_file', arguments_json: '{"path":"case-notes.json"}',
           result_json: '{"content":"app-report"}', success: true, is_operator_tool: true, loop_turn: 0,
           receipt: { ...receipt('scenario-observation-1', 'MCP_CALL'), transaction_hash: hash },
@@ -501,7 +534,8 @@ describe('AgentTraceSection', () => {
     render(<AgentTraceSection id="trace" bindings={[{ ...bindings[0]!, sha256: sha256(traceBody) }]} runId="run-1" assignmentId="assignment-1" />);
 
     expect(await screen.findByText('Harness observations (2)')).toBeInTheDocument();
-    expect(screen.getAllByText('Harness · Seed')).toHaveLength(2);
+    expect(screen.getByText('Harness · Seed · Platform record')).toBeInTheDocument();
+    expect(screen.getByText('Harness · Seed')).toBeInTheDocument();
     expect(screen.getByText('Pre-envelope refusal · code 8')).toBeInTheDocument();
     expect(screen.getByText('Admitted request envelope')).toBeInTheDocument();
     expect(screen.getByText('Turns (0)')).toBeInTheDocument();

@@ -51,12 +51,14 @@ type DecisionBackend interface {
 // Provider is the configured local inference provider of an Inference
 // Operator: scored generation and decisions plus the model inventory,
 // residency, and release operations the Operator's maintenance commands use.
+// The runtime that built the Provider closes it after its last request.
 type Provider interface {
 	Backend
 	DecisionBackend
 	ListProviderModelInventory(ctx context.Context) ([]ProviderModelInventoryEntry, error)
 	ReadResidency(ctx context.Context) (ProviderResidency, error)
 	ReleaseModels(ctx context.Context, models []string) error
+	Close() error
 }
 
 // NewProvider constructs the provider selected by cfg.Provider. One Provider

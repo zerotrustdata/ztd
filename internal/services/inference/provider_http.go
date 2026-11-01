@@ -92,6 +92,12 @@ func (p *providerHTTP) postJSON(ctx context.Context, op string, in any, apiPath 
 	return resp, nil
 }
 
+// Close releases the client's idle provider connections.
+func (p *providerHTTP) Close() error {
+	p.client.CloseIdleConnections()
+	return nil
+}
+
 // apiURL resolves a provider API path against the validated base endpoint.
 func (p *providerHTTP) apiURL(elem ...string) string {
 	return p.base.JoinPath(elem...).String()
@@ -122,12 +128,22 @@ func (p *providerHTTP) decodeResponse(op string, body io.Reader, out any) error 
 func awaitModelsAbsent(ctx context.Context, component string, readResidency func(context.Context) (ProviderResidency, error), models []string) error {
 	ctx, cancel := context.WithTimeout(ctx, ProviderStatusTimeout)
 	defer cancel()
+	var resident string
 	for {
+		if ctx.Err() != nil {
+			if !errors.Is(ctx.Err(), context.Canceled) && resident != "" {
+				return fmt.Errorf("%s: verify released models absent: %w: model %q remains resident", component, constants.ErrInferenceModelReleaseFailed, resident)
+			}
+			return fmt.Errorf("%s: verify released models absent: %w", component, ctx.Err())
+		}
 		residency, err := readResidency(ctx)
 		if err != nil {
+			if (errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, constants.ErrInferenceBackendTimeout) || errors.Is(err, context.DeadlineExceeded)) && resident != "" {
+				return fmt.Errorf("%s: verify released models absent: %w: model %q remains resident", component, constants.ErrInferenceModelReleaseFailed, resident)
+			}
 			return fmt.Errorf("%s: verify released models absent: %w", component, err)
 		}
-		resident := ""
+		resident = ""
 		for _, model := range residency.Models {
 			if slices.Contains(models, model.Name) {
 				resident = model.Name
@@ -139,6 +155,9 @@ func awaitModelsAbsent(ctx context.Context, component string, readResidency func
 		}
 		select {
 		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return fmt.Errorf("%s: verify released models absent: %w", component, ctx.Err())
+			}
 			return fmt.Errorf("%s: verify released models absent: %w: model %q remains resident", component, constants.ErrInferenceModelReleaseFailed, resident)
 		case <-time.After(providerUnloadRecheckInterval):
 		}

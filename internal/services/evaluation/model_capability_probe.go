@@ -283,7 +283,7 @@ func inferenceResultStructuredJSON(result *operatorv1.InferenceResult) (string, 
 	if result == nil {
 		return "", false
 	}
-	text := extractStructuredJSONPayload(models.InferenceResultText(result))
+	text := extractStructuredJSONPayload(structuredResultText(result))
 	if text == "" {
 		return "", false
 	}

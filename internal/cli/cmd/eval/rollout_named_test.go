@@ -353,3 +353,82 @@ func TestNamedRollout_CanceledCampaignEndsBatchAndRetriesFresh(t *testing.T) {
 		return nil
 	}))
 }
+
+func TestNamedRollout_RemovedCampaignsSkipped(t *testing.T) {
+	env := newNamedRolloutEnv(t)
+	env.mustRun(t, "campaigns", "create", "transient", "qwen3:4b")
+	env.mustRun(t, "rollout", "create", "mixed", "transient", "control", "longitudinal")
+
+	// Delete "transient" campaign from runtime files
+	require.NoError(t, env.fileSvc(t).RemoveAll(context.Background(), fmt.Sprintf("%s/%s", constants.EvaluationCampaignsPath, "transient")))
+
+	// Dry run omits the removed campaign
+	var plan namedRolloutPlan
+	require.NoError(t, env.runJSON(t, &plan, "rollout", "run", "mixed", "--dry-run"))
+	assert.Equal(t, []string{"control", "longitudinal"}, plan.Campaigns)
+
+	// Rollout run executes remaining campaigns and marks transient as skipped
+	var executed []string
+	require.NoError(t, runNamedRollout(env.cmd, env.deps, env.fileSvc(t), "mixed", namedRolloutOptions{Repeat: 1, Until: 1}, func(_ *cobra.Command, campaignID, _ string, _ bool) error {
+		executed = append(executed, campaignID)
+		return nil
+	}))
+	// Until: 1 executed 1 runnable campaign ("control"), skipping "transient"
+	assert.Equal(t, []string{"control"}, executed)
+
+	saved := loadTestRollout(t, env, "mixed")
+	require.Len(t, saved.Executions, 1)
+	require.Len(t, saved.Executions[0].Steps, 3)
+	assert.Equal(t, evaluation.RolloutStepSkipped, saved.Executions[0].Steps[0].Status)
+	assert.Empty(t, saved.Executions[0].Steps[0].Attempts)
+	assert.Equal(t, evaluation.RolloutStepSucceeded, saved.Executions[0].Steps[1].Status)
+	assert.Equal(t, evaluation.RolloutStepPending, saved.Executions[0].Steps[2].Status)
+
+	// Resume skips previously skipped and succeeded steps, executing the remaining step
+	executed = nil
+	require.NoError(t, runNamedRollout(env.cmd, env.deps, env.fileSvc(t), "mixed", namedRolloutOptions{Repeat: 1, Resume: true}, func(_ *cobra.Command, campaignID, _ string, _ bool) error {
+		executed = append(executed, campaignID)
+		return nil
+	}))
+	assert.Equal(t, []string{"longitudinal"}, executed)
+
+	saved = loadTestRollout(t, env, "mixed")
+	assert.Equal(t, evaluation.RolloutStepSkipped, saved.Executions[0].Steps[0].Status)
+	assert.Equal(t, evaluation.RolloutStepSucceeded, saved.Executions[0].Steps[1].Status)
+	assert.Equal(t, evaluation.RolloutStepSucceeded, saved.Executions[0].Steps[2].Status)
+
+	showOut := env.mustRun(t, "rollout", "show", "mixed")
+	assert.Contains(t, showOut, "transient: skipped")
+}
+
+func TestNamedRollout_CreateWithModelSelector(t *testing.T) {
+	env := newNamedRolloutEnv(t)
+
+	// Create with --all and custom judge
+	env.mustRun(t, "rollout", "create", "all-models", "--all", "--suite", "smoke-suite", "--judge", "qwen3:4b")
+	rollout := loadTestRollout(t, env, "all-models")
+	require.NotEmpty(t, rollout.Campaigns)
+	assert.Contains(t, rollout.Campaigns[0], "all-models-")
+	assert.Contains(t, rollout.Campaigns[0], "-judge-qwen3-4b")
+
+	// Verify the campaign was actually created and can be shown
+	var campaignShow campaignShowJSON
+	require.NoError(t, env.runJSON(t, &campaignShow, "campaigns", "show", rollout.Campaigns[0]))
+	assert.Equal(t, "smoke-suite@1.30.0", campaignShow.Suite)
+	assert.Equal(t, "qwen3:4b", campaignShow.Judge)
+
+	// Repeating create updates/reuses existing campaigns without error
+	env.mustRun(t, "rollout", "update", "all-models", "--all", "--suite", "smoke-suite", "--judge", "qwen3:4b")
+	rolloutUpdated := loadTestRollout(t, env, "all-models")
+	assert.Equal(t, rollout.Campaigns, rolloutUpdated.Campaigns)
+
+	// Create with --max-params
+	env.mustRun(t, "rollout", "create", "small-models", "--max-params", "4b", "--suite", "smoke-suite")
+	smallRollout := loadTestRollout(t, env, "small-models")
+	require.NotEmpty(t, smallRollout.Campaigns)
+
+	// Error when no campaign IDs and no selector is passed
+	_, err := env.run(t, "rollout", "create", "empty-rollout")
+	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrEvaluationSelectionEmpty)
+}

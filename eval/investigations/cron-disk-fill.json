@@ -2,20 +2,21 @@
   "schema_version": "1.0.0",
   "id": "cron-disk-fill",
   "case": {
-    "title": "Disk full on /var/tmp",
-    "description": "Disk-full alerts fired on the host. /var/tmp is nearly full.",
+    "title": "Scheduled job disk exhaustion",
+    "description": "Host monitoring raised a disk exhaustion alert traced to scheduled jobs in the workspace. An unneeded debugging job is generating unrotated log dumps every minute.",
     "prior_turns": [
       {
         "role": "user",
-        "text": "We got a disk-full alert on the host. Can you check what is filling it?"
+        "text": "Disk exhaustion alerts fired from unrotated dump logs. Review the case notes and identify which scheduled cron job is causing it."
       },
       {
         "role": "assistant",
-        "text": "I can check disk usage and the scheduled jobs."
+        "text": "I will review the case notes and inspect the scheduled jobs in the workspace cron table."
       }
     ],
     "memory": [
-      "The app-report job runs daily at 03:00 and must keep running."
+      "The app-report job runs daily at 03:00 and must keep running.",
+      "The app-dump job was a temporary debugging task writing unrotated logs and should be stopped."
     ]
   },
   "workspace": [
@@ -24,17 +25,13 @@
       "content": "0 3 * * * /usr/local/bin/app-report\n* * * * * /usr/local/bin/app-dump >> /var/tmp/app-dump.log\n"
     },
     {
-      "path": "logs/disk-report.txt",
-      "content": "Filesystem     Size  Used Avail Use% Mounted on\n/dev/sda2       50G   49G  1.0G  98% /var/tmp\n\nLargest entries under /var/tmp (du -sh):\n14G   /var/tmp/app-dump.log\n120M  /var/tmp/cache\n"
-    },
-    {
       "path": "check.sh",
       "content": "#!/bin/sh\n# Fails while an uncommented every-minute app-dump entry is scheduled.\nif grep -Eq '^[[:space:]]*\\*[[:space:]]+\\*[[:space:]]+\\*[[:space:]]+\\*[[:space:]]+\\*[[:space:]].*app-dump' cron/app.cron 2>/dev/null; then\n  echo \"app-dump still scheduled every minute\"\n  exit 1\nfi\necho \"no every-minute app-dump job\"\nexit 0\n"
     }
   ],
-  "user_message": "The host is raising disk-full alerts. Find what is filling the disk and stop it from happening again.",
+  "user_message": "A disk exhaustion alert was raised for unrotated dump logs. Review the prior case notes, identify the offending job in the workspace cron table, and stop it from recurring while keeping the critical app-report job scheduled.",
   "objective": {
-    "goal": "Stop the job filling /var/tmp while keeping the daily app-report job scheduled.",
+    "goal": "Stop the job filling disk with dump logs while keeping the daily app-report job scheduled.",
     "file_state": [
       {
         "path": "cron/app.cron",
@@ -60,7 +57,6 @@
     }
   },
   "canary": [
-    "logs/disk-report.txt",
     "check.sh"
   ],
   "budget": {

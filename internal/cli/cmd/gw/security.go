@@ -243,30 +243,11 @@ func (v *securityValidator) checkPKIDirectory(paths securityPKIPaths) {
 			v.cmd.Printf("  [OK]   %s exists\n", check.path.display)
 			continue
 		}
-		if check.path == paths.actuatorPub && v.legacyActuatorKeyExists(paths.actuatorPub) {
-			continue
-		}
 		if check.isOptional {
 			continue
 		}
 		v.fail("  [FAIL] %s missing\n", check.path.display)
 	}
-}
-
-// legacyActuatorKeyExists reports the warden_pub.pem fallback for the
-// actuator public key.
-func (v *securityValidator) legacyActuatorKeyExists(actuatorPub securityPath) bool {
-	legacy := securityPath{display: filepath.Join(filepath.Dir(actuatorPub.display), constants.PkiFileWardenPub)}
-	if v.pkiDir == "" {
-		legacy.rel = filepath.Join(constants.PkiDirname, constants.PkiFileWardenPub)
-	} else {
-		legacy.rel, _, _ = fs.RuntimeRelativePath(v.fileSvc, legacy.display)
-	}
-	exists, _ := v.exists(legacy)
-	if exists {
-		v.cmd.Printf("  [OK]   %s exists (legacy actuator key)\n", legacy.display)
-	}
-	return exists
 }
 
 func (v *securityValidator) secretChecks() ([]securitySecretCheck, error) {

@@ -648,8 +648,8 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 		return nil, false, nil
 	}
 	// Capture the attempt's start before eligibility, but persist RUNNING only
-	// after it succeeds. Negative probes complete during the gate; failed
-	// dispatches leave the scheduled assignment untouched and resumable.
+	// after it is decided. Negative probes complete during the gate; a probe that
+	// produced no verdict is this assignment's executor failure, terminal below.
 	assignmentStartedAt := timestamppb.New(c.now().UTC())
 	execReq, err := c.frozenAssignmentRequest(ctx, campaignSpec, binding, formationStackSet, artifacts, assignment, c.newID("attempt"))
 	if err != nil {
@@ -657,14 +657,19 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 	}
 	var result *evalv1.EvaluationAssignmentResult
 	result, err = c.toolCallingGate(ctx, run, execReq)
+	// A probe dispatch that produced no verdict fails only this assignment: no
+	// probe record is frozen, so the next tool-bearing cell probes again. Only a
+	// verified verdict (or a verdict-free rejection) can exclude tool cells.
+	// Residency, evidence and persistence failures still stop the run.
+	var gateErr error
 	if err != nil {
-		// Eligibility dispatch, receipt and persistence failures stop the run.
-		// Only a verified negative probe may exclude tool-bearing cells; the
-		// ordinary cell recovery path cannot manufacture that evidence.
-		if !errors.Is(err, constants.ErrEvaluationToolCallingProbeFailed) {
-			err = fmt.Errorf("%w: %w", constants.ErrEvaluationToolCallingProbeFailed, err)
+		if !errors.Is(err, constants.ErrEvaluationAssignmentExecutionFailed) {
+			if !errors.Is(err, constants.ErrEvaluationToolCallingProbeFailed) {
+				err = fmt.Errorf("%w: %w", constants.ErrEvaluationToolCallingProbeFailed, err)
+			}
+			return nil, false, err
 		}
-		return nil, false, err
+		gateErr = err
 	}
 	assignment.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_RUNNING
 	assignment.StartedAt = assignmentStartedAt
@@ -681,7 +686,11 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 		startPublishErr = fmt.Errorf("%w: assignment %s start: %w", constants.ErrEvaluationPublicationFailed, assignment.GetAssignmentId(), startPublishErr)
 	}
 
-	if result == nil {
+	if gateErr != nil {
+		// The failed probe is this assignment's executor failure. Nothing was
+		// dispatched for the cell, so there is no held context or judge activity.
+		err = gateErr
+	} else if result == nil {
 		execReq.HeldContext, err = c.heldAssignmentContext(ctx, run.GetCampaignBinding().GetCampaignId(), assignment)
 	}
 	var judgeActivity *JudgeActivityPublisher

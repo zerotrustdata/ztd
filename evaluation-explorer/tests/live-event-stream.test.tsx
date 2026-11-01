@@ -10,6 +10,7 @@ import { LiveEventStream } from '../src/components/LiveEventStream';
 import { evalStore, recordKey } from '../src/state/store';
 import { adaptCampaignProjectionEnvelope, createCampaignAdaptContext } from '../src/state/campaign-adapter';
 import { EvaluationDetailView } from '../src/views/EvaluationDetailView';
+import { judgeTone } from '../src/components/JudgeActivity';
 
 function liveEvent(partial: Partial<LiveEvent> = {}): LiveEvent {
   return {
@@ -455,6 +456,49 @@ describe('LiveEventStream', () => {
       expect(within(tribunal).getAllByText('Pending')).toHaveLength(4);
     });
 
+    it('renders all role stages for a multi-role formation assignment', () => {
+      render(stream([
+        liveEvent({
+          event_id: 'a1:lite',
+          kind: 'stage_updated',
+          assignment_id: 'a1',
+          role: 'lite',
+          variant_id: 'liquid-lfm',
+          task_id: 'wrong-port-config',
+          stage_label: 'model role invoked · lite · liquid-lfm · wrong-port-config',
+          observed_at: '2026-09-17T08:00:00Z',
+        }),
+        liveEvent({
+          event_id: 'a1:assistant',
+          kind: 'stage_updated',
+          assignment_id: 'a1',
+          role: 'assistant',
+          variant_id: 'granite-3b',
+          task_id: 'wrong-port-config',
+          stage_label: 'model role invoked · assistant · granite-3b · wrong-port-config',
+          observed_at: '2026-09-17T08:01:00Z',
+        }),
+        liveEvent({
+          event_id: 'a1:primary',
+          kind: 'assignment_completed',
+          assignment_id: 'a1',
+          role: 'primary',
+          variant_id: 'qwen-4b',
+          task_id: 'wrong-port-config',
+          lifecycle_status: 'completed',
+          observed_at: '2026-09-17T08:02:00Z',
+        }),
+      ]));
+      expect(rows()).toHaveLength(3);
+      const table = within(screen.getByRole('table'));
+      expect(table.getByText('Lite')).toBeInTheDocument();
+      expect(table.getByText('Assistant')).toBeInTheDocument();
+      expect(table.getByText('Primary')).toBeInTheDocument();
+      expect(table.getByText('liquid-lfm')).toBeInTheDocument();
+      expect(table.getByText('granite-3b')).toBeInTheDocument();
+      expect(table.getByText('qwen-4b')).toBeInTheDocument();
+    });
+
     it('renders a spinner when connecting and a status dot when live', () => {
       const { rerender } = render(
         <MemoryRouter>
@@ -553,6 +597,13 @@ describe('LiveEventStream judge activity', () => {
     expect(within(cell).getByText('Score 4/5')).toBeInTheDocument();
     const chips = [...cell.querySelectorAll('.judge-subject')].map((chip) => chip.textContent);
     expect(chips).toEqual(['refusal', 'advice', 'Diagnosis quality']);
+    const refusalChip = within(cell).getByText('refusal').closest('details');
+    expect(refusalChip).toHaveAttribute('data-state', 'met');
+    expect(refusalChip).toHaveAttribute('data-tone', 'ok');
+    const diagChip = within(cell).getByText('Diagnosis quality').closest('details');
+    expect(diagChip).toHaveAttribute('data-state', 'scored');
+    expect(diagChip).toHaveAttribute('data-tone', 'ok');
+    expect(diagChip).toHaveAttribute('data-score', '4');
     expect(within(cell).getByText('qwen3.5:4b · 2/3 judged · 1 met · 0 not met · scores 4/5 · 2.40 s · 1,624 in / 80 out tok')).toBeInTheDocument();
   });
 
@@ -619,5 +670,17 @@ describe('LiveEventStream judge activity', () => {
     ]));
     expect(rows()).toHaveLength(1);
     expect(within(rowFor('task-a-1')).getByRole('group', { name: 'Judge' })).toHaveTextContent('Met');
+  });
+
+  it('assigns expected tones to judge verdicts and scores', () => {
+    expect(judgeTone(done({ state: 'met' }))).toBe('ok');
+    expect(judgeTone(done({ state: 'not_met' }))).toBe('critical');
+    expect(judgeTone(done({ state: 'failed', failure: 'dispatch_failed' }))).toBe('critical');
+    expect(judgeTone(judge({ state: 'judging' }))).toBeUndefined();
+    expect(judgeTone(done({ state: 'scored', score: 5 }))).toBe('ok');
+    expect(judgeTone(done({ state: 'scored', score: 4 }))).toBe('ok');
+    expect(judgeTone(done({ state: 'scored', score: 3 }))).toBe('warn');
+    expect(judgeTone(done({ state: 'scored', score: 2 }))).toBe('critical');
+    expect(judgeTone(done({ state: 'scored', score: 1 }))).toBe('critical');
   });
 });

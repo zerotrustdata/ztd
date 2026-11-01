@@ -19,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/inference/provider_observer"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
@@ -118,14 +119,12 @@ func (c *ProviderBoundaryObservationCoordinator) synchronizeObserverSubscription
 	if c == nil || c.dispatch == nil || c.operatorLister == nil || c.pubsub == nil || c.windows == nil {
 		return constants.ErrServiceUnavailable
 	}
-	_ = ctx
-
 	operators, err := c.operatorLister.ListOperatorsForObservation(ctx)
 	if err != nil {
 		c.logger.Warn("Provider-boundary observation: list operators failed", "error", err)
 		return err
 	}
-	selected, err := selectProviderBoundaryObserverForGateway(operators)
+	selected, err := selectProviderBoundaryObserverForGateway(operators, dispatch.InferenceOperatorSessionFromContext(ctx))
 	if err != nil {
 		c.resetObserver()
 		switch {
@@ -186,7 +185,19 @@ func (c *ProviderBoundaryObservationCoordinator) synchronizeObserverSubscription
 // live observer. When that happens the tie is broken by the inference node's
 // system fingerprint; if that fails too, the ambiguity error is returned so the
 // operator sees why selection failed instead of a misleading not-found.
-func selectProviderBoundaryObserverForGateway(operators []*operatorv1.OperatorDocument) (*operatorcapability.ProviderBoundaryObserverStatus, error) {
+func selectProviderBoundaryObserverForGateway(operators []*operatorv1.OperatorDocument, inferenceSessionID string) (*operatorcapability.ProviderBoundaryObserverStatus, error) {
+	if inferenceSessionID != "" {
+		if selected, err := operatorcapability.SelectProviderBoundaryObserver(operators, inferenceSessionID); err == nil {
+			return selected, nil
+		}
+		for _, op := range operators {
+			if op != nil && op.GetOperatorSessionId() == inferenceSessionID && op.GetSystemFingerprint() != "" {
+				if selected, err := operatorcapability.SelectProviderBoundaryObserverForHardware(operators, "", op.GetSystemFingerprint()); err == nil {
+					return selected, nil
+				}
+			}
+		}
+	}
 	selected, err := operatorcapability.SelectProviderBoundaryObserver(operators, "")
 	if err == nil || !errors.Is(err, constants.ErrProviderBoundaryObserverAmbiguous) {
 		return selected, err

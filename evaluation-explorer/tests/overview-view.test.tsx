@@ -339,4 +339,189 @@ describe('Live workspace', () => {
       'href', `/evaluations/${datasetId}/${evaluation.run_id}`,
     );
   });
+
+  it('renders formation runs with formation tag, role progress, and formation outcome track', () => {
+    const primaryModel: ModelSummary = {
+      schema_version: '1.4.0',
+      kind: 'model_summary',
+      dataset_id: datasetId,
+      quality_state: 'live_in_progress',
+      observed_at: evaluation.observed_at,
+      variant_id: 'qwen-4b',
+      display_name: 'Qwen 4B',
+      role: 'primary',
+      inventory_only: false,
+      evaluation_coverage: 1,
+      terminal_outcomes: { completed: 3, model_failed: 1, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
+      pass_rate: { estimate: 0.75, lower: 0.5, upper: 0.9, denominator: 4 },
+    };
+    const assistantModel: ModelSummary = {
+      schema_version: '1.4.0',
+      kind: 'model_summary',
+      dataset_id: datasetId,
+      quality_state: 'live_in_progress',
+      observed_at: evaluation.observed_at,
+      variant_id: 'granite-3b',
+      display_name: 'Granite 3B',
+      role: 'assistant',
+      inventory_only: false,
+      evaluation_coverage: 1,
+      terminal_outcomes: { completed: 4, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
+      pass_rate: { estimate: 1.0, lower: 0.8, upper: 1.0, denominator: 4 },
+    };
+    const liteModel: ModelSummary = {
+      schema_version: '1.4.0',
+      kind: 'model_summary',
+      dataset_id: datasetId,
+      quality_state: 'live_in_progress',
+      observed_at: evaluation.observed_at,
+      variant_id: 'liquid-lfm',
+      display_name: 'Liquid LFM',
+      role: 'lite',
+      inventory_only: false,
+      evaluation_coverage: 1,
+      terminal_outcomes: { completed: 2, model_failed: 2, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
+      pass_rate: { estimate: 0.5, lower: 0.2, upper: 0.8, denominator: 4 },
+    };
+    const formationEval: EvaluationSummary = {
+      ...evaluation,
+      campaign_id: 'formation-investigations',
+      evaluation_unit: 'system',
+      model_role_mapping: {
+        primary: primaryModel.variant_id,
+        assistant: assistantModel.variant_id,
+        lite: liteModel.variant_id,
+      },
+    };
+    evalStore.loadFixtures([
+      catalog, primaryModel, assistantModel, liteModel, formationEval,
+    ], []);
+
+    render(
+      <MemoryRouter initialEntries={['/?release=all']}>
+        <LiveWorkspace />
+      </MemoryRouter>,
+    );
+
+    const recent = within(screen.getByRole('region', { name: 'Runs' }));
+    expect(recent.getByText('Formation')).toBeInTheDocument();
+    expect(recent.getByRole('link', { name: /formation-investigations/ })).toHaveAttribute(
+      'href', `/evaluations/${datasetId}/${formationEval.run_id}`,
+    );
+    expect(recent.getByText('Primary')).toBeInTheDocument();
+    expect(recent.getByText('Assistant')).toBeInTheDocument();
+    expect(recent.getByText('Lite')).toBeInTheDocument();
+    const primaryBar = recent.getByRole('progressbar', { name: 'Primary outcomes' });
+    expect(primaryBar).toBeInTheDocument();
+    expect(primaryBar).toHaveAttribute('aria-valuenow', '4');
+    expect(recent.getByText('75%')).toBeInTheDocument();
+
+    const assistantBar = recent.getByRole('progressbar', { name: 'Assistant outcomes' });
+    expect(assistantBar).toBeInTheDocument();
+    expect(assistantBar).toHaveAttribute('aria-valuenow', '4');
+    expect(recent.getByText('100%')).toBeInTheDocument();
+
+    const liteBar = recent.getByRole('progressbar', { name: 'Lite outcomes' });
+    expect(liteBar).toBeInTheDocument();
+    expect(liteBar).toHaveAttribute('aria-valuenow', '4');
+    expect(recent.getByText('50%')).toBeInTheDocument();
+
+    expect(recent.getByRole('progressbar', { name: 'formation-investigations formation outcomes' })).toBeInTheDocument();
+    expect(recent.getByText(/Formation: 5 passed · 1 failed · 0 no verdict/)).toBeInTheDocument();
+  });
+
+  it('renders unique progress and pass rates per role from role assignments in a formation run', () => {
+    const formationEval: EvaluationSummary = {
+      ...evaluation,
+      run_id: 'run-formation-live',
+      campaign_id: 'v171-formation-live',
+      evaluation_unit: 'system',
+      model_role_mapping: {
+        primary: 'model-primary',
+        assistant: 'model-assistant',
+        lite: 'model-lite',
+      },
+    };
+    // Even if model_summary records carry identical stale aggregate snapshot numbers (e.g. 68% for all)
+    const staleSnapshotModel = (role: 'primary' | 'assistant' | 'lite', variantId: string): ModelSummary => ({
+      schema_version: '1.4.0',
+      kind: 'model_summary',
+      dataset_id: datasetId,
+      quality_state: 'live_in_progress',
+      observed_at: '2026-09-22T12:05:00Z',
+      variant_id: variantId,
+      display_name: variantId,
+      role,
+      inventory_only: false,
+      evaluation_coverage: 1,
+      terminal_outcomes: { completed: 26, model_failed: 12, grader_failed: 0, invalid_evidence: 14, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
+      pass_rate: { estimate: 0.68, lower: 0.5, upper: 0.8, denominator: 38 },
+    });
+
+    const mPrimary = staleSnapshotModel('primary', 'model-primary');
+    const mAssistant = staleSnapshotModel('assistant', 'model-assistant');
+    const mLite = staleSnapshotModel('lite', 'model-lite');
+
+    // Live assignments have distinct results per role
+    const makeAssignment = (id: string, role: 'primary' | 'assistant' | 'lite', variantId: string, status: 'completed' | 'model_failed' | 'invalid_evidence', pass: number): SnapshotRecord => ({
+      schema_version: '1.4.0',
+      kind: 'assignment_result',
+      dataset_id: datasetId,
+      quality_state: 'live_in_progress',
+      observed_at: '2026-09-22T12:05:00Z',
+      assignment_id: id,
+      run_id: 'run-formation-live',
+      task_id: 'task-1',
+      variant_id: variantId,
+      role,
+      repetition: 1,
+      terminal_status: status,
+      metric_values: { pass: { value: pass } },
+    } as unknown as SnapshotRecord);
+
+    const distinctAssignments: SnapshotRecord[] = [
+      // Primary: 3 passed, 1 failed (75%)
+      makeAssignment('asg-p1', 'primary', 'model-primary', 'completed', 1),
+      makeAssignment('asg-p2', 'primary', 'model-primary', 'completed', 1),
+      makeAssignment('asg-p3', 'primary', 'model-primary', 'completed', 1),
+      makeAssignment('asg-p4', 'primary', 'model-primary', 'model_failed', 0),
+      // Assistant: 1 passed, 3 failed (25%)
+      makeAssignment('asg-a1', 'assistant', 'model-assistant', 'completed', 1),
+      makeAssignment('asg-a2', 'assistant', 'model-assistant', 'model_failed', 0),
+      makeAssignment('asg-a3', 'assistant', 'model-assistant', 'model_failed', 0),
+      makeAssignment('asg-a4', 'assistant', 'model-assistant', 'model_failed', 0),
+      // Lite: 2 passed, 0 failed (100%)
+      makeAssignment('asg-l1', 'lite', 'model-lite', 'completed', 1),
+      makeAssignment('asg-l2', 'lite', 'model-lite', 'completed', 1),
+    ];
+
+    evalStore.loadFixtures([
+      catalog, mPrimary, mAssistant, mLite, formationEval, ...distinctAssignments,
+    ], []);
+
+    render(
+      <MemoryRouter initialEntries={['/?release=all']}>
+        <LiveWorkspace />
+      </MemoryRouter>,
+    );
+
+    const recent = within(screen.getByRole('region', { name: 'Runs' }));
+    // Primary has 75%, not stale 68%
+    expect(recent.getByText('75%')).toBeInTheDocument();
+    const primaryBar = recent.getByRole('progressbar', { name: 'Primary outcomes' });
+    expect(primaryBar).toHaveAttribute('aria-valuenow', '4');
+
+    // Assistant has 25%, not stale 68%
+    expect(recent.getByText('25%')).toBeInTheDocument();
+    const assistantBar = recent.getByRole('progressbar', { name: 'Assistant outcomes' });
+    expect(assistantBar).toHaveAttribute('aria-valuenow', '4');
+
+    // Lite has 100%, not stale 68%
+    expect(recent.getByText('100%')).toBeInTheDocument();
+    const liteBar = recent.getByRole('progressbar', { name: 'Lite outcomes' });
+    expect(liteBar).toHaveAttribute('aria-valuenow', '2');
+
+    // Verify 68% does NOT appear
+    expect(screen.queryByText('68%')).not.toBeInTheDocument();
+  });
 });

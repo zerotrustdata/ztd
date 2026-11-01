@@ -15,6 +15,7 @@ compatible with the previous release in the same minor series. See `INV-REL-VER-
 
 | Version | Date | Description | Notes |
 |---------|------|-------------|-------|
+| 1.7.1 | 2026-11-01 | JIT-LLM inference backend, judge execution resilience, Evaluation Explorer runs display and live streaming fixes, investigation scenario refinements, and filesystem disk profile error handling. | [v1.7.1](docs/release_notes/v1.7.x/v1.7.1.md) |
 | 1.7.0 | 2026-10-30 | Signed judge evidence and live activity, evaluation correctness and model residency, enrollment diagnostics, network probe address restrictions, and release reliability. | [v1.7.0](docs/release_notes/v1.7.x/v1.7.0.md) |
 
 ## v1.6.x

@@ -4,7 +4,7 @@ title: Gateway Architecture
 audience: maintainers and coding agents
 status: current
 version: v1.7.0
-last_updated: 2026-10-30
+last_updated: 2026-10-31
 owners:
   - internal/services/gateway/
   - internal/cli/cmd/gw/
@@ -64,7 +64,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | :--- | :--- |
 | INV-GW-POST-01 | The Gateway MUST run in one of four immutable governance postures defined by `constants.Posture` (`internal/constants/posture.go`): `doctrine` (default; L1 enforced, L2/L3 audited), `consensus` (L1/L2 enforced, L3 audited), `ratify` (L1/L3 enforced, L2 audited), or `notary` (L1/L2/L3 enforced). The posture is set once at startup via `--posture`, validated via `constants.ParsePosture`, which wraps `ErrInvalidPosture` for unknown or empty values, and MUST NOT change at runtime. |
 | INV-GW-POST-02 | Launch profiles written by `ztd gw start` to `.ztd/pids/operator-launch-profile.json` are versioned and mandatory for `ztd gw restart`. Restart MUST fail closed if the profile is missing, malformed, or of an unknown version. |
-| INV-GW-POST-03 | During Gateway daemon startup (`gateway.NewGatewayService`), the in-process embedded Operator MUST be registered as pending and its runtime configuration committed immediately after inserting the pending Gateway record, before initializing PKI, enrollment services, or listeners. This MUST reserve the embedded Operator's configured singleton capabilities up front so conflicting remote Operator enrollments cannot race or preempt them. |
+| INV-GW-POST-03 | During Gateway daemon startup (`gateway.NewGatewayService`), the in-process embedded Operator MUST be registered as pending and its runtime configuration committed immediately after inserting the pending Gateway record, before initializing PKI, enrollment services, or listeners. |
 
 ### Network Surfaces and Route Classification (`INV-GW-NET`)
 
@@ -129,7 +129,7 @@ The Gateway binary operates in two distinct execution modes:
 
 Gateway HTTP, HTTPS, mirror, and explorer servers send standard-library diagnostics through their injected platform logger, preserving its destination, level filtering, and server attributes. Normal HTTP server closure returns successfully. Mirror response writes classify broken pipes, reset or closed connections, and caller cancellation at debug level; unexpected response failures remain errors. Inference dispatch failures log the typed failure code and available provider-attempt and transaction IDs. The executing inference handler logs a fixed failure category and safe transport error kind, never provider response text or prompt content.
 
-The Gateway initializes its services in strict sequence: after creating the local runtime directory and persisting the pending Gateway record, it immediately registers the embedded Operator substrate as pending and commits its runtime configuration (`UpdateOperatorRuntimeConfig`). This embedded-first registration reserves its configured singleton capabilities (`inference`, `provenance`, and `observer`) before PKI certificate authority creation, remote enrollment handlers, or network listeners are booted, preventing incoming remote Operator enrollments from racing or preempting Gateway-local capabilities. The `data` capability is not singleton and may be held by multiple Operators.
+The Gateway initializes its services in strict sequence: after creating the local runtime directory and persisting the pending Gateway record, it immediately registers the embedded Operator substrate as pending and commits its runtime configuration (`UpdateOperatorRuntimeConfig`) before PKI certificate authority creation, remote enrollment handlers, or network listeners are booted. Any number of remote Operators may also be enrolled with any combination of capabilities (`data`, `inference`, `provenance`, `observer`).
 
 The Gateway is configured via CLI flags or an interactive setup wizard:
 - `ztd gw start [--posture <posture>] [--http-port 8080] [--https-port 8443] [--listen-host 127.0.0.1]`: Starts the Gateway. The listeners bind loopback by default; specify `--listen-host 0.0.0.0` when remote Operators or external clients connect.

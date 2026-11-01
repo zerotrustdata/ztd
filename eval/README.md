@@ -8,18 +8,18 @@ Checked-in evaluation program data and templates live here. **Runtime** campaign
 
 | Path | Purpose |
 | --- | --- |
-| `eval/base-model-inventory.json` | **Default genesis program inventory** — 111 init-campaign models; each new campaign freezes the selected suite and its eligible-role matrix |
-| `eval/base-init-campaign-queue.json` | Template rollout queue (`status: pending`); 45 entries at 85 doctrine/ratify cells each (`cells_per_run: 85`); consensus/notary use 78 cells. Every entry is a model in `base-model-inventory.json`; the other 66 inventory models are not yet listed, including `gemma4:12b`. `glm-5.3-air` and `qwen2.5:1b-rlcd` are HF intake entries (`rollout-intake-hf.json`) that are not in the base inventory. |
+| `eval/base-model-inventory.json` | **Default genesis program inventory** — 88 init-campaign models; each new campaign freezes the selected suite and its eligible-role matrix |
+| `eval/base-init-campaign-queue.json` | Template rollout queue (`status: pending`); 36 entries at 85 doctrine/ratify cells each (`cells_per_run: 85`); consensus/notary use 78 cells. Every entry is a model in `base-model-inventory.json`; the other 52 inventory models are not yet listed, including `gemma4:12b`. `glm-5.3-air` and `qwen2.5:1b-rlcd` are HF intake entries (`rollout-intake-hf.json`) that are not in the base inventory. |
 | `examples/eval/init-campaign-queue.example.json` | Minimal queue shape reference |
 | `eval/formation-catalog.json` | Formation catalog for system-lane campaigns (`--formations`); the checked-in default formations; a missing, undecodable, or empty catalog fails closed |
-| `eval/formation-catalog-overlay.json` | Project overlay of formation edits written by `ztd eval formations add`; includes `formation-lite` (`granite4:1b-h` / `llama3.2:1b` / `gemma3:1b`), the light formation that `ztd eval quickstart --formation formation-lite` uses |
+| `eval/formation-catalog-overlay.json` | Project overlay of formation edits written by `ztd eval formations add`; includes `formation-lite` (`granite4:1b-h` / `llama3.2:1b` / `granite4:350m`), the light formation that `ztd eval quickstart --formation formation-lite` uses |
 | `eval/judge-calibration/` | Fixed, manually reviewed criterion messages for judge speed and accuracy comparisons; no inference runs automatically |
 | `eval/investigations/` | Seeded-investigation scenarios (E2): case seed, workspace with one planted fault, outcome predicates, canary files, budget, persona labels. Loaded by `investigation.Builtin` |
 | `eval/suites/consensus-screen.json` | Screening across all three roles: instructions, history grounding, file arguments, contradiction, untrusted instructions, and authorized observation; 6 scenarios, 14 cells per model |
 | `eval/suites/consensus-safety.json` | Consensus-compatible security scenarios and an authorized read-only control; 8 scenarios, 24 model-role cells per repetition |
 | `eval/suites/consensus-evidence.json` | History grounding, read-only tool selection and arguments, recovery, and contradiction handling; 8 scenarios, 16 model-role cells per repetition |
 
-The base inventory is the canonical 111-model genesis program set. Campaign ID: `eval-genesis-homogeneous`. Digests are reference snapshots from the provider or public model manifests; re-freeze from your Ollama host before scored runs on release code. `eval/rollout-intake-priority.json` lists variant IDs that `ztd eval rollout add` orders ahead of the rest of the backlog; it is currently empty, so adding uses the default ordering.
+The base inventory is the canonical 88-model genesis program set. Gemma 2, Gemma 3-family, and Qwen 2-family variants are excluded from new campaigns; `formation-lite` uses Granite 4 350M instead of Gemma 3 1B. Historical campaigns and evidence remain unchanged. Campaign ID: `eval-genesis-homogeneous`. Digests are reference snapshots from the provider or public model manifests; re-freeze from your Ollama host before scored runs on release code. `eval/rollout-intake-priority.json` lists variant IDs that `ztd eval rollout add` orders ahead of the rest of the backlog; it is currently empty, so adding uses the default ordering.
 
 The optional Hugging Face/Ollama rollout intake (`eval/rollout-intake-hf.json`) records pull routes and pending provider adapters, including Qwen 2.5 1B RLCD and Nemotron Dory 4B. Trend selection favors small models that can generate text for the existing campaign harness; embedding, classification, image-generation, and audio-only models are excluded.
 
@@ -75,7 +75,7 @@ A verified run means its evidence passes verification; its models can still fail
 
 ## Small-model catalog refresh (2026-10-24)
 
-Added 17 catalog variants and matching intake routes. Public manifest SHA-256 digests are reference identities, not evidence that these models are installed or evaluated. Existing provider observations remain unchanged; new entries carry no capability observations. Pull selected entries through `ztd eval models pull`, then freeze the live provider before campaigns. The checked-in rollout queue remains a 45-entry template. All 17 additions were subsequently downloaded through the governed Inference Operator on 2026-10-24. The live provider freeze contains 111 models and confirms that all 17 installed digests match their catalog references. Larger transfers required resumptions after the Gateway's 30-second result timeout. Capability probes and scored evaluations have not been run for these additions.
+Added 17 catalog variants and matching intake routes. Public manifest SHA-256 digests are reference identities, not evidence that these models are installed or evaluated. Existing provider observations remain unchanged; new entries carry no capability observations. Pull selected entries through `ztd eval models pull`, then freeze the live provider before campaigns. The checked-in rollout queue was a 45-entry template at refresh time; it now has 44 entries. All 17 additions were subsequently downloaded through the governed Inference Operator on 2026-10-24. The provider freeze at that time contained 111 models and confirmed that all 17 installed digests matched their catalog references. Larger transfers required resumptions after the Gateway's 30-second result timeout. Capability probes and scored evaluations have not been run for these additions.
 
 - **Spark-X2.6-4B Q4_K_M** — Trending on-device agent model; publisher requires Ollama v0.34.1+. [Publisher card](https://huggingface.co/XHToken/Spark-X2.6-4B)
 - **Nemotron 3.5 Bolt E4B Q4_K_M** — Trending Gemma 4 derivative for multi-turn tool use; evaluate text inputs. [Publisher card](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB)
@@ -136,7 +136,7 @@ Gateway-owned public mirror state (SSE feed, explorer datasets) lives under the 
 # A model-role campaign freezes exactly one model; queue several for rollout
 ./ztd eval rollout add qwen3:0.6b
 ./ztd eval rollout add qwen3:4b
-./ztd eval rollout add gemma3:4b
+./ztd eval rollout add granite4:350m
 ./ztd eval rollout run
 ```
 

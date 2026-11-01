@@ -94,7 +94,7 @@ func SelectInferenceOperatorForHardware(
 			eligible = append(eligible, op)
 		}
 	}
-	matches := operatorcapability.PreferEmbedded(activeInferenceOperatorDocs(eligible, systemFingerprint))
+	matches := activeInferenceOperatorDocs(eligible, systemFingerprint)
 	if sessionID != "" {
 		for _, op := range matches {
 			if op.GetOperatorSessionId() == sessionID {

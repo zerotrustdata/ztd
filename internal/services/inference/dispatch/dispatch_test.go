@@ -249,6 +249,12 @@ func TestDispatchInference_EmbeddedOperatorTakesPrecedence(t *testing.T) {
 	_, err := svc.DispatchInference(context.Background(), baseRequest())
 	require.NoError(t, err)
 	assert.Equal(t, "sess-embedded", dispatcher.lastReq.TargetOperatorSessionID)
+
+	targeted := baseRequest()
+	targeted.TargetOperatorSessionID = "sess-remote"
+	_, err = svc.DispatchInference(context.Background(), targeted)
+	require.NoError(t, err)
+	assert.Equal(t, "sess-remote", dispatcher.lastReq.TargetOperatorSessionID)
 }
 
 func TestDispatchInference_EmbeddedOperatorServesWhenAlone(t *testing.T) {

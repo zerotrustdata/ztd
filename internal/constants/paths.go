@@ -162,7 +162,6 @@ const (
 	PkiFileRootBundle      = "root.pem"
 	PkiFileOperatorBundle  = "operator-bundle.pem"
 	PkiFileTrustDomainJSON = "trust-domain.json"
-	PkiFileWardenPub       = "warden_pub.pem"
 	PkiFileBootstrapCA     = "bootstrap_ca.crt"
 	PkiFileBootstrapBundle = "bootstrap-bundle.pem"
 

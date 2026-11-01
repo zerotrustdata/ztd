@@ -214,8 +214,8 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 				continue
 			}
 		}
-		if probe.GetObservation().GetOutcome() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL {
-			expected, err := toolCallingExclusionResult(assignment, probe.GetEvidenceRef(), result.GetCompletedAt())
+		if toolCallingProbeExcludes(probe.GetObservation().GetOutcome()) {
+			expected, err := toolCallingExclusionResult(assignment, probe.GetObservation(), probe.GetEvidenceRef(), result.GetCompletedAt())
 			if err != nil {
 				return nil, err
 			}

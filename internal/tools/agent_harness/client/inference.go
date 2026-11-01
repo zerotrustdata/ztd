@@ -70,7 +70,6 @@ func (c *Client) DiscoverInferenceOperator(ctx context.Context, operatorSessionI
 		}
 		matches = append(matches, op)
 	}
-	matches = operatorcapability.PreferEmbedded(matches)
 	if operatorSessionID != "" {
 		filtered := matches[:0]
 		for _, op := range matches {
@@ -79,6 +78,8 @@ func (c *Client) DiscoverInferenceOperator(ctx context.Context, operatorSessionI
 			}
 		}
 		matches = filtered
+	} else {
+		matches = operatorcapability.PreferEmbedded(matches)
 	}
 	switch len(matches) {
 	case 0:

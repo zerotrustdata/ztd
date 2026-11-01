@@ -145,7 +145,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | `internal/ollama/` | Minimal HTTP client for Ollama model-maintenance endpoints. |
 | `internal/infra/cloudflaredns/` | Cloudflare DNS client. |
 | `internal/pkg/certutil/`, `internal/pkg/ssh/` | Certificate and SSH helpers. |
-| `internal/fileidentity/`, `internal/llamacpp/` | Binary and file identity hashing, local llama.cpp bindings. |
+| `internal/fileidentity/`, `internal/llamacpp/` | Binary and file identity hashing and local llama.cpp GGUF resolution. |
 | `internal/buildinfo/`, `internal/exitcode/`, `internal/httpclient/`, `internal/jsonschema/`, `internal/marshaler/`, `internal/pathutil/`, `internal/response/`, `internal/security/`, `internal/testutil/`, `internal/timesvc/`, `internal/uuid/`, `internal/certs/` | Shared build metadata, exit handling, HTTP, schema validation, serialization, path utilities, responses, security helpers, test infrastructure, time, UUIDs, and certificates. |
 | `protocol/` | Protobuf schemas, generated bindings, JSON registries, model schemas, conformance tests, vectors, and protocol documentation. |
 | `test/` | Cross-package integration tests, `test/fixtures/`, and `test/e2e/`. |

@@ -171,6 +171,12 @@ func callSystemOne(ctx context.Context, client *http.Client, endpoint, key strin
 	if err != nil {
 		return nil, transportError(ctx, "systemone", "decision", err)
 	}
+	return decodeSystemOneResponse(ctx, raw, body, req, limit)
+}
+
+// decodeSystemOneResponse records and validates a raw System One response
+// against the request body that produced it.
+func decodeSystemOneResponse(ctx context.Context, raw, body []byte, req models.DecisionRequest, limit int64) (*models.DecisionResponse, error) {
 	if int64(len(raw)) > limit {
 		return nil, constants.ErrInferenceDecisionResponseInvalid
 	}

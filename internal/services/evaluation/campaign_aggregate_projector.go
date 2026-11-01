@@ -359,7 +359,6 @@ func CollectRunAggregateState(assignments []*evalv1.EvaluationAssignment, result
 		if err != nil {
 			return nil, err
 		}
-		buckets := make([]*variantRoleAggregate, 0, len(variantRoles))
 		for _, pair := range variantRoles {
 			scheduledVariants[pair.variantID] = struct{}{}
 			bucket := variantRoleAggregateFor(state, pair.variantID, pair.role)
@@ -375,9 +374,18 @@ func CollectRunAggregateState(assignments []*evalv1.EvaluationAssignment, result
 				bucket.ContextLimit = pair.variant.GetContextLimit()
 				bucket.ProviderClass = pair.variant.GetProviderClass()
 			}
-			bucket.Scheduled++
-			buckets = append(buckets, bucket)
 		}
+		designatedVariantID, err := designatedVariantIDForAssignment(assignment)
+		if err != nil {
+			return nil, err
+		}
+		designatedRole, err := designatedRoleLabelForAssignment(assignment)
+		if err != nil {
+			return nil, err
+		}
+		designatedBucket := variantRoleAggregateFor(state, designatedVariantID, designatedRole)
+		designatedBucket.Scheduled++
+
 		result := results[assignment.GetAssignmentId()]
 		lifecycle := assignment.GetLifecycleStatus()
 		if result != nil {
@@ -403,21 +411,17 @@ func CollectRunAggregateState(assignments []*evalv1.EvaluationAssignment, result
 		default:
 			state.Failed++
 		}
-		for _, bucket := range buckets {
-			if judged {
-				bucket.Judged++
-			}
-			if passed {
-				bucket.Passed++
-			} else {
-				bucket.Failed++
-			}
-			bucket.Terminal++
-			bucket.Outcomes[terminalStatus]++
+		if judged {
+			designatedBucket.Judged++
 		}
-		for _, pair := range variantRoles {
-			evaluatedVariants[pair.variantID] = struct{}{}
+		if passed {
+			designatedBucket.Passed++
+		} else {
+			designatedBucket.Failed++
 		}
+		designatedBucket.Terminal++
+		designatedBucket.Outcomes[terminalStatus]++
+		evaluatedVariants[designatedVariantID] = struct{}{}
 	}
 	state.ModelCount = uint32(len(scheduledVariants))
 	state.EvaluatedCount = uint32(len(evaluatedVariants))
@@ -471,14 +475,16 @@ func populateVariantRoleMetrics(state *runAggregateState, assignments []*evalv1.
 		if assignment == nil {
 			continue
 		}
-		variantRoles, err := assignmentVariantRolePairs(assignment)
+		designatedVariantID, err := designatedVariantIDForAssignment(assignment)
 		if err != nil {
 			return err
 		}
-		for _, pair := range variantRoles {
-			key := pair.variantID + ":" + pair.role
-			byBucket[key] = append(byBucket[key], assignment)
+		designatedRole, err := designatedRoleLabelForAssignment(assignment)
+		if err != nil {
+			return err
 		}
+		key := designatedVariantID + ":" + designatedRole
+		byBucket[key] = append(byBucket[key], assignment)
 	}
 	for key, bucket := range state.VariantRoles {
 		if bucket == nil {

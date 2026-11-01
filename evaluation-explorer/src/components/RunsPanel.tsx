@@ -21,6 +21,7 @@ export function RunsPanel() {
   const catalogs = useStoreState((state) => Array.from(state.catalogs.values()));
   const evaluations = useStoreState((state) => Array.from(state.evaluations.values()));
   const models = useStoreState((state) => Array.from(state.models.values()));
+  const assignments = useStoreState((state) => Array.from(state.assignments.values()));
   const recent = useMemo(
     () => recentCampaignRows(catalogs, evaluations, models),
     [catalogs, evaluations, models],
@@ -71,14 +72,20 @@ export function RunsPanel() {
                   : campaign.verifierState === 'not_applicable'
                     ? 'Verification not applicable'
                     : 'Verification not run';
-            const title = campaign.modelName ?? campaign.label;
-            const titleModel = campaign.models.find((model) => model.role === 'primary') ?? campaign.models[0];
+            const isFormation = campaign.models.length > 1 || campaign.evaluationUnit === 'system';
+            const title = isFormation ? (campaign.label ?? campaign.runId ?? 'Formation') : (campaign.modelName ?? campaign.label);
+            const titleModel = isFormation ? undefined : (campaign.models.find((model) => model.role === 'primary') ?? campaign.models[0]);
             const otherModels = campaign.models.filter((model) => model.name !== campaign.modelName);
             const startedAt = campaign.startedAt ?? campaign.observedAt;
             return (
               <li key={campaign.datasetId} className="campaign-evidence-row">
                 <div className="campaign-evidence-title-row">
-                  {titleModel ? (
+                  {isFormation ? (
+                    <Link to={href} className="campaign-evidence-title" title={title}>
+                      {title}
+                      <span className="campaign-evidence-tag">Formation</span>
+                    </Link>
+                  ) : titleModel ? (
                     <Link
                       to={`/models/${campaign.datasetId}/${titleModel.variantId}?role=${titleModel.role}`}
                       className="campaign-evidence-title"
@@ -101,7 +108,97 @@ export function RunsPanel() {
                   <span>{campaign.detail}</span>
                   <span>{releaseLabel(campaign)}</span>
                 </div>
-                {otherModels.length > 0 ? (
+                {isFormation ? (
+                  <ul className="campaign-evidence-roles campaign-evidence-roles-formation" aria-label="Models by role">
+                    {campaign.models.map((model) => {
+                      const roleAssignments = campaign.runId
+                        ? assignments.filter((a) => a.run_id === campaign.runId && a.role === model.role)
+                        : [];
+
+                      let mPassed = 0;
+                      let mFailed = 0;
+                      let mNoVerdict = 0;
+                      let mTerminal: number;
+                      let rolePassRate: string | undefined;
+
+                      if (roleAssignments.length > 0) {
+                        mTerminal = roleAssignments.length;
+                        for (const a of roleAssignments) {
+                          if (a.terminal_status === 'completed' && a.metric_values?.pass?.value === 1) mPassed++;
+                          else if (a.terminal_status === 'model_failed' || a.metric_values?.pass?.value === 0) mFailed++;
+                          else mNoVerdict++;
+                        }
+                        const roleJudged = mPassed + mFailed;
+                        if (roleJudged > 0) {
+                          rolePassRate = `${Math.round((mPassed / roleJudged) * 100)}%`;
+                        }
+                      } else {
+                        const mBreakdown = terminalOutcomeBreakdown(model.terminalOutcomes);
+                        mPassed = mBreakdown?.verdicts.find((entry) => entry.status === 'completed')?.count ?? 0;
+                        mFailed = mBreakdown?.verdicts.find((entry) => entry.status === 'model_failed')?.count ?? 0;
+                        mNoVerdict = mBreakdown?.nonVerdictCount ?? 0;
+                        mTerminal = mBreakdown?.total ?? 0;
+                        const roleJudged = mPassed + mFailed;
+                        if (model.passRate?.estimate !== undefined) {
+                          rolePassRate = `${Math.round(model.passRate.estimate * 100)}%`;
+                        } else if (roleJudged > 0) {
+                          rolePassRate = `${Math.round((mPassed / roleJudged) * 100)}%`;
+                        }
+                      }
+
+                      const isRunSettled =
+                        status === 'completed' ||
+                        status === 'verified' ||
+                        status === 'verify_failed' ||
+                        status === 'cancelled' ||
+                        (campaign.assignmentTotal > 0 && terminal >= campaign.assignmentTotal);
+
+                      const roleJudged = mPassed + mFailed;
+                      const roleScheduled = isRunSettled
+                        ? mTerminal
+                        : model.evaluationCoverage && model.evaluationCoverage > 0
+                          ? Math.round(mTerminal / model.evaluationCoverage)
+                          : campaign.assignmentTotal > 0 && campaign.models.length > 0
+                            ? Math.round(campaign.assignmentTotal / campaign.models.length)
+                            : mTerminal;
+                      const mTotal = Math.max(roleScheduled, mTerminal);
+                      const mShare = (count: number) => (mTotal > 0 ? (count / mTotal) * 100 : 0);
+
+                      return (
+                        <li key={model.role} title={model.variantId} className="campaign-evidence-role-item">
+                          <div className="campaign-evidence-role-header">
+                            <div>
+                              <span className="campaign-evidence-role">{roleLabel(model.role)}</span>{' '}
+                              <Link to={`/models/${campaign.datasetId}/${model.variantId}?role=${model.role}`}>
+                                {model.name}
+                              </Link>
+                            </div>
+                            {rolePassRate ? (
+                              <span className="campaign-evidence-role-rate" title={`${formatNumber(mPassed)} / ${formatNumber(roleJudged > 0 ? roleJudged : mTerminal)} passed`}>
+                                {rolePassRate}
+                              </span>
+                            ) : null}
+                          </div>
+                          {mTotal > 0 ? (
+                            <div
+                              className="campaign-outcome-track campaign-outcome-track-role"
+                              role="progressbar"
+                              aria-label={`${roleLabel(model.role)} outcomes`}
+                              aria-valuemin={0}
+                              aria-valuemax={mTotal}
+                              aria-valuenow={mTerminal}
+                              aria-valuetext={`${mPassed} passed, ${mFailed} failed, ${mNoVerdict} no verdict, ${Math.max(0, mTotal - mTerminal)} remaining`}
+                            >
+                              <span className="campaign-outcome-passed" style={{ width: `${mShare(mPassed)}%` }} title={`${formatNumber(mPassed)} passed`} />
+                              <span className="campaign-outcome-failed" style={{ width: `${mShare(mFailed)}%` }} title={`${formatNumber(mFailed)} model failed`} />
+                              <span className="campaign-outcome-no-verdict" style={{ width: `${mShare(mNoVerdict)}%` }} title={`${formatNumber(mNoVerdict)} no verdict`} />
+                            </div>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : otherModels.length > 0 ? (
                   <ul className="campaign-evidence-roles" aria-label="Models by role">
                     {campaign.models.map((model) => (
                       <li key={model.role} title={model.variantId}>
@@ -118,7 +215,7 @@ export function RunsPanel() {
                     <div
                       className="campaign-outcome-track"
                       role="progressbar"
-                      aria-label={`${title} assignment outcomes`}
+                      aria-label={isFormation ? `${title} formation outcomes` : `${title} assignment outcomes`}
                       aria-valuemin={0}
                       aria-valuemax={total}
                       aria-valuenow={terminal}
@@ -130,7 +227,7 @@ export function RunsPanel() {
                     </div>
                     <div className="campaign-evidence-foot">
                       <span>
-                        {formatNumber(passed)} passed · {formatNumber(failed)} failed · {formatNumber(noVerdict)} no verdict
+                        {isFormation ? 'Formation: ' : ''}{formatNumber(passed)} passed · {formatNumber(failed)} failed · {formatNumber(noVerdict)} no verdict
                         {total > terminal ? ` · ${formatNumber(total - terminal)} remaining` : ''}
                       </span>
                       <span className={campaign.verifierState === 'failed' ? 'campaign-verification-failed' : undefined}>{verification}</span>

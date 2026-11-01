@@ -51,9 +51,28 @@ func ActiveProvenanceOperators(operators []*operatorv1.OperatorDocument) []Prove
 // sessionID is non-empty it must match an active provenance operator;
 // otherwise exactly one active provenance operator must exist.
 func SelectProvenanceOperator(operators []*operatorv1.OperatorDocument, sessionID string) (*ProvenanceOperatorStatus, error) {
-	matches := ActiveProvenanceOperators(PreferEmbedded(ActiveOperatorsWithCapability(operators, constants.OperatorCapabilityProvenance)))
+	return SelectProvenanceOperatorForHardware(operators, sessionID, "")
+}
+
+// SelectProvenanceOperatorForHardware resolves a provenance operator using the
+// exact OperatorDocument system fingerprint when one is available.
+func SelectProvenanceOperatorForHardware(
+	operators []*operatorv1.OperatorDocument,
+	sessionID string,
+	systemFingerprint string,
+) (*ProvenanceOperatorStatus, error) {
+	capable := ActiveOperatorsWithCapability(operators, constants.OperatorCapabilityProvenance)
+	if systemFingerprint != "" {
+		filtered := make([]*operatorv1.OperatorDocument, 0, len(capable))
+		for _, op := range capable {
+			if op.GetSystemFingerprint() == systemFingerprint {
+				filtered = append(filtered, op)
+			}
+		}
+		capable = filtered
+	}
 	if sessionID != "" {
-		for _, match := range matches {
+		for _, match := range ActiveProvenanceOperators(capable) {
 			if match.OperatorSessionID == sessionID {
 				selected := match
 				return &selected, nil
@@ -61,6 +80,7 @@ func SelectProvenanceOperator(operators []*operatorv1.OperatorDocument, sessionI
 		}
 		return nil, fmt.Errorf("%w: session %s", constants.ErrProvenanceOperatorNotCapable, sessionID)
 	}
+	matches := ActiveProvenanceOperators(PreferEmbedded(capable))
 	switch len(matches) {
 	case 0:
 		return nil, constants.ErrProvenanceOperatorNotFound

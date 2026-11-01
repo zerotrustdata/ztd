@@ -72,3 +72,33 @@ func TestSelectProvenanceOperator_Ambiguous(t *testing.T) {
 	_, err := SelectProvenanceOperator(operators, "")
 	assert.ErrorIs(t, err, constants.ErrProvenanceOperatorAmbiguous)
 }
+
+func TestSelectProvenanceOperatorExplicitRemoteSessionAndHardwareWithEmbeddedPresent(t *testing.T) {
+	t.Parallel()
+	operators := []*operatorv1.OperatorDocument{
+		{
+			Id:                string(constants.DocIDEmbeddedOperator),
+			OperatorSessionId: "sess-embedded",
+			SystemFingerprint: "fp-embedded",
+			Status:            string(constants.OperatorStatusActive),
+			OperatorType:      string(constants.OperatorTypeEmbedded),
+			RuntimeConfig:     &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityProvenance)}},
+		},
+		{
+			Id:                "prov-remote",
+			OperatorSessionId: "sess-remote",
+			SystemFingerprint: "fp-remote",
+			Status:            string(constants.OperatorStatusActive),
+			OperatorType:      string(constants.OperatorTypeRemote),
+			RuntimeConfig:     &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityProvenance)}},
+		},
+	}
+
+	selected, err := SelectProvenanceOperator(operators, "sess-remote")
+	require.NoError(t, err)
+	assert.Equal(t, "sess-remote", selected.OperatorSessionID)
+
+	selected, err = SelectProvenanceOperatorForHardware(operators, "", "fp-remote")
+	require.NoError(t, err)
+	assert.Equal(t, "sess-remote", selected.OperatorSessionID)
+}

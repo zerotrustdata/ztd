@@ -26,12 +26,11 @@ import {
   verifierStateTone,
   recentCampaignRows,
   roleLabel,
-  roleLeaderRows,
   modelRoleLeaderboardRows,
   modelOverallLeaderboardRows,
+  modelSuiteRows,
   restampStreamProgress,
   siblingRepetitions,
-  streamProgressLabel,
   upsertLiveEvent,
   visibleStreamEvents,
 } from '../src/views/derived';
@@ -281,7 +280,7 @@ function rankedModel(
   });
 }
 
-describe('roleLeaderRows', () => {
+describe('modelRoleLeaderboardRows', () => {
   it('pools all run assignments before scoring each model-role once', () => {
     const models = [
       { ...rankedModel('pooled', 'primary', { passRate: 0.5, latency: 1000, tokens: 100 }), dataset_id: 'ds-one' },
@@ -498,17 +497,19 @@ describe('roleLeaderRows', () => {
   });
 
   it('scores unmeasured Lite security as 50% and normalizes each role independently', () => {
-    const rows = roleLeaderRows([
+    const models = [
       rankedModel('lite-model', 'lite', { size: 2_000_000_000, passRate: 0.9, latency: 4000, tokens: 400 }),
       rankedModel('primary-model', 'primary', { size: 32_000_000_000, latency: 100, tokens: 10, security: 0.75 }),
-    ]);
-    expect(rows.map((row) => row.role)).toEqual(['primary', 'assistant', 'lite']);
-    const lite = rows[2]?.leader;
+    ];
+    const liteRows = modelRoleLeaderboardRows(models, 'lite');
+    const primaryRows = modelRoleLeaderboardRows(models, 'primary');
+    const assistantRows = modelRoleLeaderboardRows(models, 'assistant');
+    const lite = liteRows[0];
     expect(lite?.security).toBeUndefined();
     // 100 × 0.9² × √0.5
     expect(lite?.score).toBeCloseTo(81 * Math.SQRT1_2);
-    expect(rows[0]?.leader?.score).toBeCloseTo(100 * Math.sqrt(0.75));
-    expect(rows[1]?.leader).toBeUndefined();
+    expect(primaryRows[0]?.score).toBeCloseTo(100 * Math.sqrt(0.75));
+    expect(assistantRows).toHaveLength(0);
   });
 
   it('breaks equal scores by smaller size, then name', () => {
@@ -706,6 +707,48 @@ describe('visibleStreamEvents', () => {
     expect(rowsFor([done, { ...stage, observed_at: '2026-09-17T08:35:00Z' }])).toEqual(['a1:done']);
   });
 
+  it('preserves distinct rows for each role in multi-role formation assignments', () => {
+    const liteStage = liveEvent({
+      event_id: 'a1:lite',
+      kind: 'stage_updated',
+      assignment_id: 'a1',
+      role: 'lite',
+      variant_id: 'liquid-lfm',
+      observed_at: '2026-09-17T08:32:00Z',
+    });
+    const assistantStage = liveEvent({
+      event_id: 'a1:assistant',
+      kind: 'stage_updated',
+      assignment_id: 'a1',
+      role: 'assistant',
+      variant_id: 'granite-3b',
+      observed_at: '2026-09-17T08:33:00Z',
+    });
+    const primaryStage = liveEvent({
+      event_id: 'a1:primary',
+      kind: 'stage_updated',
+      assignment_id: 'a1',
+      role: 'primary',
+      variant_id: 'qwen-4b',
+      observed_at: '2026-09-17T08:34:00Z',
+    });
+    const primaryDone = liveEvent({
+      event_id: 'a1:done',
+      kind: 'assignment_completed',
+      assignment_id: 'a1',
+      role: 'primary',
+      variant_id: 'qwen-4b',
+      lifecycle_status: 'completed',
+      observed_at: '2026-09-17T08:35:00Z',
+    });
+    const visible = visibleStreamEvents([liteStage, assistantStage, primaryStage, primaryDone], {
+      modelFilter: 'all',
+      kindFilter: 'all',
+    });
+    expect(visible.map((event) => event.event_id)).toEqual(['a1:done', 'a1:assistant', 'a1:lite']);
+    expect(visible.map((event) => event.role)).toEqual(['primary', 'assistant', 'lite']);
+  });
+
   it('matches the kind filter against the assignment current status', () => {
     const started = liveEvent({ event_id: 'a1:start', kind: 'assignment_started', assignment_id: 'a1', observed_at: '2026-09-17T08:32:00Z' });
     const done = liveEvent({ event_id: 'a1:done', kind: 'assignment_completed', assignment_id: 'a1', observed_at: '2026-09-17T08:34:00Z' });
@@ -858,16 +901,6 @@ describe('visibleStreamEvents', () => {
     expect(completed?.completed).toBe(50);
     expect(completed?.total).toBe(75);
     expect(visible[0]?.event_id).toBe('security:done');
-  });
-
-  it('streamProgressLabel uses the event point-in-time progress fields', () => {
-    const event = liveEvent({
-      event_id: 'evt-live',
-      kind: 'assignment_completed',
-      completed: 50,
-      total: 75,
-    });
-    expect(streamProgressLabel(event)).toBe('50/75');
   });
 
   it('restamps progress from observed_at order so newest complete is N/N', () => {
@@ -1023,6 +1056,47 @@ describe('recentCampaignRows', () => {
   });
 });
 
+
+describe('modelSuiteRows', () => {
+  it('derives verifier and quality states from constituent evaluation runs when suite_summary is absent', () => {
+    const run = evaluationSummary({
+      dataset_id: 'ds-1',
+      run_id: 'run-1',
+      suite_id: 'default-suite',
+      verifier_state: 'passed',
+      quality_state: 'exploratory_verified',
+    });
+    const a1 = assignmentResult({
+      variant_id: 'model-a',
+      run_id: 'run-1',
+      terminal_status: 'completed',
+      metric_values: { pass: { value: 1 } },
+      resource_summary: { latency_ms: { value: 250 } },
+    });
+    const a2 = assignmentResult({
+      variant_id: 'model-a',
+      run_id: 'run-1',
+      terminal_status: 'model_failed',
+      metric_values: { pass: { value: 0 } },
+      resource_summary: { latency_ms: { value: 350 } },
+    });
+    const rows = modelSuiteRows('model-a', [a1, a2], [run], []);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      suite_id: 'default-suite',
+      display_name: 'default-suite',
+      verifier_state: 'passed',
+      quality_state: 'exploratory_verified',
+      total: 2,
+      eligible: 2,
+      passed: 1,
+      pass_rate: 0.5,
+      model_failed: 1,
+      missing: 0,
+      latency_p50_ms: 300,
+    });
+  });
+});
 
 describe('assignment event completeness', () => {
   it('retains distinct planned, scored, result and verified event IDs while removing exact duplicates', () => {

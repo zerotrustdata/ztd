@@ -45,6 +45,7 @@ func TestDecisionConsensusProviderIsolation_ComparesLlamaCppEndpoints(t *testing
 	ops[1].RuntimeConfig = &operatorv1.OperatorRuntimeConfig{InferenceOllamaEndpoint: "http://separate-host:11434"}
 	require.NoError(t, ValidateConsensusProviderIsolation(binding, ops, "campaign"), "a llama.cpp consensus provider is isolated from a separate Ollama campaign provider")
 }
+
 func TestDecisionOnlyOperatorExcludedFromDefaultCampaignSelection(t *testing.T) {
 	ops := []*operatorv1.OperatorDocument{
 		{Id: "decision", OperatorType: string(constants.OperatorTypeRemote), OperatorSessionId: "decision-session", Status: string(constants.OperatorStatusActive), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{"inference"}, InferenceDecisionOnly: true}},

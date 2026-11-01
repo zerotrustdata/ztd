@@ -22,10 +22,9 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// RegisterOperator reserves singleton capabilities and the actuator identity in
-// the same transaction that persists an enrolled Operator. Offline and stopped
-// leases retain their claims until termination; a reconnect cannot steal one.
-// A replacement for the same owner's fingerprint or Actuator key may reuse its prior claims;
+// RegisterOperator validates capabilities and reserves the actuator identity in
+// the same transaction that persists an enrolled Operator.
+// A replacement for the same owner's fingerprint or Actuator key may reuse its prior identity;
 // the issuance handler deactivates those superseded leases before delivery.
 func (s *DocumentStoreService) RegisterOperator(ctx context.Context, op *operatorv1.OperatorDocument) error {
 	if op == nil || op.GetId() == "" {
@@ -39,15 +38,6 @@ func (s *DocumentStoreService) RegisterOperator(ctx context.Context, op *operato
 		return fmt.Errorf("register operator: encode: %w", err)
 	}
 	return s.db.ExecInImmediateTxWithRetry(ctx, func(conn *sql.Conn) error {
-		var embeddedReady bool
-		if err := conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM documents WHERE collection = ? AND id = ? AND json_type(data, '$.runtime_config') = 'object')`,
-			marshaler.CollectionName(constants.CollectionOperators), constants.DocIDEmbeddedOperator).Scan(&embeddedReady); err != nil {
-			return fmt.Errorf("register operator: check embedded startup: %w", err)
-		}
-		if !embeddedReady {
-			return constants.ErrEmbeddedOperatorNotReady
-		}
-
 		if err := validateOperatorClaims(ctx, conn, op); err != nil {
 			return err
 		}
@@ -63,8 +53,7 @@ func (s *DocumentStoreService) RegisterOperator(ctx context.Context, op *operato
 }
 
 // SetOperatorRuntimeConfig validates the complete capability set and persists it
-// under the same write transaction as its ownership check. Gateway startup and
-// bootstrap therefore cannot race another enrollment for a singleton capability.
+// under the same write transaction as its actuator identity check.
 func (s *DocumentStoreService) SetOperatorRuntimeConfig(ctx context.Context, id string, cfg *operatorv1.OperatorRuntimeConfig) error {
 	if id == "" {
 		return constants.ErrRegistrationOperatorIDRequired
@@ -111,13 +100,6 @@ func (s *DocumentStoreService) SetOperatorRuntimeConfig(ctx context.Context, id 
 const operatorActuatorKeyQuery = `SELECT json_set(data, '$.id', id) FROM documents
  WHERE collection = ? AND json_extract(data, '$.actuator_key_id') = ?
  AND id != ? AND COALESCE(json_extract(data, '$.status'), '') != ?`
-
-const operatorCapabilityClaimQuery = `SELECT json_set(data, '$.id', id) FROM documents
- WHERE collection = ? AND id != ? AND COALESCE(json_extract(data, '$.status'), '') != ?
- AND (
-     EXISTS (SELECT 1 FROM json_each(data, '$.operator_capabilities') WHERE value = ?)
-     OR EXISTS (SELECT 1 FROM json_each(data, '$.runtime_config.capabilities') WHERE value = ?)
- )`
 
 func isOperatorExempt(candidate, other *operatorv1.OperatorDocument) bool {
 	if other.GetIsSlot() && !other.GetClaimed() {
@@ -173,52 +155,13 @@ func checkActuatorKeyClaim(ctx context.Context, conn *sql.Conn, collection strin
 	return nil
 }
 
-func checkCapabilityClaim(ctx context.Context, conn *sql.Conn, collection string, candidate *operatorv1.OperatorDocument, capability constants.OperatorCapability) error {
-	rows, err := conn.QueryContext(ctx, operatorCapabilityClaimQuery,
-		collection, candidate.GetId(), constants.OperatorStatusTerminated, string(capability), string(capability))
-	if err != nil {
-		return fmt.Errorf("operator claims: query capability %s: %w", capability, err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var raw string
-		if err := rows.Scan(&raw); err != nil {
-			return fmt.Errorf("operator claims: scan capability %s: %w", capability, err)
-		}
-		other, err := models.UnmarshalOperatorDocument([]byte(raw))
-		if err != nil {
-			return fmt.Errorf("operator claims: decode capability %s: %w", capability, err)
-		}
-		if isOperatorExempt(candidate, other) {
-			continue
-		}
-		occupied := operatorcapability.GetOperatorCapabilities(other)
-		if occupied.Has(capability) {
-			return fmt.Errorf("%w: %s belongs to Operator %s; terminate that Operator or remove the capability before assigning it to %s", constants.ErrOperatorCapabilityInUse, capability, other.GetId(), candidate.GetId())
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("operator claims: read capability %s: %w", capability, err)
-	}
-	return nil
-}
-
 // validateOperatorClaims runs only inside the registry owner's write transaction.
-// Claims cover the Gateway, regardless of approving user. Data is unrestricted;
-// every other capability belongs to exactly one non-terminated Operator.
+// Any number of Operators may hold any combination of capabilities; only the
+// Actuator key identity is exclusive to one non-terminated Operator runtime.
 func validateOperatorClaims(ctx context.Context, conn *sql.Conn, candidate *operatorv1.OperatorDocument) error {
 	collection := marshaler.CollectionName(constants.CollectionOperators)
 	if candidate.GetActuatorKeyId() != "" {
 		if err := checkActuatorKeyClaim(ctx, conn, collection, candidate); err != nil {
-			return err
-		}
-	}
-	capabilities := operatorcapability.GetOperatorCapabilities(candidate)
-	for _, capability := range capabilities {
-		if capability == constants.OperatorCapabilityData {
-			continue
-		}
-		if err := checkCapabilityClaim(ctx, conn, collection, candidate, capability); err != nil {
 			return err
 		}
 	}

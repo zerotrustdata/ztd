@@ -63,6 +63,7 @@ type ZtdoService struct {
 	fileEdit       *execution.FileEditService
 	pubSubCommands *pubsub.OperatorPubSubService
 	pubSubResults  *pubsub.PubSubResultsService
+	inference      inference.Provider
 	tokenStore     storage.TokenStore
 	gatewayDB      *gateway.CanonicalDBService
 
@@ -249,6 +250,7 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("ztdo: inference provider: %w", err)
 		}
+		vs.inference = inferenceProvider
 	}
 
 	vs.logger.Info("Establishing ztd connectivity...")
@@ -512,6 +514,14 @@ func (vs *ZtdoService) Stop(ctx context.Context) error {
 	// Stop execution service to kill any active tasks
 	if vs.execution != nil {
 		vs.execution.Stop()
+	}
+	// The drained actuator holds no request on the provider: release the
+	// models and devices an in-process engine holds.
+	if vs.inference != nil {
+		if err := vs.inference.Close(); err != nil {
+			vs.logger.Error("ztdo: failed to close inference provider", "error", err)
+		}
+		vs.inference = nil
 	}
 
 	// Drain local-first events store writes (CanonicalDBService.Close() handles final close)

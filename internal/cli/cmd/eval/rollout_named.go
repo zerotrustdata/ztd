@@ -12,11 +12,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -24,27 +26,48 @@ import (
 
 func rolloutDefineCmd(deps nativeEvalDeps, update bool) *cobra.Command {
 	verb := "create"
-	short := "Create a named rollout from existing campaign IDs in order"
+	short := "Create a named rollout from existing campaign IDs or model selectors"
 	if update {
 		verb = "update"
 		short = "Replace the campaign list of a named rollout"
 	}
+	var (
+		selector          ModelSelector
+		suiteID           string
+		judgeTag          string
+		reps              uint32
+		holdContext       bool
+		condition         string
+		investigationMode string
+		dataOperatorID    string
+	)
 	cmd := &cobra.Command{
-		Use:   verb + " <name> <campaign-id>...",
+		Use:   verb + " <name> [campaign-id...]",
 		Short: short,
 		Long: short + `.
 
 The first argument is the rollout name. Every following argument is an existing
 campaign ID, in the order it should run. Find IDs with: ztd eval campaigns list
 
+Alternatively, pass a model selector (--all, --family, --max-params, or positional
+models) with --suite and --judge to automatically generate and freeze campaigns
+for each model in parameter-count order.
+
 Create requires a new name. Update replaces the saved list and keeps execution
 history. Repeating a campaign ID runs that campaign again at that position.
 
 Examples (campaign-1 and campaign-2 are placeholders for your campaign IDs):
-  ztd eval rollout ` + verb + ` my-rollout campaign-1 campaign-2`,
-		Args: cobra.MinimumNArgs(2),
+  ztd eval rollout ` + verb + ` my-rollout campaign-1 campaign-2
+  ztd eval rollout ` + verb + ` my-rollout --all --suite default-suite --judge qwen3.5:4b
+  ztd eval rollout ` + verb + ` my-rollout --family granite --suite smoke-suite
+  ztd eval rollout ` + verb + ` my-rollout --max-params 4b`,
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, files, err := nativeEvalEnvironment(cmd, deps)
+			name := args[0]
+			if err := complianceevidence.ValidatePathElement(name); err != nil {
+				return fmt.Errorf("evaluation: rollout %s: %w", verb, err)
+			}
+			cfg, files, err := nativeEvalEnvironment(cmd, deps)
 			if err != nil {
 				return err
 			}
@@ -53,30 +76,123 @@ Examples (campaign-1 and campaign-2 are placeholders for your campaign IDs):
 				return err
 			}
 			defer func() { _ = held.Close() }()
-			rollout, err := evaluation.LoadNamedRollout(cmd.Context(), files, args[0])
+			rollout, err := evaluation.LoadNamedRollout(cmd.Context(), files, name)
 			if update {
 				if err != nil {
 					return err
 				}
 			} else {
 				if err == nil {
-					return fmt.Errorf("evaluation: rollout %q exists; use rollout update: %w", args[0], constants.ErrAlreadyExists)
+					return fmt.Errorf("evaluation: rollout %q exists; use rollout update: %w", name, constants.ErrAlreadyExists)
 				}
 				if !errors.Is(err, constants.ErrNotFound) {
 					return err
 				}
-				rollout = &evaluation.NamedRollout{RolloutDefinition: evaluation.RolloutDefinition{Name: args[0]}, Executions: []evaluation.RolloutExecution{}}
+				rollout = &evaluation.NamedRollout{RolloutDefinition: evaluation.RolloutDefinition{Name: name}, Executions: []evaluation.RolloutExecution{}}
 			}
-			if err := validateRolloutCampaigns(cmd, deps, args[1:]); err != nil {
-				return err
+
+			hasFilter := selector.All || len(selector.Family) > 0 || selector.MaxParams != ""
+			hasSuiteOrJudge := cmd.Flags().Changed("suite") || cmd.Flags().Changed("judge")
+
+			var campaignIDs []string
+			if hasFilter || hasSuiteOrJudge || len(args) == 1 {
+				if len(args) > 1 {
+					selector = *selector.withArgs(args[1:])
+				}
+				if !selector.IsSet() {
+					return fmt.Errorf("evaluation: rollout %s: name campaign IDs or pass a model selector (--all, --family, --max-params): %w", verb, constants.ErrEvaluationSelectionEmpty)
+				}
+				registry, err := newModelInventories(files, cfg.ProjectRoot).variants(cmd.Context(), modelScopeRegistry)
+				if err != nil {
+					return fmt.Errorf("evaluation: rollout %s: %w", name, err)
+				}
+				if len(registry) == 0 {
+					return fmt.Errorf("evaluation: rollout %s: the model registry is empty\nFreeze or import models with one of:\nztd eval models freeze\nztd eval models import\n%w", name, constants.ErrEvaluationSelectionEmpty)
+				}
+				selectedVariants, err := selector.Resolve(registry)
+				if err != nil {
+					return fmt.Errorf("evaluation: rollout %s: %w", name, err)
+				}
+				evaluation.SortModelVariantsForRollout(selectedVariants)
+
+				judgeVariant, err := evaluation.ResolveCampaignJudge(registry, judgeTag)
+				if err != nil {
+					return fmt.Errorf("evaluation: rollout %s: --judge: %w", name, err)
+				}
+
+				condition = strings.ToLower(strings.TrimSpace(condition))
+				investigationMode, holdContext, err = applyCampaignCondition(condition, name, investigationMode, dataOperatorID, holdContext)
+				if err != nil {
+					return err
+				}
+				investigation, err := parseCampaignInvestigation(investigationMode, dataOperatorID)
+				if err != nil {
+					return err
+				}
+				if !cmd.Flags().Changed("hold-context") && condition == "" {
+					holdContext = reps > 1
+				} else if holdContext && reps <= 1 {
+					return fmt.Errorf("evaluation: rollout %s: --hold-context applies only with --reps greater than 1: %w", verb, constants.ErrEvaluationFlagsInvalid)
+				}
+
+				for _, variant := range selectedVariants {
+					campaignID := fmt.Sprintf("%s-%s", name, variant.GetVariantId())
+					if cmd.Flags().Changed("judge") {
+						campaignID = fmt.Sprintf("%s-%s-judge-%s", name, variant.GetVariantId(), judgeVariant.GetVariantId())
+					}
+					// If already exists (with or without judge suffix), reuse it.
+					if _, archived, err := evaluation.LocateCampaign(cmd.Context(), files, campaignID); err == nil && !archived {
+						campaignIDs = append(campaignIDs, campaignID)
+						continue
+					}
+					altID := fmt.Sprintf("%s-%s", name, variant.GetVariantId())
+					if !cmd.Flags().Changed("judge") {
+						altID = fmt.Sprintf("%s-%s-judge-%s", name, variant.GetVariantId(), judgeVariant.GetVariantId())
+					}
+					if _, archived, err := evaluation.LocateCampaign(cmd.Context(), files, altID); err == nil && !archived {
+						campaignIDs = append(campaignIDs, altID)
+						continue
+					}
+
+					spec := campaignCreateSpec{
+						CampaignID:             campaignID,
+						Repetitions:            reps,
+						HoldContext:            holdContext,
+						SuiteID:                suiteID,
+						Platform:               platformIdentity(cmd),
+						Investigation:          investigation,
+						Judge:                  judgeVariant,
+						Variants:               []*evalv1.ModelVariant{variant},
+						VersionOnCatalogChange: true,
+					}
+					result, err := createCampaign(cmd.Context(), deps, files, spec)
+					if err != nil {
+						return fmt.Errorf("evaluation: rollout %s: create campaign %s: %w", name, campaignID, err)
+					}
+					campaignIDs = append(campaignIDs, result.Spec.GetCampaignId())
+				}
+			} else {
+				if err := validateRolloutCampaigns(cmd, deps, args[1:]); err != nil {
+					return err
+				}
+				campaignIDs = append([]string{}, args[1:]...)
 			}
-			rollout.Campaigns = append([]string{}, args[1:]...)
+
+			rollout.Campaigns = campaignIDs
 			if err := evaluation.SaveNamedRollout(cmd.Context(), files, rollout); err != nil {
 				return err
 			}
 			return writeNamedRollout(cmd, rollout)
 		},
 	}
+	selector.bindFlags(cmd)
+	cmd.Flags().StringVar(&suiteID, "suite", evaluation.DefaultSuiteID, "Suite to freeze into generated campaigns (see ztd eval suites list)")
+	cmd.Flags().StringVar(&judgeTag, "judge", evaluation.DefaultJudgeServedModelTag, "Registry model (served tag) that judges every assignment in generated campaigns")
+	cmd.Flags().Uint32Var(&reps, "reps", 1, "Repetitions of each matrix cell in generated campaigns")
+	cmd.Flags().BoolVar(&holdContext, "hold-context", false, "With --reps > 1, continue each repetition from previous conversation and workspace")
+	cmd.Flags().StringVar(&condition, "condition", "", "Operational condition: longitudinal, control, or held-context")
+	cmd.Flags().StringVar(&investigationMode, "investigation", "fresh", "Investigation scope: fresh or persistent:<investigation-id>")
+	cmd.Flags().StringVar(&dataOperatorID, "data-operator", "", "Stable Data Operator ID required for a persistent investigation")
 	return cmd
 }
 
@@ -168,6 +284,27 @@ func validateRolloutCampaigns(cmd *cobra.Command, deps nativeEvalDeps, ids []str
 	return nil
 }
 
+func validateRolloutExecutionCampaigns(cmd *cobra.Command, deps nativeEvalDeps, ids []string) (map[string]bool, error) {
+	seen := make(map[string]bool, len(ids))
+	missing := make(map[string]bool)
+	sub := *cmd
+	sub.SetOut(io.Discard)
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if _, err := runStartFlow(&sub, deps, runStartFlowOptions{CampaignID: id, DryRun: true}); err != nil {
+			if errors.Is(err, constants.ErrNotFound) {
+				missing[id] = true
+				continue
+			}
+			return nil, fmt.Errorf("evaluation: rollout campaign %q: %w", id, err)
+		}
+	}
+	return missing, nil
+}
+
 type namedRolloutOptions struct {
 	Resume bool
 	DryRun bool
@@ -211,19 +348,33 @@ func runNamedRollout(cmd *cobra.Command, deps nativeEvalDeps, files fs.RuntimeFi
 		rollout.Executions = append(rollout.Executions, next)
 		execution = &rollout.Executions[len(rollout.Executions)-1]
 	}
-	indices := make([]int, 0, len(execution.Steps))
 	ids := make([]string, 0, len(execution.Steps))
-	for i, step := range execution.Steps {
-		if step.Status == evaluation.RolloutStepSucceeded {
+	for _, step := range execution.Steps {
+		if step.Status == evaluation.RolloutStepSucceeded || step.Status == evaluation.RolloutStepSkipped {
 			continue
 		}
-		indices = append(indices, i)
 		ids = append(ids, step.CampaignID)
 	}
 	// Validate the entire remaining sequence before applying the invocation's
-	// limit, so a missing or archived later campaign cannot start a partial batch.
-	if err := validateRolloutCampaigns(cmd, deps, ids); err != nil {
+	// limit, so an archived or invalid later campaign cannot start a partial batch.
+	// Removed campaigns are marked skipped and omitted from execution.
+	missing, err := validateRolloutExecutionCampaigns(cmd, deps, ids)
+	if err != nil {
 		return err
+	}
+	indices := make([]int, 0, len(execution.Steps))
+	var newlySkipped []int
+	for i := range execution.Steps {
+		step := &execution.Steps[i]
+		if step.Status == evaluation.RolloutStepSucceeded || step.Status == evaluation.RolloutStepSkipped {
+			continue
+		}
+		if missing[step.CampaignID] {
+			step.Status = evaluation.RolloutStepSkipped
+			newlySkipped = append(newlySkipped, i)
+			continue
+		}
+		indices = append(indices, i)
 	}
 	if opts.Until > 0 && len(indices) > opts.Until {
 		indices = indices[:opts.Until]
@@ -255,6 +406,9 @@ func runNamedRollout(cmd *cobra.Command, deps nativeEvalDeps, files fs.RuntimeFi
 	if output.JSONEnabled(cmd) {
 		// Keep stdout as one JSON document, including when a campaign fails.
 		sub.SetOut(cmd.ErrOrStderr())
+	}
+	for _, i := range newlySkipped {
+		sub.Printf("Rollout %s: campaign %d/%d: %s: skipped (campaign not found)\n", name, i+1, len(execution.Steps), execution.Steps[i].CampaignID)
 	}
 	var batchErr error
 	for _, i := range indices {

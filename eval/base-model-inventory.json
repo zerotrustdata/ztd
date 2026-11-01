@@ -1,8 +1,8 @@
 {
   "campaign_id": "eval-genesis-homogeneous",
-  "model_registry_digest": "17aa83b6b15db4aba0e7c9572d9e86e845394150d171d5da7ea57e88380b68cb",
-  "model_count": 111,
-  "homogeneous_cell_count": 6216,
+  "model_registry_digest": "7a0c2827eb5eca8b117bb80ad3467ba3eef11b7db09ee4556021b661cacc36d7",
+  "model_count": 88,
+  "homogeneous_cell_count": 7480,
   "variants": [
     {
       "variantId": "impulse2000-smollm3-3b-q4-k-m",
@@ -32,25 +32,6 @@
       "quantization": "Q4_K_M"
     },
     {
-      "variantId": "deepseek-r1-1-5b",
-      "providerClass": "ollama",
-      "servedModelTag": "deepseek-r1:1.5b",
-      "modelDigest": "e0979632db5a88d1a53884cb2a941772d10ff5d055aabaa6801c4e36f3a6c2d7",
-      "modelFamily": "qwen2",
-      "parameterCount": "1800000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 131072
-    },
-    {
-      "variantId": "deepseek-r1-7b",
-      "providerClass": "ollama",
-      "servedModelTag": "deepseek-r1:7b",
-      "modelDigest": "755ced02ce7befdb13b7ca74e1e4d08cddba4986afdb63a480f2c93d3140383f",
-      "modelFamily": "qwen2",
-      "parameterCount": "7600000000",
-      "quantization": "Q4_K_M"
-    },
-    {
       "variantId": "deepseek-r1-8b",
       "providerClass": "ollama",
       "servedModelTag": "deepseek-r1:8b",
@@ -59,71 +40,6 @@
       "parameterCount": "8200000000",
       "quantization": "Q4_K_M",
       "contextLimit": 131072
-    },
-    {
-      "variantId": "functiongemma-270m",
-      "providerClass": "ollama",
-      "servedModelTag": "functiongemma:270m",
-      "modelDigest": "7c19b650567acfb1bee50d12bb286370e8a54d8877f6a0ecfd01f8c8fdc223bb",
-      "modelFamily": "gemma3",
-      "parameterCount": "268100000",
-      "quantization": "Q8_0",
-      "contextLimit": 32768
-    },
-    {
-      "variantId": "gemma2-2b-instruct-q4-k-m",
-      "providerClass": "ollama",
-      "servedModelTag": "gemma2:2b-instruct-q4_K_M",
-      "modelDigest": "cb2d06dce81356b9799c814de8dab1f2dd265084d16ea22f88e1bff70206fabd",
-      "modelFamily": "gemma2",
-      "parameterCount": "2600000000",
-      "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "gemma2-9b",
-      "providerClass": "ollama",
-      "servedModelTag": "gemma2:9b",
-      "modelDigest": "ff02c3702f322b9e075e9568332d96c0a7028002f1a5a056e0a6784320a4db0b",
-      "modelFamily": "gemma2",
-      "parameterCount": "9200000000",
-      "quantization": "Q4_0"
-    },
-    {
-      "variantId": "gemma2-9b-instruct-q4-k-m",
-      "providerClass": "ollama",
-      "servedModelTag": "gemma2:9b-instruct-q4_K_M",
-      "modelDigest": "c20bec88025f3aefa420efd64dca0ee4abc8e36078d6b74b0f660cdcbd5d1982",
-      "modelFamily": "gemma2",
-      "parameterCount": "9200000000",
-      "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "gemma3-1b",
-      "providerClass": "ollama",
-      "servedModelTag": "gemma3:1b",
-      "modelDigest": "83be9dbf9dd6ea077de84d4fbaeb094dae9f266ca1b302f04e1c803bea566a79",
-      "modelFamily": "gemma3",
-      "parameterCount": "999885952",
-      "quantization": "Q4_K_M",
-      "contextLimit": 32768
-    },
-    {
-      "variantId": "gemma3-270m",
-      "providerClass": "ollama",
-      "servedModelTag": "gemma3:270m",
-      "modelDigest": "e7d36fb2c3b3293cfe56d55889867a064b3a2b22e98335f2e6e8a387e081d6be",
-      "modelFamily": "gemma3",
-      "parameterCount": "268100000",
-      "quantization": "Q8_0"
-    },
-    {
-      "variantId": "gemma3-4b",
-      "providerClass": "ollama",
-      "servedModelTag": "gemma3:4b",
-      "modelDigest": "a2af6cc3eb7fa8be8504abaf9b04e88f17a119ec3f04a3addf55f92841195f5a",
-      "modelFamily": "gemma3",
-      "parameterCount": "4300000000",
-      "quantization": "Q4_K_M"
     },
     {
       "variantId": "gemma4-12b",
@@ -524,24 +440,6 @@
       "modelDigest": "6289cc92099210c18c422d9fd01792965eab3233deca6ae8e6ccd6b2b5cdd12b",
       "modelFamily": "llama",
       "parameterCount": "8029999999",
-      "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "hf-co-salesforce-xlam-2-1b-fc-r-gguf-latest",
-      "providerClass": "ollama",
-      "servedModelTag": "hf.co/Salesforce/xLAM-2-1b-fc-r-gguf:latest",
-      "modelDigest": "7cff8a9eb0ed04af02e5c940561eb4f5ec539bd662a346a6e636dfe5c0aea45b",
-      "modelFamily": "qwen2",
-      "parameterCount": "1540000000",
-      "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "hf-co-salesforce-xlam-2-3b-fc-r-gguf-latest",
-      "providerClass": "ollama",
-      "servedModelTag": "hf.co/Salesforce/xLAM-2-3b-fc-r-gguf:latest",
-      "modelDigest": "fd17426d66d96214eab71bf83fc95c313795b8f779be0361aa6a8dd6c2fe3b53",
-      "modelFamily": "qwen2",
-      "parameterCount": "3090000000",
       "quantization": "Q4_K_M"
     },
     {
@@ -1005,115 +903,6 @@
       "quantization": "Q4_K_M"
     },
     {
-      "variantId": "qwen2-5-coder-7b",
-      "providerClass": "ollama",
-      "servedModelTag": "qwen2.5-coder:7b",
-      "modelDigest": "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
-      "modelFamily": "qwen2",
-      "parameterCount": "7600000000",
-      "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "qwen2-5-coder-7b-instruct-q4-k-m",
-      "providerClass": "ollama",
-      "servedModelTag": "qwen2.5-coder:7b-instruct-q4_K_M",
-      "modelDigest": "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
-      "modelFamily": "qwen2",
-      "parameterCount": "7600000000",
-      "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "qwen2-5-0-5b",
-      "providerClass": "ollama",
-      "servedModelTag": "qwen2.5:0.5b",
-      "modelDigest": "a8b0c51577010a279d933d14c2a8ab4b268079d44c5c8830c0a93900f1827c67",
-      "modelFamily": "qwen2",
-      "parameterCount": "494030000",
-      "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "qwen2-5-0-5b-instruct",
-      "providerClass": "ollama",
-      "servedModelTag": "qwen2.5:0.5b-instruct",
-      "modelDigest": "a8b0c51577010a279d933d14c2a8ab4b268079d44c5c8830c0a93900f1827c67",
-      "modelFamily": "qwen2",
-      "parameterCount": "494030000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 32768,
-      "capabilityObservations": [
-        {
-          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "completion probe returned expected text"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "tool-call probe returned probe_echo"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "structured-output probe returned valid JSON"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_THINKING",
-          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
-          "observationDetail": "provider rejected thinking probe"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "provider advertised context_limit=32768"
-        }
-      ]
-    },
-    {
-      "variantId": "qwen2-5-0-5b-instruct-q4-k-m",
-      "providerClass": "ollama",
-      "servedModelTag": "qwen2.5:0.5b-instruct-q4_K_M",
-      "modelDigest": "a8b0c51577010a279d933d14c2a8ab4b268079d44c5c8830c0a93900f1827c67",
-      "modelFamily": "qwen2",
-      "parameterCount": "494030000",
-      "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "qwen2-5-1-5b-instruct-q4-k-m",
-      "providerClass": "ollama",
-      "servedModelTag": "qwen2.5:1.5b-instruct-q4_K_M",
-      "modelDigest": "65ec06548149b04c096a120e4a6da9d4017ea809c91734ea5631e89f96ddc57b",
-      "modelFamily": "qwen2",
-      "parameterCount": "1500000000",
-      "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "qwen2-5-14b-instruct-q4-k-m",
-      "providerClass": "ollama",
-      "servedModelTag": "qwen2.5:14b-instruct-q4_K_M",
-      "modelDigest": "7cdf5a0187d5c58cc5d369b255592f7841d1c4696d45a8c8a9489440385b22f6",
-      "modelFamily": "qwen2",
-      "parameterCount": "14800000000",
-      "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "qwen2-5-3b",
-      "providerClass": "ollama",
-      "servedModelTag": "qwen2.5:3b",
-      "modelDigest": "357c53fb659c5076de1d65ccb0b397446227b71a42be9d1603d46168015c9e4b",
-      "modelFamily": "qwen2",
-      "parameterCount": "3100000000",
-      "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "qwen2-5-7b",
-      "providerClass": "ollama",
-      "servedModelTag": "qwen2.5:7b",
-      "modelDigest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
-      "modelFamily": "qwen2",
-      "parameterCount": "7600000000",
-      "quantization": "Q4_K_M"
-    },
-    {
       "variantId": "qwen3-5-0-8b",
       "providerClass": "ollama",
       "servedModelTag": "qwen3.5:0.8b",
@@ -1261,16 +1050,6 @@
       "modelFamily": "qwen3",
       "parameterCount": "8199999999",
       "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "rnj-1-8b",
-      "providerClass": "ollama",
-      "servedModelTag": "rnj-1:8b",
-      "modelDigest": "d20e29ab8d0f11423b1e8da33764c8bdafc1d0abbb9971f68edd0f6d4176435f",
-      "modelFamily": "gemma3",
-      "parameterCount": "8300000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 32768
     },
     {
       "variantId": "sam860-lfm2-2-6b",
@@ -1447,80 +1226,6 @@
       ]
     },
     {
-      "variantId": "xlam2-1b-fc-r",
-      "providerClass": "ollama",
-      "servedModelTag": "xlam2:1b-fc-r",
-      "modelDigest": "7cff8a9eb0ed04af02e5c940561eb4f5ec539bd662a346a6e636dfe5c0aea45b",
-      "modelFamily": "qwen2",
-      "parameterCount": "1540000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 32768,
-      "capabilityObservations": [
-        {
-          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
-          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
-          "observationDetail": "completion probe returned unexpected output"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
-          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
-          "observationDetail": "tool-call probe dispatch failed (provider_response_invalid)"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "structured-output probe returned valid JSON"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_THINKING",
-          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
-          "observationDetail": "provider rejected thinking probe"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "provider advertised context_limit=32768"
-        }
-      ]
-    },
-    {
-      "variantId": "xlam2-3b-fc-r",
-      "providerClass": "ollama",
-      "servedModelTag": "xlam2:3b-fc-r",
-      "modelDigest": "fd17426d66d96214eab71bf83fc95c313795b8f779be0361aa6a8dd6c2fe3b53",
-      "modelFamily": "qwen2",
-      "parameterCount": "3090000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 32768,
-      "capabilityObservations": [
-        {
-          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "completion probe returned expected text"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
-          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
-          "observationDetail": "tool-call probe dispatch failed (provider_response_invalid)"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "structured-output probe returned valid JSON"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_THINKING",
-          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
-          "observationDetail": "provider rejected thinking probe"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "provider advertised context_limit=32768"
-        }
-      ]
-    },
-    {
       "variantId": "xlam2-8b-fc-r",
       "providerClass": "ollama",
       "servedModelTag": "xlam2:8b-fc-r",
@@ -1572,44 +1277,8 @@
       "digest": "470fceb39b4300f47cc3b35d6e0a31321757fbcc4afdb4177484ca745bf92f37"
     },
     {
-      "model": "deepseek-r1:1.5b",
-      "digest": "e0979632db5a88d1a53884cb2a941772d10ff5d055aabaa6801c4e36f3a6c2d7"
-    },
-    {
-      "model": "deepseek-r1:7b",
-      "digest": "755ced02ce7befdb13b7ca74e1e4d08cddba4986afdb63a480f2c93d3140383f"
-    },
-    {
       "model": "deepseek-r1:8b",
       "digest": "6995872bfe4c521a67b32da386cd21d5c6e819b6e0d62f79f64ec83be99f5763"
-    },
-    {
-      "model": "functiongemma:270m",
-      "digest": "7c19b650567acfb1bee50d12bb286370e8a54d8877f6a0ecfd01f8c8fdc223bb"
-    },
-    {
-      "model": "gemma2:2b-instruct-q4_K_M",
-      "digest": "cb2d06dce81356b9799c814de8dab1f2dd265084d16ea22f88e1bff70206fabd"
-    },
-    {
-      "model": "gemma2:9b",
-      "digest": "ff02c3702f322b9e075e9568332d96c0a7028002f1a5a056e0a6784320a4db0b"
-    },
-    {
-      "model": "gemma2:9b-instruct-q4_K_M",
-      "digest": "c20bec88025f3aefa420efd64dca0ee4abc8e36078d6b74b0f660cdcbd5d1982"
-    },
-    {
-      "model": "gemma3:1b",
-      "digest": "83be9dbf9dd6ea077de84d4fbaeb094dae9f266ca1b302f04e1c803bea566a79"
-    },
-    {
-      "model": "gemma3:270m",
-      "digest": "e7d36fb2c3b3293cfe56d55889867a064b3a2b22e98335f2e6e8a387e081d6be"
-    },
-    {
-      "model": "gemma3:4b",
-      "digest": "a2af6cc3eb7fa8be8504abaf9b04e88f17a119ec3f04a3addf55f92841195f5a"
     },
     {
       "model": "gemma4:12b",
@@ -1698,14 +1367,6 @@
     {
       "model": "hf.co/Salesforce/Llama-xLAM-2-8b-fc-r-gguf:latest",
       "digest": "6289cc92099210c18c422d9fd01792965eab3233deca6ae8e6ccd6b2b5cdd12b"
-    },
-    {
-      "model": "hf.co/Salesforce/xLAM-2-1b-fc-r-gguf:latest",
-      "digest": "7cff8a9eb0ed04af02e5c940561eb4f5ec539bd662a346a6e636dfe5c0aea45b"
-    },
-    {
-      "model": "hf.co/Salesforce/xLAM-2-3b-fc-r-gguf:latest",
-      "digest": "fd17426d66d96214eab71bf83fc95c313795b8f779be0361aa6a8dd6c2fe3b53"
     },
     {
       "model": "hf.co/XHToken/Spark-X2.6-4B-GGUF:Q4_K_M",
@@ -1860,42 +1521,6 @@
       "digest": "78fad5d182a7c33065e153a5f8ba210754207ba9d91973f57dffa7f487363753"
     },
     {
-      "model": "qwen2.5-coder:7b",
-      "digest": "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364"
-    },
-    {
-      "model": "qwen2.5-coder:7b-instruct-q4_K_M",
-      "digest": "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364"
-    },
-    {
-      "model": "qwen2.5:0.5b",
-      "digest": "a8b0c51577010a279d933d14c2a8ab4b268079d44c5c8830c0a93900f1827c67"
-    },
-    {
-      "model": "qwen2.5:0.5b-instruct",
-      "digest": "a8b0c51577010a279d933d14c2a8ab4b268079d44c5c8830c0a93900f1827c67"
-    },
-    {
-      "model": "qwen2.5:0.5b-instruct-q4_K_M",
-      "digest": "a8b0c51577010a279d933d14c2a8ab4b268079d44c5c8830c0a93900f1827c67"
-    },
-    {
-      "model": "qwen2.5:1.5b-instruct-q4_K_M",
-      "digest": "65ec06548149b04c096a120e4a6da9d4017ea809c91734ea5631e89f96ddc57b"
-    },
-    {
-      "model": "qwen2.5:14b-instruct-q4_K_M",
-      "digest": "7cdf5a0187d5c58cc5d369b255592f7841d1c4696d45a8c8a9489440385b22f6"
-    },
-    {
-      "model": "qwen2.5:3b",
-      "digest": "357c53fb659c5076de1d65ccb0b397446227b71a42be9d1603d46168015c9e4b"
-    },
-    {
-      "model": "qwen2.5:7b",
-      "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
-    },
-    {
       "model": "qwen3.5:0.8b",
       "digest": "a3f5b6b45c5e4c1a4ace41c6de62aa8e6efa1d7043fab0017b492b3114a08067"
     },
@@ -1948,10 +1573,6 @@
       "digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41"
     },
     {
-      "model": "rnj-1:8b",
-      "digest": "d20e29ab8d0f11423b1e8da33764c8bdafc1d0abbb9971f68edd0f6d4176435f"
-    },
-    {
       "model": "sam860/LFM2:2.6b",
       "digest": "9db0c3bfa56ee9a51dcabc87ede21fe3c7634502ac22c67b0271a75165f7e19a"
     },
@@ -1990,14 +1611,6 @@
     {
       "model": "watttool:8b",
       "digest": "a588b16a11785acef4685d26967a390892e1464935ea94c56e018576725aa80e"
-    },
-    {
-      "model": "xlam2:1b-fc-r",
-      "digest": "7cff8a9eb0ed04af02e5c940561eb4f5ec539bd662a346a6e636dfe5c0aea45b"
-    },
-    {
-      "model": "xlam2:3b-fc-r",
-      "digest": "fd17426d66d96214eab71bf83fc95c313795b8f779be0361aa6a8dd6c2fe3b53"
     },
     {
       "model": "xlam2:8b-fc-r",

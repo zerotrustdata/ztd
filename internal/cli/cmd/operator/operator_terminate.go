@@ -38,14 +38,13 @@ func operatorTerminateCmdWithConfig(
 	var reason string
 	cmd := &cobra.Command{
 		Use:          "terminate <operator-id>",
-		Short:        "Permanently retire an Operator record and release its capabilities",
+		Short:        "Permanently retire an Operator record",
 		SilenceUsage: true,
 		Long: `Mark one of your remote Operator records terminated in the Gateway registry.
-A terminated Operator can no longer authenticate, and the capabilities it held
-(inference, provenance, observer) become free for another enrollment. Use it
-for a stale or abandoned Operator whose identity no longer matches a running
-runtime. It does not stop a process; use 'ztd operator stop' for that. The
-operator ID is the OPERATOR ID column of 'ztd gw status' or 'ztd operator list'.`,
+A terminated Operator can no longer authenticate. Use it for a stale or
+abandoned Operator whose identity no longer matches a running runtime. It does
+not stop a process; use 'ztd operator stop' for that. The operator ID is the
+OPERATOR ID column of 'ztd gw status' or 'ztd operator list'.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			operatorID := strings.TrimSpace(args[0])

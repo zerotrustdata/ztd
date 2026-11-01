@@ -57,6 +57,7 @@ func ValidateConsensusProviderIsolation(binding *models.ConsensusPolicy, operato
 	}
 	return nil
 }
+
 func canonicalInferenceEndpoint(raw string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u == nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {

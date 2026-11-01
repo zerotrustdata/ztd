@@ -128,9 +128,12 @@ export interface AgentTraceToolCall {
   retrieval?: AgentTraceRetrieval;
 }
 
+export type AgentTraceObservationDisclosure = 'platform_record' | 'chain_only';
+
 export interface AgentTraceObservation {
   kind: 'seed' | 'file_state' | 'probe';
   call: AgentTraceToolCall;
+  disclosure?: AgentTraceObservationDisclosure;
 }
 
 /**
@@ -614,11 +617,22 @@ export function parseAgentTrace(value: unknown): AgentTrace {
     observations = list(value.observations, `${path}.observations`).map((observation, index) => {
       const observationPath = `${path}.observations[${index}]`;
       assertObject(observation, observationPath);
-      rejectUnknown(observation, ['kind', 'call'], observationPath);
+      rejectUnknown(observation, ['kind', 'call', 'disclosure'], observationPath);
       assert(typeof observation.kind === 'string' && ['seed', 'file_state', 'probe'].includes(observation.kind), `${observationPath}.kind`, 'expected seed, file_state, or probe');
+      let disclosure: AgentTraceObservationDisclosure | undefined;
+      if (observation.disclosure !== undefined) {
+        assert(observation.kind === 'seed', `${observationPath}.disclosure`, 'only seed observations carry disclosure');
+        assert(
+          observation.disclosure === 'platform_record' || observation.disclosure === 'chain_only',
+          `${observationPath}.disclosure`,
+          'expected platform_record or chain_only',
+        );
+        disclosure = observation.disclosure as AgentTraceObservationDisclosure;
+      }
       return {
         kind: observation.kind as AgentTraceObservation['kind'],
         call: parseToolCall(observation.call, `${observationPath}.call`, schemaVersion, value.investigation_id as string | undefined),
+        ...(disclosure !== undefined ? { disclosure } : {}),
       };
     });
   }

@@ -241,7 +241,7 @@ func requireResponseTextContains(result *operatorv1.InferenceResult, want string
 var structuredJSONFencePattern = regexp.MustCompile("(?s)```(?:json)?\\s*(\\{.*\\})\\s*```")
 
 func validateStructuredAnswer(result *operatorv1.InferenceResult, want string) error {
-	text := extractStructuredJSONPayload(models.InferenceResultText(result))
+	text := extractStructuredJSONPayload(structuredResultText(result))
 	if text == "" {
 		return fmt.Errorf("evaluation: structured acceptance missing JSON text: %w", constants.ErrInferenceProviderResponseInvalid)
 	}
@@ -255,6 +255,13 @@ func validateStructuredAnswer(result *operatorv1.InferenceResult, want string) e
 		return fmt.Errorf("evaluation: structured acceptance answer %q, want %q: %w", payload.Answer, want, constants.ErrInferenceProviderResponseInvalid)
 	}
 	return nil
+}
+
+func structuredResultText(result *operatorv1.InferenceResult) string {
+	if text := strings.TrimSpace(models.InferenceResultText(result)); text != "" {
+		return text
+	}
+	return strings.TrimSpace(models.InferenceResultThinking(result))
 }
 
 func extractStructuredJSONPayload(text string) string {
