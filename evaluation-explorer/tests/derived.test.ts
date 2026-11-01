@@ -707,6 +707,48 @@ describe('visibleStreamEvents', () => {
     expect(rowsFor([done, { ...stage, observed_at: '2026-09-17T08:35:00Z' }])).toEqual(['a1:done']);
   });
 
+  it('preserves distinct rows for each role in multi-role formation assignments', () => {
+    const liteStage = liveEvent({
+      event_id: 'a1:lite',
+      kind: 'stage_updated',
+      assignment_id: 'a1',
+      role: 'lite',
+      variant_id: 'liquid-lfm',
+      observed_at: '2026-09-17T08:32:00Z',
+    });
+    const assistantStage = liveEvent({
+      event_id: 'a1:assistant',
+      kind: 'stage_updated',
+      assignment_id: 'a1',
+      role: 'assistant',
+      variant_id: 'granite-3b',
+      observed_at: '2026-09-17T08:33:00Z',
+    });
+    const primaryStage = liveEvent({
+      event_id: 'a1:primary',
+      kind: 'stage_updated',
+      assignment_id: 'a1',
+      role: 'primary',
+      variant_id: 'qwen-4b',
+      observed_at: '2026-09-17T08:34:00Z',
+    });
+    const primaryDone = liveEvent({
+      event_id: 'a1:done',
+      kind: 'assignment_completed',
+      assignment_id: 'a1',
+      role: 'primary',
+      variant_id: 'qwen-4b',
+      lifecycle_status: 'completed',
+      observed_at: '2026-09-17T08:35:00Z',
+    });
+    const visible = visibleStreamEvents([liteStage, assistantStage, primaryStage, primaryDone], {
+      modelFilter: 'all',
+      kindFilter: 'all',
+    });
+    expect(visible.map((event) => event.event_id)).toEqual(['a1:done', 'a1:assistant', 'a1:lite']);
+    expect(visible.map((event) => event.role)).toEqual(['primary', 'assistant', 'lite']);
+  });
+
   it('matches the kind filter against the assignment current status', () => {
     const started = liveEvent({ event_id: 'a1:start', kind: 'assignment_started', assignment_id: 'a1', observed_at: '2026-09-17T08:32:00Z' });
     const done = liveEvent({ event_id: 'a1:done', kind: 'assignment_completed', assignment_id: 'a1', observed_at: '2026-09-17T08:34:00Z' });

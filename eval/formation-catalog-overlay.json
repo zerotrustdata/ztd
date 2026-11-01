@@ -240,6 +240,102 @@
         "estimated_kv_cache_mib": 256,
         "model_digest": "5eee845b49c4b72ef9e385463a1e2ea9f6f937e08b019f3bbecec12bc1927221"
       }
+    },
+    {
+      "id": "formation-05",
+      "display_name": "formation-05",
+      "description": "olmo-3:7b-think primary, qwen3:4b-instruct-2507-q4_K_M assistant, sam860/LFM2:700m lite",
+      "max_vram_mib": 12288,
+      "primary": {
+        "variant_id": "olmo-3-7b-think",
+        "display_name": "olmo-3:7b-think",
+        "provider": "olmo3",
+        "family": "olmo3",
+        "provider_class": "ollama",
+        "served_model_tag": "olmo-3:7b-think",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 7298011136,
+        "estimated_model_vram_mib": 4350,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "b8d4c92ac9c103f858f4f09a418b62de8ca1abf1b20b4020006346535634dd35"
+      },
+      "assistant": {
+        "variant_id": "qwen3-4b-instruct-2507-q4-k-m",
+        "display_name": "qwen3:4b-instruct-2507-q4_K_M",
+        "provider": "qwen3",
+        "family": "qwen3",
+        "provider_class": "ollama",
+        "served_model_tag": "qwen3:4b-instruct-2507-q4_K_M",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 4022468096,
+        "estimated_model_vram_mib": 2398,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0"
+      },
+      "lite": {
+        "variant_id": "sam860-lfm2-700m",
+        "display_name": "sam860/LFM2:700m",
+        "provider": "lfm2",
+        "family": "lfm2",
+        "provider_class": "ollama",
+        "served_model_tag": "sam860/LFM2:700m",
+        "trust": "sovereign",
+        "quantization": "Q8_0",
+        "parameter_count": 742489344,
+        "estimated_model_vram_mib": 753,
+        "estimated_kv_cache_mib": 256,
+        "model_digest": "637d9ffe5f5ee2bdbfa93a61c8c437d134931219778c7ffc693402507c232254"
+      }
+    },
+    {
+      "id": "formation-06",
+      "display_name": "formation-06",
+      "description": "lfm2.5:8b primary, Impulse2000/smollm3:3b-q4_k_m assistant, tinyllama:1.1b lite",
+      "max_vram_mib": 12288,
+      "primary": {
+        "variant_id": "lfm2-5-8b",
+        "display_name": "lfm2.5:8b",
+        "provider": "lfm2moe",
+        "family": "lfm2moe",
+        "provider_class": "ollama",
+        "served_model_tag": "lfm2.5:8b",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 8467856832,
+        "estimated_model_vram_mib": 5048,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "9cf756159fc2f3b9128c6a3f544ec90c5e9b8afdbb4179a57b8aea9de589cfb2"
+      },
+      "assistant": {
+        "variant_id": "impulse2000-smollm3-3b-q4-k-m",
+        "display_name": "Impulse2000/smollm3:3b-q4_k_m",
+        "provider": "smollm3",
+        "family": "smollm3",
+        "provider_class": "ollama",
+        "served_model_tag": "Impulse2000/smollm3:3b-q4_k_m",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 3075098624,
+        "estimated_model_vram_mib": 1833,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "e9cf8ed8eb210e0b9ddd314bb73260253d461c16d57da7f4459e4327fc580512"
+      },
+      "lite": {
+        "variant_id": "tinyllama-1-1b",
+        "display_name": "tinyllama:1.1b",
+        "provider": "llama",
+        "family": "llama",
+        "provider_class": "ollama",
+        "served_model_tag": "tinyllama:1.1b",
+        "trust": "sovereign",
+        "quantization": "Q4_0",
+        "parameter_count": 1100048384,
+        "estimated_model_vram_mib": 656,
+        "estimated_kv_cache_mib": 256,
+        "model_digest": "2644915ede352ea7bdfaff0bfac0be74c719d5d5202acb63a6fb095b52f394a4"
+      }
     }
   ],
   "removed_formation_ids": [

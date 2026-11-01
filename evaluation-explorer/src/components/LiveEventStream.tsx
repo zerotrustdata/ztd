@@ -11,8 +11,10 @@ import { recordKey, resolveModelSummary, useStoreState } from '../state/store';
 import {
   assignmentRowKey,
   isJudgeEvent,
+  isTribunalVoteEvent,
   judgeActivityByAssignment,
   roleLabel,
+  TRIBUNAL_VOTE_PREFIX,
   visibleStreamEvents,
 } from '../views/derived';
 import { JudgeActivity } from './JudgeActivity';
@@ -29,7 +31,6 @@ import { formatNumber } from '../utils/format';
 import { LIVE_EVENT_RETENTION_LIMIT } from '../constants';
 const STREAM_PAGE_SIZE = 25;
 const STREAM_EMPTY_METRIC = '--';
-const TRIBUNAL_VOTE_PREFIX = 'tribunal vote\n';
 
 /** Canonical Tribunal seats with display titles describing their member stances. */
 const TRIBUNAL_SEATS = [
@@ -41,10 +42,6 @@ const TRIBUNAL_SEATS = [
 ] as const;
 
 type TribunalSeatId = (typeof TRIBUNAL_SEATS)[number]['id'];
-
-function isTribunalVoteEvent(event: LiveEvent): boolean {
-  return event.stage_label?.startsWith(TRIBUNAL_VOTE_PREFIX) ?? false;
-}
 
 /** The audit record carried on a consensus-posture vote event, unchanged. */
 function tribunalVoteRecord(event: LiveEvent): Record<string, unknown> | undefined {
@@ -170,6 +167,12 @@ function streamEventRoleLabel(
   assignment: AssignmentResult | undefined,
   designatedRoles: Map<string, ModelRole>,
 ): string {
+  if (isTribunalVoteEvent(event)) {
+    const record = tribunalVoteRecord(event);
+    const seatId = record ? tribunalSeatId(record) : undefined;
+    const seat = TRIBUNAL_SEATS.find((s) => s.id === seatId);
+    return seat ? `Tribunal · ${seat.name}` : 'Tribunal';
+  }
   const role =
     event.role ?? (event.assignment_id ? (assignment?.role ?? designatedRoles.get(`${event.dataset_id}:${event.run_id}:${event.assignment_id}`)) : undefined);
   if (role) return roleLabel(role);
@@ -195,6 +198,21 @@ type EventParts = {
 };
 
 function eventParts(event: LiveEvent, assignment: AssignmentResult | undefined): EventParts {
+  if (isTribunalVoteEvent(event)) {
+    const record = tribunalVoteRecord(event);
+    const seatId = record ? tribunalSeatId(record) : undefined;
+    const seat = TRIBUNAL_SEATS.find((s) => s.id === seatId);
+    const task =
+      assignment?.task_id ??
+      event.task_id ??
+      (event.assignment_id ? SCENARIO_TASK_BY_ID.get(event.assignment_id)?.id : undefined) ??
+      '—';
+    return {
+      category: seat ? `Tribunal · ${seat.name}` : 'Tribunal',
+      task,
+    };
+  }
+
   const stageParts = event.stage_label?.split(' · ').map((part) => part.trim()) ?? [];
   const isModelRoleInvocation = stageParts[0]?.toLowerCase() === 'model role invoked';
 
@@ -246,6 +264,20 @@ type StreamResult = { label: string; symbol: string; tone: 'ok' | 'critical' | '
 
 /** Model verdicts stay distinct from infrastructure failures and run lifecycle. */
 function streamResult(event: LiveEvent, assignment: AssignmentResult | undefined): StreamResult {
+  if (isTribunalVoteEvent(event)) {
+    const record = tribunalVoteRecord(event);
+    const outcome = typeof record?.outcome === 'string' ? record.outcome : undefined;
+    if (outcome === 'approve') {
+      return { label: 'Approved', symbol: '✓', tone: 'ok' };
+    }
+    if (outcome === 'deny') {
+      return { label: 'Denied', symbol: '×', tone: 'critical' };
+    }
+    if (outcome === 'no_vote') {
+      return { label: 'No vote', symbol: '!', tone: 'neutral' };
+    }
+    return { label: 'Vote', symbol: '•', tone: 'info' };
+  }
   if (isTerminalAssignmentEvent(event)) {
     const status = event.terminal_status ?? assignment?.terminal_status;
     if (status && status !== 'completed' && status !== 'model_failed') {
@@ -257,6 +289,9 @@ function streamResult(event: LiveEvent, assignment: AssignmentResult | undefined
     }
     if (event.kind === 'assignment_failed') return { label: 'Failed', symbol: '!', tone: 'neutral' };
     return { label: pass === 1 ? 'Passed' : 'Completed', symbol: '✓', tone: 'ok' };
+  }
+  if (event.stage_label?.toLowerCase().startsWith('model role invoked')) {
+    return { label: 'Invoked', symbol: '•', tone: 'info' };
   }
   const label = displayLabel(event.kind) ?? 'Activity';
   if (event.lifecycle_status === 'failed') return { label, symbol: '!', tone: 'neutral' };
@@ -314,8 +349,22 @@ function streamSortValue(
   if (field === 'time') return event.observed_at;
   if (field === 'result') return streamResult(event, assignment).label;
   if (field === 'task') return eventParts(event, assignment).task;
-  if (field === 'model') return model?.served_model_tag ?? event.variant_id ?? '';
+  if (field === 'model') {
+    if (isTribunalVoteEvent(event)) {
+      const record = tribunalVoteRecord(event);
+      return typeof record?.model_tag === 'string' ? record.model_tag : 'Tribunal';
+    }
+    return model?.served_model_tag ?? event.variant_id ?? '';
+  }
   return assignmentMetric(event, assignment, field)?.value ?? '';
+}
+
+function eventModelIdentifier(event: LiveEvent): string | undefined {
+  if (isTribunalVoteEvent(event)) {
+    const record = tribunalVoteRecord(event);
+    return typeof record?.model_tag === 'string' ? record.model_tag : 'Tribunal';
+  }
+  return event.variant_id;
 }
 
 function SortHeader({
@@ -391,14 +440,15 @@ export function LiveEventStream({
   }), [targetEvents]);
   const visible = useMemo(() => baseRows.filter((event) => {
     const assignment = matchingAssignment(event, assignments);
-    return (modelFilter === 'all' || event.variant_id === modelFilter)
+    const eventModel = eventModelIdentifier(event);
+    return (modelFilter === 'all' || eventModel === modelFilter || (modelFilter === 'Tribunal' && isTribunalVoteEvent(event)))
       && (kindFilter === 'all' || event.kind === kindFilter)
       && (assignmentFilter === 'all' || event.assignment_id === assignmentFilter)
       && (categoryFilter === 'all' || eventParts(event, assignment).category === categoryFilter);
   }).slice(0, runScope === 'all' ? LIVE_EVENT_RETENTION_LIMIT : undefined), [baseRows, assignments, modelFilter, kindFilter, assignmentFilter, categoryFilter, runScope]);
 
   // Options come from the unfiltered feed so choosing one never hides the others.
-  const modelOptions = useMemo(() => Array.from(new Set(baseRows.map((event) => event.variant_id)
+  const modelOptions = useMemo(() => Array.from(new Set(baseRows.map((event) => eventModelIdentifier(event))
     .filter((value): value is string => Boolean(value)))).sort(), [baseRows]);
   const kindOptions = useMemo(() => Array.from(new Set(baseRows.map((event) => event.kind))).sort(), [baseRows]);
   const categoryOptions = useMemo(() => Array.from(new Set(baseRows.map((event) =>
@@ -499,6 +549,9 @@ export function LiveEventStream({
             <tbody>
               {pageEvents.map((event) => {
                 const assignment = matchingAssignment(event, assignments);
+                const isVote = isTribunalVoteEvent(event);
+                const voteRecord = isVote ? tribunalVoteRecord(event) : undefined;
+                const voteModelTag = typeof voteRecord?.model_tag === 'string' ? voteRecord.model_tag : undefined;
                 const model = event.variant_id ? resolveModelSummary(models, event.dataset_id, event.variant_id) : undefined;
                 const parts = eventParts(event, assignment);
                 const rowVotes = event.assignment_id ? tribunalVotes.get(assignmentRowKey(event)) : undefined;
@@ -512,7 +565,7 @@ export function LiveEventStream({
                 const modelHref = event.variant_id
                   ? `/models/${event.dataset_id}/${event.variant_id}${role ? `?role=${role}` : ''}` : undefined;
                 return (
-                  <tr key={`${event.dataset_id}:${event.run_id}:${event.assignment_id ?? event.event_id}`}>
+                  <tr key={`${event.dataset_id}:${event.run_id}:${event.event_id}`}>
                     <td className="stream-result-cell">
                       <Link to={eventHref} className="stream-result" data-tone={result.tone} aria-label={`${result.label}: ${task}. View details`}>
                         <span aria-hidden="true">{result.symbol}</span>
@@ -526,12 +579,26 @@ export function LiveEventStream({
                       {parts.category !== '—' ? <span className="stream-secondary">{parts.category}</span> : null}
                     </td>
                     <td className="stream-model-cell">
-                      {modelHref ? <Link to={modelHref} className="stream-model-link" title={model?.served_model_tag ?? event.variant_id}>{model?.served_model_tag ?? event.variant_id}</Link> : <span>Platform</span>}
-                      {event.assignment_id || event.role ? <span className="stream-secondary stream-role">{streamEventRoleLabel(event, assignment, designatedRoles)}</span> : null}
+                      {modelHref ? (
+                        <Link to={modelHref} className="stream-model-link" title={model?.served_model_tag ?? event.variant_id}>
+                          {model?.served_model_tag ?? event.variant_id}
+                        </Link>
+                      ) : voteModelTag ? (
+                        <span className="stream-model-name" title={voteModelTag}>{voteModelTag}</span>
+                      ) : isVote ? (
+                        <span className="stream-model-name">Tribunal</span>
+                      ) : (
+                        <span>Platform</span>
+                      )}
+                      {event.assignment_id || event.role || isVote ? (
+                        <span className="stream-secondary stream-role">{streamEventRoleLabel(event, assignment, designatedRoles)}</span>
+                      ) : null}
                     </td>
-                    {showTribunal ? <td className="stream-tribunal-cell">
-                      {rowVotes ? <TribunalVotes votes={rowVotes} /> : null}
-                    </td> : null}
+                    {showTribunal ? (
+                      <td className="stream-tribunal-cell">
+                        {rowVotes && !isVote ? <TribunalVotes votes={rowVotes} /> : null}
+                      </td>
+                    ) : null}
                     {showJudge ? <td className="stream-judge-cell">
                       {rowJudgments ? <JudgeActivity judgments={rowJudgments} /> : null}
                     </td> : null}

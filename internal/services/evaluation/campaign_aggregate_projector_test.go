@@ -56,6 +56,80 @@ func TestCollectRunAggregateState(t *testing.T) {
 	assert.Equal(t, uint32(1), state.VariantRoles["qwen3-4b:assistant"].Failed)
 }
 
+func TestCollectRunAggregateState_HeterogeneousRolesHaveUniqueOutcomes(t *testing.T) {
+	stack := mustHeterogeneousStack(t)
+	primaryVariant := stack.GetPrimarySlot().GetVariantId()
+	assistantVariant := stack.GetAssistantSlot().GetVariantId()
+	liteVariant := stack.GetLiteSlot().GetVariantId()
+
+	assignments := []*evalv1.EvaluationAssignment{
+		{
+			AssignmentId: "assign-p",
+			Target: &evalv1.EvaluationAssignment_Heterogeneous{
+				Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: stack, DesignatedRole: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY},
+			},
+		},
+		{
+			AssignmentId: "assign-a",
+			Target: &evalv1.EvaluationAssignment_Heterogeneous{
+				Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: stack, DesignatedRole: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT},
+			},
+		},
+		{
+			AssignmentId: "assign-l",
+			Target: &evalv1.EvaluationAssignment_Heterogeneous{
+				Heterogeneous: &evalv1.HeterogeneousAssignmentTarget{Stack: stack, DesignatedRole: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE},
+			},
+		},
+	}
+	results := map[string]*evalv1.EvaluationAssignmentResult{
+		"assign-p": {
+			AssignmentId:    "assign-p",
+			LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
+			DeterministicGrades: []*evalv1.DeterministicGrade{{
+				Basis:  evalv1.GradeBasis_GRADE_BASIS_OBSERVATION,
+				Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS,
+			}},
+		},
+		"assign-a": {
+			AssignmentId:    "assign-a",
+			LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
+			DeterministicGrades: []*evalv1.DeterministicGrade{{
+				Basis:  evalv1.GradeBasis_GRADE_BASIS_OBSERVATION,
+				Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL,
+			}},
+		},
+		// assign-l is still running / not terminal
+	}
+	state, err := CollectRunAggregateState(assignments, results)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(3), state.Scheduled)
+	assert.Equal(t, uint32(2), state.Terminal)
+	assert.Equal(t, uint32(1), state.Passed)
+	assert.Equal(t, uint32(1), state.Failed)
+
+	primaryBucket := state.VariantRoles[primaryVariant+":primary"]
+	require.NotNil(t, primaryBucket)
+	assert.Equal(t, uint32(1), primaryBucket.Scheduled)
+	assert.Equal(t, uint32(1), primaryBucket.Terminal)
+	assert.Equal(t, uint32(1), primaryBucket.Passed)
+	assert.Equal(t, uint32(0), primaryBucket.Failed)
+
+	assistantBucket := state.VariantRoles[assistantVariant+":assistant"]
+	require.NotNil(t, assistantBucket)
+	assert.Equal(t, uint32(1), assistantBucket.Scheduled)
+	assert.Equal(t, uint32(1), assistantBucket.Terminal)
+	assert.Equal(t, uint32(0), assistantBucket.Passed)
+	assert.Equal(t, uint32(1), assistantBucket.Failed)
+
+	liteBucket := state.VariantRoles[liteVariant+":lite"]
+	require.NotNil(t, liteBucket)
+	assert.Equal(t, uint32(1), liteBucket.Scheduled)
+	assert.Equal(t, uint32(0), liteBucket.Terminal)
+	assert.Equal(t, uint32(0), liteBucket.Passed)
+	assert.Equal(t, uint32(0), liteBucket.Failed)
+}
+
 // Run pass rates include all terminal outcomes. Model accuracy keeps its
 // separate denominator of assignments judged on the model.
 func TestRunPassRateIncludesProviderFailures(t *testing.T) {

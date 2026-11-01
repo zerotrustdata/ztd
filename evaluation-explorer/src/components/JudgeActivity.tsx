@@ -108,6 +108,24 @@ function judgeSummary(judgments: LiveJudgeActivity[]): string {
   return parts.join(' · ');
 }
 
+/** Tone for a judgment based on its state and score. */
+export function judgeTone(judgment: LiveJudgeActivity): 'ok' | 'warn' | 'critical' | undefined {
+  switch (judgment.state) {
+    case 'met':
+      return 'ok';
+    case 'not_met':
+    case 'failed':
+      return 'critical';
+    case 'scored':
+      if (judgment.score === undefined) return undefined;
+      if (judgment.score >= 4) return 'ok';
+      if (judgment.score === 3) return 'warn';
+      return 'critical';
+    case 'judging':
+      return undefined;
+  }
+}
+
 /** The Judge cell of one assignment row. */
 export function JudgeActivity({ judgments }: { judgments: LiveJudgeActivity[] }) {
   return (
@@ -115,7 +133,13 @@ export function JudgeActivity({ judgments }: { judgments: LiveJudgeActivity[] })
       <span className="judge-summary">{judgeSummary(judgments)}</span>
       <div className="judge-judgments">
         {judgments.map((judgment) => (
-          <details key={judgment.provider_attempt_id ?? `${judgment.subject}:${judgment.criterion_id ?? ''}`} className="judge-judgment" data-state={judgment.state}>
+          <details
+            key={judgment.provider_attempt_id ?? `${judgment.subject}:${judgment.criterion_id ?? ''}`}
+            className="judge-judgment"
+            data-state={judgment.state}
+            data-score={judgment.score}
+            data-tone={judgeTone(judgment)}
+          >
             <summary>
               <span className="judge-subject">{judgmentLabel(judgment)}</span>
               <span className="judge-verdict">{verdictLabel(judgment)}</span>

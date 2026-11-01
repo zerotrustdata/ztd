@@ -303,12 +303,12 @@ func bindTribunalVoteFeed(d *TribunalConsensusDeliberator, spectator *PublicSpec
 	}
 }
 
-// publishVote puts the audit record on the public feed when the Gateway is in
-// consensus posture. The record bytes are the same JSON just written to the
-// audit chain. A missing publisher or a publish failure leaves the recorded
-// vote in place.
+// publishVote puts the audit record on the public feed when the Gateway
+// enforces consensus posture (or during evaluation runs where L2 deliberation occurs).
+// The record bytes are the same JSON just written to the audit chain. A missing
+// publisher or a publish failure leaves the recorded vote in place.
 func (d *TribunalConsensusDeliberator) publishVote(ctx context.Context, env *commonv1.GovernanceEnvelope, memberAppID string, recordedAt time.Time, content []byte) error {
-	if env.GetPosture() != string(constants.PostureConsensus) {
+	if !constants.Posture(env.GetPosture()).RequiresL2() && env.GetEvaluationRunId() == "" {
 		return nil
 	}
 	var feed consensusVoteFeed
@@ -339,6 +339,7 @@ func (d *TribunalConsensusDeliberator) publishVote(ctx context.Context, env *com
 		EventId:         env.GetId() + ":" + memberAppID,
 		RunId:           runID,
 		AssignmentId:    assignmentID,
+		TaskId:          env.GetTaskId(),
 		LifecycleStatus: "running",
 		Completed:       &completed,
 		Total:           &total,

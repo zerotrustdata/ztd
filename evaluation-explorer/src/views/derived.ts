@@ -26,6 +26,7 @@ import type {
   CatalogSnapshot,
   EscalationDisposition,
   EvaluationSummary,
+  EvaluationUnit,
   LiveEvent,
   LiveJudgeActivity,
   LifecycleStatus,
@@ -123,22 +124,57 @@ function currentAssignmentEvent(current: LiveEvent, candidate: LiveEvent): LiveE
   return compareStreamEventsOldestFirst(candidate, current) > 0 ? candidate : current;
 }
 
-/** One stream row per assignment, carrying the assignment's current status. */
+export const TRIBUNAL_VOTE_PREFIX = 'tribunal vote\n';
+
+export function isTribunalVoteEvent(event: LiveEvent): boolean {
+  return event.stage_label?.startsWith(TRIBUNAL_VOTE_PREFIX) ?? false;
+}
+
+/** One stream row per assignment, carrying the assignment's current status.
+ *  Multi-role formation assignments (e.g. investigations suite) maintain separate
+ *  rows per role so Lite, Assistant, and Primary stages remain visible.
+ *  Tribunal vote events are preserved as their own rows. */
 function collapseAssignmentRows(events: LiveEvent[]): LiveEvent[] {
   const rows = new Map<string, LiveEvent>();
   const metrics = new Map<string, NonNullable<LiveEvent['metric_delta']>>();
   const metricKey = (event: LiveEvent) =>
     `${event.dataset_id}:${event.run_id}:${event.assignment_id}:${event.variant_id}:${event.role}`;
+
+  const rolesByAssignment = new Map<string, Set<ModelRole>>();
+  for (const event of events) {
+    if (event.assignment_id && event.role && !isTribunalVoteEvent(event)) {
+      const asgKey = `${event.dataset_id}:${event.run_id}:${event.assignment_id}`;
+      let set = rolesByAssignment.get(asgKey);
+      if (!set) {
+        set = new Set();
+        rolesByAssignment.set(asgKey, set);
+      }
+      set.add(event.role);
+    }
+  }
+
   for (const event of [...events].sort(compareStreamEventsOldestFirst)) {
     if (event.assignment_id && event.metric_delta) {
       const key = metricKey(event);
       metrics.set(key, { ...metrics.get(key), ...event.metric_delta });
     }
     if (STREAM_HIDDEN_KINDS.has(event.kind)) continue;
-    const key =
-      event.assignment_id && ASSIGNMENT_ROW_KINDS.has(event.kind)
-        ? `${event.dataset_id}:${event.run_id}:${event.assignment_id}:row`
-        : `event:${event.event_id}`;
+
+    let key: string;
+    if (isTribunalVoteEvent(event)) {
+      key = `event:${event.event_id}`;
+    } else if (event.assignment_id && ASSIGNMENT_ROW_KINDS.has(event.kind)) {
+      const asgKey = `${event.dataset_id}:${event.run_id}:${event.assignment_id}`;
+      const hasMultipleRoles = (rolesByAssignment.get(asgKey)?.size ?? 0) > 1;
+      if (hasMultipleRoles) {
+        key = `${asgKey}:${event.role ?? 'primary'}:row`;
+      } else {
+        key = `${asgKey}:row`;
+      }
+    } else {
+      key = `event:${event.event_id}`;
+    }
+
     const existing = rows.get(key);
     rows.set(key, existing ? currentAssignmentEvent(existing, event) : event);
   }
@@ -1121,6 +1157,9 @@ export interface RecentRunModel {
   role: ModelRole;
   variantId: string;
   name: string;
+  terminalOutcomes?: Record<TerminalStatus, number>;
+  passRate?: ModelSummary['pass_rate'];
+  evaluationCoverage?: number;
 }
 
 export interface RecentCampaignRow extends ReleaseProvenance {
@@ -1142,6 +1181,7 @@ export interface RecentCampaignRow extends ReleaseProvenance {
   /** Terminal outcome counts; classify with `terminalOutcomeBreakdown`. */
   terminalOutcomes?: Partial<Record<TerminalStatus, number>>;
   runId?: string;
+  evaluationUnit?: EvaluationUnit;
 }
 
 /** Historical assignment lifecycle does not establish whether a process is alive. */
@@ -1171,10 +1211,20 @@ function recentRunModels(
   for (const role of MODEL_ROLE_WIRE_ORDER) {
     const variantId = mapping[role];
     if (!variantId) continue;
-    const summary =
-      models.find((m) => m.dataset_id === run?.dataset_id && m.variant_id === variantId && m.role === role)
-      ?? models.find((m) => m.dataset_id === run?.dataset_id && m.variant_id === variantId);
-    result.push({ role, variantId, name: summary?.display_name ?? variantId });
+    const exactSummary = models.find(
+      (m) => m.dataset_id === run?.dataset_id && m.variant_id === variantId && m.role === role,
+    );
+    const anySummary = exactSummary ?? models.find(
+      (m) => m.variant_id === variantId,
+    );
+    result.push({
+      role,
+      variantId,
+      name: anySummary?.display_name ?? variantId,
+      terminalOutcomes: exactSummary?.terminal_outcomes,
+      passRate: exactSummary?.pass_rate,
+      evaluationCoverage: exactSummary?.evaluation_coverage,
+    });
   }
   return result;
 }
@@ -1231,6 +1281,7 @@ export function recentCampaignRows(
       assignmentTotal: primary?.assignment_total ?? 0,
       terminalOutcomes: primary?.terminal_outcomes,
       runId: primary?.run_id,
+      evaluationUnit: primary?.evaluation_unit,
     });
   }
 
