@@ -135,7 +135,7 @@ func formationsEvalCmd(deps nativeEvalDeps) *cobra.Command {
 	cmd.AddCommand(
 		formationsListEvalCmd(),
 		formationsShowEvalCmd(),
-		formationsAddEvalCmd(deps),
+		formationsCreateEvalCmd(deps),
 		formationsRemoveEvalCmd(),
 	)
 	return cmd

@@ -391,14 +391,14 @@ func formationModelSources(ctx context.Context, inventories modelInventories) ([
 	return variants, nil
 }
 
-func formationsAddEvalCmd(deps nativeEvalDeps) *cobra.Command {
+func formationsCreateEvalCmd(deps nativeEvalDeps) *cobra.Command {
 	var displayName, description, maxVRAMRaw string
 	var relaxedValidation bool
 	var primaryFlags, assistantFlags, liteFlags *formationRoleFlagSet
 	cmd := &cobra.Command{
-		Use:   "add <formation-id>",
-		Short: "Add or update one formation in the checked-in catalog overlay",
-		Long: `Add a new formation to the catalog, or replace an existing entry with the same
+		Use:   "create <formation-id>",
+		Short: "Create or update one formation in the checked-in catalog overlay",
+		Long: `Create a new formation in the catalog, or replace an existing entry with the same
 ID, writing the change to the project's eval/formation-catalog-overlay.json.
 
 Only the three served tags are required. Each role resolves from the model
@@ -409,19 +409,19 @@ overrides the resolved value; a tag in neither inventory needs its family,
 quantization, and parameter count passed explicitly.
 
 Example:
-  ztd eval formations add my-formation --max-vram 12gb \
+  ztd eval formations create my-formation --max-vram 12gb \
     --primary-tag qwen3.5:9b --assistant-tag ministral-3:3b --lite-tag gemma3:1b`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := strings.TrimSpace(args[0])
 			if id == "" {
-				return fmt.Errorf("evaluation: formations add: %w", constants.ErrMissingRequiredField)
+				return fmt.Errorf("evaluation: formations create: %w", constants.ErrMissingRequiredField)
 			}
 			maxVRAM := evaluation.FormationMaxVRAMMiB
 			if strings.TrimSpace(maxVRAMRaw) != "" {
 				parsed, err := evaluation.ParseVRAMBudgetMiB(maxVRAMRaw)
 				if err != nil {
-					return fmt.Errorf("evaluation: formations add: --max-vram: %w", err)
+					return fmt.Errorf("evaluation: formations create: --max-vram: %w", err)
 				}
 				maxVRAM = parsed
 			}
@@ -431,7 +431,7 @@ Example:
 			}
 			variants, err := formationModelSources(cmd.Context(), newModelInventories(fileSvc, cfg.ProjectRoot))
 			if err != nil {
-				return fmt.Errorf("evaluation: formations add: %w", err)
+				return fmt.Errorf("evaluation: formations create: %w", err)
 			}
 			roles := make(map[evaluation.FormationRole]evaluation.FormationModel, 3)
 			var unresolved []string
@@ -445,7 +445,7 @@ Example:
 			} {
 				model, resolved, err := role.flags.resolve(cmd.Flags(), variants)
 				if err != nil {
-					return fmt.Errorf("evaluation: formations add: %s role: %w", role.role, err)
+					return fmt.Errorf("evaluation: formations create: %s role: %w", role.role, err)
 				}
 				if !resolved {
 					unresolved = append(unresolved, model.ServedModelTag)
@@ -471,9 +471,9 @@ Example:
 			}
 			if err := formation.Validate(); err != nil {
 				if len(unresolved) > 0 {
-					return fmt.Errorf("evaluation: formations add: %w (not in the model registry or catalog: %s)", err, strings.Join(unresolved, ", "))
+					return fmt.Errorf("evaluation: formations create: %w (not in the model registry or catalog: %s)", err, strings.Join(unresolved, ", "))
 				}
-				return fmt.Errorf("evaluation: formations add: %w", err)
+				return fmt.Errorf("evaluation: formations create: %w", err)
 			}
 
 			projectRoot, err := resolveProjectRoot(cmd)
@@ -483,25 +483,25 @@ Example:
 			catalog := newFormationCatalog(projectRoot)
 			topologies, err := catalog.topologies()
 			if err != nil {
-				return fmt.Errorf("evaluation: formations add: %w", err)
+				return fmt.Errorf("evaluation: formations create: %w", err)
 			}
 			_, existErr := topologies.Formation(id)
 			existed := existErr == nil
 
 			updated, err := evaluation.AddOrUpdateFormation(topologies, formation)
 			if err != nil {
-				return fmt.Errorf("evaluation: formations add: %w", err)
+				return fmt.Errorf("evaluation: formations create: %w", err)
 			}
 			overlay, err := catalog.overlay()
 			if err != nil {
-				return fmt.Errorf("evaluation: formations add: %w", err)
+				return fmt.Errorf("evaluation: formations create: %w", err)
 			}
 			upsertOverlayFormation(overlay, formation)
 			if err := catalog.save(overlay); err != nil {
-				return fmt.Errorf("evaluation: formations add: %w", err)
+				return fmt.Errorf("evaluation: formations create: %w", err)
 			}
 
-			verb := "Added"
+			verb := "Created"
 			if existed {
 				verb = "Updated"
 			}
