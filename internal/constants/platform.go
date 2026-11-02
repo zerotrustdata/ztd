@@ -18,11 +18,11 @@ const (
 	InferenceMaxOutputTokens int32 = 16_384
 
 	// InferenceJudgeMaxOutputTokens is the default upper bound on evaluation judge
-	// inference output tokens (4k tokens). Judge responses are structured JSON
-	// verdicts that require only a few dozen tokens; bounding output prevents
-	// runaway generation loops from small or degenerate models while leaving ample
-	// room for reasoning/thinking parts.
-	InferenceJudgeMaxOutputTokens int32 = 4_096
+	// inference output tokens. Judge responses are structured JSON verdicts that
+	// require only a few dozen tokens; bounding output prevents runaway generation
+	// loops while leaving ample room for reasoning/thinking models (which can generate
+	// several thousand tokens of reasoning before emitting the verdict).
+	InferenceJudgeMaxOutputTokens int32 = 16_384
 )
 
 // Platform binary names.

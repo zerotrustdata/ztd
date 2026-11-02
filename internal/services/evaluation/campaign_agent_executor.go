@@ -127,7 +127,7 @@ type agentRun struct {
 func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req AssignmentExecutionRequest) (*evalv1.EvaluationAssignmentResult, error) {
 	run, err := e.newRun(req)
 	if err != nil {
-		return nil, assignmentExecutionError("evaluation: prepare assignment run", err)
+		return nil, err
 	}
 	// Residency commands are governed actions with their own receipts, so the
 	// provider is set for this assignment before the ledger sentinel opens.
