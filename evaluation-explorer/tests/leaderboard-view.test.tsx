@@ -371,4 +371,69 @@ describe('LeaderboardView', () => {
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Maximum artifact size in GiB' }), { target: { value: '' } });
     expect(panel.getByRole('link', { name: 'Unknown artifact size' })).toBeInTheDocument();
   });
+
+  it('defaults to v1.7.x and includes all v1.7.0, v1.7.1, v1.7.2, and v1.7.3 models in the leaderboard', () => {
+    const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
+    const makeModel = (variant_id: string, display_name: string, release: string): ModelSummary[] =>
+      MODEL_ROLE_WIRE_ORDER.map((role) => ({
+        ...source,
+        variant_id,
+        display_name,
+        role,
+        release,
+        release_basis: 'recorded' as const,
+        quality_state: 'exploratory_verified' as const,
+        inventory_only: false,
+        evaluation_coverage: 1,
+        parameter_count: 4_000_000_000,
+        latency_p50_ms: { value: 1000 },
+        output_tokens: { value: 100 },
+        pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
+        security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 },
+      }));
+
+    evalStore.loadFixtures([
+      ...makeModel('model-170', 'Model v1.7.0', 'v1.7.0'),
+      ...makeModel('model-171', 'Model v1.7.1', 'v1.7.1'),
+      ...makeModel('model-172', 'Model v1.7.2', 'v1.7.2'),
+      ...makeModel('model-173', 'Model v1.7.3', 'v1.7.3'),
+      ...makeModel('model-160', 'Model v1.6.0', 'v1.6.0'),
+      ...makeModel('model-161', 'Model v1.6.1', 'v1.6.1'),
+    ], []);
+
+    // Render leaderboard with default route (no query param)
+    render(
+      <MemoryRouter initialEntries={['/leaderboard']}>
+        <LeaderboardView />
+      </MemoryRouter>,
+    );
+
+    const selector = screen.getByRole('combobox', { name: 'Filter by release' }) as HTMLSelectElement;
+    expect(selector.value).toBe('v1.7.x');
+
+    const options = Array.from(selector.options).map((opt) => opt.value);
+    expect(options).toEqual(['all', 'v1.7.x', 'v1.6.x']);
+    expect(options).not.toContain('v1.7.0');
+    expect(options).not.toContain('v1.7.1');
+    expect(options).not.toContain('v1.7.2');
+    expect(options).not.toContain('v1.7.3');
+    expect(options).not.toContain('v1.6.0');
+
+    const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+    // All v1.7.0, v1.7.1, v1.7.2, and v1.7.3 models must be included in the leaderboard
+    expect(panel.getByRole('link', { name: 'Model v1.7.0' })).toBeInTheDocument();
+    expect(panel.getByRole('link', { name: 'Model v1.7.1' })).toBeInTheDocument();
+    expect(panel.getByRole('link', { name: 'Model v1.7.2' })).toBeInTheDocument();
+    expect(panel.getByRole('link', { name: 'Model v1.7.3' })).toBeInTheDocument();
+
+    // v1.6.x models must not be included
+    expect(panel.queryByRole('link', { name: 'Model v1.6.0' })).not.toBeInTheDocument();
+    expect(panel.queryByRole('link', { name: 'Model v1.6.1' })).not.toBeInTheDocument();
+
+    // Selecting v1.6.x switches to v1.6.x models
+    fireEvent.change(selector, { target: { value: 'v1.6.x' } });
+    expect(panel.getByRole('link', { name: 'Model v1.6.0' })).toBeInTheDocument();
+    expect(panel.getByRole('link', { name: 'Model v1.6.1' })).toBeInTheDocument();
+    expect(panel.queryByRole('link', { name: 'Model v1.7.0' })).not.toBeInTheDocument();
+  });
 });

@@ -7,7 +7,14 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { evalStore, recordKey } from '../src/state/store';
 import { EvaluationsView } from '../src/views/EvaluationsView';
-import { CURRENT_PLATFORM_RELEASE, defaultViewRelease } from '../src/content/release';
+import {
+  CURRENT_PLATFORM_RELEASE,
+  DEFAULT_LEADERBOARD_RELEASE,
+  defaultViewRelease,
+  isReleaseSeries,
+  matchesRelease,
+  toReleaseSeries,
+} from '../src/content/release';
 import type { SnapshotRecord } from '../src/contract/types';
 import { VIEW_SCHEMA_VERSION } from '../src/contract/types';
 
@@ -80,5 +87,38 @@ describe('defaultViewRelease', () => {
       { release: 'v9.0.0' },
     ])).toBe('v1.10.0');
     expect(defaultViewRelease([])).toBe(CURRENT_PLATFORM_RELEASE);
+  });
+});
+
+describe('release series helpers and matching', () => {
+  it('identifies release series patterns', () => {
+    expect(isReleaseSeries('v1.7.x')).toBe(true);
+    expect(isReleaseSeries('v1.6.x')).toBe(true);
+    expect(isReleaseSeries('1.7.x')).toBe(true);
+    expect(isReleaseSeries('v1.7.X')).toBe(true);
+    expect(isReleaseSeries('v1.7.0')).toBe(false);
+    expect(isReleaseSeries('v1.7.3')).toBe(false);
+    expect(isReleaseSeries('all')).toBe(false);
+  });
+
+  it('converts full versions to release series', () => {
+    expect(toReleaseSeries('v1.7.3')).toBe('v1.7.x');
+    expect(toReleaseSeries('v1.7.0')).toBe('v1.7.x');
+    expect(toReleaseSeries('v1.6.4')).toBe('v1.6.x');
+    expect(toReleaseSeries('1.7.2')).toBe('v1.7.x');
+    expect(toReleaseSeries('v1.7.x')).toBe('v1.7.x');
+    expect(toReleaseSeries('all')).toBe('all');
+    expect(DEFAULT_LEADERBOARD_RELEASE).toBe('v1.7.x');
+  });
+
+  it('matches hotfixed versions beneath a release series', () => {
+    const basis = 'recorded' as const;
+    expect(matchesRelease({ release: 'v1.7.0', release_basis: basis }, 'v1.7.x')).toBe(true);
+    expect(matchesRelease({ release: 'v1.7.1', release_basis: basis }, 'v1.7.x')).toBe(true);
+    expect(matchesRelease({ release: 'v1.7.2', release_basis: basis }, 'v1.7.x')).toBe(true);
+    expect(matchesRelease({ release: 'v1.7.3', release_basis: basis }, 'v1.7.x')).toBe(true);
+    expect(matchesRelease({ release: 'v1.6.0', release_basis: basis }, 'v1.7.x')).toBe(false);
+    expect(matchesRelease({ release: 'v1.8.0', release_basis: basis }, 'v1.7.x')).toBe(false);
+    expect(matchesRelease({ release: 'v1.7.0' }, 'v1.7.x')).toBe(false);
   });
 });

@@ -1,20 +1,40 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
+import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { compareReleasesDescending, CURRENT_PLATFORM_RELEASE } from '../content/release';
+import { compareReleasesDescending, CURRENT_PLATFORM_RELEASE, toReleaseSeries } from '../content/release';
 import { useSelectedRelease } from '../state/dataset';
 import { useStoreState } from '../state/store';
 
-export function ReleaseSelector({ defaultRelease }: { defaultRelease?: string }) {
+export function ReleaseSelector({
+  defaultRelease,
+  seriesOnly,
+}: {
+  defaultRelease?: string;
+  seriesOnly?: boolean;
+}) {
   const [params, setParams] = useSearchParams();
-  const selected = useSelectedRelease(defaultRelease);
-  const releases = useStoreState((state) => Array.from(new Set([
+  const rawSelected = useSelectedRelease(defaultRelease);
+  const selected = seriesOnly ? toReleaseSeries(rawSelected) : rawSelected;
+  const rawReleases = useStoreState((state) => Array.from(new Set([
     CURRENT_PLATFORM_RELEASE,
-    ...(selected === 'all' ? [] : [selected]),
+    ...(rawSelected === 'all' ? [] : [rawSelected]),
     ...Array.from(state.evaluations.values()).flatMap((record) => record.release ? [record.release] : []),
     ...Array.from(state.catalogs.values()).flatMap((record) => record.release ? [record.release] : []),
-  ])).sort(compareReleasesDescending));
+    ...Array.from(state.models.values()).flatMap((record) => record.release ? [record.release] : []),
+  ])));
+
+  const releases = useMemo(() => {
+    if (!seriesOnly) {
+      return [...rawReleases].sort(compareReleasesDescending);
+    }
+    const seriesSet = new Set(rawReleases.map(toReleaseSeries));
+    if (selected !== 'all') {
+      seriesSet.add(selected);
+    }
+    return Array.from(seriesSet).sort(compareReleasesDescending);
+  }, [rawReleases, seriesOnly, selected]);
 
   return (
     <select aria-label="Filter by release" value={selected} onChange={(event) => {
@@ -26,7 +46,7 @@ export function ReleaseSelector({ defaultRelease }: { defaultRelease?: string })
       <option value="all">All releases</option>
       {releases.map((release) => (
         <option key={release} value={release}>
-          {release}{release === CURRENT_PLATFORM_RELEASE ? ' (current)' : ''}
+          {release}{!seriesOnly && release === CURRENT_PLATFORM_RELEASE ? ' (current)' : ''}
         </option>
       ))}
     </select>
