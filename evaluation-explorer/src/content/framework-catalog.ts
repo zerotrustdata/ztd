@@ -878,6 +878,10 @@ const FAMILY_LABELS: Record<string, { family: string; provider: string }> = {
   glm4: { family: "GLM 4", provider: "Zhipu GLM" },
   smollm3: { family: "SmolLM 3", provider: "HuggingFace" },
   lfm2: { family: "LFM2", provider: "Liquid AI" },
+  lfm2moe: { family: "LFM2.5 MoE", provider: "Liquid AI" },
+  minicpm: { family: "MiniCPM", provider: "OpenBMB" },
+  olmo3: { family: "OLMo 3", provider: "Ai2" },
+  spark2_5: { family: "Spark X2.6", provider: "SparkLLM" },
 };
 
 export function formatParameterCount(params?: number): string | undefined {
@@ -1060,6 +1064,9 @@ function inferFamilyKey(variantId: string, displayName: string): string {
   if (lower.includes("granite")) return "granite";
   if (lower.includes("glm")) return "glm4";
   if (lower.includes("smollm")) return "smollm3";
+  if (lower.includes("minicpm")) return "minicpm";
+  if (lower.includes("olmo")) return "olmo3";
+  if (lower.includes("spark")) return "spark2_5";
   if (lower.includes("lfm")) return "lfm2";
   return "general";
 }

@@ -1183,3 +1183,82 @@ func TestDecodeVerdictAndJudgment_EmptyResponseWrapsErrJudgeResponseInvalidWitho
 	assert.NotEqual(t, "EOF", err.Error())
 	assert.Contains(t, err.Error(), "empty judge response")
 }
+
+func TestBuildDispatchRequest_MaxTokensBoundedByDefaultAndConfigurable(t *testing.T) {
+	t.Run("default max tokens", func(t *testing.T) {
+		j := newTestJudge(t, &fakeDispatcher{}, nil)
+		req, _, err := j.buildDispatchRequest(SubjectFinalReply, finalReplyPrompt())
+		require.NoError(t, err)
+		assert.Equal(t, constants.InferenceJudgeMaxOutputTokens, req.GetMaxTokens())
+	})
+
+	t.Run("explicit max tokens", func(t *testing.T) {
+		j := newTestJudge(t, &fakeDispatcher{}, func(cfg *Config) {
+			cfg.MaxTokens = 1024
+		})
+		req, _, err := j.buildDispatchRequest(SubjectFinalReply, finalReplyPrompt())
+		require.NoError(t, err)
+		assert.Equal(t, int32(1024), req.GetMaxTokens())
+	})
+
+	t.Run("capped at platform ceiling", func(t *testing.T) {
+		j := newTestJudge(t, &fakeDispatcher{}, func(cfg *Config) {
+			cfg.MaxTokens = 32_000
+		})
+		req, _, err := j.buildDispatchRequest(SubjectFinalReply, finalReplyPrompt())
+		require.NoError(t, err)
+		assert.Equal(t, constants.InferenceMaxOutputTokens, req.GetMaxTokens())
+	})
+}
+
+func TestDecodeVerdictAndJudgment_TruncatedResponseReportsTokenLimitAndTruncation(t *testing.T) {
+	t.Run("criterion verdict truncated at token limit", func(t *testing.T) {
+		truncatedResult := &operatorv1.InferenceResult{
+			Parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Text{Text: `{"met": true, "rationale": "incomplete string`}},
+			},
+			FinishReason:     "length",
+			CompletionTokens: 16384,
+		}
+
+		met, rationale, err := decodeCriterionVerdict(truncatedResult)
+		require.ErrorIs(t, err, constants.ErrJudgeResponseInvalid)
+		assert.False(t, met)
+		assert.Empty(t, rationale)
+		assert.Contains(t, err.Error(), "generation truncated by token limit")
+		assert.Contains(t, err.Error(), "finish_reason: length")
+		assert.Contains(t, err.Error(), "16384")
+	})
+
+	t.Run("judgment truncated at token limit", func(t *testing.T) {
+		truncatedResult := &operatorv1.InferenceResult{
+			Parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Text{Text: `{"score": 5, "rationale": "incomplete string`}},
+			},
+			FinishReason:     "length",
+			CompletionTokens: 4096,
+		}
+
+		score, rationale, err := decodeJudgment(truncatedResult)
+		require.ErrorIs(t, err, constants.ErrJudgeResponseInvalid)
+		assert.Zero(t, score)
+		assert.Empty(t, rationale)
+		assert.Contains(t, err.Error(), "generation truncated by token limit")
+		assert.Contains(t, err.Error(), "finish_reason: length")
+		assert.Contains(t, err.Error(), "4096")
+	})
+
+	t.Run("criterion verdict truncated json without length finish reason", func(t *testing.T) {
+		truncatedResult := &operatorv1.InferenceResult{
+			Parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_Text{Text: `{"met": true, "rationale": "incomplete string`}},
+			},
+		}
+
+		met, rationale, err := decodeCriterionVerdict(truncatedResult)
+		require.ErrorIs(t, err, constants.ErrJudgeResponseInvalid)
+		assert.False(t, met)
+		assert.Empty(t, rationale)
+		assert.Contains(t, err.Error(), "truncated JSON response")
+	})
+}

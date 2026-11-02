@@ -84,6 +84,39 @@ func TestExecuteNextAssignment_PersistsResultOnRecoverableExecutorFailure(t *tes
 	assert.True(t, exists)
 }
 
+func TestExecuteNextAssignment_PersistsResultOnJudgeFailure(t *testing.T) {
+	files := newCampaignMemoryFileService()
+	store := NewStore(files)
+	executor := &failingCampaignExecutor{
+		message: "evaluation: record content judgments",
+	}
+	controller := NewCampaignController(store, executor, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
+	req := testCampaignInitRequest(t)
+	run, err := controller.InitializeCampaign(context.Background(), req)
+	require.NoError(t, err)
+
+	_, err = controller.ScheduleRun(context.Background(), run.GetRunId())
+	require.NoError(t, err)
+
+	result, executed, err := controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
+		Topology:            testOperatorTopology("inf-session", "data-session"),
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
+	}, req.ScenarioArtifacts)
+	require.NoError(t, err)
+	require.True(t, executed)
+	require.NotNil(t, result)
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED, result.GetLifecycleStatus())
+
+	exists, err := store.AssignmentResultExists(context.Background(), run.GetRunId(), result.GetAssignmentId())
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	assignment, err := store.LoadAssignment(context.Background(), run.GetRunId(), result.GetAssignmentId())
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED, assignment.GetLifecycleStatus())
+}
+
 type rejectingCampaignFeedExporter struct {
 	reject bool
 }

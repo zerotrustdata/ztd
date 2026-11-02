@@ -82,6 +82,9 @@ type Config struct {
 	Observer Observer
 	// Clock times each dispatch for Observer; nil is time.Now.
 	Clock func() time.Time
+	// MaxTokens bounds the output tokens for each judge dispatch.
+	// If <= 0, constants.InferenceJudgeMaxOutputTokens is used.
+	MaxTokens int32
 }
 
 // Observer receives each judgment as it happens. Started gets the score once
@@ -469,11 +472,19 @@ func (j *Judge) buildDispatchRequest(subject Subject, p prompt) (*operatorv1.Inf
 	if err != nil || digest != j.cfg.ModelRegistryDigest {
 		return nil, "", fmt.Errorf("evaluation judge: build request: %w", constants.ErrInferenceModelRegistryInvalid)
 	}
+	maxTokens := j.cfg.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = constants.InferenceJudgeMaxOutputTokens
+	}
+	if maxTokens > constants.InferenceMaxOutputTokens {
+		maxTokens = constants.InferenceMaxOutputTokens
+	}
 	req := &operatorv1.InferenceDispatchRequest{
 		RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
 		Role:                 models.InferenceModelRolePrimary.ToProto(),
 		Model:                j.cfg.Variant.GetServedModelTag(),
 		ModelDigest:          j.cfg.Variant.GetModelDigest(),
+		MaxTokens:            maxTokens,
 		Messages:             p.messages(),
 		ResponseFormat: &operatorv1.InferenceResponseFormat{
 			MediaType:  "application/json",
@@ -600,12 +611,28 @@ func decodeCriterionVerdict(result *operatorv1.InferenceResult) (bool, string, e
 		}
 	}
 	if strings.TrimSpace(text) == "" && strings.TrimSpace(thinking) == "" {
+		if result != nil && result.GetFinishReason() == "length" {
+			return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: empty response (generation truncated by token limit, completion_tokens=%d): %w",
+				result.GetCompletionTokens(), constants.ErrJudgeResponseInvalid)
+		}
 		return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: empty judge response: %w", constants.ErrJudgeResponseInvalid)
 	}
 	if strings.TrimSpace(text) == "" && strings.TrimSpace(thinking) != "" {
+		if result != nil && result.GetFinishReason() == "length" {
+			return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: generation truncated by token limit in thinking (completion_tokens=%d): %w",
+				result.GetCompletionTokens(), constants.ErrJudgeResponseInvalid)
+		}
 		return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: no valid verdict found in judge thinking: %w", constants.ErrJudgeResponseInvalid)
 	}
 	_, err := decodeCriterionVerdictText(text)
+	if result != nil && result.GetFinishReason() == "length" {
+		return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: generation truncated by token limit (finish_reason: length, completion_tokens=%d): %w: %w",
+			result.GetCompletionTokens(), constants.ErrJudgeResponseInvalid, err)
+	}
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: truncated JSON response: %w: %w",
+			constants.ErrJudgeResponseInvalid, err)
+	}
 	return false, "", err
 }
 
@@ -650,12 +677,28 @@ func decodeJudgment(result *operatorv1.InferenceResult) (int, string, error) {
 		}
 	}
 	if strings.TrimSpace(text) == "" && strings.TrimSpace(thinking) == "" {
+		if result != nil && result.GetFinishReason() == "length" {
+			return 0, "", fmt.Errorf("evaluation judge: decode judgment: empty response (generation truncated by token limit, completion_tokens=%d): %w",
+				result.GetCompletionTokens(), constants.ErrJudgeResponseInvalid)
+		}
 		return 0, "", fmt.Errorf("evaluation judge: decode judgment: empty judge response: %w", constants.ErrJudgeResponseInvalid)
 	}
 	if strings.TrimSpace(text) == "" && strings.TrimSpace(thinking) != "" {
+		if result != nil && result.GetFinishReason() == "length" {
+			return 0, "", fmt.Errorf("evaluation judge: decode judgment: generation truncated by token limit in thinking (completion_tokens=%d): %w",
+				result.GetCompletionTokens(), constants.ErrJudgeResponseInvalid)
+		}
 		return 0, "", fmt.Errorf("evaluation judge: decode judgment: no valid judgment found in judge thinking: %w", constants.ErrJudgeResponseInvalid)
 	}
 	_, err := decodeJudgmentText(text)
+	if result != nil && result.GetFinishReason() == "length" {
+		return 0, "", fmt.Errorf("evaluation judge: decode judgment: generation truncated by token limit (finish_reason: length, completion_tokens=%d): %w: %w",
+			result.GetCompletionTokens(), constants.ErrJudgeResponseInvalid, err)
+	}
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		return 0, "", fmt.Errorf("evaluation judge: decode judgment: truncated JSON response: %w: %w",
+			constants.ErrJudgeResponseInvalid, err)
+	}
 	return 0, "", err
 }
 
