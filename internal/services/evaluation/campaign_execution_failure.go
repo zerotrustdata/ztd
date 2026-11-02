@@ -32,6 +32,7 @@ type ExecutionFailureClass string
 
 const (
 	ExecutionFailureProvider     ExecutionFailureClass = "provider_failure"
+	ExecutionFailureGrader       ExecutionFailureClass = "grader_failed"
 	ExecutionFailureTarget       ExecutionFailureClass = "target_unavailable"
 	ExecutionFailurePosture      ExecutionFailureClass = "posture_unsupported"
 	ExecutionFailureEvidence     ExecutionFailureClass = "evidence_unavailable"
@@ -79,6 +80,8 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 		return ExecutionFailureScenarioContract
 	case errors.Is(err, constants.ErrL5ActuatorRehydrate):
 		return ExecutionFailureRehydration
+	case errors.Is(err, constants.ErrEvaluationContentJudgeFailed), errors.Is(err, constants.ErrEvaluationCampaignJudgeInvalid), errors.Is(err, constants.ErrJudgeResponseInvalid):
+		return ExecutionFailureGrader
 	case errors.Is(err, constants.ErrEvaluationModelUnserved), errors.Is(err, constants.ErrInferenceOutcomeUnknown), errors.Is(err, constants.ErrInferenceReceiptFailed),
 		inference.ClassifyAttemptFailure(err) != inference.AttemptFailureInternal:
 		return ExecutionFailureProvider
@@ -129,8 +132,11 @@ func BuildExecutorFailureAssignmentResult(req AssignmentExecutionRequest, execEr
 // traceless result verifies only in exactly this shape.
 func executorFailureAssignmentResult(assignment *evalv1.EvaluationAssignment, class ExecutionFailureClass, failureReason string, completedAt *timestamppb.Timestamp) *evalv1.EvaluationAssignmentResult {
 	lifecycle := evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED
-	if class == ExecutionFailureProvider {
+	switch class {
+	case ExecutionFailureProvider:
 		lifecycle = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED
+	case ExecutionFailureGrader:
+		lifecycle = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED
 	}
 	return &evalv1.EvaluationAssignmentResult{
 		SchemaVersion:   CampaignSchemaVersion,
@@ -161,7 +167,7 @@ const (
 
 // executionFailureClasses is every class ClassifyExecutionFailure can return.
 var executionFailureClasses = []ExecutionFailureClass{
-	ExecutionFailureProvider, ExecutionFailureTarget, ExecutionFailurePosture, ExecutionFailureEvidence, ExecutionFailureHeldContext, ExecutionFailureVerification,
+	ExecutionFailureProvider, ExecutionFailureGrader, ExecutionFailureTarget, ExecutionFailurePosture, ExecutionFailureEvidence, ExecutionFailureHeldContext, ExecutionFailureVerification,
 	ExecutionFailureDispatch, ExecutionFailureInvalidInput, ExecutionFailureScenarioContract, ExecutionFailureRehydration, ExecutionFailureCanceled,
 	ExecutionFailureTimeout, ExecutionFailureInternal,
 }

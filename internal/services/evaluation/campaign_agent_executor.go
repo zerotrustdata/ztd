@@ -185,11 +185,11 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	judgeResident := contentJudgmentsRequired(req, run.trace)
 	if judgeResident {
 		if err := e.releaseAllExceptJudge(ctx, req); err != nil {
-			return nil, err
+			return nil, assignmentExecutionError("evaluation: judge residency", err)
 		}
 	}
 	if err := e.recordContentJudgments(ctx, req, run.trace); err != nil {
-		return nil, err
+		return nil, assignmentExecutionError("evaluation: record content judgments", err)
 	}
 	body, err := SealAgentTrace(run.trace)
 	if err != nil {
@@ -218,12 +218,12 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	}
 	if !judgeResident && e.qualityJudgeRequired(req, run.trace) {
 		if err := e.releaseAllExceptJudge(ctx, req); err != nil {
-			return nil, err
+			return nil, assignmentExecutionError("evaluation: judge residency", err)
 		}
 	}
 	quality, judgeErr := e.scoreWithJudge(ctx, req, run.trace)
 	if judgeErr != nil {
-		return nil, judgeErr
+		return nil, assignmentExecutionError("evaluation: score with judge", judgeErr)
 	}
 	if len(quality.grades) > 0 {
 		result.SemanticGrades = append(result.SemanticGrades, quality.grades...)
@@ -255,7 +255,7 @@ func (e *CampaignAgentExecutor) releaseAllExcept(ctx context.Context, req Assign
 func (e *CampaignAgentExecutor) releaseAllExceptJudge(ctx context.Context, req AssignmentExecutionRequest) error {
 	variant, err := judgeVariant(req)
 	if err != nil {
-		return err
+		return assignmentExecutionError("evaluation: judge residency", err)
 	}
 	return assignmentExecutionError("evaluation: judge residency", e.releaseAllExcept(ctx, req, "judge", []string{variant.GetServedModelTag()}))
 }

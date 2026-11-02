@@ -15,6 +15,7 @@ compatible with the previous release in the same minor series. See `INV-REL-VER-
 
 | Version | Date | Description | Notes |
 |---------|------|-------------|-------|
+| 1.7.3 | 2026-11-02 | Evaluation judge token truncation diagnostics and resilience, Gateway trust bundle caching, legacy grader event publication recovery, model inventory expansion, and Explorer consensus display updates. | [v1.7.3](docs/release_notes/v1.7.x/v1.7.3.md) |
 | 1.7.2 | 2026-11-01 | Process management and signal safeguards, caller PID protection in safe signaling, and evaluation test stability fixes. | [v1.7.2](docs/release_notes/v1.7.x/v1.7.2.md) |
 | 1.7.1 | 2026-11-01 | JIT-LLM inference backend, judge execution resilience, Evaluation Explorer runs display and live streaming fixes, investigation scenario refinements, and filesystem disk profile error handling. | [v1.7.1](docs/release_notes/v1.7.x/v1.7.1.md) |
 | 1.7.0 | 2026-10-30 | Signed judge evidence and live activity, evaluation correctness and model residency, enrollment diagnostics, network probe address restrictions, and release reliability. | [v1.7.0](docs/release_notes/v1.7.x/v1.7.0.md) |

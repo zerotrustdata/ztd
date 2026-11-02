@@ -207,8 +207,8 @@ func (e *CampaignAgentExecutor) executionJudgeConfig(ctx context.Context, req As
 
 // recordContentJudgments asks the pinned judge for one verdict per judged
 // criterion, in declaration order, and records them on the trace before it is
-// sealed. A judge that cannot decide a criterion fails the assignment as a
-// non-recoverable error: the cell is never graded on a missing verdict.
+// sealed. A judge that cannot decide a criterion fails the assignment as an
+// execution failure: the cell is never graded on a missing verdict.
 func (e *CampaignAgentExecutor) recordContentJudgments(ctx context.Context, req AssignmentExecutionRequest, trace *AgentTrace) error {
 	if !contentJudgmentsRequired(req, trace) {
 		return nil

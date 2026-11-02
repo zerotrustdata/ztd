@@ -532,6 +532,16 @@ func (c *CampaignPublicationCoordinator) buildJudgeActivityPublishRequests(ctx c
 	if len(result.GetGraderCalls()) == 0 {
 		return nil, nil
 	}
+	hasRebuildable := false
+	for _, call := range result.GetGraderCalls() {
+		if isRebuildableGraderCall(call) {
+			hasRebuildable = true
+			break
+		}
+	}
+	if !hasRebuildable {
+		return nil, nil
+	}
 	row, err := newJudgeActivityRow(assignment, release, completed, total)
 	if err != nil {
 		return nil, err
@@ -547,6 +557,9 @@ func (c *CampaignPublicationCoordinator) buildJudgeActivityPublishRequests(ctx c
 	positions := judgedGradePositions(result)
 	requests := make([]campaignFeedPublishRequest, 0, len(result.GetGraderCalls()))
 	for _, call := range result.GetGraderCalls() {
+		if !isRebuildableGraderCall(call) {
+			continue
+		}
 		if call.GetJudgeVariantId() != cfg.Variant.GetVariantId() {
 			return nil, fmt.Errorf("evaluation: rebuild judge activity: grader call %s: %w", call.GetGraderCallId(), constants.ErrEvaluationCampaignJudgeInvalid)
 		}
@@ -562,6 +575,13 @@ func (c *CampaignPublicationCoordinator) buildJudgeActivityPublishRequests(ctx c
 		requests = append(requests, request)
 	}
 	return requests, nil
+}
+
+func isRebuildableGraderCall(call *evalv1.GraderModelCallRecord) bool {
+	return call != nil &&
+		call.GetRubricVersion() != "" &&
+		call.GetInferenceResult() != nil &&
+		call.GetReceipt() != nil
 }
 
 // recordedJudgeScore is the score one persisted grader call records, read

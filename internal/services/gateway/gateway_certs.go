@@ -94,6 +94,9 @@ type PKIAuthority struct {
 	// Service certificate for operator-gateway
 	serviceCert tls.Certificate
 
+	// gatewayTrustBundle caches the root + hub + Operator + peer intermediate bundle
+	gatewayTrustBundle []byte
+
 	// operatorLeafTTL is the lifetime of an Operator identity certificate
 	// (config.GatewayConfig.OperatorLeafCertTTL). Set before the Gateway
 	// signs anything; CLI and app leaves keep leafCertValidityDays.
@@ -468,6 +471,7 @@ func (pki *PKIAuthority) generateTrustBundles() error {
 	if err := pki.fileSvc.WriteFile(context.Background(), trustBundleRelPath, hubBundle, constants.PermFilePublic); err != nil {
 		return fmt.Errorf("%s: %w", constants.ErrPKIWriteGatewayBundle, err)
 	}
+	pki.gatewayTrustBundle = append([]byte(nil), hubBundle...)
 
 	// Operator bundle (root + Operator intermediate)
 	operatorBundle := make([]byte, 0, len(rootPEM)+len(operatorPEM))
@@ -501,7 +505,19 @@ func (pki *PKIAuthority) generateTrustBundles() error {
 // GatewayTrustBundle returns the full PEM-encoded gateway trust bundle (root + hub intermediate + Operator intermediate).
 func (pki *PKIAuthority) GatewayTrustBundle() ([]byte, error) {
 	pki.mu.RLock()
-	defer pki.mu.RUnlock()
+	if len(pki.gatewayTrustBundle) > 0 {
+		bundle := append([]byte(nil), pki.gatewayTrustBundle...)
+		pki.mu.RUnlock()
+		return bundle, nil
+	}
+	pki.mu.RUnlock()
+
+	pki.mu.Lock()
+	defer pki.mu.Unlock()
+	if len(pki.gatewayTrustBundle) > 0 {
+		return append([]byte(nil), pki.gatewayTrustBundle...), nil
+	}
+
 	trustBundleRelPath := filepath.Join(constants.PkiDirname, constants.PkiSubdirTrust, constants.PkiFileGatewayBundle)
 	if pki.logger != nil {
 		pki.logger.Debug("GatewayTrustBundle reading", "path", pki.fileSvc.Resolve(trustBundleRelPath), "pki_dir", pki.PKIDir())
@@ -513,6 +529,7 @@ func (pki *PKIAuthority) GatewayTrustBundle() ([]byte, error) {
 		}
 		return nil, err
 	}
+	pki.gatewayTrustBundle = append([]byte(nil), data...)
 	return data, nil
 }
 

@@ -18,10 +18,12 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/agentpersona"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 )
 
 func TestAgentConversation_UsesDesignatedPersonaAndSecurityPrompt(t *testing.T) {
@@ -215,4 +217,97 @@ func TestModelInferenceRecords_FailsClosedOnUnresolvableAssignment(t *testing.T)
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	assert.Nil(t, records)
 	assert.Nil(t, span)
+}
+
+type stubReceiptSentinel struct{}
+
+func (stubReceiptSentinel) Read(context.Context, cases.Executor, string) (*operatorv1.EventReceipt, error) {
+	return &operatorv1.EventReceipt{TransactionId: "receipt-tx"}, nil
+}
+
+type stubToolDispatcher struct{}
+
+func (stubToolDispatcher) WriteWorkspaceFile(context.Context, Target, string, string, string, string, string) error {
+	return nil
+}
+
+func (stubToolDispatcher) DispatchAgentTool(context.Context, Target, string, string, string, string, constants.ActionType, string, []byte) (GovernedToolDispatch, error) {
+	return GovernedToolDispatch{}, nil
+}
+
+type stubInferenceWithJudgeFailure struct {
+	t        testing.TB
+	judgeErr error
+}
+
+func (d *stubInferenceWithJudgeFailure) DispatchInference(_ context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+	d.t.Logf("DispatchInference: model=%s role=%s attempt=%s scenario=%s", req.GetModel(), req.GetRole(), req.GetEvaluationAttemptId(), req.GetScenarioId())
+	if req.GetModel() == DefaultJudgeServedModelTag {
+		if d.judgeErr != nil {
+			return nil, d.judgeErr
+		}
+	}
+	result := &operatorv1.InferenceResult{
+		ProviderAttemptId:   req.GetProviderAttemptId(),
+		RequestedModel:      req.GetModel(),
+		ResultDigest:        "digest-" + req.GetProviderAttemptId(),
+		CampaignId:          req.GetCampaignId(),
+		ModelRegistryDigest: req.GetModelRegistryDigest(),
+		RunId:               req.GetRunId(),
+		AssignmentId:        req.GetAssignmentId(),
+		ScenarioId:          req.GetScenarioId(),
+		Parts: []*operatorv1.InferenceResponsePart{{
+			Part: &operatorv1.InferenceResponsePart_Text{Text: "Model completed work"},
+		}},
+	}
+	return &operatorv1.InferenceDispatchResponse{
+		TransactionId: "tx-" + req.GetProviderAttemptId(),
+		Result:        result,
+		Receipt:       &operatorv1.EventReceipt{ResultSummary: result.GetResultDigest()},
+	}, nil
+}
+
+func (d *stubInferenceWithJudgeFailure) DispatchIntent(_ context.Context, _ *tribunalv1.TribunalIntentRequest) (*tribunalv1.TribunalIntentResult, error) {
+	return nil, nil
+}
+
+type stubMemoryTraceStore struct {
+	saved map[string][]byte
+}
+
+func (s *stubMemoryTraceStore) SaveAssignmentAgentTrace(_ context.Context, runID, assignmentID string, traceBytes []byte) error {
+	if s.saved == nil {
+		s.saved = make(map[string][]byte)
+	}
+	s.saved[runID+":"+assignmentID] = traceBytes
+	return nil
+}
+
+func TestCampaignAgentExecutor_ExecuteAssignment_JudgeFailureIsRecoverable(t *testing.T) {
+	catalog, err := newAgentToolCatalog()
+	require.NoError(t, err)
+	inference := &stubInferenceWithJudgeFailure{t: t, judgeErr: constants.ErrInferenceGenerateFailed}
+	residency := &recordingModelResidency{}
+	traceStore := &stubMemoryTraceStore{}
+	executor := &CampaignAgentExecutor{
+		inference:  inference,
+		residency:  residency,
+		tools:      stubToolDispatcher{},
+		sentinel:   stubReceiptSentinel{},
+		traceStore: traceStore,
+		catalog:    catalog,
+		now:        time.Now,
+		newID:      func(prefix string) string { return prefix + "-test" },
+	}
+	req := heterogeneousLiteRequest(t)
+	req.Assignment.GetHeterogeneous().DesignatedRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
+	req.Binding.JudgeVariant = residencyTestJudge()
+	req.ScenarioGold.ContentCheck = &ScenarioContentCheck{
+		JudgedCriteria: []ScenarioJudgedCriterion{{ID: "crit-1", Statement: "must verify fact"}},
+	}
+
+	_, err = executor.ExecuteAssignment(t.Context(), req)
+	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrEvaluationAssignmentExecutionFailed, "judge failure during ExecuteAssignment must be recoverable so the campaign run continues")
+	require.True(t, isRecoverableAssignmentExecutionError(err))
 }

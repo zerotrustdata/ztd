@@ -26,10 +26,15 @@ import (
 
 type failingCampaignExecutor struct {
 	message string
+	err     error
 }
 
 func (f *failingCampaignExecutor) ExecuteAssignment(_ context.Context, _ AssignmentExecutionRequest) (*evalv1.EvaluationAssignmentResult, error) {
-	return nil, assignmentExecutionError(f.message, fmt.Errorf("injected executor failure"))
+	err := f.err
+	if err == nil {
+		err = fmt.Errorf("injected executor failure")
+	}
+	return nil, assignmentExecutionError(f.message, err)
 }
 
 func TestBuildExecutorFailureAssignmentResult_ClassifiesProviderFailures(t *testing.T) {
@@ -40,6 +45,17 @@ func TestBuildExecutorFailureAssignmentResult_ClassifiesProviderFailures(t *test
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED, result.GetLifecycleStatus())
 	assert.NotEmpty(t, result.GetResultDigest())
 	assert.Equal(t, "Provider request timed out (backend_timeout); no final response was produced.", result.GetPublicFailureReason())
+}
+
+func TestBuildExecutorFailureAssignmentResult_ClassifiesGraderFailures(t *testing.T) {
+	t.Parallel()
+	req := heterogeneousAssignmentExecutionRequest(t, mustHeterogeneousStack(t), testHeterogeneousVariants())
+	result, err := BuildExecutorFailureAssignmentResult(req, fmt.Errorf("evaluation: record content judgments: %w", constants.ErrEvaluationContentJudgeFailed), time.Unix(1_700_000_000, 0).UTC())
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED, result.GetLifecycleStatus())
+	assert.NotEmpty(t, result.GetResultDigest())
+	require.Len(t, result.GetDeterministicGrades(), 1)
+	assert.Equal(t, "assignment execution failed: grader_failed", result.GetDeterministicGrades()[0].GetDetail())
 }
 
 func TestBuildExecutorFailureAssignmentResult_ClassifiesValidationFailures(t *testing.T) {
@@ -82,6 +98,42 @@ func TestExecuteNextAssignment_PersistsResultOnRecoverableExecutorFailure(t *tes
 	exists, err := store.AssignmentResultExists(context.Background(), run.GetRunId(), result.GetAssignmentId())
 	require.NoError(t, err)
 	assert.True(t, exists)
+}
+
+func TestExecuteNextAssignment_PersistsResultOnJudgeFailure(t *testing.T) {
+	files := newCampaignMemoryFileService()
+	store := NewStore(files)
+	executor := &failingCampaignExecutor{
+		message: "evaluation: record content judgments",
+		err:     constants.ErrEvaluationContentJudgeFailed,
+	}
+	controller := NewCampaignController(store, executor, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
+	req := testCampaignInitRequest(t)
+	run, err := controller.InitializeCampaign(context.Background(), req)
+	require.NoError(t, err)
+
+	_, err = controller.ScheduleRun(context.Background(), run.GetRunId())
+	require.NoError(t, err)
+
+	result, executed, err := controller.ExecuteNextAssignment(context.Background(), run.GetRunId(), CampaignExecutionBinding{
+		Topology:            testOperatorTopology("inf-session", "data-session"),
+		ModelRegistryDigest: req.Inventory.RegistryDigest,
+		ModelRegistry:       InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
+	}, req.ScenarioArtifacts)
+	require.NoError(t, err)
+	require.True(t, executed)
+	require.NotNil(t, result)
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED, result.GetLifecycleStatus())
+	require.NotEmpty(t, result.GetDeterministicGrades())
+	assert.Equal(t, "assignment execution failed: grader_failed", result.GetDeterministicGrades()[0].GetDetail())
+
+	exists, err := store.AssignmentResultExists(context.Background(), run.GetRunId(), result.GetAssignmentId())
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	assignment, err := store.LoadAssignment(context.Background(), run.GetRunId(), result.GetAssignmentId())
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED, assignment.GetLifecycleStatus())
 }
 
 type rejectingCampaignFeedExporter struct {
@@ -301,6 +353,9 @@ func TestClassifyExecutionFailure_MapsSentinelsToClosedClasses(t *testing.T) {
 		{name: "inference backend", err: fmt.Errorf("infer: %w", constants.ErrInferenceBackendUnavailable), want: ExecutionFailureProvider},
 		{name: "provider stream error", err: fmt.Errorf("infer: %w", constants.ErrInferenceProviderStreamError), want: ExecutionFailureProvider},
 		{name: "rehydration", err: fmt.Errorf("infer: %w", constants.ErrL5ActuatorRehydrate), want: ExecutionFailureRehydration},
+		{name: "content judge failed", err: fmt.Errorf("judge: %w", constants.ErrEvaluationContentJudgeFailed), want: ExecutionFailureGrader},
+		{name: "campaign judge invalid", err: fmt.Errorf("judge: %w", constants.ErrEvaluationCampaignJudgeInvalid), want: ExecutionFailureGrader},
+		{name: "judge response invalid", err: fmt.Errorf("judge: %w", constants.ErrJudgeResponseInvalid), want: ExecutionFailureGrader},
 		{name: "unrecognized", err: fmt.Errorf("opaque failure"), want: ExecutionFailureInternal},
 	}
 	for _, tt := range tests {

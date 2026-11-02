@@ -541,7 +541,7 @@ export function LiveEventStream({
               <SortHeader label="Result" field="result" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <SortHeader label="Task" field="task" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <SortHeader label="Model" field="model" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-              {showTribunal ? <th scope="col" className="stream-tribunal-header"><span className="sr-only">Tribunal</span></th> : null}
+              {showTribunal ? <th scope="col" className="stream-tribunal-header">Consensus</th> : null}
               {showJudge ? <th scope="col" className="stream-judge-header">Judge</th> : null}
               {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label }) => <SortHeader key={key} className="stream-metric-header" label={label} field={key} sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />)}
               <SortHeader className="stream-time-header" label="Time" field="time" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
