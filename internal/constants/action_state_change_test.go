@@ -31,6 +31,8 @@ func TestActionTypeStateChangeClassification(t *testing.T) {
 		{name: "inference does not change state", action: ActionTypeInference, target: "anything"},
 		{name: "model residency read does not change state", action: ActionTypeOllamaModelResidency, target: "anything"},
 		{name: "model release does not change state", action: ActionTypeOllamaModelRelease, target: "anything"},
+		{name: "model pull changes state", action: ActionTypeOllamaModelPull, target: "ollama-model", wantStateChange: true, wantChanges: true},
+		{name: "model copy changes state", action: ActionTypeOllamaModelCopy, target: "ollama-model", wantStateChange: true, wantChanges: true},
 	}
 
 	for _, tt := range tests {

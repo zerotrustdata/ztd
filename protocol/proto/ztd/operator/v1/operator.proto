@@ -1130,6 +1130,37 @@ message OllamaModelReleaseResult {
   string error_type = 4;
 }
 
+// OllamaModelPullRequested downloads one model onto the Operator's Ollama
+// provider. timeout_seconds bounds the whole download; zero applies the
+// platform default (constants.ModelPullDefaultTimeout).
+message OllamaModelPullRequested {
+  string execution_id = 1;
+  string model_tag = 2;
+  int32 timeout_seconds = 3;
+}
+
+message OllamaModelPullResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  string error_message = 3;
+  string error_type = 4;
+}
+
+// OllamaModelCopyRequested aliases an installed model on the Operator's Ollama
+// provider.
+message OllamaModelCopyRequested {
+  string execution_id = 1;
+  string source = 2;
+  string destination = 3;
+}
+
+message OllamaModelCopyResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  string error_message = 3;
+  string error_type = 4;
+}
+
 message FetchLogsResult {
   string execution_id = 1;
   string command = 2;

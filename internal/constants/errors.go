@@ -1417,6 +1417,8 @@ var (
 	ErrInferenceToolSchemaInvalid         = errors.New("inference: tool schema invalid")
 	ErrInferenceEndpointInvalid           = errors.New("inference: provider endpoint invalid")
 	ErrInferenceProviderOllamaRequired    = errors.New("inference: Ollama model pull requires an Inference Operator serving Ollama")
+	ErrOllamaAPI                          = errors.New("ollama api")
+	ErrOllamaPull                         = errors.New("ollama pull")
 	ErrInferenceProviderResponseInvalid   = errors.New("inference: provider response invalid")
 	ErrInferenceProviderStreamError       = errors.New("inference: provider ended the response stream with an error")
 	ErrInferenceGenerationOptionsInvalid  = errors.New("inference: generation options invalid")

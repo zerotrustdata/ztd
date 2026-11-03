@@ -140,6 +140,10 @@ func egressContentFields(payload proto.Message) (fields []*string, class egressC
 		return append(fields, &p.ErrorMessage, &p.ErrorType), egressContent, nil
 	case *operatorv1.OllamaModelReleaseResult:
 		return []*string{&p.ErrorMessage, &p.ErrorType}, egressContent, nil
+	case *operatorv1.OllamaModelPullResult:
+		return []*string{&p.ErrorMessage, &p.ErrorType}, egressContent, nil
+	case *operatorv1.OllamaModelCopyResult:
+		return []*string{&p.ErrorMessage, &p.ErrorType}, egressContent, nil
 	case *operatorv1.FetchLogsResult:
 		return []*string{&p.Command, &p.Stdout, &p.Stderr, &p.Error}, egressContent, nil
 	case *operatorv1.FetchFileDiffResult:
@@ -240,6 +244,10 @@ func egressFailureEvent(outcome constants.EventType, payload proto.Message) cons
 		return constants.Event.Operator.OllamaModelResidency.Failed
 	case *operatorv1.OllamaModelReleaseResult:
 		return constants.Event.Operator.OllamaModelRelease.Failed
+	case *operatorv1.OllamaModelPullResult:
+		return constants.Event.Operator.OllamaModelPull.Failed
+	case *operatorv1.OllamaModelCopyResult:
+		return constants.Event.Operator.OllamaModelCopy.Failed
 	default:
 		return ""
 	}

@@ -1154,4 +1154,21 @@ func TestResultDeadline(t *testing.T) {
 	t.Run("other actions keep the default", func(t *testing.T) {
 		assert.Equal(t, DispatchTimeout, resultDeadline(constants.ActionTypeFileEdit, commandPayload(t, 86400)))
 	})
+
+	pullPayload := func(t *testing.T, timeoutSeconds int32) []byte {
+		t.Helper()
+		payload, err := proto.Marshal(&operatorv1.OllamaModelPullRequested{ModelTag: "qwen3.5:4b", TimeoutSeconds: timeoutSeconds})
+		require.NoError(t, err)
+		return payload
+	}
+
+	t.Run("model pull waits for its own timeout", func(t *testing.T) {
+		got := resultDeadline(constants.ActionTypeOllamaModelPull, pullPayload(t, 3600))
+		assert.Equal(t, time.Hour+DispatchTimeout, got)
+	})
+
+	t.Run("model pull without timeout waits for the pull default", func(t *testing.T) {
+		got := resultDeadline(constants.ActionTypeOllamaModelPull, pullPayload(t, 0))
+		assert.Equal(t, constants.ModelPullDefaultTimeout+DispatchTimeout, got)
+	})
 }

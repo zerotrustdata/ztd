@@ -13,8 +13,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,11 +29,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/cli/stream"
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/ollama"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
-	"github.com/zerotrustdata/ztd/internal/services/inference"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 )
@@ -85,118 +80,10 @@ func Cmd() *cobra.Command {
 		operatorDeploymentStateCmd(),
 		operatorGatewayPreflightCmd(),
 		operatorStreamCmd(),
-		operatorModelCmd(),
 		operatorDeployHostCmd(),
 	)
 
 	return cmd
-}
-
-func operatorModelCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "model", Hidden: true}
-	cmd.PersistentFlags().String(operatorModelOllamaEndpointFlag, "", "Ollama provider endpoint for model maintenance (default: ZTD_OLLAMA_ENDPOINT; required, e.g. http://127.0.0.1:11434)")
-	cmd.AddCommand(
-		operatorModelPullCmd(),
-		operatorModelCopyCmd(),
-		operatorModelInventoryCmd(),
-	)
-	return cmd
-}
-
-const operatorModelOllamaEndpointFlag = "inference-ollama-endpoint"
-
-// operatorOllamaEndpoint resolves the Ollama provider endpoint from the model
-// maintenance persistent flag, else ZTD_OLLAMA_ENDPOINT. It fails closed when
-// both are blank.
-func operatorOllamaEndpoint(cmd *cobra.Command) (string, error) {
-	raw, err := cmd.Flags().GetString(operatorModelOllamaEndpointFlag)
-	if err != nil {
-		return "", fmt.Errorf("operator: model maintenance: %w", err)
-	}
-	endpoint := config.InferenceOllamaEndpoint(raw, "")
-	if endpoint == "" {
-		return "", fmt.Errorf("operator: model maintenance: %w", constants.ErrInferenceEndpointInvalid)
-	}
-	return endpoint, nil
-}
-
-func operatorModelPullCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:    "pull <model>",
-		Hidden: true,
-		Args:   cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			endpoint, err := operatorOllamaEndpoint(cmd)
-			if err != nil {
-				return err
-			}
-			base, err := url.Parse(endpoint)
-			if err != nil {
-				return fmt.Errorf("operator: pull model: %w", err)
-			}
-			client := ollama.NewClient(base, &http.Client{
-				Timeout:   inference.ProviderRequestTimeout,
-				Transport: httpclient.NewIPv4Transport(nil),
-			})
-			if err := client.Pull(cmd.Context(), args[0], nil); err != nil {
-				return fmt.Errorf("operator: pull model: %w", err)
-			}
-			return nil
-		},
-	}
-}
-
-func operatorModelCopyCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:    "copy <source> <destination>",
-		Hidden: true,
-		Args:   cobra.ExactArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			endpoint, err := operatorOllamaEndpoint(cmd)
-			if err != nil {
-				return err
-			}
-			base, err := url.Parse(endpoint)
-			if err != nil {
-				return fmt.Errorf("operator: copy model: %w", err)
-			}
-			client := ollama.NewClient(base, &http.Client{
-				Timeout:   inference.ProviderRequestTimeout,
-				Transport: httpclient.NewIPv4Transport(nil),
-			})
-			if err := client.Copy(cmd.Context(), args[0], args[1]); err != nil {
-				return fmt.Errorf("operator: copy model: %w", err)
-			}
-			return nil
-		},
-	}
-}
-
-func operatorModelInventoryCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:    "inventory",
-		Hidden: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			endpoint, err := operatorOllamaEndpoint(cmd)
-			if err != nil {
-				return err
-			}
-			backend, err := inference.NewOllamaBackend(endpoint, slog.Default())
-			if err != nil {
-				return fmt.Errorf("operator: model inventory: %w", err)
-			}
-			entries, err := backend.ListProviderModelInventory(cmd.Context())
-			if err != nil {
-				return fmt.Errorf("operator: model inventory: %w", err)
-			}
-			payload, err := json.Marshal(entries)
-			if err != nil {
-				return fmt.Errorf("operator: model inventory: %w", err)
-			}
-			_, err = fmt.Fprintln(cmd.OutOrStdout(), string(payload))
-			return err
-		},
-	}
 }
 
 func operatorListCmd() *cobra.Command {

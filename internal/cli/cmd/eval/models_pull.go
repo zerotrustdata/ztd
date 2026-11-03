@@ -8,6 +8,7 @@
 package eval
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -21,9 +22,9 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-// intakeVariants presents pull metadata as model variants so the shared
-// selector can choose among them.
-func intakeVariants(models []evaluation.RolloutIntakeModel) []*evalv1.ModelVariant {
+// pullCatalogVariants presents pull catalog entries as model variants so the
+// shared selector can choose among them.
+func pullCatalogVariants(models []evaluation.ModelPullEntry) []*evalv1.ModelVariant {
 	variants := make([]*evalv1.ModelVariant, 0, len(models))
 	for _, model := range models {
 		parameterCount, err := evaluation.ParseParameterCount(model.ParameterCount)
@@ -50,7 +51,7 @@ func modelsPullCmd(deps nativeEvalDeps) *cobra.Command {
 		Short: "Pull models onto the inference provider through the governed Inference Operator",
 		Long: `Pull models through the governed Inference Operator and apply their canonical aliases.
 
-Pull metadata comes from eval/rollout-intake-hf.json. With --formations the
+Pull metadata comes from eval/model-pull-catalog.json. With --formations the
 sovereign ExecutionTopologies served tags are pulled instead.
 
 Examples:
@@ -66,14 +67,14 @@ Examples:
 			if err != nil {
 				return err
 			}
-			catalogPath := filepath.Join(cfg.ProjectRoot, evaluation.DefaultRolloutIntakeCatalogRelPath)
+			catalogPath := filepath.Join(cfg.ProjectRoot, evaluation.DefaultModelPullCatalogRelPath)
 			var variantIDs []string
 			if !formations {
-				catalog, err := evaluation.LoadRolloutIntakeCatalog(catalogPath)
+				catalog, err := evaluation.LoadModelPullCatalog(catalogPath)
 				if err != nil {
 					return fmt.Errorf("evaluation: models pull: %w", err)
 				}
-				selected, err := selector.Resolve(intakeVariants(catalog.Models))
+				selected, err := selector.Resolve(pullCatalogVariants(catalog.Models))
 				if err != nil {
 					return fmt.Errorf("evaluation: models pull: %w", err)
 				}
@@ -85,22 +86,19 @@ Examples:
 			if err != nil {
 				return fmt.Errorf("evaluation: models pull: %w", err)
 			}
-			if err := env.requireOllamaPullEnvironment(); err != nil {
+			if err := evaluation.RequireOllamaInferenceOperator(env.operators, env.Maintenance.TargetOperatorSessionID); err != nil {
 				return fmt.Errorf("evaluation: models pull: %w", err)
 			}
-			env.Maintenance.Timeout = timeout
-			req := evaluation.RolloutIntakeStageRequest{
-				Context:            cmd.Context(),
+			req := evaluation.ModelPullRequest{
 				CatalogPath:        catalogPath,
-				PullTimeout:        timeout,
+				Timeout:            timeout,
 				VariantIDs:         variantIDs,
 				DryRun:             dryRun,
 				Dispatcher:         env.ModelDispatcher,
 				InferenceSessionID: env.Maintenance.TargetOperatorSessionID,
-				Environment:        env.Maintenance.Environment,
 				NewID:              env.Maintenance.NewID,
 				CaseID:             "eval-models-pull",
-				Progress: func(event evaluation.RolloutIntakeStageEvent) {
+				Progress: func(event evaluation.ModelPullEvent) {
 					if output.JSONEnabled(cmd) {
 						return
 					}
@@ -109,17 +107,18 @@ Examples:
 						target = event.VariantID
 					}
 					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s %s: %s", target, event.Action, event.Status)
-					if strings.TrimSpace(event.Detail) != "" && event.Action != "pull" {
+					showDetail := event.Action != evaluation.ModelPullActionPull || event.Status == evaluation.ModelPullStatusFailed
+					if strings.TrimSpace(event.Detail) != "" && showDetail {
 						_, _ = fmt.Fprintf(cmd.OutOrStdout(), " (%s)", event.Detail)
 					}
 					_, _ = fmt.Fprintln(cmd.OutOrStdout())
 				},
 			}
-			var result *evaluation.RolloutIntakeStageResult
+			var result *evaluation.ModelPullResult
 			if formations {
-				result, err = evaluation.StageFormationCatalogIntake(req)
+				result, err = evaluation.PullFormationModels(cmd.Context(), req)
 			} else {
-				result, err = evaluation.StageRolloutIntake(req)
+				result, err = evaluation.PullCatalogModels(cmd.Context(), req)
 			}
 			if err != nil {
 				return fmt.Errorf("evaluation: models pull: %w", err)
@@ -141,13 +140,17 @@ Examples:
 				_, _ = fmt.Fprintf(out, "Failed %s: %s\n", failure.ServedModelTag, failure.Err)
 			}
 			if len(result.Failed) > 0 {
-				return fmt.Errorf("evaluation: models pull: %d model(s) failed", len(result.Failed))
+				causes := make([]error, 0, len(result.Failed))
+				for _, failure := range result.Failed {
+					causes = append(causes, failure.Cause)
+				}
+				return fmt.Errorf("evaluation: models pull: %d model(s) failed: %w", len(result.Failed), errors.Join(causes...))
 			}
 			_, err = fmt.Fprintln(out, "\nNext, bind the registry to the pulled digests with:\nztd eval models freeze")
 			return err
 		},
 	}
-	cmd.Flags().DurationVar(&timeout, "timeout", evaluation.DefaultRolloutIntakePullTimeout(), "Maximum time to wait for each pull")
+	cmd.Flags().DurationVar(&timeout, "timeout", constants.ModelPullDefaultTimeout, "Maximum time to wait for each pull")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Print the pull plan without pulling")
 	cmd.Flags().BoolVar(&formations, "formations", false, "Pull the sovereign ExecutionTopologies served tags")
 	selector.bindFlags(cmd)

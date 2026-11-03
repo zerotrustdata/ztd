@@ -29,19 +29,6 @@ type governedModelMaintenanceEnv struct {
 	operators []*operatorv1.OperatorDocument
 }
 
-// requireOllamaPullEnvironment sets the Ollama endpoint the `ztd operator
-// model` pull and copy commands read. Inventory, residency, and release are
-// typed commands the Operator serves from its own provider and need none; only
-// pulls require the selected Inference Operator to serve Ollama.
-func (e *governedModelMaintenanceEnv) requireOllamaPullEnvironment() error {
-	endpoint, err := evaluation.GovernedInferenceOllamaEndpoint(e.operators, e.Maintenance.TargetOperatorSessionID)
-	if err != nil {
-		return err
-	}
-	e.Maintenance.Environment = modelCommandEnvironment(endpoint)
-	return nil
-}
-
 // resolveGovernedModelMaintenance targets provider maintenance at the inference
 // operator.
 func resolveGovernedModelMaintenance(cmd *cobra.Command, deps nativeEvalDeps) (governedModelMaintenanceEnv, error) {

@@ -176,6 +176,8 @@ func egressResultPayloadTypes() map[string]struct {
 		"OllamaModelInventoryResult":           {&operatorv1.OllamaModelInventoryResult{}, egressContent},
 		"OllamaModelResidencyResult":           {&operatorv1.OllamaModelResidencyResult{}, egressContent},
 		"OllamaModelReleaseResult":             {&operatorv1.OllamaModelReleaseResult{}, egressContent},
+		"OllamaModelPullResult":                {&operatorv1.OllamaModelPullResult{}, egressContent},
+		"OllamaModelCopyResult":                {&operatorv1.OllamaModelCopyResult{}, egressContent},
 		"FetchLogsResult":                      {&operatorv1.FetchLogsResult{}, egressContent},
 		"FetchFileDiffResult":                  {&operatorv1.FetchFileDiffResult{}, egressContent},
 		"FetchHistoryResult":                   {&operatorv1.FetchHistoryResult{}, egressContent},

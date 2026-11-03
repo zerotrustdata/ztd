@@ -30,27 +30,6 @@ func ValidateServedModelTag(modelTag string) error {
 	return nil
 }
 
-// OllamaPullCommand returns the embedded-client model-pull command for one
-// validated served model tag.
-func OllamaPullCommand(modelTag string) (string, error) {
-	if err := ValidateServedModelTag(modelTag); err != nil {
-		return "", err
-	}
-	return constants.BinaryImageName + " operator model pull " + modelTag, nil
-}
-
-// OllamaCopyCommand returns the embedded-client model-copy command for one
-// validated source and destination served model tag pair.
-func OllamaCopyCommand(source, destination string) (string, error) {
-	if err := ValidateServedModelTag(source); err != nil {
-		return "", err
-	}
-	if err := ValidateServedModelTag(destination); err != nil {
-		return "", err
-	}
-	return constants.BinaryImageName + " operator model copy " + source + " " + destination, nil
-}
-
 // ValidateWitnessCommand rejects generic command execution on read-only witness
 // operators. Their narrowly scoped observation handlers remain available.
 func ValidateWitnessCommand(capabilities constants.OperatorCapabilities, command string) error {

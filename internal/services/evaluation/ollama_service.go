@@ -10,6 +10,7 @@ package evaluation
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"slices"
 	"strings"
@@ -19,6 +20,8 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
+	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -28,11 +31,7 @@ import (
 type OllamaModelCommandDispatchRequest struct {
 	TargetOperatorSessionID string
 	ActionType              constants.ActionType
-	Command                 string
 	Payload                 []byte
-	Environment             map[string]string
-	WorkingDirectory        string
-	TimeoutSeconds          int32
 	ExecutionID             string
 	CaseID                  string
 	InvestigationID         string
@@ -45,10 +44,11 @@ type OllamaModelCommandDispatchResult struct {
 	Status          int
 	Success         bool
 	ActionType      constants.ActionType
-	CommandResult   *operatorv1.CommandResult
 	InventoryResult *operatorv1.OllamaModelInventoryResult
 	ResidencyResult *operatorv1.OllamaModelResidencyResult
 	ReleaseResult   *operatorv1.OllamaModelReleaseResult
+	PullResult      *operatorv1.OllamaModelPullResult
+	CopyResult      *operatorv1.OllamaModelCopyResult
 	ResponseBody    []byte
 }
 
@@ -56,37 +56,6 @@ type OllamaModelCommandDispatchResult struct {
 // one exact Operator session.
 type OllamaModelCommandDispatcher interface {
 	DispatchOllamaModelCommand(context.Context, OllamaModelCommandDispatchRequest) (*OllamaModelCommandDispatchResult, error)
-}
-
-// ValidateOllamaModelCommandResult validates the HTTP and Operator result for
-// one EXECUTE_BASH model maintenance command.
-func ValidateOllamaModelCommandResult(command string, result *OllamaModelCommandDispatchResult) error {
-	if result == nil {
-		return fmt.Errorf("%w: Ollama model command %q returned no result", constants.ErrEvaluationDispatchFailed, command)
-	}
-	if result.Status != http.StatusOK || !result.Success {
-		return fmt.Errorf("%w: Ollama model command %q rejected with status %d", constants.ErrEvaluationDispatchFailed, command, result.Status)
-	}
-	if result.CommandResult == nil {
-		return fmt.Errorf("%w: Ollama model command %q missing command result", constants.ErrEvaluationDispatchFailed, command)
-	}
-	if result.CommandResult.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-		return fmt.Errorf("%w: Ollama model command %q failed: %s", constants.ErrEvaluationDispatchFailed, command, result.CommandResult.GetError())
-	}
-	if result.CommandResult.GetReturnCode() != 0 {
-		if cause := lastOutputLine(result.CommandResult.GetStderr()); cause != "" {
-			return fmt.Errorf("%w: Ollama model command %q exited with code %d: %s", constants.ErrEvaluationDispatchFailed, command, result.CommandResult.GetReturnCode(), cause)
-		}
-		return fmt.Errorf("%w: Ollama model command %q exited with code %d", constants.ErrEvaluationDispatchFailed, command, result.CommandResult.GetReturnCode())
-	}
-	return nil
-}
-
-// lastOutputLine returns the final non-empty line of command output, where the
-// ztd CLI writes the error that ended the command.
-func lastOutputLine(output string) string {
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-	return strings.TrimSpace(lines[len(lines)-1])
 }
 
 // ValidateOllamaModelInventoryResult validates the HTTP and Operator result
@@ -146,22 +115,63 @@ func ValidateOllamaModelReleaseResult(result *OllamaModelCommandDispatchResult) 
 	return nil
 }
 
-// MarshalOllamaModelCommandPayload builds the typed EXECUTE_BASH payload for
-// one unscored model maintenance command.
-func MarshalOllamaModelCommandPayload(request OllamaModelCommandDispatchRequest) ([]byte, error) {
-	if request.Command == "" || request.ExecutionID == "" {
-		return nil, fmt.Errorf("%w: model command and execution ID are required", constants.ErrMissingRequiredField)
+// validateOllamaModelMutation validates the HTTP and Operator result of a pull
+// or copy. A FAILED result is the Operator's own typed failure, so it wraps
+// ErrActionExecutionFailed as well.
+func validateOllamaModelMutation(operation string, result *OllamaModelCommandDispatchResult, present bool, status operatorv1.ExecutionStatus, errorMessage, errorType string) error {
+	if result == nil {
+		return fmt.Errorf("%w: Ollama model %s returned no result", constants.ErrEvaluationDispatchFailed, operation)
 	}
-	payload, err := proto.Marshal(&operatorv1.CommandRequested{
-		Command:          request.Command,
-		ExecutionId:      request.ExecutionID,
-		Justification:    "evaluation campaign model maintenance",
-		Environment:      request.Environment,
-		WorkingDirectory: request.WorkingDirectory,
-		TimeoutSeconds:   request.TimeoutSeconds,
-	})
+	if result.Status != http.StatusOK || !result.Success {
+		return fmt.Errorf("%w: Ollama model %s rejected with status %d", constants.ErrEvaluationDispatchFailed, operation, result.Status)
+	}
+	if !present {
+		return fmt.Errorf("%w: Ollama model %s missing typed result", constants.ErrEvaluationDispatchFailed, operation)
+	}
+	if status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
+		return fmt.Errorf("%w: %w: Ollama model %s failed (%s): %s", constants.ErrEvaluationDispatchFailed, constants.ErrActionExecutionFailed, operation, errorType, errorMessage)
+	}
+	return nil
+}
+
+// ValidateOllamaModelPullResult validates one typed pull result.
+func ValidateOllamaModelPullResult(result *OllamaModelCommandDispatchResult) error {
+	if result == nil {
+		return validateOllamaModelMutation("pull", nil, false, 0, "", "")
+	}
+	pull := result.PullResult
+	return validateOllamaModelMutation("pull", result, pull != nil, pull.GetStatus(), pull.GetErrorMessage(), pull.GetErrorType())
+}
+
+// ValidateOllamaModelCopyResult validates one typed copy result.
+func ValidateOllamaModelCopyResult(result *OllamaModelCommandDispatchResult) error {
+	if result == nil {
+		return validateOllamaModelMutation("copy", nil, false, 0, "", "")
+	}
+	modelCopy := result.CopyResult
+	return validateOllamaModelMutation("copy", result, modelCopy != nil, modelCopy.GetStatus(), modelCopy.GetErrorMessage(), modelCopy.GetErrorType())
+}
+
+// MarshalOllamaModelPullPayload builds the typed pull payload.
+func MarshalOllamaModelPullPayload(executionID, modelTag string, timeoutSeconds int32) ([]byte, error) {
+	if executionID == "" || modelTag == "" {
+		return nil, fmt.Errorf("%w: execution ID and model tag are required", constants.ErrMissingRequiredField)
+	}
+	payload, err := proto.Marshal(&operatorv1.OllamaModelPullRequested{ExecutionId: executionID, ModelTag: modelTag, TimeoutSeconds: timeoutSeconds})
 	if err != nil {
-		return nil, fmt.Errorf("%w: marshal Ollama model command: %v", constants.ErrEvaluationDispatchFailed, err)
+		return nil, fmt.Errorf("%w: marshal Ollama model pull: %w", constants.ErrEvaluationDispatchFailed, err)
+	}
+	return payload, nil
+}
+
+// MarshalOllamaModelCopyPayload builds the typed copy payload.
+func MarshalOllamaModelCopyPayload(executionID, source, destination string) ([]byte, error) {
+	if executionID == "" || source == "" || destination == "" {
+		return nil, fmt.Errorf("%w: execution ID, source, and destination are required", constants.ErrMissingRequiredField)
+	}
+	payload, err := proto.Marshal(&operatorv1.OllamaModelCopyRequested{ExecutionId: executionID, Source: source, Destination: destination})
+	if err != nil {
+		return nil, fmt.Errorf("%w: marshal Ollama model copy: %w", constants.ErrEvaluationDispatchFailed, err)
 	}
 	return payload, nil
 }
@@ -219,65 +229,19 @@ func (c OllamaModelMaintenanceContext) validate() error {
 	return nil
 }
 
-func (c OllamaModelMaintenanceContext) timeoutSeconds() int32 {
-	if c.Timeout <= 0 {
-		return int32(inference.ProviderRequestTimeout / time.Second)
+// pullTimeoutSeconds returns the deadline of one model pull in the whole seconds
+// the request carries. Zero selects constants.ModelPullDefaultTimeout. Any other
+// value that does not fit is refused: under one second truncates to zero, which
+// the Operator reads as no timeout named, and past int32 the conversion wraps.
+func pullTimeoutSeconds(timeout time.Duration) (int32, error) {
+	if timeout == 0 {
+		timeout = constants.ModelPullDefaultTimeout
 	}
-	seconds := int32(c.Timeout / time.Second)
-	if seconds <= 0 {
-		return 1
+	seconds := timeout / time.Second
+	if seconds < 1 || seconds > math.MaxInt32 {
+		return 0, fmt.Errorf("model pull timeout %s is not between 1s and %d seconds: %w", timeout, math.MaxInt32, constants.ErrEvaluationFlagsInvalid)
 	}
-	return seconds
-}
-
-func dispatchOllamaBashCommand(
-	ctx context.Context,
-	dispatcher OllamaModelCommandDispatcher,
-	maintenance OllamaModelMaintenanceContext,
-	command string,
-	investigationID string,
-	executionPrefix string,
-) error {
-	if dispatcher == nil {
-		return fmt.Errorf("evaluation: Ollama model maintenance: %w", constants.ErrMissingRequiredField)
-	}
-	if err := maintenance.validate(); err != nil {
-		return err
-	}
-	caseID := strings.TrimSpace(maintenance.CaseID)
-	if caseID == "" {
-		caseID = constants.ProviderModelMaintenanceCaseID
-	}
-	executionID := maintenance.NewID(executionPrefix)
-	payload, err := MarshalOllamaModelCommandPayload(OllamaModelCommandDispatchRequest{
-		Command:        command,
-		ExecutionID:    executionID,
-		Environment:    maintenance.Environment,
-		TimeoutSeconds: maintenance.timeoutSeconds(),
-	})
-	if err != nil {
-		return err
-	}
-	request := OllamaModelCommandDispatchRequest{
-		TargetOperatorSessionID: maintenance.TargetOperatorSessionID,
-		ActionType:              constants.ActionTypeExecuteBash,
-		Command:                 command,
-		Payload:                 payload,
-		Environment:             maintenance.Environment,
-		TimeoutSeconds:          maintenance.timeoutSeconds(),
-		ExecutionID:             executionID,
-		CaseID:                  caseID,
-		InvestigationID:         investigationID,
-		TaskID:                  maintenance.NewID(executionPrefix + "-task"),
-	}
-	result, err := dispatcher.DispatchOllamaModelCommand(ctx, request)
-	if err != nil {
-		return fmt.Errorf("evaluation: Ollama model maintenance: %w", err)
-	}
-	if err := ValidateOllamaModelCommandResult(command, result); err != nil {
-		return fmt.Errorf("evaluation: Ollama model maintenance: %w", err)
-	}
-	return nil
+	return int32(seconds), nil
 }
 
 func dispatchOllamaTypedQuery(
@@ -304,8 +268,6 @@ func dispatchOllamaTypedQuery(
 		TargetOperatorSessionID: maintenance.TargetOperatorSessionID,
 		ActionType:              actionType,
 		Payload:                 payload,
-		Environment:             maintenance.Environment,
-		TimeoutSeconds:          maintenance.timeoutSeconds(),
 		ExecutionID:             executionID,
 		CaseID:                  caseID,
 		InvestigationID:         investigationID,
@@ -322,22 +284,48 @@ func dispatchOllamaTypedQuery(
 }
 
 // PullOllamaModel downloads one model tag through the exact Inference Operator.
+// The maintenance timeout bounds the download on the Operator. This dispatch
+// waits that long plus the approval TTL and the governed round trip, so the
+// Operator's typed result arrives before the wait ends.
 func PullOllamaModel(ctx context.Context, dispatcher OllamaModelCommandDispatcher, maintenance OllamaModelMaintenanceContext, modelTag string) error {
-	command, err := operatorcapability.OllamaPullCommand(modelTag)
+	if err := operatorcapability.ValidateServedModelTag(modelTag); err != nil {
+		return fmt.Errorf("evaluation: pull Ollama model: %w", err)
+	}
+	if err := maintenance.validate(); err != nil {
+		return fmt.Errorf("evaluation: pull Ollama model: %w", err)
+	}
+	seconds, err := pullTimeoutSeconds(maintenance.Timeout)
 	if err != nil {
 		return fmt.Errorf("evaluation: pull Ollama model: %w", err)
 	}
-	err = dispatchOllamaBashCommand(ctx, dispatcher, maintenance, command, constants.ProviderModelPullInvestigationID, "ollama-pull")
+	executionID := maintenance.NewID("ollama-pull")
+	payload, err := MarshalOllamaModelPullPayload(executionID, modelTag, seconds)
+	if err != nil {
+		return fmt.Errorf("evaluation: pull Ollama model: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(seconds)*time.Second+mcp.ApprovalRequestTTL+dispatch.RequestDeadline)
+	defer cancel()
+	_, err = dispatchOllamaTypedQuery(ctx, dispatcher, maintenance, constants.ActionTypeOllamaModelPull, payload, constants.ProviderModelPullInvestigationID, executionID, ValidateOllamaModelPullResult)
 	return err
 }
 
 // CopyOllamaModel aliases one model tag through the exact Inference Operator.
 func CopyOllamaModel(ctx context.Context, dispatcher OllamaModelCommandDispatcher, maintenance OllamaModelMaintenanceContext, source, destination string) error {
-	command, err := operatorcapability.OllamaCopyCommand(source, destination)
+	if err := operatorcapability.ValidateServedModelTag(source); err != nil {
+		return fmt.Errorf("evaluation: copy Ollama model: %w", err)
+	}
+	if err := operatorcapability.ValidateServedModelTag(destination); err != nil {
+		return fmt.Errorf("evaluation: copy Ollama model: %w", err)
+	}
+	if err := maintenance.validate(); err != nil {
+		return fmt.Errorf("evaluation: copy Ollama model: %w", err)
+	}
+	executionID := maintenance.NewID("ollama-copy")
+	payload, err := MarshalOllamaModelCopyPayload(executionID, source, destination)
 	if err != nil {
 		return fmt.Errorf("evaluation: copy Ollama model: %w", err)
 	}
-	err = dispatchOllamaBashCommand(ctx, dispatcher, maintenance, command, constants.ProviderModelCopyInvestigationID, "ollama-copy")
+	_, err = dispatchOllamaTypedQuery(ctx, dispatcher, maintenance, constants.ActionTypeOllamaModelCopy, payload, constants.ProviderModelCopyInvestigationID, executionID, ValidateOllamaModelCopyResult)
 	return err
 }
 

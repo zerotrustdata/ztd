@@ -1077,6 +1077,72 @@ func TestDispatch_FailedActionsProduceSignedFailures(t *testing.T) {
 	}
 }
 
+// TestDispatch_FailedModelMaintenanceReturnsTypedResultAndSignedFailure drives the
+// path a failed `ztd eval models pull` takes through a real broker and outbound
+// Operator: this Operator serves no provider, so its handler runs and fails.
+func TestDispatch_FailedModelMaintenanceReturnsTypedResultAndSignedFailure(t *testing.T) {
+	const userID, operatorID, sessionID = "user-failed-model", "operator-failed-model", "session-failed-model"
+	infra := setupTestInfrastructure(t, false)
+	seedActiveUser(t, infra, userID)
+	seedInferenceOperator(t, infra, userID, operatorID, sessionID, false)
+	pubKey := startFileEditOperator(t, infra, operatorID, sessionID, testutil.OperatorDir(t))
+	svc := NewDispatchService(infra.Logger, infra.Pubsub, infra.StateRootSvc, infra.Auth, constants.PostureDoctrine, govsvc.NewL1Doctrine(), nil, infra.SignerStore, nil, nil)
+
+	for _, test := range []struct {
+		name      string
+		requested constants.EventType
+		failed    constants.EventType
+		payload   proto.Message
+		decode    func(t *testing.T, payload []byte) (operatorv1.ExecutionStatus, string)
+	}{
+		{
+			name:      "pull",
+			requested: constants.Event.Operator.OllamaModelPull.Requested,
+			failed:    constants.Event.Operator.OllamaModelPull.Failed,
+			payload:   &operatorv1.OllamaModelPullRequested{ExecutionId: "failed-pull", ModelTag: "qwen3:0.6b", TimeoutSeconds: 60},
+			decode: func(t *testing.T, payload []byte) (operatorv1.ExecutionStatus, string) {
+				t.Helper()
+				var result operatorv1.OllamaModelPullResult
+				require.NoError(t, proto.Unmarshal(payload, &result))
+				return result.GetStatus(), result.GetErrorMessage()
+			},
+		},
+		{
+			name:      "copy",
+			requested: constants.Event.Operator.OllamaModelCopy.Requested,
+			failed:    constants.Event.Operator.OllamaModelCopy.Failed,
+			payload:   &operatorv1.OllamaModelCopyRequested{ExecutionId: "failed-copy", Source: "qwen3:0.6b", Destination: "alias:1b"},
+			decode: func(t *testing.T, payload []byte) (operatorv1.ExecutionStatus, string) {
+				t.Helper()
+				var result operatorv1.OllamaModelCopyResult
+				require.NoError(t, proto.Unmarshal(payload, &result))
+				return result.GetStatus(), result.GetErrorMessage()
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			payload, err := proto.Marshal(test.payload)
+			require.NoError(t, err)
+
+			result, err := svc.Dispatch(t.Context(), DispatchRequest{
+				TargetOperatorSessionID: sessionID, EventType: string(test.requested), Payload: payload,
+				TargetResource: "ollama-model", RequestorUserID: userID,
+			})
+
+			require.NoError(t, err, "a handler failure is a result, not a transport error")
+			assert.Equal(t, string(test.failed), result.ResultEnvelope.GetEventType())
+			status, message := test.decode(t, result.ResultEnvelope.GetPayload())
+			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, status)
+			assert.Contains(t, message, constants.ErrInferenceBackendUnavailable.Error())
+			require.NotNil(t, result.Receipt)
+			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Receipt.GetStatus())
+			assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE, result.Receipt.GetFailureCode())
+			require.NoError(t, govsvc.VerifyEventReceiptSignature(result.Receipt, pubKey))
+			require.NoError(t, govsvc.VerifyReceiptPersistenceAttestation(result.Receipt, pubKey))
+		})
+	}
+}
+
 func TestDispatchController_HandleDispatch_DoctrineProhibitedRequestRejectedBeforeRemoteExecution(t *testing.T) {
 	const (
 		runID      = "run-prohibited-boundary"

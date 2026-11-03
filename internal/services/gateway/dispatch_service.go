@@ -44,27 +44,33 @@ import (
 const DispatchTimeout = 30 * time.Second
 
 // resultDeadline is how long dispatchEnvelope waits for a terminal result when
-// the request sets no explicit Timeout. An EXECUTE_BASH command waits for the
-// execution timeout the Operator applies to it, plus DispatchTimeout as the
-// governed round-trip margin, so a long command such as a model pull is not
+// the request sets no explicit Timeout. An action that carries its own execution
+// timeout (EXECUTE_BASH, OLLAMA_MODEL_PULL) waits that long plus DispatchTimeout
+// as the governed round-trip margin, so a long command or download is not
 // reported as a 504 while it is still running on the Operator.
 func resultDeadline(actionType constants.ActionType, payload []byte) time.Duration {
-	if actionType != constants.ActionTypeExecuteBash {
+	if actionType != constants.ActionTypeExecuteBash && actionType != constants.ActionTypeOllamaModelPull {
 		return DispatchTimeout
 	}
 	decoded, err := governance.DecodePayloadForAction(actionType, payload)
 	if err != nil {
 		return DispatchTimeout
 	}
-	command, ok := decoded.(*operatorv1.CommandRequested)
-	if !ok {
+	switch request := decoded.(type) {
+	case *operatorv1.CommandRequested:
+		seconds := int64(request.GetTimeoutSeconds())
+		if seconds <= 0 {
+			seconds = constants.DefaultCommandExecutionTimeoutSeconds
+		}
+		return time.Duration(seconds)*time.Second + DispatchTimeout
+	case *operatorv1.OllamaModelPullRequested:
+		if seconds := request.GetTimeoutSeconds(); seconds > 0 {
+			return time.Duration(seconds)*time.Second + DispatchTimeout
+		}
+		return constants.ModelPullDefaultTimeout + DispatchTimeout
+	default:
 		return DispatchTimeout
 	}
-	seconds := int64(command.GetTimeoutSeconds())
-	if seconds <= 0 {
-		seconds = constants.DefaultCommandExecutionTimeoutSeconds
-	}
-	return time.Duration(seconds)*time.Second + DispatchTimeout
 }
 
 // InferenceProgressResultBuffer is the in-process results-channel capacity

@@ -40,24 +40,11 @@ func NewGovernedOllamaModelCommandDispatcher(laneClient laneClient, persona clie
 // DispatchOllamaModelCommand sends one maintenance command to the request's
 // exact Operator session and decodes the result payload its action type owns.
 func (d *GovernedOllamaModelCommandDispatcher) DispatchOllamaModelCommand(ctx context.Context, request OllamaModelCommandDispatchRequest) (*OllamaModelCommandDispatchResult, error) {
-	if request.TargetOperatorSessionID == "" || request.ExecutionID == "" {
+	if request.TargetOperatorSessionID == "" || request.ExecutionID == "" || request.ActionType == "" || len(request.Payload) == 0 {
 		return nil, fmt.Errorf("evaluation: Ollama model command dispatch: %w", constants.ErrMissingRequiredField)
 	}
 	actionType := request.ActionType
-	if actionType == "" {
-		actionType = constants.ActionTypeExecuteBash
-	}
 	payload := request.Payload
-	if len(payload) == 0 && actionType == constants.ActionTypeExecuteBash {
-		marshaled, err := MarshalOllamaModelCommandPayload(request)
-		if err != nil {
-			return nil, err
-		}
-		payload = marshaled
-	}
-	if len(payload) == 0 {
-		return nil, fmt.Errorf("evaluation: Ollama model command dispatch: %w", constants.ErrMissingRequiredField)
-	}
 	eventType, err := constants.RequestEventForAction(actionType)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: Ollama model command dispatch: %w", err)
@@ -104,12 +91,20 @@ func (d *GovernedOllamaModelCommandDispatcher) DispatchOllamaModelCommand(ctx co
 			return nil, fmt.Errorf("evaluation: Ollama model command dispatch: decode release result: %w", err)
 		}
 		result.ReleaseResult = releaseResult
-	default:
-		commandResult := &operatorv1.CommandResult{}
-		if err := proto.Unmarshal(resultPayload, commandResult); err != nil {
-			return nil, fmt.Errorf("evaluation: Ollama model command dispatch: decode command result: %w", err)
+	case constants.ActionTypeOllamaModelPull:
+		pullResult := &operatorv1.OllamaModelPullResult{}
+		if err := proto.Unmarshal(resultPayload, pullResult); err != nil {
+			return nil, fmt.Errorf("evaluation: Ollama model command dispatch: decode pull result: %w", err)
 		}
-		result.CommandResult = commandResult
+		result.PullResult = pullResult
+	case constants.ActionTypeOllamaModelCopy:
+		copyResult := &operatorv1.OllamaModelCopyResult{}
+		if err := proto.Unmarshal(resultPayload, copyResult); err != nil {
+			return nil, fmt.Errorf("evaluation: Ollama model command dispatch: decode copy result: %w", err)
+		}
+		result.CopyResult = copyResult
+	default:
+		return nil, fmt.Errorf("evaluation: Ollama model command dispatch: %w: %s", constants.ErrTxUnknownActionType, actionType)
 	}
 	return result, nil
 }

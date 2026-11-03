@@ -10,7 +10,9 @@ package evaluation
 import (
 	"context"
 	"fmt"
+	"math"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,14 +63,7 @@ func (d *recordingOllamaModelCommandDispatcher) DispatchOllamaModelCommand(_ con
 			},
 		}, nil
 	}
-	return &OllamaModelCommandDispatchResult{
-		Status:  200,
-		Success: true,
-		CommandResult: &operatorv1.CommandResult{
-			Status:     operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
-			ReturnCode: d.returnCode,
-		},
-	}, nil
+	return nil, fmt.Errorf("unexpected action %s: %w", request.ActionType, constants.ErrEvaluationDispatchFailed)
 }
 
 func residencyModels(names []string) []*operatorv1.OllamaModelResidencyModel {
@@ -128,8 +123,6 @@ func TestProviderModelResidency_ReleasesEveryResidentModelOutsideRetain(t *testi
 	for _, request := range dispatcher.requests {
 		assert.Equal(t, "inference-session", request.TargetOperatorSessionID)
 		assert.Equal(t, "run-1", request.CaseID, "residency receipts are scoped to the run")
-		assert.Empty(t, request.Command, "residency commands are typed actions, not shell commands")
-		assert.Empty(t, request.Environment, "the Operator serves residency from its own configured provider")
 	}
 	var payload operatorv1.OllamaModelReleaseRequested
 	require.NoError(t, proto.Unmarshal(release.Payload, &payload))
@@ -213,51 +206,165 @@ func TestProviderModelResidency_FailsClosed(t *testing.T) {
 	}
 }
 
-func TestMarshalOllamaModelCommandPayload_CarriesExecutionFields(t *testing.T) {
-	t.Parallel()
-	payload, err := MarshalOllamaModelCommandPayload(OllamaModelCommandDispatchRequest{
-		Command:          "ollama stop qwen3:0.6b",
-		ExecutionID:      "exec-1",
-		Environment:      map[string]string{"ZTD_OLLAMA_ENDPOINT": "http://provider.example:11434"},
-		WorkingDirectory: "/root",
-		TimeoutSeconds:   30,
-	})
-	require.NoError(t, err)
-	var command operatorv1.CommandRequested
-	require.NoError(t, proto.Unmarshal(payload, &command))
-	assert.Equal(t, "ollama stop qwen3:0.6b", command.GetCommand())
-	assert.Equal(t, "exec-1", command.GetExecutionId())
-	assert.Equal(t, map[string]string{"ZTD_OLLAMA_ENDPOINT": "http://provider.example:11434"}, command.GetEnvironment())
-	assert.Equal(t, "/root", command.GetWorkingDirectory())
-	assert.Equal(t, int32(30), command.GetTimeoutSeconds())
+// deadlineOllamaModelCommandDispatcher records each request and the context
+// deadline it was dispatched under, and answers pull and copy as completed.
+type deadlineOllamaModelCommandDispatcher struct {
+	requests []OllamaModelCommandDispatchRequest
+	deadline time.Time
 }
 
-func TestValidateOllamaModelCommandResult_RejectsNonzeroExit(t *testing.T) {
-	t.Parallel()
-	err := ValidateOllamaModelCommandResult("ollama stop qwen3:0.6b", &OllamaModelCommandDispatchResult{
-		Status:  200,
-		Success: true,
-		CommandResult: &operatorv1.CommandResult{
-			Status:     operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
-			ReturnCode: 1,
-		},
-	})
-	require.Error(t, err)
+func (d *deadlineOllamaModelCommandDispatcher) DispatchOllamaModelCommand(ctx context.Context, request OllamaModelCommandDispatchRequest) (*OllamaModelCommandDispatchResult, error) {
+	d.requests = append(d.requests, request)
+	d.deadline, _ = ctx.Deadline()
+	completed := operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED
+	return &OllamaModelCommandDispatchResult{
+		Status:     200,
+		Success:    true,
+		PullResult: &operatorv1.OllamaModelPullResult{Status: completed},
+		CopyResult: &operatorv1.OllamaModelCopyResult{Status: completed},
+	}, nil
 }
 
-func TestValidateOllamaModelCommandResult_NonzeroExitNamesStderrCause(t *testing.T) {
+func TestPullOllamaModel_SendsTypedPullThatOutlivesItsTimeout(t *testing.T) {
 	t.Parallel()
-	err := ValidateOllamaModelCommandResult("ztd operator model pull qwen3:0.6b", &OllamaModelCommandDispatchResult{
-		Status:  200,
-		Success: true,
-		CommandResult: &operatorv1.CommandResult{
-			Status:     operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
-			ReturnCode: 1,
-			Stderr:     "Usage:\n  ztd operator model pull\n\nError: operator: pull model: manifest for \"qwen3:0.6b\" not found\n",
+	dispatcher := &deadlineOllamaModelCommandDispatcher{}
+	maintenance := OllamaModelMaintenanceContext{TargetOperatorSessionID: "session", Timeout: 2 * time.Hour, NewID: func(prefix string) string { return prefix }}
+	before := time.Now()
+
+	require.NoError(t, PullOllamaModel(t.Context(), dispatcher, maintenance, "qwen3:0.6b"))
+
+	require.Len(t, dispatcher.requests, 1)
+	request := dispatcher.requests[0]
+	assert.Equal(t, constants.ActionTypeOllamaModelPull, request.ActionType)
+	var pull operatorv1.OllamaModelPullRequested
+	require.NoError(t, proto.Unmarshal(request.Payload, &pull))
+	assert.Equal(t, "qwen3:0.6b", pull.GetModelTag())
+	assert.Equal(t, int32(7200), pull.GetTimeoutSeconds())
+	assert.Greater(t, dispatcher.deadline.Sub(before), 2*time.Hour, "the dispatch must outwait the Operator's own deadline")
+}
+
+func TestPullOllamaModel_DefaultsToTheModelPullTimeout(t *testing.T) {
+	t.Parallel()
+	dispatcher := &deadlineOllamaModelCommandDispatcher{}
+	maintenance := OllamaModelMaintenanceContext{TargetOperatorSessionID: "session", NewID: func(prefix string) string { return prefix }}
+
+	require.NoError(t, PullOllamaModel(t.Context(), dispatcher, maintenance, "qwen3:0.6b"))
+
+	var pull operatorv1.OllamaModelPullRequested
+	require.NoError(t, proto.Unmarshal(dispatcher.requests[0].Payload, &pull))
+	assert.Equal(t, int32(constants.ModelPullDefaultTimeout/time.Second), pull.GetTimeoutSeconds())
+}
+
+func TestPullOllamaModel_RejectsATimeoutTheRequestCannotCarry(t *testing.T) {
+	t.Parallel()
+	tests := map[string]time.Duration{
+		"negative":            -time.Hour,
+		"under one second":    500 * time.Millisecond,
+		"past int32 seconds":  (math.MaxInt32 + 1) * time.Second,
+		"wraps back positive": (1<<32 + 60) * time.Second,
+	}
+	for name, timeout := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dispatcher := &deadlineOllamaModelCommandDispatcher{}
+			maintenance := OllamaModelMaintenanceContext{TargetOperatorSessionID: "session", Timeout: timeout, NewID: func(prefix string) string { return prefix }}
+
+			require.ErrorIs(t, PullOllamaModel(t.Context(), dispatcher, maintenance, "qwen3:0.6b"), constants.ErrEvaluationFlagsInvalid)
+			assert.Empty(t, dispatcher.requests)
+		})
+	}
+}
+
+func TestPullOllamaModel_CarriesTheTimeoutBounds(t *testing.T) {
+	t.Parallel()
+	tests := map[string]struct {
+		timeout time.Duration
+		want    int32
+	}{
+		"one second":    {timeout: time.Second, want: 1},
+		"largest int32": {timeout: math.MaxInt32 * time.Second, want: math.MaxInt32},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dispatcher := &deadlineOllamaModelCommandDispatcher{}
+			maintenance := OllamaModelMaintenanceContext{TargetOperatorSessionID: "session", Timeout: tt.timeout, NewID: func(prefix string) string { return prefix }}
+
+			require.NoError(t, PullOllamaModel(t.Context(), dispatcher, maintenance, "qwen3:0.6b"))
+
+			var pull operatorv1.OllamaModelPullRequested
+			require.NoError(t, proto.Unmarshal(dispatcher.requests[0].Payload, &pull))
+			assert.Equal(t, tt.want, pull.GetTimeoutSeconds())
+		})
+	}
+}
+
+func TestPullOllamaModel_RejectsInvalidTagBeforeDispatch(t *testing.T) {
+	t.Parallel()
+	dispatcher := &deadlineOllamaModelCommandDispatcher{}
+	maintenance := OllamaModelMaintenanceContext{TargetOperatorSessionID: "session", NewID: func(prefix string) string { return prefix }}
+
+	require.ErrorIs(t, PullOllamaModel(t.Context(), dispatcher, maintenance, "qwen3;whoami"), constants.ErrInferenceModelTagInvalid)
+	assert.Empty(t, dispatcher.requests)
+}
+
+func TestCopyOllamaModel_SendsTypedCopy(t *testing.T) {
+	t.Parallel()
+	dispatcher := &deadlineOllamaModelCommandDispatcher{}
+	maintenance := OllamaModelMaintenanceContext{TargetOperatorSessionID: "session", NewID: func(prefix string) string { return prefix }}
+
+	require.NoError(t, CopyOllamaModel(t.Context(), dispatcher, maintenance, "hf.co/a/b:Q4", "b:latest"))
+
+	request := dispatcher.requests[0]
+	assert.Equal(t, constants.ActionTypeOllamaModelCopy, request.ActionType)
+	var modelCopy operatorv1.OllamaModelCopyRequested
+	require.NoError(t, proto.Unmarshal(request.Payload, &modelCopy))
+	assert.Equal(t, "hf.co/a/b:Q4", modelCopy.GetSource())
+	assert.Equal(t, "b:latest", modelCopy.GetDestination())
+}
+
+func TestValidateOllamaModelPullResult_TypesTheOutcome(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name          string
+		result        *OllamaModelCommandDispatchResult
+		wantErr       []error
+		wantInMessage string
+	}{
+		{name: "completed", result: &OllamaModelCommandDispatchResult{Status: 200, Success: true, PullResult: &operatorv1.OllamaModelPullResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}}},
+		{name: "no result", wantErr: []error{constants.ErrEvaluationDispatchFailed}},
+		{name: "rejected", result: &OllamaModelCommandDispatchResult{Status: 403}, wantErr: []error{constants.ErrEvaluationDispatchFailed}, wantInMessage: "status 403"},
+		{name: "missing typed result", result: &OllamaModelCommandDispatchResult{Status: 200, Success: true}, wantErr: []error{constants.ErrEvaluationDispatchFailed}},
+		{
+			name: "operator failure names kind and cause",
+			result: &OllamaModelCommandDispatchResult{Status: 200, Success: true, PullResult: &operatorv1.OllamaModelPullResult{
+				Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, ErrorMessage: "ollama api: model not found", ErrorType: "provider",
+			}},
+			wantErr:       []error{constants.ErrEvaluationDispatchFailed, constants.ErrActionExecutionFailed},
+			wantInMessage: "failed (provider): ollama api: model not found",
 		},
-	})
-	require.ErrorIs(t, err, constants.ErrEvaluationDispatchFailed)
-	assert.Contains(t, err.Error(), "exited with code 1: Error: operator: pull model: manifest for \"qwen3:0.6b\" not found")
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateOllamaModelPullResult(tt.result)
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+				return
+			}
+			for _, want := range tt.wantErr {
+				require.ErrorIs(t, err, want)
+			}
+			assert.Contains(t, err.Error(), tt.wantInMessage)
+		})
+	}
+}
+
+func TestValidateOllamaModelCopyResult_FailedCopyIsAnExecutionFailure(t *testing.T) {
+	t.Parallel()
+	err := ValidateOllamaModelCopyResult(&OllamaModelCommandDispatchResult{Status: 200, Success: true, CopyResult: &operatorv1.OllamaModelCopyResult{
+		Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, ErrorMessage: "ollama api: status 404",
+	}})
+	require.ErrorIs(t, err, constants.ErrActionExecutionFailed)
 }
 
 func TestValidateOllamaModelReleaseResult_RequiresCompletedTypedResult(t *testing.T) {

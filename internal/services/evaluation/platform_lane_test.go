@@ -354,3 +354,82 @@ func laneSuspendedOutcome(txHash string) *client.GovernedOutcome {
 func laneRejection() *operatorv1.GovernanceRejection {
 	return &operatorv1.GovernanceRejection{Error: "rejected", Receipt: &operatorv1.EventReceipt{TransactionId: "tx-rejected"}}
 }
+
+func TestGovernedOllamaModelCommandDispatcher_ResultOfANonMaintenanceActionIsAnUnknownAction(t *testing.T) {
+	fakeClient := &laneTestClient{dispatchOutcome: &client.GovernedOutcome{
+		Dispatch:    &operatorv1.GovernedDispatchResult{ResultPayload: []byte{0x01}},
+		Observation: &evalv1.ConformanceObservation{},
+	}}
+	dispatcher, err := NewGovernedOllamaModelCommandDispatcher(fakeClient, client.Persona{})
+	require.NoError(t, err)
+
+	_, err = dispatcher.DispatchOllamaModelCommand(t.Context(), OllamaModelCommandDispatchRequest{
+		TargetOperatorSessionID: "session",
+		ActionType:              constants.ActionTypeExecuteBash,
+		Payload:                 []byte{0x01},
+		ExecutionID:             "exec-1",
+	})
+
+	require.ErrorIs(t, err, constants.ErrTxUnknownActionType)
+}
+
+func TestGovernedOllamaModelCommandDispatcher_FailedReleaseSurfacesItsMessage(t *testing.T) {
+	payload, err := proto.Marshal(&operatorv1.OllamaModelReleaseResult{
+		ExecutionId:  "exec-1",
+		Status:       operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+		ErrorMessage: "ollama api: unload refused",
+		ErrorType:    "provider",
+	})
+	require.NoError(t, err)
+	fakeClient := &laneTestClient{dispatchOutcome: &client.GovernedOutcome{
+		Dispatch: &operatorv1.GovernedDispatchResult{ResultPayload: payload},
+		Observation: &evalv1.ConformanceObservation{
+			Kind:       evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
+			HttpStatus: http.StatusOK,
+		},
+	}}
+	dispatcher, err := NewGovernedOllamaModelCommandDispatcher(fakeClient, client.Persona{})
+	require.NoError(t, err)
+
+	result, err := dispatcher.DispatchOllamaModelCommand(t.Context(), OllamaModelCommandDispatchRequest{
+		TargetOperatorSessionID: "session",
+		ActionType:              constants.ActionTypeOllamaModelRelease,
+		Payload:                 []byte{0x01},
+		ExecutionID:             "exec-1",
+	})
+	require.NoError(t, err)
+
+	err = ValidateOllamaModelReleaseResult(result)
+	require.ErrorIs(t, err, constants.ErrEvaluationDispatchFailed)
+	assert.Contains(t, err.Error(), "ollama api: unload refused")
+}
+
+func TestGovernedOllamaModelCommandDispatcher_FailedPullSurfacesTheOperatorsTypedFailure(t *testing.T) {
+	payload, err := proto.Marshal(&operatorv1.OllamaModelPullResult{
+		ExecutionId:  "exec-1",
+		Status:       operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+		ErrorMessage: "ollama api: model not found",
+		ErrorType:    "provider",
+	})
+	require.NoError(t, err)
+	fakeClient := &laneTestClient{dispatchOutcome: &client.GovernedOutcome{
+		Dispatch: &operatorv1.GovernedDispatchResult{ResultPayload: payload},
+		Observation: &evalv1.ConformanceObservation{
+			Kind:       evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
+			HttpStatus: http.StatusOK,
+		},
+	}}
+	dispatcher, err := NewGovernedOllamaModelCommandDispatcher(fakeClient, client.Persona{})
+	require.NoError(t, err)
+
+	err = PullOllamaModel(t.Context(), dispatcher, OllamaModelMaintenanceContext{
+		TargetOperatorSessionID: "session",
+		NewID:                   func(prefix string) string { return prefix },
+	}, "qwen3:0.6b")
+
+	require.ErrorIs(t, err, constants.ErrActionExecutionFailed)
+	require.ErrorIs(t, err, constants.ErrEvaluationDispatchFailed)
+	assert.Contains(t, err.Error(), "failed (provider): ollama api: model not found")
+	require.Len(t, fakeClient.dispatchRequests, 1)
+	assert.Equal(t, string(constants.Event.Operator.OllamaModelPull.Requested), fakeClient.dispatchRequests[0].EventType)
+}

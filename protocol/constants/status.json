@@ -218,6 +218,18 @@
         "_mutation": true,
         "value": "OLLAMA_MODEL_RELEASE"
       },
+      "OLLAMA_MODEL_PULL": {
+        "_go_const": "ActionTypeOllamaModelPull",
+        "_mutation": true,
+        "_state_change": true,
+        "value": "OLLAMA_MODEL_PULL"
+      },
+      "OLLAMA_MODEL_COPY": {
+        "_go_const": "ActionTypeOllamaModelCopy",
+        "_mutation": true,
+        "_state_change": true,
+        "value": "OLLAMA_MODEL_COPY"
+      },
       "RESTORE_FILE": {
         "_go_const": "ActionTypeRestoreFile",
         "_mutation": true,

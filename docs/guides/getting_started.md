@@ -125,7 +125,7 @@ Every `./ztd` command, including the `make` targets, loads `.env` from the worki
 
 | Key | Set it when |
 | :--- | :--- |
-| `ZTD_OLLAMA_ENDPOINT` | The Ollama provider is not on this host (default `http://127.0.0.1:11434`). It is the default for `--inference-ollama-endpoint` on `./ztd operator start` and `./ztd operator model` commands. |
+| `ZTD_OLLAMA_ENDPOINT` | The Ollama provider is not on this host (default `http://127.0.0.1:11434`). It is the default for `--inference-ollama-endpoint` on `./ztd operator start`. |
 | `CLOUDFLARE_API_TOKEN` | You route a tunnel hostname with `./ztd gw tunnel route-dns` ([Cloudflare Tunnel](cloudflare_tunnel.md)). |
 
 ```bash

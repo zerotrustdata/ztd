@@ -42,6 +42,8 @@ func TestErrorKind_ClassifiesWrappedProviderFailuresWithoutContent(t *testing.T)
 		{"truncated response", io.ErrUnexpectedEOF, "unexpected_eof"},
 		{"DNS", &net.DNSError{Err: "private hostname", Name: "private.example"}, "dns"},
 		{"empty file content", constants.ErrFileEditContentRequired, "invalid_input"},
+		{"Ollama API failure", constants.ErrOllamaAPI, "provider"},
+		{"Ollama pull failure", constants.ErrOllamaPull, "provider"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			err := &url.Error{Op: "Post", URL: "http://private.example/private", Err: fmt.Errorf("private data: %w", test.err)}

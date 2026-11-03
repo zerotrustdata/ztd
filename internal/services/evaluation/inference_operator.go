@@ -121,27 +121,23 @@ func SelectInferenceOperatorForHardware(
 	}
 }
 
-// GovernedInferenceOllamaEndpoint returns the approved Ollama endpoint from
-// the exact Inference Operator runtime_config, for the `ztd operator model`
-// pull commands that only Ollama serves. Campaign-host environment overrides
-// are intentionally rejected, and an Operator serving another provider fails
-// closed with constants.ErrInferenceProviderOllamaRequired.
-func GovernedInferenceOllamaEndpoint(operators []*operatorv1.OperatorDocument, inferenceSessionID string) (string, error) {
+// RequireOllamaInferenceOperator fails closed with
+// constants.ErrInferenceProviderOllamaRequired unless the exact Inference Operator
+// session serves Ollama, the only provider with model pull and copy. The Operator
+// pulls through its own configured provider, so no endpoint travels with the
+// command.
+func RequireOllamaInferenceOperator(operators []*operatorv1.OperatorDocument, inferenceSessionID string) error {
 	if inferenceSessionID == "" {
-		return "", fmt.Errorf("evaluation: governed inference endpoint: %w", constants.ErrMissingRequiredField)
+		return fmt.Errorf("evaluation: require Ollama inference operator: %w", constants.ErrMissingRequiredField)
 	}
 	selected, err := SelectInferenceOperator(operators, inferenceSessionID)
 	if err != nil {
-		return "", fmt.Errorf("evaluation: governed inference endpoint: %w", err)
+		return fmt.Errorf("evaluation: require Ollama inference operator: %w", err)
 	}
 	if selected.Provider != constants.InferenceProviderOllama {
-		return "", fmt.Errorf("evaluation: governed inference endpoint: session %s serves %s: %w", inferenceSessionID, selected.Provider, constants.ErrInferenceProviderOllamaRequired)
+		return fmt.Errorf("evaluation: require Ollama inference operator: session %s serves %s: %w", inferenceSessionID, selected.Provider, constants.ErrInferenceProviderOllamaRequired)
 	}
-	endpoint := selected.ProviderEndpoint
-	if endpoint == "" {
-		return "", fmt.Errorf("evaluation: governed inference endpoint: %w", constants.ErrInferenceEndpointInvalid)
-	}
-	return endpoint, nil
+	return nil
 }
 
 // GovernedInferenceDispatcher submits governed inference through the exact

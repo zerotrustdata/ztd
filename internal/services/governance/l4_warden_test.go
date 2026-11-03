@@ -83,6 +83,10 @@ func typedPayload(t *testing.T, actionType constants.ActionType) []byte {
 		msg = &operatorv1.OllamaModelResidencyRequested{ExecutionId: "exec-1"}
 	case constants.ActionTypeOllamaModelRelease:
 		msg = &operatorv1.OllamaModelReleaseRequested{ExecutionId: "exec-1", ModelTags: []string{"qwen3:0.6b"}}
+	case constants.ActionTypeOllamaModelPull:
+		msg = &operatorv1.OllamaModelPullRequested{ExecutionId: "exec-1", ModelTag: "qwen3:0.6b"}
+	case constants.ActionTypeOllamaModelCopy:
+		msg = &operatorv1.OllamaModelCopyRequested{ExecutionId: "exec-1", Source: "qwen3:0.6b", Destination: "alias:1b"}
 	case constants.ActionTypeFetchLogs:
 		msg = &operatorv1.FetchLogsRequested{ExecutionId: "exec-1"}
 	case constants.ActionTypeFetchHistory:

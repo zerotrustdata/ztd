@@ -28,6 +28,11 @@ const InferenceUnloadKeepAlive = "0"
 // keep-alive 0 release request.
 const OllamaDoneReasonUnload = "unload"
 
+// ModelPullDefaultTimeout bounds a governed model pull that names no timeout.
+// A pull downloads the whole model, so it does not share the provider request
+// deadline.
+const ModelPullDefaultTimeout = 24 * time.Hour
+
 // Case and investigation IDs that scope the receipts of governed provider
 // model-maintenance commands on the Inference Operator. A command dispatched
 // for a run carries the run ID as its case instead of the maintenance case.

@@ -814,6 +814,17 @@ func (b *LlamaCppBackend) ReadResidency(ctx context.Context) (ProviderResidency,
 	return residency, nil
 }
 
+// PullModel fails closed: a llama.cpp router serves GGUF files from its model
+// root and has no provider pull.
+func (b *LlamaCppBackend) PullModel(context.Context, string) error {
+	return fmt.Errorf("llamacpp_backend: pull model: %w", constants.ErrInferenceProviderOllamaRequired)
+}
+
+// CopyModel fails closed: a llama.cpp router has no provider alias.
+func (b *LlamaCppBackend) CopyModel(context.Context, string, string) error {
+	return fmt.Errorf("llamacpp_backend: copy model: %w", constants.ErrInferenceProviderOllamaRequired)
+}
+
 // ReleaseModels unloads each requested resident model through the router and
 // then verifies the complete requested set is absent from residency.
 func (b *LlamaCppBackend) ReleaseModels(ctx context.Context, release []string) error {

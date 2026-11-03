@@ -55,6 +55,39 @@ func TestDispatchIntent_UsesOnlyCallerDeadline(t *testing.T) {
 	}
 }
 
+func TestDispatchCommandBody_ContextOwnsTheDeadline(t *testing.T) {
+	t.Run("caller deadline is not shortened", func(t *testing.T) {
+		client, err := New(config.Config{MTLSBaseURL: "http://dispatch.test"})
+		require.NoError(t, err)
+		recorder := &deadlineRecorder{}
+		client.http.Transport = recorder
+		want := time.Now().Add(24 * time.Hour)
+		ctx, cancel := context.WithDeadline(t.Context(), want)
+		defer cancel()
+
+		outcome, err := client.DispatchCommandBody(ctx, Persona{}, []byte(`{}`))
+
+		require.NoError(t, err)
+		require.NotNil(t, outcome)
+		require.True(t, recorder.has)
+		assert.Equal(t, want, recorder.deadline, "a model pull waits longer than the default dispatch wait")
+	})
+
+	t.Run("no caller deadline waits the approval TTL plus the dispatch deadline", func(t *testing.T) {
+		client, err := New(config.Config{MTLSBaseURL: "http://dispatch.test"})
+		require.NoError(t, err)
+		recorder := &deadlineRecorder{}
+		client.http.Transport = recorder
+		before := time.Now()
+
+		_, err = client.DispatchCommandBody(t.Context(), Persona{}, []byte(`{}`))
+
+		require.NoError(t, err)
+		require.True(t, recorder.has)
+		assert.WithinDuration(t, before.Add(mcp.ApprovalRequestTTL+dispatch.RequestDeadline), recorder.deadline, 5*time.Second)
+	})
+}
+
 func TestInferenceHTTP_TimeoutCoversApprovalAndDispatchDeadline(t *testing.T) {
 	client, err := New(config.Config{MTLSBaseURL: "http://inference.test"})
 	require.NoError(t, err)

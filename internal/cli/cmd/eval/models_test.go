@@ -386,13 +386,13 @@ func TestModelsPull_SelectorAndFormationsAreExclusive(t *testing.T) {
 	require.ErrorContains(t, err, "--formations cannot be combined")
 }
 
-func TestModelsPull_SelectionIsResolvedAgainstIntakeCatalog(t *testing.T) {
+func TestModelsPull_SelectionIsResolvedAgainstPullCatalog(t *testing.T) {
 	root := testutil.TempDir(t)
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "eval"), constants.PermDirStandard))
 	catalog := `{"models":[
 		{"variant_id":"glm-5-3-air","served_model_tag":"glm-5.3-air","model_family":"glm53","parameter_count":"9000000000","staging":{"method":"pending"}},
 		{"variant_id":"qwen3-8-27b","served_model_tag":"qwen3.8:27b","model_family":"qwen38","parameter_count":"27000000000","staging":{"method":"pending"}}]}`
-	require.NoError(t, os.WriteFile(filepath.Join(root, evaluation.DefaultRolloutIntakeCatalogRelPath), []byte(catalog), constants.PermFilePublic))
+	require.NoError(t, os.WriteFile(filepath.Join(root, evaluation.DefaultModelPullCatalogRelPath), []byte(catalog), constants.PermFilePublic))
 
 	_, err := runModelsCmd(t, root, "pull")
 	require.ErrorIs(t, err, constants.ErrEvaluationSelectionEmpty)
@@ -404,8 +404,8 @@ func TestModelsPull_SelectionIsResolvedAgainstIntakeCatalog(t *testing.T) {
 	require.ErrorContains(t, err, "unknown flag", "--catalog is a scope flag, not a pull flag")
 }
 
-func TestIntakeVariantsParsesParameterCounts(t *testing.T) {
-	variants := intakeVariants([]evaluation.RolloutIntakeModel{
+func TestPullCatalogVariantsParsesParameterCounts(t *testing.T) {
+	variants := pullCatalogVariants([]evaluation.ModelPullEntry{
 		{VariantID: "a", ServedModelTag: "a:1", ModelFamily: "fam", ParameterCount: "9000000000"},
 		{VariantID: "b", ServedModelTag: "b:1", ParameterCount: "not-a-number"},
 	})

@@ -36,7 +36,9 @@ const (
 	ActionTypeMcpResourceList                   ActionType = "MCP_RESOURCE_LIST"
 	ActionTypeMcpResourceRead                   ActionType = "MCP_RESOURCE_READ"
 	ActionTypeModelProvenanceObservation        ActionType = "MODEL_PROVENANCE_OBSERVATION"
+	ActionTypeOllamaModelCopy                   ActionType = "OLLAMA_MODEL_COPY"
 	ActionTypeOllamaModelInventory              ActionType = "OLLAMA_MODEL_INVENTORY"
+	ActionTypeOllamaModelPull                   ActionType = "OLLAMA_MODEL_PULL"
 	ActionTypeOllamaModelRelease                ActionType = "OLLAMA_MODEL_RELEASE"
 	ActionTypeOllamaModelResidency              ActionType = "OLLAMA_MODEL_RESIDENCY"
 	ActionTypePlatformEnrollmentBindConsensus   ActionType = "PLATFORM_ENROLLMENT_BIND_CONSENSUS"
@@ -78,7 +80,9 @@ var AllActionTypes = []ActionType{
 	ActionTypeMcpResourceList,
 	ActionTypeMcpResourceRead,
 	ActionTypeModelProvenanceObservation,
+	ActionTypeOllamaModelCopy,
 	ActionTypeOllamaModelInventory,
+	ActionTypeOllamaModelPull,
 	ActionTypeOllamaModelRelease,
 	ActionTypeOllamaModelResidency,
 	ActionTypePlatformEnrollmentBindConsensus,
@@ -107,6 +111,8 @@ func (a ActionType) IsMutation() bool {
 		ActionTypeFileEdit,
 		ActionTypeInference,
 		ActionTypeMcpCall,
+		ActionTypeOllamaModelCopy,
+		ActionTypeOllamaModelPull,
 		ActionTypeOllamaModelRelease,
 		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentCreateSession,
@@ -165,6 +171,8 @@ func (a ActionType) IsStateChange() bool {
 		ActionTypeExecuteBash,
 		ActionTypeFileEdit,
 		ActionTypeMcpCall,
+		ActionTypeOllamaModelCopy,
+		ActionTypeOllamaModelPull,
 		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentDecide,
