@@ -414,7 +414,6 @@ var (
 	ErrAuditCheckpointEventMissing                      = errors.New("audit chain checkpoint event missing from events chain")
 	ErrAuditCheckpointPayloadMismatch                   = errors.New("audit chain checkpoint payload does not match anchor")
 	ErrAuditCheckpointSchemaIncompatible                = errors.New("audit_chain_checkpoints schema is incompatible; reinitialize runtime root")
-	ErrFileMutationSchemaIncompatible                   = errors.New("file_mutation_log schema is incompatible; reinitialize runtime root")
 	ErrEmbeddedSessionResolverRequired                  = errors.New("embedded session resolver is required: EmbeddedSession must be wired at construction")
 	ErrLocalFirstEventsStoreRequired                    = errors.New("local-first events store is required: EventsStore must be wired at construction, not defaulted to a no-op")
 	ErrHistoryHandlerRequired                           = errors.New("history handler is required: HistoryHandler must be wired at construction")

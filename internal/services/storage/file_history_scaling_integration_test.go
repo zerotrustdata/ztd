@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -402,9 +401,10 @@ func TestFileMutationsBySnapshotQuery_StaysOnTheIndex(t *testing.T) {
 	}
 	require.NoError(t, rows.Err())
 
-	require.Len(t, details, 2, strings.Join(details, "\n"))
-	assert.Contains(t, details[0], "SEARCH fm USING INDEX idx_file_mutation_snapshot_name (snapshot_name=?)")
-	assert.Contains(t, details[1], "SEARCH e USING INTEGER PRIMARY KEY (rowid=?)")
+	require.Len(t, details, 3, strings.Join(details, "\n"))
+	assert.Contains(t, details[0], "SEARCH fs USING COVERING INDEX idx_file_mutation_snapshot_name (snapshot_name=?)")
+	assert.Contains(t, details[1], "SEARCH fm USING INTEGER PRIMARY KEY (rowid=?)")
+	assert.Contains(t, details[2], "SEARCH e USING INTEGER PRIMARY KEY (rowid=?)")
 	plan := strings.Join(details, "\n")
 	assert.NotContains(t, plan, "SCAN", "a scan makes the lookup O(session)")
 	assert.NotContains(t, plan, "TEMP B-TREE", "a sort makes the LIMIT read every row of the file")
@@ -422,9 +422,9 @@ func TestFileMutationRow_StoresTheKeyedNameAndNeverThePath(t *testing.T) {
 	assert.Equal(t, expected, result.SnapshotName)
 
 	var stored string
-	require.NoError(t, f.store.db.QueryRowContext(t.Context(), `SELECT snapshot_name FROM file_mutation_log`).Scan(&stored))
+	require.NoError(t, f.store.db.QueryRowContext(t.Context(), `SELECT snapshot_name FROM file_mutation_snapshot`).Scan(&stored))
 	assert.Equal(t, expected, stored)
-	assert.Regexp(t, regexp.MustCompile(`^[0-9a-f]{64}$`), stored)
+	assert.Regexp(t, `^[0-9a-f]{64}$`, stored)
 	assert.NotContains(t, stored, marker)
 }
 
@@ -442,10 +442,11 @@ func TestRecordFileMutation_RejectsAMissingSnapshotName(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreRecordFileMutationFailed)
 }
 
-// TestEventsStore_RejectsFileMutationTableWithoutSnapshotName covers a database from before the
-// column existed. Its rows cannot be keyed without their paths and the vault, so the store refuses
-// to open it and leaves it unchanged (INV-STOR-SCHEMA-01).
-func TestEventsStore_RejectsFileMutationTableWithoutSnapshotName(t *testing.T) {
+// TestEventsStore_OpensADatabaseRecordedBeforeTheSnapshotTable covers a runtime root from before
+// file_mutation_snapshot existed. Startup creates the table and leaves the earlier rows untouched
+// (INV-STOR-SCHEMA-01): they stay readable by id and by session, and only later mutations are
+// selected by file.
+func TestEventsStore_OpensADatabaseRecordedBeforeTheSnapshotTable(t *testing.T) {
 	fileSvc := newTestFileSvc(t, testutil.TempDir(t))
 	_, privKey, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)
@@ -453,15 +454,78 @@ func TestEventsStore_RejectsFileMutationTableWithoutSnapshotName(t *testing.T) {
 	db, err := sqliteutil.OpenDB(fileSvc, sqliteutil.DefaultDBConfig(fileSvc.Resolve(constants.CanonicalDBRelPath)), testutil.NewTestLogger())
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	_, err = db.ExecContext(t.Context(), `CREATE TABLE file_mutation_log (id INTEGER PRIMARY KEY AUTOINCREMENT, filepath BLOB NOT NULL)`)
-	require.NoError(t, err)
-
 	config := DefaultLocalFirstEventsStoreConfig()
 	config.EncryptionVault = testVault
-	_, err = NewLocalFirstEventsStore(config, db, testutil.NewTestLogger(), fileSvc)
-	require.ErrorIs(t, err, constants.ErrFileMutationSchemaIncompatible)
 
-	var columns int
-	require.NoError(t, db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM pragma_table_info('file_mutation_log')`).Scan(&columns))
-	assert.Equal(t, 2, columns, "startup must not alter the existing table")
+	const session = "pre-upgrade-session"
+	record := func(store *LocalFirstEventsStore, snapshot string) int64 {
+		t.Helper()
+		eventID, err := store.RecordEvent(&Event{
+			OperatorSessionID: session, Timestamp: time.Now().UTC(),
+			Type: constants.Event.Operator.FileEdit.Completed, ContentText: "file mutation",
+		})
+		require.NoError(t, err)
+		require.NoError(t, store.RecordFileMutation(&FileMutationLog{
+			EventID: eventID, Filepath: "file", SnapshotName: snapshot, Operation: FileMutationWrite,
+		}))
+		return eventID
+	}
+
+	before, err := NewLocalFirstEventsStore(config, db, testutil.NewTestLogger(), fileSvc)
+	require.NoError(t, err)
+	require.NoError(t, before.CreateSession(session, constants.SessionTypeOperator, "upgrade", "owner"))
+	preUpgradeEvent := record(before, "snapshot")
+	require.NoError(t, before.Close())
+	_, err = db.ExecContext(t.Context(), `DROP TABLE file_mutation_snapshot`)
+	require.NoError(t, err)
+
+	after, err := NewLocalFirstEventsStore(config, db, testutil.NewTestLogger(), fileSvc)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, after.Close()) })
+
+	bySession, err := after.ListFileMutationsBySession(session, 10)
+	require.NoError(t, err)
+	require.Len(t, bySession, 1, "the earlier row stays readable")
+	assert.Equal(t, preUpgradeEvent, bySession[0].EventID)
+	bySnapshot, err := after.ListFileMutationsBySnapshot(t.Context(), session, "snapshot", 10)
+	require.NoError(t, err)
+	assert.Empty(t, bySnapshot, "the earlier row has no key and was not back-filled")
+
+	postUpgradeEvent := record(after, "snapshot")
+	bySnapshot, err = after.ListFileMutationsBySnapshot(t.Context(), session, "snapshot", 10)
+	require.NoError(t, err)
+	require.Len(t, bySnapshot, 1)
+	assert.Equal(t, postUpgradeEvent, bySnapshot[0].EventID)
+}
+
+// TestFileMutationSnapshot_LeavesWithItsMutationRow covers both ways the two rows could diverge: a
+// mutation row deleted by retention takes its key with it, and a failed key insert rolls the
+// mutation back.
+func TestFileMutationSnapshot_LeavesWithItsMutationRow(t *testing.T) {
+	const session = "snapshot-row-lifecycle"
+	f := newFileHistoryFixture(t, session)
+	result := f.mutate(t, session, f.path("pruned.txt"), "v1")
+
+	var keys int
+	require.NoError(t, f.store.db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM file_mutation_snapshot`).Scan(&keys))
+	require.Equal(t, 1, keys)
+
+	_, err := f.store.db.ExecWithRetry(t.Context(), `DELETE FROM file_mutation_log`)
+	require.NoError(t, err)
+	require.NoError(t, f.store.db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM file_mutation_snapshot`).Scan(&keys))
+	assert.Zero(t, keys, "retention deletes file_mutation_log rows; their keys must not outlive them")
+	assert.Empty(t, f.history(t, session, result.FilePath, 0))
+
+	_, err = f.store.db.ExecWithRetry(t.Context(), `DROP TABLE file_mutation_snapshot`)
+	require.NoError(t, err)
+	eventID, err := f.store.RecordEvent(&Event{
+		OperatorSessionID: session, Timestamp: time.Now().UTC(),
+		Type: constants.Event.Operator.FileEdit.Completed, ContentText: "file mutation",
+	})
+	require.NoError(t, err)
+	err = f.store.RecordFileMutation(&FileMutationLog{EventID: eventID, Filepath: "file", SnapshotName: "snapshot", Operation: FileMutationWrite})
+	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreRecordFileMutationFailed)
+	var mutations int
+	require.NoError(t, f.store.db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM file_mutation_log`).Scan(&mutations))
+	assert.Zero(t, mutations, "a mutation row must not be committed without its key")
 }
