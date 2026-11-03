@@ -10,6 +10,7 @@
 package evaluation
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,7 +25,7 @@ func TestCheckedInConsensusSuites_MaterializeCurrentEvidenceCriteria(t *testing.
 	for _, scenario := range DefaultScenarioSuite().Scenarios {
 		current[scenario.ScenarioID] = scenario
 	}
-	versions := map[string]string{"consensus-screen": "1.8.0", "consensus-evidence": "1.8.0", "consensus-safety": "1.6.0"}
+	versions := map[string]string{"consensus-screen": "1.9.0", "consensus-evidence": "1.8.0", "consensus-safety": "1.7.0"}
 	for _, name := range []string{"consensus-screen", "consensus-evidence", "consensus-safety"} {
 		t.Run(name, func(t *testing.T) {
 			// These are checked-in authoring sources, not runtime state.
@@ -39,14 +40,16 @@ func TestCheckedInConsensusSuites_MaterializeCurrentEvidenceCriteria(t *testing.
 			for _, scenario := range suite.Scenarios {
 				if scenario.Category == "security_policy" {
 					require.Contains(t, scenario.EligibleRoles, "lite", scenario.ScenarioID)
-					require.Equal(t, current[scenario.ScenarioID].ScenarioVersion, scenario.ScenarioVersion)
-					require.Equal(t, current[scenario.ScenarioID].Gold.ContentCheck, scenario.Gold.ContentCheck)
 				}
-				switch scenario.ScenarioID {
-				case "tool-select-grep", "tool-arg-grep-pattern", "tool-arg-file-path", "recovery-tool-failure", "recovery-error-guided-retry":
-					require.Equal(t, current[scenario.ScenarioID].ScenarioVersion, scenario.ScenarioVersion)
-					require.Equal(t, current[scenario.ScenarioID].Gold.ContentCheck, scenario.Gold.ContentCheck)
-				}
+				// Compare the whole scenario: a stale prompt or Triage
+				// expectation drifts as silently as a stale content check.
+				want, ok := current[scenario.ScenarioID]
+				require.True(t, ok, scenario.ScenarioID)
+				wantJSON, err := json.Marshal(want)
+				require.NoError(t, err)
+				gotJSON, err := json.Marshal(scenario)
+				require.NoError(t, err)
+				require.JSONEq(t, string(wantJSON), string(gotJSON), scenario.ScenarioID)
 			}
 		})
 	}

@@ -261,8 +261,11 @@ func TestPublishLFEATypedResponseTo_WithheldModelResultPublishesItsTypedFailure(
 		t.Run(name, func(t *testing.T) {
 			client := pubsubtest.NewMockOperatorPubSubClient()
 			msg := &PubSubCommandMessage{ID: "msg-1", EventType: tt.requested, OperatorSessionID: "session-1"}
+			// Egress withholds content only, so the result must carry some.
+			withheld := ollamaModelFailedResult(tt.failed, "exec-1", "raw provider text", "provider")
+			require.NotNil(t, withheld)
 
-			err := publishLFEATypedResponseTo(t.Context(), client, testutil.NewTestConfig(t), testutil.NewTestLogger(), msg, tt.completed, tt.result(), storagetest.NewTestEventsStore(t), newEgressScrubber(t, false))
+			err := publishLFEATypedResponseTo(t.Context(), client, testutil.NewTestConfig(t), testutil.NewTestLogger(), msg, tt.completed, withheld, storagetest.NewTestEventsStore(t), newEgressScrubber(t, false))
 
 			require.ErrorIs(t, err, constants.ErrEgressScrubberUnavailable)
 			published := client.LastPublished()

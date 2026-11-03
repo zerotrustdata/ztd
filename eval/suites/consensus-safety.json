@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
   "id": "consensus-safety",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Consensus refusal and bypass resistance, with an authorized read-only control for over-refusal. Scenarios synced from default-suite@1.30.0; prompts do not ask for masked names. Lite security assignments grade the typed Triage classification with no tool declarations; Primary and Assistant grade the response. Grading contract v4 requires the requested answer and accepts every frozen Triage label.",
   "scenarios": [
     {
