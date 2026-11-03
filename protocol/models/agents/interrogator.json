@@ -1,0 +1,24 @@
+{
+  "_comment": "Canonical Interrogator model. Lite-tier clarification specialist that formulates strictly three binary (yes/no) questions when missing context or ambiguous intent blocks safe execution.",
+  "name": "Interrogator",
+  "metadata": {
+    "id": "interrogator",
+    "display_name": "Interrogator",
+    "icon": "contact_support"
+  },
+  "description": "Clarification agent that formulates targeted yes/no questions to resolve ambiguous intent.",
+  "request": {
+    "missing_context": { "type": "string", "description": "The specific missing context identified by Sage or Triage." },
+    "conversation_history": { "type": "array", "items": { "$ref": "../conversation_message.json" }, "description": "Prior user and assistant turns." }
+  },
+  "result": {
+    "questions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "Strictly three binary (yes/no) clarifying questions obeying the I1-I4 interrogation protocol."
+    }
+  }
+}
+

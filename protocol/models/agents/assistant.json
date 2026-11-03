@@ -1,12 +1,12 @@
 {
-  "_comment": "Canonical Assistant AI model. Fast-path AI for simple tasks - shares the full tool set with the Primary AI but uses a smaller, lower-latency model.",
+  "_comment": "Canonical Assistant AI model. Bounded delegate worker AI for focused tool tasks - operates as Sage's subagent/worker with targeted tool access.",
   "name": "AssistantAI",
   "metadata": {
     "id": "dash",
     "display_name": "Dash",
     "icon": "bolt"
   },
-  "description": "Fast-path AI for simple tasks.",
+  "description": "Bounded delegate worker AI for focused tool tasks dispatched by Sage.",
   "request": {
     "message": { "type": "string", "description": "The user message to process." },
     "investigation_id": { "type": "string", "description": "The current investigation ID." },
