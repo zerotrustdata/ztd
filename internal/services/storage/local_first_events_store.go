@@ -132,9 +132,12 @@ type FileMutationLog struct {
 	ID int64
 	// UID is the row identity bound into the AEAD data of the encrypted columns. It is
 	// generated at insert and never reused.
-	UID              string
-	EventID          int64
-	Filepath         string
+	UID      string
+	EventID  int64
+	Filepath string
+	// SnapshotName is the ledger's keyed name for Filepath (LedgerResult.SnapshotName). It is the
+	// plaintext lookup key for the encrypted path and reveals nothing without the vault.
+	SnapshotName     string
 	Operation        FileMutationOperation
 	LedgerHashBefore string
 	LedgerHashAfter  string
@@ -320,6 +323,9 @@ func (ass *LocalFirstEventsStore) initDatabase() error {
 	if err := ass.checkCheckpointsSchema(); err != nil {
 		return err
 	}
+	if err := ass.checkFileMutationSchema(); err != nil {
+		return err
+	}
 
 	if _, err := ass.db.ExecWithRetry(context.Background(), eventsStoreSchema); err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreInitSchemaFailed, err)
@@ -332,36 +338,40 @@ func (ass *LocalFirstEventsStore) initDatabase() error {
 }
 
 func (ass *LocalFirstEventsStore) checkCheckpointsSchema() error {
-	rows, err := ass.db.Query(`PRAGMA table_info(audit_chain_checkpoints)`)
+	return ass.checkTableColumns("audit_chain_checkpoints", constants.ErrAuditCheckpointSchemaIncompatible,
+		"signature", "auditor_key_id", "created_at_unix_ms", "format_version")
+}
+
+func (ass *LocalFirstEventsStore) checkFileMutationSchema() error {
+	return ass.checkTableColumns("file_mutation_log", constants.ErrFileMutationSchemaIncompatible, "snapshot_name")
+}
+
+// checkTableColumns rejects an existing table that lacks a required column, before the schema
+// script runs. A table that does not exist yet passes: the schema script creates it whole.
+func (ass *LocalFirstEventsStore) checkTableColumns(table string, incompatible error, required ...string) error {
+	rows, err := ass.db.Query(`SELECT name FROM pragma_table_info(?)`, table)
 	if err != nil {
-		return fmt.Errorf("audit chain: check schema: %w", err)
+		return fmt.Errorf("events store: check %s schema: %w", table, err)
 	}
 	defer rows.Close()
 
 	cols := make(map[string]bool)
 	for rows.Next() {
-		var (
-			cid       int
-			name      string
-			colType   string
-			notNull   int
-			dfltValue sql.NullString
-			pk        int
-		)
-		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
-			return fmt.Errorf("audit chain: scan column: %w", err)
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return fmt.Errorf("events store: scan %s column: %w", table, err)
 		}
 		cols[name] = true
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("audit chain: rows: %w", err)
+		return fmt.Errorf("events store: read %s columns: %w", table, err)
 	}
 	if len(cols) == 0 {
 		return nil
 	}
-	for _, req := range []string{"signature", "auditor_key_id", "created_at_unix_ms", "format_version"} {
+	for _, req := range required {
 		if !cols[req] {
-			return fmt.Errorf("%w: column %s missing in audit_chain_checkpoints", constants.ErrAuditCheckpointSchemaIncompatible, req)
+			return fmt.Errorf("%w: column %s missing in %s", incompatible, req, table)
 		}
 	}
 	return nil
@@ -431,6 +441,7 @@ CREATE TABLE IF NOT EXISTS file_mutation_log (
 	mutation_uid TEXT NOT NULL UNIQUE,
 	event_id INTEGER NOT NULL,
 	filepath BLOB NOT NULL,
+	snapshot_name TEXT NOT NULL,
 	operation TEXT NOT NULL,
 	ledger_hash_before TEXT,
 	ledger_hash_after TEXT,
@@ -481,6 +492,7 @@ CREATE INDEX IF NOT EXISTS idx_events_event_receipt_operator ON events(event_rec
 CREATE INDEX IF NOT EXISTS idx_events_event_receipt_timestamp ON events(timestamp) WHERE event_receipt_status IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_events_event_receipt_tx ON events(transaction_id) WHERE event_receipt_status IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_file_mutation_event_id ON file_mutation_log(event_id);
+CREATE INDEX IF NOT EXISTS idx_file_mutation_snapshot_name ON file_mutation_log(snapshot_name);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_id_type ON sessions(id, session_type);
 CREATE INDEX IF NOT EXISTS idx_commitment_ledger_committed_at ON commitment_ledger(committed_at_unix_ms);
 CREATE INDEX IF NOT EXISTS idx_audit_chain_checkpoints_seq ON audit_chain_checkpoints(pruned_through_seq);
@@ -1145,6 +1157,9 @@ func (ass *LocalFirstEventsStore) RecordFileMutation(mutation *FileMutationLog) 
 	if ass == nil || ass.db == nil {
 		return constants.ErrLocalFirstEventsStoreDisabled
 	}
+	if mutation.SnapshotName == "" {
+		return fmt.Errorf("%w: snapshot name: %w", constants.ErrLocalFirstEventsStoreRecordFileMutationFailed, constants.ErrMissingRequiredField)
+	}
 
 	uid, err := newFileMutationUID()
 	if err != nil {
@@ -1162,14 +1177,15 @@ func (ass *LocalFirstEventsStore) RecordFileMutation(mutation *FileMutationLog) 
 
 	query := `
 	INSERT INTO file_mutation_log (
-		mutation_uid, event_id, filepath, operation, ledger_hash_before, ledger_hash_after, diff_stat
-	) VALUES (?, ?, ?, ?, ?, ?, ?)
+		mutation_uid, event_id, filepath, snapshot_name, operation, ledger_hash_before, ledger_hash_after, diff_stat
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	_, err = ass.db.ExecWithRetry(context.Background(), query,
 		uid,
 		mutation.EventID,
 		filepathBytes,
+		mutation.SnapshotName,
 		string(mutation.Operation),
 		mutation.LedgerHashBefore,
 		mutation.LedgerHashAfter,
@@ -1380,7 +1396,7 @@ func (ass *LocalFirstEventsStore) GetFileMutationByID(id int64) (*FileMutationLo
 		return nil, constants.ErrLocalFirstEventsStoreDisabled
 	}
 
-	rows, err := ass.queryFileMutations(`
+	rows, err := ass.queryFileMutations(context.Background(), `
 	SELECT fm.id, fm.mutation_uid, fm.event_id, fm.filepath, fm.operation, fm.ledger_hash_before, fm.ledger_hash_after, fm.diff_stat,
 		COALESCE(e.operator_session_id, ''), e.timestamp
 	FROM file_mutation_log fm
@@ -1405,7 +1421,7 @@ func (ass *LocalFirstEventsStore) ListFileMutationsBySession(operatorSessionID s
 	if limit <= 0 {
 		limit = 50
 	}
-	return ass.queryFileMutations(`
+	return ass.queryFileMutations(context.Background(), `
 	SELECT fm.id, fm.mutation_uid, fm.event_id, fm.filepath, fm.operation, fm.ledger_hash_before, fm.ledger_hash_after, fm.diff_stat,
 		COALESCE(e.operator_session_id, ''), e.timestamp
 	FROM file_mutation_log fm
@@ -1416,10 +1432,36 @@ func (ass *LocalFirstEventsStore) ListFileMutationsBySession(operatorSessionID s
 	`, []interface{}{operatorSessionID, limit})
 }
 
+// fileMutationsBySnapshotQuery reads one file's mutations through idx_file_mutation_snapshot_name.
+// CROSS JOIN pins that join order: SQLite never reorders it, so the planner cannot start from the
+// session's events, which would visit every mutation of the session to find one file's rows.
+const fileMutationsBySnapshotQuery = `
+	SELECT fm.id, fm.mutation_uid, fm.event_id, fm.filepath, fm.operation, fm.ledger_hash_before, fm.ledger_hash_after, fm.diff_stat,
+		COALESCE(e.operator_session_id, ''), e.timestamp
+	FROM file_mutation_log fm
+	CROSS JOIN events e ON e.id = fm.event_id
+	WHERE fm.snapshot_name = ? AND e.operator_session_id = ?
+	ORDER BY fm.id DESC
+	LIMIT ?
+`
+
+// ListFileMutationsBySnapshot returns the newest mutations of one file in one operator session,
+// decrypted, capped at limit. The file is named by its ledger snapshot name, so the cost follows
+// that file's own mutations and not the size of the session.
+func (ass *LocalFirstEventsStore) ListFileMutationsBySnapshot(ctx context.Context, operatorSessionID, snapshotName string, limit int) ([]*FileMutationLog, error) {
+	if ass == nil || ass.db == nil {
+		return nil, constants.ErrLocalFirstEventsStoreDisabled
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	return ass.queryFileMutations(ctx, fileMutationsBySnapshotQuery, []interface{}{snapshotName, operatorSessionID, limit})
+}
+
 // queryFileMutations runs a file_mutation_log query whose columns are, in order: id, event_id,
 // filepath, operation, ledger_hash_before, ledger_hash_after, diff_stat, operator_session_id,
 // and the owning event's timestamp. Content columns are decrypted; a locked vault fails the read.
-func (ass *LocalFirstEventsStore) queryFileMutations(query string, args []interface{}) ([]*FileMutationLog, error) {
+func (ass *LocalFirstEventsStore) queryFileMutations(ctx context.Context, query string, args []interface{}) ([]*FileMutationLog, error) {
 	type mutationRow struct {
 		mutation      FileMutationLog
 		hashBefore    sql.NullString
@@ -1429,7 +1471,7 @@ func (ass *LocalFirstEventsStore) queryFileMutations(query string, args []interf
 		timestampStr  string
 	}
 
-	rows, err := sqliteutil.MaterializeRows(context.Background(), ass.db, query, args, func(r *sql.Rows) (mutationRow, error) {
+	rows, err := sqliteutil.MaterializeRows(ctx, ass.db, query, args, func(r *sql.Rows) (mutationRow, error) {
 		var row mutationRow
 		err := r.Scan(
 			&row.mutation.ID, &row.mutation.UID, &row.mutation.EventID, &row.filepathBytes, &row.mutation.Operation,

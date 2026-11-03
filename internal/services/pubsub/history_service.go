@@ -199,6 +199,7 @@ func (hs *HistoryService) recordRestore(event *storage.Event, result *operatorv1
 	if err := hs.eventsStore.RecordFileMutation(&storage.FileMutationLog{
 		EventID:          eventID,
 		Filepath:         result.GetFilePath(),
+		SnapshotName:     ledgerResult.SnapshotName,
 		Operation:        ledgerResult.Operation,
 		LedgerHashBefore: ledgerResult.LedgerHashBefore,
 		LedgerHashAfter:  ledgerResult.LedgerHashAfter,
@@ -256,7 +257,7 @@ func (hs *HistoryService) HandleFetchFileDiffRequest(ctx context.Context, msg *P
 	}
 
 	if operatorSessionID != "" {
-		diffs, err := hs.historyHandler.ListFileDiffs(operatorSessionID, filePath, int(limit))
+		diffs, err := hs.historyHandler.ListFileDiffs(ctx, operatorSessionID, filePath, int(limit))
 		if err != nil {
 			hs.logger.Error("Failed to fetch file diffs by session", "operator_session_id", operatorSessionID, logging.ErrorKindKey, logging.ErrorKindValue(err))
 			return "", errors.Join(err, publishLFEAErrorTo(ctx, hs.client, hs.config, hs.logger, msg, constants.Event.Operator.FetchFileDiff.Failed,

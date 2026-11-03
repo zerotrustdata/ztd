@@ -175,6 +175,7 @@ func TestHistoryHandler_FetchHistoryWithFileMutations(t *testing.T) {
 	mutation := &FileMutationLog{
 		EventID:          eventID,
 		Filepath:         "/etc/config.yml",
+		SnapshotName:     "snapshot-name",
 		Operation:        FileMutationWrite,
 		LedgerHashBefore: "hash1",
 		LedgerHashAfter:  "hash2",
@@ -609,9 +610,10 @@ func TestHistoryHandler_MultipleFileMutationsInHistory(t *testing.T) {
 	files := []string{"/etc/config1.yml", "/etc/config2.yml", "/etc/config3.yml"}
 	for _, f := range files {
 		mutation := &FileMutationLog{
-			EventID:   eventID,
-			Filepath:  f,
-			Operation: FileMutationWrite,
+			EventID:      eventID,
+			Filepath:     f,
+			SnapshotName: "snapshot-name",
+			Operation:    FileMutationWrite,
 		}
 		err = eventsStore.RecordFileMutation(mutation)
 		require.NoError(t, err)

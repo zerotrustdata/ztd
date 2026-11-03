@@ -170,9 +170,10 @@ func (f *integrationEvaluatorFixture) seedEvidence(t *testing.T) {
 	}))
 
 	require.NoError(t, f.eventsStore.RecordFileMutation(&storage.FileMutationLog{
-		EventID:   eventID,
-		Filepath:  "integration-target.txt",
-		Operation: storage.FileMutationCreate,
+		EventID:      eventID,
+		Filepath:     "integration-target.txt",
+		SnapshotName: "snapshot-name",
+		Operation:    storage.FileMutationCreate,
 	}))
 
 	targetPath := filepath.Join(f.tempDir, "integration-target.txt")

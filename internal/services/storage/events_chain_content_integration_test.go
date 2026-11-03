@@ -139,7 +139,7 @@ func TestEncryptedColumnsAreBoundToTheirRow(t *testing.T) {
 	// Two file mutations of one event are bound to distinct row identities.
 	eventID := recordContentEvent(t, ass, "bind-b", "files", "")
 	for _, path := range []string{"/a.txt", "/b.txt"} {
-		require.NoError(t, ass.RecordFileMutation(&FileMutationLog{EventID: eventID, Filepath: path, Operation: FileMutationWrite, DiffStat: "1 file"}))
+		require.NoError(t, ass.RecordFileMutation(&FileMutationLog{EventID: eventID, Filepath: path, SnapshotName: "snapshot-name", Operation: FileMutationWrite, DiffStat: "1 file"}))
 	}
 	mutations, err := ass.GetFileMutations(eventID)
 	require.NoError(t, err)

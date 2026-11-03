@@ -30,13 +30,15 @@ type eventsStoreInterface interface {
 	GetEventByExecutionID(executionID string) (*Event, error)
 	GetFileMutationByID(id int64) (*FileMutationLog, error)
 	ListFileMutationsBySession(operatorSessionID string, limit int) ([]*FileMutationLog, error)
+	ListFileMutationsBySnapshot(ctx context.Context, operatorSessionID, snapshotName string, limit int) ([]*FileMutationLog, error)
 }
 
 // ledgerInterface defines the methods HistoryHandler needs from the ledger service.
 // This allows for dependency injection and unit testing with mocks.
 // It also includes two-phase commit methods needed for integration test setup.
 type ledgerInterface interface {
-	GetFileHistory(ctx context.Context, filePath string, limit int, sessionID string) ([]FileHistoryEntry, error)
+	SnapshotName(filePath string) (string, error)
+	GetFileHistory(ctx context.Context, filePath string, commitHashes []string, limit int, sessionID string) ([]FileHistoryEntry, error)
 	RestoreFileFromCommit(target *fs.FileEditTarget, commitHash, sourceSessionID, operatorSessionID string) (*LedgerResult, error)
 	GetFileAtCommit(filePath, commitHash, sessionID string) (string, error)
 	GetDiffContent(hashBefore, hashAfter, filePath, sessionID string) (string, error)
@@ -188,7 +190,18 @@ func (hh *HistoryHandler) HandleFetchFileHistory(ctx context.Context, requestJSO
 		"limit", limit,
 		"operator_session_id", request.OperatorSessionId)
 
-	history, err := hh.ledger.GetFileHistory(ctx, request.FilePath, limit, request.OperatorSessionId)
+	snapshotName, err := hh.ledger.SnapshotName(request.FilePath)
+	if err != nil {
+		return hh.fetchFileHistoryError(fmt.Errorf("failed to get file history: %w", err))
+	}
+	// Every mutation's after commit changes the snapshot, because each snapshot is encrypted under
+	// a fresh nonce, so limit rows always yield at least limit changes.
+	mutations, err := hh.eventsStore.ListFileMutationsBySnapshot(ctx, request.OperatorSessionId, snapshotName, limit)
+	if err != nil {
+		return hh.fetchFileHistoryError(fmt.Errorf("failed to get file history: %w", err))
+	}
+
+	history, err := hh.ledger.GetFileHistory(ctx, request.FilePath, mutationCommits(mutations), limit, request.OperatorSessionId)
 	if err != nil {
 		return hh.fetchFileHistoryError(fmt.Errorf("failed to get file history: %w", err))
 	}
@@ -208,6 +221,19 @@ func (hh *HistoryHandler) HandleFetchFileHistory(ctx context.Context, requestJSO
 	}
 
 	return result, nil
+}
+
+// mutationCommits lists the ledger commits of newest-first mutations, newest first.
+func mutationCommits(mutations []*FileMutationLog) []string {
+	commits := make([]string, 0, 2*len(mutations))
+	for _, mutation := range mutations {
+		for _, commit := range []string{mutation.LedgerHashAfter, mutation.LedgerHashBefore} {
+			if commit != "" {
+				commits = append(commits, commit)
+			}
+		}
+	}
+	return commits
 }
 
 // HandleRestoreFile restores a file to its content at a commit of the request's
@@ -299,16 +325,13 @@ func (hh *HistoryHandler) FetchFileDiff(mutationID int64) (*operatorv1.FileDiffE
 
 // ListFileDiffs returns the newest file mutations of an operator session, optionally
 // filtered to one file path. The entries carry the diff size but not the diff content.
-func (hh *HistoryHandler) ListFileDiffs(operatorSessionID, filePath string, limit int) ([]*operatorv1.FileDiffEntry, error) {
-	mutations, err := hh.eventsStore.ListFileMutationsBySession(operatorSessionID, limit)
+func (hh *HistoryHandler) ListFileDiffs(ctx context.Context, operatorSessionID, filePath string, limit int) ([]*operatorv1.FileDiffEntry, error) {
+	mutations, err := hh.listFileDiffMutations(ctx, operatorSessionID, filePath, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list file diffs: %w", err)
 	}
 	entries := make([]*operatorv1.FileDiffEntry, 0, len(mutations))
 	for _, mutation := range mutations {
-		if filePath != "" && mutation.Filepath != filePath {
-			continue
-		}
 		entry, err := hh.fileDiffEntry(mutation, false)
 		if err != nil {
 			return nil, err
@@ -316,6 +339,19 @@ func (hh *HistoryHandler) ListFileDiffs(operatorSessionID, filePath string, limi
 		entries = append(entries, entry)
 	}
 	return entries, nil
+}
+
+// listFileDiffMutations selects the mutations ListFileDiffs reports. A named file is selected in
+// the query, so the limit counts that file's mutations and not the session's.
+func (hh *HistoryHandler) listFileDiffMutations(ctx context.Context, operatorSessionID, filePath string, limit int) ([]*FileMutationLog, error) {
+	if filePath == "" {
+		return hh.eventsStore.ListFileMutationsBySession(operatorSessionID, limit)
+	}
+	snapshotName, err := hh.ledger.SnapshotName(filePath)
+	if err != nil {
+		return nil, err
+	}
+	return hh.eventsStore.ListFileMutationsBySnapshot(ctx, operatorSessionID, snapshotName, limit)
 }
 
 // fileDiffEntry builds the wire entry for one mutation. It fails closed: an

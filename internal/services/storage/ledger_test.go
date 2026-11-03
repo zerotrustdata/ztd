@@ -411,6 +411,16 @@ func TestLedgerService_CountLines(t *testing.T) {
 	require.Error(t, err)
 }
 
+// mutationCandidates returns the commits of ledger mutations, given oldest first, in the order the
+// history handler passes them to GetFileHistory.
+func mutationCandidates(results ...*LedgerResult) []string {
+	mutations := make([]*FileMutationLog, 0, len(results))
+	for i := len(results) - 1; i >= 0; i-- {
+		mutations = append(mutations, &FileMutationLog{LedgerHashBefore: results[i].LedgerHashBefore, LedgerHashAfter: results[i].LedgerHashAfter})
+	}
+	return mutationCommits(mutations)
+}
+
 func TestLedgerService_GetFileHistory(t *testing.T) {
 	t.Parallel()
 	lms, tempDir := setupTestLedger(t)
@@ -435,9 +445,9 @@ func TestLedgerService_GetFileHistory(t *testing.T) {
 	lms.CompleteMirrorWrite(result3, operatorSessionID)
 
 	// Get file history
-	history, err := lms.GetFileHistory(t.Context(), testFilePath, 10, operatorSessionID)
+	history, err := lms.GetFileHistory(t.Context(), testFilePath, mutationCandidates(result1, result2, result3), 10, operatorSessionID)
 	require.NoError(t, err)
-	assert.GreaterOrEqual(t, len(history), 2) // At least 2 commits for this file
+	assert.Len(t, history, 5, "the creation's pre-state commit holds no snapshot; every other commit changes it")
 
 	// Verify history entries have valid data
 	for _, entry := range history {
@@ -459,13 +469,31 @@ func TestLedgerService_GetFileHistory_DefaultLimit(t *testing.T) {
 	lms.CompleteMirrorCreate(result, "operator_session")
 
 	// Get history with zero limit (should default to 50)
-	history, err := lms.GetFileHistory(t.Context(), testFilePath, 0, "operator_session")
-	// History may be empty if git operations haven't completed
-	if err != nil {
-		assert.Contains(t, err.Error(), "not found")
-	} else {
-		assert.NotNil(t, history)
-	}
+	history, err := lms.GetFileHistory(t.Context(), testFilePath, mutationCandidates(result), 0, "operator_session")
+	require.NoError(t, err)
+	require.Len(t, history, 1)
+	assert.Equal(t, result.LedgerHashAfter, history[0].CommitHash)
+}
+
+// TestLedgerService_GetFileHistoryCountsEveryWriteOfIdenticalContent pins what the handler's row
+// limit relies on: each snapshot is encrypted under a fresh nonce, so a write that leaves the
+// content unchanged still changes the snapshot and yields a history entry.
+func TestLedgerService_GetFileHistoryCountsEveryWriteOfIdenticalContent(t *testing.T) {
+	t.Parallel()
+	lms, tempDir := setupTestLedger(t)
+	testFilePath := filepath.Join(tempDir, "identical.txt")
+	const session = "identical-content"
+	require.NoError(t, os.WriteFile(testFilePath, []byte("same"), constants.PermFilePrivate))
+
+	write, err := lms.LedgerFileWrite(session, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
+	require.NoError(t, err)
+	require.NoError(t, lms.CompleteMirrorWrite(write, session))
+
+	history, err := lms.GetFileHistory(t.Context(), testFilePath, mutationCandidates(write), 10, session)
+	require.NoError(t, err)
+	require.Len(t, history, 2)
+	assert.Equal(t, write.LedgerHashAfter, history[0].CommitHash)
+	assert.Equal(t, write.LedgerHashBefore, history[1].CommitHash)
 }
 
 func TestLedgerService_GetFileHistoryExcludesUnrelatedCommits(t *testing.T) {
@@ -482,16 +510,17 @@ func TestLedgerService_GetFileHistoryExcludesUnrelatedCommits(t *testing.T) {
 		return result
 	}
 	first := write(wanted, "original")
-	write(other, "unrelated one")
+	unrelatedOne := write(other, "unrelated one")
 	second := write(wanted, "changed")
-	write(other, "unrelated two")
-	history, err := lms.GetFileHistory(t.Context(), wanted, 50, session)
+	unrelatedTwo := write(other, "unrelated two")
+	candidates := mutationCandidates(first, unrelatedOne, second, unrelatedTwo)
+	history, err := lms.GetFileHistory(t.Context(), wanted, candidates, 50, session)
 	require.NoError(t, err)
 	require.Len(t, history, 3, "history must contain changes to the requested snapshot, not every later commit")
 	assert.Equal(t, second.LedgerHashAfter, history[0].CommitHash)
 	assert.Equal(t, second.LedgerHashBefore, history[1].CommitHash)
 	assert.Equal(t, first.LedgerHashAfter, history[2].CommitHash)
-	history, err = lms.GetFileHistory(t.Context(), wanted, 1, session)
+	history, err = lms.GetFileHistory(t.Context(), wanted, candidates, 1, session)
 	require.NoError(t, err)
 	require.Len(t, history, 1)
 	assert.Equal(t, second.LedgerHashAfter, history[0].CommitHash, "the limit applies after filtering unrelated commits")
@@ -501,7 +530,7 @@ func TestLedgerService_GetFileHistoryHonorsCancellation(t *testing.T) {
 	lms, root := setupTestLedger(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	history, err := lms.GetFileHistory(ctx, filepath.Join(root, "cancelled.txt"), 50, "cancelled-session")
+	history, err := lms.GetFileHistory(ctx, filepath.Join(root, "cancelled.txt"), nil, 50, "cancelled-session")
 	require.ErrorIs(t, err, context.Canceled)
 	assert.Empty(t, history)
 }
@@ -581,7 +610,7 @@ func TestLedgerService_RestoreFileFromCommit_MirrorsIntoExecutingSession(t *test
 	require.NoError(t, os.WriteFile(testFilePath, []byte("Original content\n"), 0o644))
 	require.NoError(t, lms.CompleteMirrorCreate(create, sourceSessionID))
 	require.NoError(t, os.WriteFile(testFilePath, []byte("Edited content\n"), 0o644))
-	sourceHistory, err := lms.GetFileHistory(t.Context(), testFilePath, 10, sourceSessionID)
+	sourceCommits, err := lms.ListCommits(sourceSessionID, 0)
 	require.NoError(t, err)
 
 	restored, err := lms.RestoreFileFromCommit(openTestTarget(t, lms.fileSvc, testFilePath, tempDir), create.LedgerHashAfter, sourceSessionID, executingSessionID)
@@ -599,9 +628,9 @@ func TestLedgerService_RestoreFileFromCommit_MirrorsIntoExecutingSession(t *test
 	assert.Contains(t, diff, "-Edited content")
 	assert.Contains(t, diff, "+Original content")
 
-	after, err := lms.GetFileHistory(t.Context(), testFilePath, 10, sourceSessionID)
+	after, err := lms.ListCommits(sourceSessionID, 0)
 	require.NoError(t, err)
-	assert.Len(t, after, len(sourceHistory), "the source session ledger must not record the restore")
+	assert.Len(t, after, len(sourceCommits), "the source session ledger must not record the restore")
 }
 
 func TestLedgerService_RestoreFileFromCommit_DisabledVault(t *testing.T) {
@@ -657,9 +686,9 @@ func TestLedgerService_CompleteWorkflow(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify history
-	history, err := lms.GetFileHistory(t.Context(), testFilePath, 10, operatorSessionID)
+	history, err := lms.GetFileHistory(t.Context(), testFilePath, mutationCandidates(createResult, writeResult, writeResult2), 10, operatorSessionID)
 	require.NoError(t, err)
-	assert.GreaterOrEqual(t, len(history), 2)
+	assert.Len(t, history, 5)
 
 	// Restore to Step 1
 	_, err = lms.RestoreFileFromCommit(openTestTarget(t, lms.fileSvc, testFilePath, tempDir), hash1, operatorSessionID, operatorSessionID)

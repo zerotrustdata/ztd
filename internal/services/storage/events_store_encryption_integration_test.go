@@ -57,10 +57,11 @@ func TestContentColumnsAreEncryptedAtRest(t *testing.T) {
 	}
 
 	require.NoError(t, ass.RecordFileMutation(&FileMutationLog{
-		EventID:   eventID,
-		Filepath:  "/secret/" + marker + ".txt",
-		Operation: FileMutationWrite,
-		DiffStat:  "1 file changed " + marker,
+		EventID:      eventID,
+		Filepath:     "/secret/" + marker + ".txt",
+		SnapshotName: "snapshot-name",
+		Operation:    FileMutationWrite,
+		DiffStat:     "1 file changed " + marker,
 	}))
 	rawPath := rawColumn(t, ass, `SELECT filepath FROM file_mutation_log WHERE event_id = ?`, eventID)
 	require.NotContains(t, string(rawPath), marker, "file_mutation_log.filepath")
@@ -132,10 +133,11 @@ func TestLockedVaultFailsContentWrites(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreVaultLocked, "sessions: %v", err)
 
 	err = ass.RecordFileMutation(&FileMutationLog{
-		EventID:   eventID,
-		Filepath:  "/locked/file.txt",
-		Operation: FileMutationWrite,
-		DiffStat:  "1 file changed",
+		EventID:      eventID,
+		Filepath:     "/locked/file.txt",
+		SnapshotName: "snapshot-name",
+		Operation:    FileMutationWrite,
+		DiffStat:     "1 file changed",
 	})
 	require.ErrorIs(t, err, constants.ErrLocalFirstEventsStoreVaultLocked, "file_mutation_log: %v", err)
 

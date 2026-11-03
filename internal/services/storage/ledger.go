@@ -46,12 +46,20 @@ type GitLedgerService struct {
 	logger      *slog.Logger
 	fileSvc     fs.RuntimeFileService
 	baseRelPath string
-	mu          sync.Mutex
+	// mu serializes ledger writes, which hold it across a snapshot and its commit.
+	mu sync.Mutex
+	// sessionInitMu guards session repository creation, so a reader sees no repository or a
+	// complete one without waiting for a ledger write. File history, point-in-time reads, and
+	// diffs do not take mu: git objects are immutable once written.
+	sessionInitMu sync.Mutex
 }
 
 // LedgerResult contains the result of a file ledger operation.
 type LedgerResult struct {
-	FilePath         string
+	FilePath string
+	// SnapshotName is the keyed name of the file's snapshot (SnapshotName). The file mutation
+	// row carries it so the file's commits can be found without walking the ledger.
+	SnapshotName     string
 	Operation        FileMutationOperation
 	LedgerHashBefore string
 	LedgerHashAfter  string
@@ -159,9 +167,8 @@ func (s *GitLedgerService) openSessionLedger(operatorSessionID string) (string, 
 
 	sessionRelPath := filepath.Join(s.baseRelPath, constants.SessionsDirname, operatorSessionID)
 
-	// Creation holds s.mu for the whole init, so a reader sees no repository or a complete one.
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.sessionInitMu.Lock()
+	defer s.sessionInitMu.Unlock()
 
 	exists, err := s.fileSvc.FileExists(context.Background(), filepath.Join(sessionRelPath, constants.GitDirname))
 	if err != nil {
@@ -183,8 +190,8 @@ func (s *GitLedgerService) createSessionLedger(operatorSessionID string) (string
 	sessionRelPath := filepath.Join(s.baseRelPath, constants.SessionsDirname, operatorSessionID)
 	gitRelPath := filepath.Join(sessionRelPath, constants.GitDirname)
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.sessionInitMu.Lock()
+	defer s.sessionInitMu.Unlock()
 
 	exists, err := s.fileSvc.FileExists(context.Background(), gitRelPath)
 	if err != nil {
@@ -277,13 +284,13 @@ func (s *GitLedgerService) normalizeToGitPath(filePath string) string {
 // from the vault DEK.
 const ledgerPathKeyLabel = "ztd-ledger-path-v1"
 
-// snapshotName returns the on-disk and in-tree name of the snapshot of a host path:
+// SnapshotName returns the on-disk and in-tree name of the snapshot of a host path:
 // hex(HMAC-SHA256(path)), keyed from the vault. Paths are content, so neither the ledger
 // directory, the git tree, nor any commit message may carry one; the keyed name lets
 // history, diff and restore find a path's snapshot without a path-to-name index, and
 // reveals nothing about the path without the vault. It fails closed with
 // ErrLedgerVaultRequired while the vault is locked.
-func (s *GitLedgerService) snapshotName(filePath string) (string, error) {
+func (s *GitLedgerService) SnapshotName(filePath string) (string, error) {
 	if s.config.EncryptionVault == nil {
 		return "", fmt.Errorf("ledger: %w", constants.ErrLedgerVaultRequired)
 	}
@@ -300,7 +307,7 @@ func (s *GitLedgerService) snapshotName(filePath string) (string, error) {
 // getLedgerPath returns the path where a file is mirrored in the ledger, without the
 // snapshot suffix. The final element is the keyed snapshot name, never a host path.
 func (s *GitLedgerService) getLedgerPath(ledgerDir, filePath string) (string, error) {
-	name, err := s.snapshotName(filePath)
+	name, err := s.SnapshotName(filePath)
 	if err != nil {
 		return "", err
 	}
@@ -310,7 +317,7 @@ func (s *GitLedgerService) getLedgerPath(ledgerDir, filePath string) (string, er
 // getGitRelativePath returns the git-relative path of a file's snapshot, without the
 // snapshot suffix (always with forward slashes).
 func (s *GitLedgerService) getGitRelativePath(filePath string) (string, error) {
-	name, err := s.snapshotName(filePath)
+	name, err := s.SnapshotName(filePath)
 	if err != nil {
 		return "", err
 	}
@@ -428,6 +435,7 @@ func (s *GitLedgerService) LedgerFileWrite(operatorSessionID string, target *fs.
 		return nil, err
 	}
 	result.LedgerPath = ledgerPath
+	result.SnapshotName = filepath.Base(ledgerPath)
 
 	if _, err := target.Stat(); err == nil {
 		if err := s.copyToLedger(target, ledgerPath); err != nil {
@@ -519,6 +527,7 @@ func (s *GitLedgerService) MirrorFileCreate(operatorSessionID string, target *fs
 		return nil, err
 	}
 	result.LedgerPath = ledgerPath
+	result.SnapshotName = filepath.Base(ledgerPath)
 
 	hashBefore, err := s.snapshotLedger(ledgerDir, ledgerMsgPreCreation)
 	if err != nil {
@@ -662,8 +671,13 @@ func (s *GitLedgerService) ListCommits(sessionID string, limit int) ([]LedgerCom
 	return commits, nil
 }
 
-// GetFileHistory retrieves the git history for a specific file.
-func (s *GitLedgerService) GetFileHistory(ctx context.Context, filePath string, limit int, operatorSessionID string) ([]FileHistoryEntry, error) {
+// GetFileHistory returns the commits among commitHashes that change filePath's snapshot, in the
+// given order, capped at limit. The candidates come from the file's mutation rows
+// (ListFileMutationsBySnapshot): a snapshot changes only in the before or after commit of a
+// mutation, so the cost follows the file's own history. Walking the commit chain instead reads the
+// snapshot tree of every commit in the session, and that tree grows with every file the session
+// has touched. A candidate that cannot be read fails closed.
+func (s *GitLedgerService) GetFileHistory(ctx context.Context, filePath string, commitHashes []string, limit int, operatorSessionID string) ([]FileHistoryEntry, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("ledger: file history: %w", err)
 	}
@@ -686,62 +700,62 @@ func (s *GitLedgerService) GetFileHistory(ctx context.Context, filePath string, 
 		return nil, fmt.Errorf("ledger: %w", constants.ErrInternal)
 	}
 
-	// Look up only this snapshot in each commit and its parents. Enumerating
-	// every file in every historical tree scales with the entire ledger and
-	// incorrectly reports unrelated commits as file changes.
 	encryptedPath := relPath + ledgerSnapshotSuffix
-	cIter, err := repo.Log(&git.LogOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("ledger: file history log: %w", err)
-	}
-	defer cIter.Close()
-
 	var entries []FileHistoryEntry
-	err = cIter.ForEach(func(c *object.Commit) error {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
+	for _, commitHash := range commitHashes {
 		if len(entries) >= limit {
-			return storer.ErrStop
+			break
 		}
-		snapshot, err := c.File(encryptedPath)
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("ledger: file history: %w", err)
+		}
+		commit, err := repo.CommitObject(plumbing.NewHash(commitHash))
+		if err != nil {
+			return nil, fmt.Errorf("ledger: file history: %w", err)
+		}
+		changed, err := commitChangesSnapshot(commit, encryptedPath)
+		if err != nil {
+			return nil, fmt.Errorf("ledger: file history: %w", err)
+		}
+		if changed {
+			entries = append(entries, FileHistoryEntry{
+				CommitHash: commit.Hash.String(), Timestamp: commit.Author.When,
+				Message: strings.TrimSpace(commit.Message), FilePath: filePath,
+			})
+		}
+	}
+
+	s.logger.Debug("GetFileHistory result", "candidates", len(commitHashes), "entries", len(entries))
+	return entries, nil
+}
+
+// commitChangesSnapshot reports whether a commit holds a restorable snapshot that differs from its
+// parents' snapshot.
+func commitChangesSnapshot(commit *object.Commit, snapshotPath string) (bool, error) {
+	snapshot, err := commit.File(snapshotPath)
+	if errors.Is(err, object.ErrFileNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	for i := range commit.ParentHashes {
+		parent, err := commit.Parent(i)
+		if err != nil {
+			return false, err
+		}
+		previous, err := parent.File(snapshotPath)
 		if errors.Is(err, object.ErrFileNotFound) {
-			return nil // Only restorable snapshots belong in file history.
+			continue
 		}
 		if err != nil {
-			return err
+			return false, err
 		}
-		for i := range c.ParentHashes {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			parent, err := c.Parent(i)
-			if err != nil {
-				return err
-			}
-			previous, err := parent.File(encryptedPath)
-			if errors.Is(err, object.ErrFileNotFound) {
-				continue
-			}
-			if err != nil {
-				return err
-			}
-			if snapshot.Hash == previous.Hash {
-				return nil
-			}
+		if snapshot.Hash == previous.Hash {
+			return false, nil
 		}
-		entries = append(entries, FileHistoryEntry{
-			CommitHash: c.Hash.String(), Timestamp: c.Author.When,
-			Message: strings.TrimSpace(c.Message), FilePath: filePath,
-		})
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("ledger: file history: %w", err)
 	}
-
-	s.logger.Debug("GetFileHistory result", "entries", len(entries))
-	return entries, nil
+	return true, nil
 }
 
 // GetFileAtCommit retrieves the content of a file at a specific commit, decrypting if the vault is unlocked.

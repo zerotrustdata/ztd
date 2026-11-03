@@ -478,6 +478,7 @@ func TestReportVerification_MutationsAllHaveHashes_Pass(t *testing.T) {
 	err := eventsStore.RecordFileMutation(&storage.FileMutationLog{
 		EventID:          eventID,
 		Filepath:         "/test/file1",
+		SnapshotName:     "snapshot-name",
 		Operation:        storage.FileMutationWrite,
 		LedgerHashBefore: "hash-before-1",
 		LedgerHashAfter:  "hash-after-1",
@@ -487,6 +488,7 @@ func TestReportVerification_MutationsAllHaveHashes_Pass(t *testing.T) {
 	err = eventsStore.RecordFileMutation(&storage.FileMutationLog{
 		EventID:          eventID,
 		Filepath:         "/test/file2",
+		SnapshotName:     "snapshot-name",
 		Operation:        storage.FileMutationCreate,
 		LedgerHashBefore: "hash-before-2",
 		LedgerHashAfter:  "hash-after-2",
@@ -511,6 +513,7 @@ func TestReportVerification_MutationMissingLedgerHashAfter_Fails(t *testing.T) {
 	err := eventsStore.RecordFileMutation(&storage.FileMutationLog{
 		EventID:          eventID,
 		Filepath:         "/test/file1",
+		SnapshotName:     "snapshot-name",
 		Operation:        storage.FileMutationWrite,
 		LedgerHashBefore: "hash-before-1",
 		LedgerHashAfter:  "",
@@ -536,6 +539,7 @@ func TestReportVerification_ReadOperationDoesNotRequireHash(t *testing.T) {
 	err := eventsStore.RecordFileMutation(&storage.FileMutationLog{
 		EventID:          eventID,
 		Filepath:         "/test/file1",
+		SnapshotName:     "snapshot-name",
 		Operation:        "READ",
 		LedgerHashBefore: "hash-before-1",
 		LedgerHashAfter:  "",

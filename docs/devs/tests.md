@@ -312,6 +312,8 @@ Use `-v` with `./ztd test integration` to stream individual test names and durat
 
 `TestPublicMirror_ScalingIntegration` compares ingest into mirrors retaining 500 and 5,000 batches and proof artifacts. It enforces bounded allocation, equal row-mutation counts, and bounded database growth; p95 latency ratios are diagnostic because shared-runner scheduling, filesystem sync, and race instrumentation affect elapsed time. The fixture uses one persistent SQLite connection so `total_changes()` counts every ingest transaction, and requires successful WAL checkpoints before comparing disk sizes. Run it with `./ztd test integration -v --pkg ./internal/services/gateway --run '^TestPublicMirror_ScalingIntegration$'`.
 
+`file_history_scaling_integration_test.go` in `internal/services/storage` asserts the file history work bound without measuring elapsed time. `TestFileHistory_ReadsOnlyTheFilesOwnCommits` deletes every commit object that is not one of the file's mutation commits or their parents and first proves that a full walk now fails, so any lookup that reaches the rest of the session fails with a missing object. `TestFileMutationsBySnapshotQuery_StaysOnTheIndex` fixes the query plan under `ANALYZE` statistics that favor the wrong join order. Run them with `./ztd test integration -v --pkg ./internal/services/storage --run '^(TestFileHistory_|TestFileMutationsBySnapshotQuery_)'`.
+
 The enrollment burst deadline contract (`TestPlatformEnrollmentBurst`) runs only without race or coverage instrumentation; execute with `make test-enrollment-burst`. The Operator transport smoke (`TestOperatorTransportBoundary_BurstDeliversEveryCommittedIdentity`) enrolls 100 in-process Operators; run with `make test-operator-burst`.
 
 ### Qualify Operator Deployment

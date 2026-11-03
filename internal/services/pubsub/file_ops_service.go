@@ -363,6 +363,7 @@ func (fs *FileOpsService) executeLedgeredFileEdit(ctx context.Context, msg *PubS
 		mutation := &storage.FileMutationLog{
 			EventID:          eventID,
 			Filepath:         filePath,
+			SnapshotName:     ledgerResult.SnapshotName,
 			Operation:        ledgerResult.Operation,
 			LedgerHashBefore: ledgerResult.LedgerHashBefore,
 			LedgerHashAfter:  ledgerResult.LedgerHashAfter,
