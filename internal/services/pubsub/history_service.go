@@ -196,18 +196,7 @@ func (hs *HistoryService) recordRestore(event *storage.Event, result *operatorv1
 	if !result.GetSuccess() || ledgerResult == nil {
 		return nil
 	}
-	if err := hs.eventsStore.RecordFileMutation(&storage.FileMutationLog{
-		EventID:          eventID,
-		Filepath:         result.GetFilePath(),
-		SnapshotName:     ledgerResult.SnapshotName,
-		Operation:        ledgerResult.Operation,
-		LedgerHashBefore: ledgerResult.LedgerHashBefore,
-		LedgerHashAfter:  ledgerResult.LedgerHashAfter,
-		DiffStat:         ledgerResult.DiffStat,
-	}); err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreRecordFileMutationFailed, err)
-	}
-	return nil
+	return recordLedgerMutation(hs.eventsStore, eventID, ledgerResult)
 }
 
 // HandleFetchFileDiffRequest processes a fetch file diff request. A diff_id names a

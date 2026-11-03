@@ -328,23 +328,22 @@ func (c *chaosExecutionHandler) ExecuteVerifiedTransaction(ctx context.Context, 
 		req := &operatorv1.FileEditRequested{}
 		if err := proto.Unmarshal(msg.Payload, req); err == nil {
 			slog.Info("Chaos simulating file mutation in ledger", "category", string(constants.ToolDisplayCategoryFile))
-			// Simulate the two-phase ledger commit through the governed target.
+			// Simulate the ledgered mutation through the governed target.
 			target, err := c.fileSvc.OpenFileEditTarget(ctx, req.FilePath, c.workDir)
 			if err != nil {
 				slog.Error("OpenFileEditTarget failed", "error", err)
 				return "", nil
 			}
 			defer func() { _ = target.Close() }()
-			res, err := c.ledger.LedgerFileWrite(msg.OperatorSessionID, target)
+			res, err := c.ledger.BeginMutation(msg.OperatorSessionID, target)
 			if err != nil {
-				slog.Error("LedgerFileWrite failed", "error", err)
+				slog.Error("BeginMutation failed", "error", err)
 			}
 			if res != nil {
-				// Create the dummy file so git can see it
 				_ = target.WriteFile([]byte(req.Content), constants.PermFilePrivate)
-				err = c.ledger.CompleteMirrorWrite(res, msg.OperatorSessionID)
+				err = c.ledger.CompleteMutation(res, msg.OperatorSessionID)
 				if err != nil {
-					slog.Error("CompleteMirrorWrite failed", "error", err)
+					slog.Error("CompleteMutation failed", "error", err)
 				} else {
 					slog.Info("Chaos ledger mutation complete", "category", string(constants.ToolDisplayCategoryFile))
 					// Note: State root updates disabled in chaos test to avoid race conditions

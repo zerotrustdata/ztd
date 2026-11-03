@@ -58,23 +58,10 @@ func (f *fileHistoryFixture) path(name string) string {
 func (f *fileHistoryFixture) mutate(t *testing.T, session, path, content string) *LedgerResult {
 	t.Helper()
 	target := openTestTarget(t, f.ledger.fileSvc, path, f.root)
-	var (
-		result *LedgerResult
-		err    error
-	)
-	_, statErr := target.Stat()
-	if statErr == nil {
-		result, err = f.ledger.LedgerFileWrite(session, target)
-	} else {
-		result, err = f.ledger.MirrorFileCreate(session, target)
-	}
+	result, err := f.ledger.BeginMutation(session, target)
 	require.NoError(t, err)
 	require.NoError(t, target.WriteFile([]byte(content), constants.PermFilePrivate))
-	if statErr == nil {
-		require.NoError(t, f.ledger.CompleteMirrorWrite(result, session))
-	} else {
-		require.NoError(t, f.ledger.CompleteMirrorCreate(result, session))
-	}
+	require.NoError(t, f.ledger.CompleteMutation(result, session))
 	f.recordMutation(t, session, result)
 	return result
 }
@@ -197,9 +184,12 @@ func TestFileHistory_ReadsOnlyTheFilesOwnCommits(t *testing.T) {
 			f.mutateUnrelated(t, session, "after", 2)
 
 			deleted := f.deleteCommitsExcept(t, session, created, written)
-			require.GreaterOrEqual(t, deleted, tc.unrelated, "the unrelated session history must be gone")
+			// Both before commits are unrelated mutations' commits, so they and their parents stay.
+			require.GreaterOrEqual(t, deleted, tc.unrelated-4, "the unrelated session history must be gone")
 
-			assert.Equal(t, []string{written.LedgerHashAfter, written.LedgerHashBefore, created.LedgerHashAfter},
+			// The edit's pre-image matched the ledger, so its before commit is an unrelated
+			// mutation's commit and never lists as a change of this file.
+			assert.Equal(t, []string{written.LedgerHashAfter, created.LedgerHashAfter},
 				f.history(t, session, wanted, 0))
 		})
 	}
@@ -240,10 +230,11 @@ func TestFileHistory_KeepsEveryRestorePointOfAPreexistingFile(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, restoreResult.GetSuccess())
 	f.recordMutation(t, session, ledgerResult)
+	assert.Equal(t, written.LedgerHashAfter, ledgerResult.LedgerHashBefore,
+		"the restored-over content matched the ledger, so no backup commit was written")
 
 	assert.Equal(t, []string{
-		ledgerResult.LedgerHashAfter, ledgerResult.LedgerHashBefore,
-		written.LedgerHashAfter, written.LedgerHashBefore,
+		ledgerResult.LedgerHashAfter, written.LedgerHashAfter, written.LedgerHashBefore,
 	}, f.history(t, session, path, 0))
 }
 
@@ -251,13 +242,14 @@ func TestFileHistory_LimitReturnsTheNewestChanges(t *testing.T) {
 	const session = "history-limit"
 	f := newFileHistoryFixture(t, session)
 	path := f.path("limited.txt")
-	f.mutate(t, session, path, "v1")
+	first := f.mutate(t, session, path, "v1")
 	second := f.mutate(t, session, path, "v2")
 	third := f.mutate(t, session, path, "v3")
 
 	assert.Equal(t, []string{third.LedgerHashAfter}, f.history(t, session, path, 1))
-	assert.Equal(t, []string{third.LedgerHashAfter, third.LedgerHashBefore, second.LedgerHashAfter}, f.history(t, session, path, 3))
-	assert.Len(t, f.history(t, session, path, 50), 5, "v1 adds one change; v2 and v3 add two each")
+	assert.Equal(t, []string{third.LedgerHashAfter, second.LedgerHashAfter}, f.history(t, session, path, 2))
+	assert.Equal(t, []string{third.LedgerHashAfter, second.LedgerHashAfter, first.LedgerHashAfter},
+		f.history(t, session, path, 50), "each pre-image matched the ledger, so every mutation adds one change")
 }
 
 func TestFileHistory_ScopedToTheRequestedSession(t *testing.T) {

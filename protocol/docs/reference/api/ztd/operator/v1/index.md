@@ -1114,7 +1114,6 @@ EventReceipt is the signed evidence for a governed request event, including read
 | start_line | [int32](#int32) |  |  |
 | end_line | [int32](#int32) |  |  |
 | patch_content | [string](#string) |  |  |
-| create_backup | [bool](#bool) |  |  |
 | create_if_missing | [bool](#bool) |  |  |
 
 
@@ -1137,7 +1136,6 @@ EventReceipt is the signed evidence for a governed request event, including read
 | duration_seconds | [float](#float) |  |  |
 | bytes_written | [int64](#int64) |  |  |
 | lines_changed | [int32](#int32) |  |  |
-| backup_path | [string](#string) |  |  |
 | error_message | [string](#string) |  |  |
 | error_type | [string](#string) |  |  |
 | content | [string](#string) |  |  |

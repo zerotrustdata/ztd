@@ -425,7 +425,11 @@ const (
 	FilesDirname      = "files"
 	SessionsDirname   = "sessions"
 	GitDirname        = ".git"
+	GitObjectsDirname = "objects"
+	GitIndexFilename  = "index"
 	GitignoreFilename = ".gitignore"
+	// LedgerSnapshotsTreeDirname is the top-level ledger tree that holds sharded snapshots.
+	LedgerSnapshotsTreeDirname = "snapshots"
 )
 
 // SSH config constants for basenames and key filenames.
@@ -566,12 +570,11 @@ const (
 	SSEClientMaxLineSize     = 2 * 6 * ExecutionMaxStreamSize
 )
 
-// File suffixes for temp, backup, and SQLite artifacts.
+// File suffixes for SQLite artifacts.
 const (
-	BackupFileSuffixPattern = ".backup-%s-%s"
-	SQLiteWALSuffix         = "-wal"
-	SQLiteSHMSuffix         = "-shm"
-	SQLiteJournalSuffix     = "-journal"
+	SQLiteWALSuffix     = "-wal"
+	SQLiteSHMSuffix     = "-shm"
+	SQLiteJournalSuffix = "-journal"
 )
 
 // Reporting constants for output directory and filenames.

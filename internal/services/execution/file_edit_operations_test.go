@@ -195,7 +195,7 @@ func TestFileEditService_WriteOperations(t *testing.T) {
 		assert.Equal(t, newContent, string(data))
 	})
 
-	t.Run("write new file without backup", func(t *testing.T) {
+	t.Run("write new file", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "new.txt")
@@ -208,7 +208,6 @@ func TestFileEditService_WriteOperations(t *testing.T) {
 			FilePath:        testFile,
 			Content:         content,
 			CreateIfMissing: true,
-			CreateBackup:    false,
 			RequestedBy:     "test-user",
 		}
 
@@ -216,7 +215,9 @@ func TestFileEditService_WriteOperations(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status)
-		assert.Empty(t, result.BackupPath)
+		data, err := os.ReadFile(testFile)
+		require.NoError(t, err)
+		assert.Equal(t, content, string(data))
 	})
 
 	t.Run("write with nested directory creation", func(t *testing.T) {
@@ -249,7 +250,7 @@ func TestFileEditService_ReplaceOperations(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	svc := newTestFileEditService(t, cfg, logger)
 
-	t.Run("replace with backup", func(t *testing.T) {
+	t.Run("replace text", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "replace.txt")
@@ -260,24 +261,22 @@ func TestFileEditService_ReplaceOperations(t *testing.T) {
 		oldContent := "original"
 		newContent := "replaced"
 		req := &models.FileEditRequest{
-			ExecutionID:  "replace-backup-1",
-			CaseID:       "test-case-replace",
-			Operation:    constants.FileOperationReplace,
-			FilePath:     testFile,
-			OldContent:   oldContent,
-			NewContent:   newContent,
-			CreateBackup: true,
-			RequestedBy:  "test-user",
+			ExecutionID: "replace-text-1",
+			CaseID:      "test-case-replace",
+			Operation:   constants.FileOperationReplace,
+			FilePath:    testFile,
+			OldContent:  oldContent,
+			NewContent:  newContent,
+			RequestedBy: "test-user",
 		}
 
 		result, err := svc.ExecuteFileEdit(context.Background(), req)
 
 		require.NoError(t, err)
 		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status)
-		assert.NotEmpty(t, result.BackupPath)
 
-		backupData, _ := os.ReadFile(result.BackupPath)
-		assert.Equal(t, original, string(backupData))
+		fileData, _ := os.ReadFile(testFile)
+		assert.Equal(t, "replaced text", string(fileData))
 	})
 
 	t.Run("replace with empty new content", func(t *testing.T) {
@@ -316,7 +315,7 @@ func TestFileEditService_InsertOperations(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	svc := newTestFileEditService(t, cfg, logger)
 
-	t.Run("insert with backup", func(t *testing.T) {
+	t.Run("insert single line", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "insert.txt")
@@ -327,13 +326,12 @@ func TestFileEditService_InsertOperations(t *testing.T) {
 		insertContent := "Line 2"
 		insertPos := 2
 		req := &models.FileEditRequest{
-			ExecutionID:    "insert-backup-1",
+			ExecutionID:    "insert-single-1",
 			CaseID:         "test-case-insert",
 			Operation:      constants.FileOperationInsert,
 			FilePath:       testFile,
 			InsertContent:  insertContent,
 			InsertPosition: insertPos,
-			CreateBackup:   true,
 			RequestedBy:    "test-user",
 		}
 
@@ -341,7 +339,9 @@ func TestFileEditService_InsertOperations(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status)
-		assert.NotEmpty(t, result.BackupPath)
+
+		fileData, _ := os.ReadFile(testFile)
+		assert.Equal(t, "Line 1\nLine 2\nLine 3", string(fileData))
 	})
 
 	t.Run("insert multiline content", func(t *testing.T) {
@@ -381,7 +381,7 @@ func TestFileEditService_DeleteOperations(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	svc := newTestFileEditService(t, cfg, logger)
 
-	t.Run("delete with backup", func(t *testing.T) {
+	t.Run("delete line range", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
 		testFile := filepath.Join(tmpDir, "delete.txt")
@@ -392,21 +392,22 @@ func TestFileEditService_DeleteOperations(t *testing.T) {
 		startLine := 2
 		endLine := 3
 		req := &models.FileEditRequest{
-			ExecutionID:  "delete-backup-1",
-			CaseID:       "test-case-delete",
-			Operation:    constants.FileOperationDelete,
-			FilePath:     testFile,
-			StartLine:    startLine,
-			EndLine:      endLine,
-			CreateBackup: true,
-			RequestedBy:  "test-user",
+			ExecutionID: "delete-range-1",
+			CaseID:      "test-case-delete",
+			Operation:   constants.FileOperationDelete,
+			FilePath:    testFile,
+			StartLine:   startLine,
+			EndLine:     endLine,
+			RequestedBy: "test-user",
 		}
 
 		result, err := svc.ExecuteFileEdit(context.Background(), req)
 
 		require.NoError(t, err)
 		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status)
-		assert.NotEmpty(t, result.BackupPath)
+
+		fileData, _ := os.ReadFile(testFile)
+		assert.Equal(t, "Line 1\nLine 4", string(fileData))
 	})
 
 	t.Run("delete first line", func(t *testing.T) {

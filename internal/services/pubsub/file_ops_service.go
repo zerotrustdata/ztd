@@ -179,9 +179,6 @@ func (fs *FileOpsService) HandleFileEditRequest(ctx context.Context, msg *PubSub
 		}
 		protoResult.LinesChanged = int32(linesChanged) //nolint:gosec // bounds checked above
 	}
-	if result.BackupPath != "" {
-		protoResult.BackupPath = result.BackupPath
-	}
 	if result.Content != "" {
 		protoResult.Content = result.Content
 		protoResult.StdoutSize = int32(len(result.Content)) //nolint:gosec // bounded by pub/sub payload limits
@@ -293,8 +290,8 @@ type ledgeredFileEdit struct {
 	err     error
 }
 
-// executeLedgeredFileEdit runs one admitted file operation through the git
-// ledger two-phase commit and records its execution event and, for a
+// executeLedgeredFileEdit runs one admitted file operation between the git
+// ledger's BeginMutation and CompleteMutation and records its execution event and, for a
 // completed mutation, its file mutation. The ledger reads through the same
 // rooted target the path policy admitted, and evidence is keyed to the
 // verified command session, not the runtime config: the Gateway embedded
@@ -308,8 +305,9 @@ func (fs *FileOpsService) executeLedgeredFileEdit(ctx context.Context, msg *PubS
 	var ledgerResult *storage.LedgerResult
 	if editReq.Operation != constants.FileOperationRead {
 		var beginErr error
-		ledgerResult, beginErr = fs.beginLedgerTwoPhaseCommit(msg.OperatorSessionID, target, operation)
+		ledgerResult, beginErr = fs.ledger.BeginMutation(msg.OperatorSessionID, target)
 		if beginErr != nil {
+			beginErr = fmt.Errorf("file edit: begin ledger mutation: %w", beginErr)
 			// Fail closed: without a pre-mutation snapshot the edit is never executed.
 			fs.logger.Error("File edit refused: ledger snapshot unavailable", "message_id", msg.ID, logging.ErrorKindKey, logging.ErrorKindValue(beginErr))
 			publishErr := fs.publishLFEAError(ctx, msg, events.failed, beginErr.Error())
@@ -327,7 +325,7 @@ func (fs *FileOpsService) executeLedgeredFileEdit(ctx context.Context, msg *PubS
 		return nil, fmt.Errorf("file edit: %w", constants.ErrInternal)
 	}
 
-	execErr := fs.finishLedgerTwoPhaseCommit(msg.OperatorSessionID, ledgerResult, result)
+	execErr := fs.completeLedgerMutation(msg.OperatorSessionID, ledgerResult, result)
 
 	commandStr := fmt.Sprintf("file_%s: %s", operation, filePath)
 
@@ -360,18 +358,8 @@ func (fs *FileOpsService) executeLedgeredFileEdit(ctx context.Context, msg *PubS
 		result.ErrorMessage = err.Error()
 		result.ErrorType = "audit_record_error"
 	} else if result.Status == operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED && ledgerResult != nil {
-		mutation := &storage.FileMutationLog{
-			EventID:          eventID,
-			Filepath:         filePath,
-			SnapshotName:     ledgerResult.SnapshotName,
-			Operation:        ledgerResult.Operation,
-			LedgerHashBefore: ledgerResult.LedgerHashBefore,
-			LedgerHashAfter:  ledgerResult.LedgerHashAfter,
-			DiffStat:         ledgerResult.DiffStat,
-		}
-		if err := fs.eventsStore.RecordFileMutation(mutation); err != nil {
-			fs.logger.Error("File mutation could not be recorded; result marked FAILED", logging.ErrorKind(err))
-			mutationErr := fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreRecordFileMutationFailed, err)
+		if mutationErr := recordLedgerMutation(fs.eventsStore, eventID, ledgerResult); mutationErr != nil {
+			fs.logger.Error("File mutation could not be recorded; result marked FAILED", logging.ErrorKind(mutationErr))
 			execErr = errors.Join(execErr, mutationErr)
 			result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 			result.ErrorMessage = mutationErr.Error()
@@ -381,47 +369,16 @@ func (fs *FileOpsService) executeLedgeredFileEdit(ctx context.Context, msg *PubS
 	return &ledgeredFileEdit{result: result, command: commandStr, err: execErr}, nil
 }
 
-// beginLedgerTwoPhaseCommit starts the pre-mutation snapshot phase of the git ledger
-// two-phase commit. It determines whether the operation creates a new file or
-// modifies an existing one and calls the appropriate ledger begin method.
-// It returns (nil, nil) when the operation needs no snapshot (the edit fails on its own),
-// and an error wrapping the ledger error when the snapshot cannot be taken. The caller must
-// refuse the edit in that case.
-func (fs *FileOpsService) beginLedgerTwoPhaseCommit(operatorSessionID string, target *fsvc.FileEditTarget, operation string) (*storage.LedgerResult, error) {
-	info, statErr := target.Stat()
-	fileExists := statErr == nil && !info.IsDir()
-
-	var ledgerResult *storage.LedgerResult
-	var ledgerErr error
-
-	switch {
-	case !fileExists && (operation == "write" || operation == "create"):
-		ledgerResult, ledgerErr = fs.ledger.MirrorFileCreate(operatorSessionID, target)
-	case fileExists:
-		ledgerResult, ledgerErr = fs.ledger.LedgerFileWrite(operatorSessionID, target)
-	default:
-		// File does not exist and operation is not a creation (e.g., replace/insert/delete
-		// on a non-existent file). ExecuteFileEdit will fail; skip the ledger snapshot.
-		return nil, nil
-	}
-
-	if ledgerErr != nil {
-		return nil, fmt.Errorf("file edit: begin ledger two-phase commit: %w", ledgerErr)
-	}
-
-	return ledgerResult, nil
-}
-
-// finishLedgerTwoPhaseCommit completes the post-mutation snapshot after a successful edit. A failed
-// completion fails the result: the edit happened but its snapshot is not recorded, so the result
-// is published as a FileEdit failure and the audit trail records it as failed.
-func (fs *FileOpsService) finishLedgerTwoPhaseCommit(operatorSessionID string, ledgerResult *storage.LedgerResult, result *models.FileEditResult) error {
+// completeLedgerMutation records a successful edit in the ledger. A failed completion fails the
+// result: the edit happened but is not recorded, so the result is published as a FileEdit failure
+// and the audit trail records it as failed. An edit that did not complete records nothing.
+func (fs *FileOpsService) completeLedgerMutation(operatorSessionID string, ledgerResult *storage.LedgerResult, result *models.FileEditResult) error {
 	if ledgerResult == nil || result.Status != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
 		return nil
 	}
-	if err := fs.completeLedgerTwoPhaseCommit(operatorSessionID, ledgerResult); err != nil {
-		fs.logger.Error("Failed to complete ledger two-phase commit", "operator_session_id", operatorSessionID, logging.ErrorKindKey, logging.ErrorKindValue(err))
-		wrapped := fmt.Errorf("file edit: complete ledger two-phase commit: %w", err)
+	if err := fs.ledger.CompleteMutation(ledgerResult, operatorSessionID); err != nil {
+		fs.logger.Error("Failed to complete ledger mutation", "operator_session_id", operatorSessionID, logging.ErrorKindKey, logging.ErrorKindValue(err))
+		wrapped := fmt.Errorf("file edit: complete ledger mutation: %w", err)
 		result.Status = operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
 		result.ErrorMessage = wrapped.Error()
 		return wrapped
@@ -429,19 +386,22 @@ func (fs *FileOpsService) finishLedgerTwoPhaseCommit(operatorSessionID string, l
 	return nil
 }
 
-// completeLedgerTwoPhaseCommit completes the post-mutation snapshot phase of the git
-// ledger two-phase commit by dispatching to the appropriate CompleteMirror* method
-// based on the LedgerResult.Operation. Returns nil if result is nil.
-func (fs *FileOpsService) completeLedgerTwoPhaseCommit(operatorSessionID string, result *storage.LedgerResult) error {
-	if result == nil {
-		return nil
+// recordLedgerMutation records the file mutation row of a completed ledger mutation under its
+// execution event. Every governed file mutation, edit or restore, is recorded here.
+func recordLedgerMutation(store *storage.LocalFirstEventsStore, eventID int64, r *storage.LedgerResult) error {
+	mutation := &storage.FileMutationLog{
+		EventID:          eventID,
+		Filepath:         r.FilePath,
+		SnapshotName:     r.SnapshotName,
+		Operation:        r.Operation,
+		LedgerHashBefore: r.LedgerHashBefore,
+		LedgerHashAfter:  r.LedgerHashAfter,
+		DiffStat:         r.DiffStat,
 	}
-	switch result.Operation {
-	case storage.FileMutationCreate:
-		return fs.ledger.CompleteMirrorCreate(result, operatorSessionID)
-	default:
-		return fs.ledger.CompleteMirrorWrite(result, operatorSessionID)
+	if err := store.RecordFileMutation(mutation); err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreRecordFileMutationFailed, err)
 	}
+	return nil
 }
 
 // HandleFsListRequest processes an inbound filesystem list request.
@@ -848,7 +808,6 @@ func payloadToFileEditRequest(msg *PubSubCommandMessage) (*models.FileEditReques
 		FilePath:        p.FilePath,
 		RequestedBy:     "ztd-system",
 		Justification:   justification,
-		CreateBackup:    p.CreateBackup,
 		CreateIfMissing: p.CreateIfMissing,
 	}
 

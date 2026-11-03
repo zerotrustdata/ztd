@@ -112,8 +112,8 @@ func Run(ctx context.Context, opts Options) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("%w: suspended transaction store: %w", constants.ErrReportStoreUnavailable, err)
 	}
 
-	// Open git ledger.
-	ledger, err := storage.NewGitLedgerService(&storage.LedgerConfig{
+	// Open the git ledger read-only: a report never writes the runtime it reports on.
+	ledger, err := storage.OpenGitLedgerReader(&storage.LedgerConfig{
 		EncryptionVault: v,
 	}, logger, fileSvc)
 	if err != nil {

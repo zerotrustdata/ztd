@@ -181,10 +181,10 @@ func (f *integrationEvaluatorFixture) seedEvidence(t *testing.T) {
 	target, err := f.fileSvc.OpenFileEditTarget(context.Background(), targetPath, f.tempDir)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = target.Close() })
-	mirror, err := f.ledger.MirrorFileCreate("", target)
+	mirror, err := f.ledger.BeginMutation("", target)
 	require.NoError(t, err)
 	require.NotNil(t, mirror)
-	require.NoError(t, f.ledger.CompleteMirrorCreate(mirror, ""))
+	require.NoError(t, f.ledger.CompleteMutation(mirror, ""))
 
 	appendCommitment := func(txID string, committedAt time.Time, priorHash string) string {
 		attestation := &operatorv1.CommitmentAttestation{

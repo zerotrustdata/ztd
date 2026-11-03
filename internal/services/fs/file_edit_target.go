@@ -60,18 +60,6 @@ func (t *FileEditTarget) WriteFile(data []byte, mode os.FileMode) error {
 	return t.root.WriteFile(t.name, data, mode)
 }
 
-// CreateSibling creates or truncates the file named by the target path plus
-// suffix, beneath the same root. It returns the handle and its absolute path;
-// the caller must Close the handle.
-func (t *FileEditTarget) CreateSibling(suffix string, mode os.FileMode) (*os.File, string, error) {
-	name := t.name + suffix
-	file, err := t.root.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
-	if err != nil {
-		return nil, "", err
-	}
-	return file, filepath.Join(t.dir, name), nil
-}
-
 // ResolvesWithin reports whether the target's symlink-resolved destination
 // sits strictly beneath dir after dir's own symlinks are resolved, so a
 // symlinked ancestor cannot carry a lexically admitted path elsewhere.

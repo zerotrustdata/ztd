@@ -111,24 +111,14 @@ func TestLedgerPaths_NothingOnDiskCarriesAPath(t *testing.T) {
 	hostFile := filepath.Join(hostDir, ledgerPathMarkerFile)
 	const sessionID = "sess-no-path-leak"
 
-	create, err := lms.MirrorFileCreate(sessionID, openTestTarget(t, lms.fileSvc, hostFile, tempDir))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(hostFile, []byte(ledgerContentMarkerText+" v1\n"), 0o644))
-	require.NoError(t, lms.CompleteMirrorCreate(create, sessionID))
+	create := recordMutation(t, lms, sessionID, hostFile, tempDir, ledgerContentMarkerText+" v1\n")
+	write := recordMutation(t, lms, sessionID, hostFile, tempDir, ledgerContentMarkerText+" v2\n")
 
-	write, err := lms.LedgerFileWrite(sessionID, openTestTarget(t, lms.fileSvc, hostFile, tempDir))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(hostFile, []byte(ledgerContentMarkerText+" v2\n"), 0o644))
-	require.NoError(t, lms.CompleteMirrorWrite(write, sessionID))
-
-	_, err = lms.RestoreFileFromCommit(openTestTarget(t, lms.fileSvc, hostFile, tempDir), create.LedgerHashAfter, sessionID, sessionID)
+	_, err := lms.RestoreFileFromCommit(openTestTarget(t, lms.fileSvc, hostFile, tempDir), create.LedgerHashAfter, sessionID, sessionID)
 	require.NoError(t, err)
 
 	// A mutation under the default (empty session) repository exercises the other repo.
-	defaultCreate, err := lms.MirrorFileCreate("", openTestTarget(t, lms.fileSvc, filepath.Join(hostDir, "default-"+ledgerPathMarkerFile), tempDir))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(hostDir, "default-"+ledgerPathMarkerFile), []byte(ledgerContentMarkerText), 0o644))
-	require.NoError(t, lms.CompleteMirrorCreate(defaultCreate, ""))
+	recordMutation(t, lms, "", filepath.Join(hostDir, "default-"+ledgerPathMarkerFile), tempDir, ledgerContentMarkerText)
 
 	assertLedgerHoldsNoMarkers(t, lms, ledgerPathMarkerDir, ledgerPathMarkerFile, ledgerContentMarkerText, tempDir)
 
@@ -170,6 +160,25 @@ func TestLedgerPaths_HistoryFailsClosedWhileVaultLocked(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrLedgerVaultRequired)
 }
 
+// setDirTreeMode sets the mode of root and every directory below it, so no object can be stored
+// in a fan-out directory that already exists.
+func setDirTreeMode(t *testing.T, root string, mode os.FileMode) {
+	t.Helper()
+	var dirs []string
+	require.NoError(t, filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			dirs = append(dirs, path)
+		}
+		return nil
+	}))
+	for _, dir := range dirs {
+		require.NoError(t, os.Chmod(dir, mode))
+	}
+}
+
 // corruptHead makes every commit in a repository fail while objects stay readable, which is how a
 // snapshot-commit failure is induced without depending on filesystem permissions.
 func corruptHead(t *testing.T, repoDir string) {
@@ -187,32 +196,32 @@ func TestLedgerPaths_SnapshotCommitFailureFailsTheMirror(t *testing.T) {
 	sessionDir, err := lms.createSessionLedger(beginSession)
 	require.NoError(t, err)
 	corruptHead(t, sessionDir)
-	result, err := lms.LedgerFileWrite(beginSession, openTestTarget(t, lms.fileSvc, hostFile, tempDir))
+	result, err := lms.BeginMutation(beginSession, openTestTarget(t, lms.fileSvc, hostFile, tempDir))
 	require.Error(t, err)
 	assert.Nil(t, result)
 
 	// Complete (write): the post-mutation commit fails, and the failure is returned, not logged away.
 	const writeSession = "sess-complete-write-failure"
-	write, err := lms.LedgerFileWrite(writeSession, openTestTarget(t, lms.fileSvc, hostFile, tempDir))
+	write, err := lms.BeginMutation(writeSession, openTestTarget(t, lms.fileSvc, hostFile, tempDir))
 	require.NoError(t, err)
 	require.NotEmpty(t, write.LedgerHashBefore)
 	writeDir, err := lms.openSessionLedger(writeSession)
 	require.NoError(t, err)
 	corruptHead(t, writeDir)
 	require.NoError(t, os.WriteFile(hostFile, []byte("after\n"), 0o644))
-	require.Error(t, lms.CompleteMirrorWrite(write, writeSession))
+	require.Error(t, lms.CompleteMutation(write, writeSession))
 	assert.Empty(t, write.LedgerHashAfter)
 
 	// Complete (create): same, for the creation path.
 	const createSession = "sess-complete-create-failure"
 	createFile := filepath.Join(tempDir, "snapshot-failure-create.txt")
-	create, err := lms.MirrorFileCreate(createSession, openTestTarget(t, lms.fileSvc, createFile, tempDir))
+	create, err := lms.BeginMutation(createSession, openTestTarget(t, lms.fileSvc, createFile, tempDir))
 	require.NoError(t, err)
 	createDir, err := lms.openSessionLedger(createSession)
 	require.NoError(t, err)
 	corruptHead(t, createDir)
 	require.NoError(t, os.WriteFile(createFile, []byte("new\n"), 0o644))
-	require.Error(t, lms.CompleteMirrorCreate(create, createSession))
+	require.Error(t, lms.CompleteMutation(create, createSession))
 	assert.Empty(t, create.LedgerHashAfter)
 }
 
@@ -221,17 +230,10 @@ func TestLedgerPaths_RestoreRefusesWhenBackupFails(t *testing.T) {
 	hostFile := filepath.Join(tempDir, "restore-refused.txt")
 	const sessionID = "sess-restore-refused"
 
-	create, err := lms.MirrorFileCreate(sessionID, openTestTarget(t, lms.fileSvc, hostFile, tempDir))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(hostFile, []byte("original\n"), 0o644))
-	require.NoError(t, lms.CompleteMirrorCreate(create, sessionID))
+	create := recordMutation(t, lms, sessionID, hostFile, tempDir, "original\n")
+	recordMutation(t, lms, sessionID, hostFile, tempDir, "current\n")
 
-	write, err := lms.LedgerFileWrite(sessionID, openTestTarget(t, lms.fileSvc, hostFile, tempDir))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(hostFile, []byte("current\n"), 0o644))
-	require.NoError(t, lms.CompleteMirrorWrite(write, sessionID))
-
-	// The backup commit cannot be made: the restore is refused and the host file is untouched.
+	// The ledger HEAD cannot be read: the restore is refused and the host file is untouched.
 	sessionDir, err := lms.openSessionLedger(sessionID)
 	require.NoError(t, err)
 	corruptHead(t, sessionDir)
@@ -253,17 +255,15 @@ func TestLedgerPaths_RestoreRefusesWhenBackupSnapshotCannotBeWritten(t *testing.
 	hostFile := filepath.Join(tempDir, "restore-backup-refused.txt")
 	const sessionID = "sess-restore-backup-refused"
 
-	create, err := lms.MirrorFileCreate(sessionID, openTestTarget(t, lms.fileSvc, hostFile, tempDir))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(hostFile, []byte("original\n"), 0o644))
-	require.NoError(t, lms.CompleteMirrorCreate(create, sessionID))
+	create := recordMutation(t, lms, sessionID, hostFile, tempDir, "original\n")
 	require.NoError(t, os.WriteFile(hostFile, []byte("edited outside the ledger\n"), 0o644))
 
+	// The drifted content needs a backup commit, and no object can be stored for it.
 	sessionDir, err := lms.openSessionLedger(sessionID)
 	require.NoError(t, err)
-	snapshots := filepath.Join(sessionDir, constants.FilesDirname)
-	require.NoError(t, os.Chmod(snapshots, 0o500))
-	t.Cleanup(func() { _ = os.Chmod(snapshots, 0o700) })
+	objects := filepath.Join(sessionDir, constants.GitDirname, constants.GitObjectsDirname)
+	setDirTreeMode(t, objects, 0o500)
+	t.Cleanup(func() { setDirTreeMode(t, objects, 0o700) })
 
 	_, err = lms.RestoreFileFromCommit(openTestTarget(t, lms.fileSvc, hostFile, tempDir), create.LedgerHashAfter, sessionID, sessionID)
 	require.Error(t, err)
@@ -312,14 +312,14 @@ func TestLedgerPaths_ConcurrentEditsAttributeOnlyTheirOwnPath(t *testing.T) {
 	require.NoError(t, os.WriteFile(fileB, []byte("BETA-OLD\n"), 0o644))
 
 	// Deterministic interleaving: B's whole mirror lands inside A's before..after commit range.
-	a, err := lms.LedgerFileWrite(sessionID, openTestTarget(t, lms.fileSvc, fileA, tempDir))
+	a, err := lms.BeginMutation(sessionID, openTestTarget(t, lms.fileSvc, fileA, tempDir))
 	require.NoError(t, err)
-	b, err := lms.LedgerFileWrite(sessionID, openTestTarget(t, lms.fileSvc, fileB, tempDir))
+	b, err := lms.BeginMutation(sessionID, openTestTarget(t, lms.fileSvc, fileB, tempDir))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(fileA, []byte("ALPHA-NEW\n"), 0o644))
 	require.NoError(t, os.WriteFile(fileB, []byte("BETA-NEW\n"), 0o644))
-	require.NoError(t, lms.CompleteMirrorWrite(b, sessionID))
-	require.NoError(t, lms.CompleteMirrorWrite(a, sessionID))
+	require.NoError(t, lms.CompleteMutation(b, sessionID))
+	require.NoError(t, lms.CompleteMutation(a, sessionID))
 
 	assert.Contains(t, a.DiffContent, "+ALPHA-NEW")
 	assert.NotContains(t, a.DiffContent, "BETA-NEW")
@@ -357,7 +357,7 @@ func TestLedgerPaths_ConcurrentGoroutinesAttributeOnlyTheirOwnPath(t *testing.T)
 				return
 			}
 			defer func() { _ = target.Close() }()
-			res, err := lms.LedgerFileWrite(sessionID, target)
+			res, err := lms.BeginMutation(sessionID, target)
 			if err != nil {
 				errs[i] = err
 				return
@@ -366,7 +366,7 @@ func TestLedgerPaths_ConcurrentGoroutinesAttributeOnlyTheirOwnPath(t *testing.T)
 				errs[i] = err
 				return
 			}
-			errs[i] = lms.CompleteMirrorWrite(res, sessionID)
+			errs[i] = lms.CompleteMutation(res, sessionID)
 			results[i] = res
 		}()
 	}

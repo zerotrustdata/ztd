@@ -9,6 +9,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -35,17 +36,12 @@ type eventsStoreInterface interface {
 
 // ledgerInterface defines the methods HistoryHandler needs from the ledger service.
 // This allows for dependency injection and unit testing with mocks.
-// It also includes two-phase commit methods needed for integration test setup.
 type ledgerInterface interface {
 	SnapshotName(filePath string) (string, error)
 	GetFileHistory(ctx context.Context, filePath string, commitHashes []string, limit int, sessionID string) ([]FileHistoryEntry, error)
 	RestoreFileFromCommit(target *fs.FileEditTarget, commitHash, sourceSessionID, operatorSessionID string) (*LedgerResult, error)
 	GetFileAtCommit(filePath, commitHash, sessionID string) (string, error)
 	GetDiffContent(hashBefore, hashAfter, filePath, sessionID string) (string, error)
-	MirrorFileCreate(operatorSessionID string, target *fs.FileEditTarget) (*LedgerResult, error)
-	CompleteMirrorCreate(result *LedgerResult, operatorSessionID string) error
-	LedgerFileWrite(operatorSessionID string, target *fs.FileEditTarget) (*LedgerResult, error)
-	CompleteMirrorWrite(result *LedgerResult, operatorSessionID string) error
 }
 
 // loggerInterface defines the logging methods used by HistoryHandler.
@@ -223,14 +219,19 @@ func (hh *HistoryHandler) HandleFetchFileHistory(ctx context.Context, requestJSO
 	return result, nil
 }
 
-// mutationCommits lists the ledger commits of newest-first mutations, newest first.
+// mutationCommits lists the ledger commits of newest-first mutations, newest first, each once. A
+// mutation whose pre-image matched the latest snapshot committed no backup, so its before commit
+// is the previous mutation's after commit.
 func mutationCommits(mutations []*FileMutationLog) []string {
 	commits := make([]string, 0, 2*len(mutations))
+	seen := make(map[string]struct{}, 2*len(mutations))
 	for _, mutation := range mutations {
 		for _, commit := range []string{mutation.LedgerHashAfter, mutation.LedgerHashBefore} {
-			if commit != "" {
-				commits = append(commits, commit)
+			if _, dup := seen[commit]; commit == "" || dup {
+				continue
 			}
+			seen[commit] = struct{}{}
+			commits = append(commits, commit)
 		}
 	}
 	return commits
@@ -324,7 +325,9 @@ func (hh *HistoryHandler) FetchFileDiff(mutationID int64) (*operatorv1.FileDiffE
 }
 
 // ListFileDiffs returns the newest file mutations of an operator session, optionally
-// filtered to one file path. The entries carry the diff size but not the diff content.
+// filtered to one file path. The entries carry the diff size but not the diff content. A mutation
+// recorded before the sharded snapshot layout has no readable diff; it is listed without a diff
+// size, and FetchFileDiff on it fails with ErrLedgerSnapshotPreLayout.
 func (hh *HistoryHandler) ListFileDiffs(ctx context.Context, operatorSessionID, filePath string, limit int) ([]*operatorv1.FileDiffEntry, error) {
 	mutations, err := hh.listFileDiffMutations(ctx, operatorSessionID, filePath, limit)
 	if err != nil {
@@ -333,6 +336,10 @@ func (hh *HistoryHandler) ListFileDiffs(ctx context.Context, operatorSessionID, 
 	entries := make([]*operatorv1.FileDiffEntry, 0, len(mutations))
 	for _, mutation := range mutations {
 		entry, err := hh.fileDiffEntry(mutation, false)
+		if errors.Is(err, constants.ErrLedgerSnapshotPreLayout) {
+			entries = append(entries, fileDiffRow(mutation))
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -361,7 +368,17 @@ func (hh *HistoryHandler) fileDiffEntry(mutation *FileMutationLog, withContent b
 	if err != nil {
 		return nil, fmt.Errorf("fetch file diff: %w", err)
 	}
-	entry := &operatorv1.FileDiffEntry{
+	entry := fileDiffRow(mutation)
+	entry.DiffSize = int32(len(content)) //nolint:gosec // bounded by file size
+	if withContent {
+		entry.DiffContent = content
+	}
+	return entry, nil
+}
+
+// fileDiffRow is the wire entry of a mutation row, without its diff.
+func fileDiffRow(mutation *FileMutationLog) *operatorv1.FileDiffEntry {
+	return &operatorv1.FileDiffEntry{
 		Id:                strconv.FormatInt(mutation.ID, 10),
 		Timestamp:         timesvc.FormatTimestamp(mutation.Timestamp),
 		FilePath:          mutation.Filepath,
@@ -369,13 +386,8 @@ func (hh *HistoryHandler) fileDiffEntry(mutation *FileMutationLog, withContent b
 		LedgerHashBefore:  mutation.LedgerHashBefore,
 		LedgerHashAfter:   mutation.LedgerHashAfter,
 		DiffStat:          mutation.DiffStat,
-		DiffSize:          int32(len(content)), //nolint:gosec // bounded by file size
 		OperatorSessionId: mutation.OperatorSessionID,
 	}
-	if withContent {
-		entry.DiffContent = content
-	}
-	return entry, nil
 }
 
 func (hh *HistoryHandler) fetchHistoryError(err error) (*operatorv1.FetchHistoryResult, error) {

@@ -41,7 +41,6 @@
         "values_ref": "protocol/constants/status.json#file.operation"
       },
       "content": { "type": "string", "required": false, "description": "File content returned for read operations" },
-      "backup_path": { "type": "string", "required": false, "description": "Path to backup file when create_backup was true" },
       "bytes_written": { "type": "integer", "required": false, "description": "Bytes written for write/create/replace operations" },
       "lines_changed": { "type": "integer", "required": false, "description": "Number of lines modified" },
       "duration_seconds": { "type": "number", "required": false, "description": "Wall-clock duration of the file operation" },
@@ -230,7 +229,6 @@
       "file_path": { "type": "string", "required": true },
       "operation": { "type": "string", "required": true, "description": "File operation performed", "values_ref": "protocol/constants/status.json#file.operation" },
       "content": { "type": "string", "required": false, "description": "File content returned for read operations" },
-      "backup_path": { "type": "string", "required": false },
       "bytes_written": { "type": "integer", "required": false },
       "lines_changed": { "type": "integer", "required": false },
       "duration_seconds": { "type": "number", "required": false }

@@ -126,6 +126,7 @@ var (
 
 	ErrLedgerSessionNotFound    = errors.New("ledger: no ledger exists for this operator session")
 	ErrLedgerDiffHashesRequired = errors.New("ledger: both commit hashes are required to compute a diff")
+	ErrLedgerSnapshotPreLayout  = errors.New("ledger: the commit predates the sharded snapshot layout; its snapshot cannot be read")
 
 	// CLI approval errors
 	ErrKeyReadFailed             = errors.New("failed to read CLI private key")

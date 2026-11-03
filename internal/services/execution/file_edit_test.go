@@ -70,37 +70,32 @@ func TestFileEditService_ExecuteFileEdit_Write(t *testing.T) {
 		assert.Equal(t, content, string(data))
 	})
 
-	t.Run("write with backup", func(t *testing.T) {
+	t.Run("overwrite leaves no sibling file", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
 		tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
 
 		// Create initial file
-		os.WriteFile(tmpFile, []byte("original"), constants.PermFilePublic)
+		require.NoError(t, os.WriteFile(tmpFile, []byte("original"), constants.PermFilePublic))
 
 		newContent := "updated content"
 		req := &models.FileEditRequest{
-			ExecutionID:  "test-req-2",
-			CaseID:       "test-case-2",
-			Operation:    constants.FileOperationWrite,
-			FilePath:     tmpFile,
-			Content:      newContent,
-			CreateBackup: true,
-			RequestedBy:  "test-user",
+			ExecutionID: "test-req-2",
+			CaseID:      "test-case-2",
+			Operation:   constants.FileOperationWrite,
+			FilePath:    tmpFile,
+			Content:     newContent,
+			RequestedBy: "test-user",
 		}
 
-		result, err := svc.ExecuteFileEdit(context.Background(), req)
-
+		_, err := svc.ExecuteFileEdit(context.Background(), req)
 		require.NoError(t, err)
-		assert.NotEmpty(t, result.BackupPath)
-		assert.FileExists(t, result.BackupPath)
 
-		// Verify backup contains original content
-		backupData, err := os.ReadFile(result.BackupPath)
+		// The pre-image is the ledger's job; the host directory holds only the file
+		entries, err := os.ReadDir(tmpDir)
 		require.NoError(t, err)
-		assert.Equal(t, "original", string(backupData))
+		require.Len(t, entries, 1)
 
-		// Verify file has new content
 		data, err := os.ReadFile(tmpFile)
 		require.NoError(t, err)
 		assert.Equal(t, newContent, string(data))
@@ -432,13 +427,11 @@ func TestFileEditService_RejectsPatchWithoutFilesystemChanges(t *testing.T) {
 				ExecutionID:     "unsupported-patch",
 				Operation:       "patch",
 				FilePath:        tmpFile,
-				CreateBackup:    true,
 				CreateIfMissing: true,
 			})
 			require.NoError(t, err)
 			require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
 			require.Equal(t, constants.ErrFileEditUnsupportedOperation.Error(), result.ErrorMessage)
-			require.Empty(t, result.BackupPath)
 			after, err := os.ReadDir(tmpDir)
 			require.NoError(t, err)
 			require.Len(t, after, len(before))
@@ -451,30 +444,4 @@ func TestFileEditService_RejectsPatchWithoutFilesystemChanges(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestFileEditService_CreateBackup(t *testing.T) {
-	t.Parallel()
-	cfg := testutil.NewTestConfig(t)
-	logger := testutil.NewTestLogger()
-	svc := newTestFileEditService(t, cfg, logger)
-
-	tmpDir := testutil.OperatorDir(t)
-	tmpFile := filepath.Join(tmpDir, constants.TestFileTxtFilename)
-	content := "original content"
-	os.WriteFile(tmpFile, []byte(content), constants.PermFilePublic)
-
-	target, err := svc.fileSvc.OpenFileEditTarget(t.Context(), tmpFile, cfg.WorkDir)
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, target.Close()) })
-	backupPath, err := svc.createBackup(target)
-
-	require.NoError(t, err)
-	assert.NotEmpty(t, backupPath)
-	assert.FileExists(t, backupPath)
-
-	// Verify backup has same content
-	backupData, err := os.ReadFile(backupPath)
-	require.NoError(t, err)
-	assert.Equal(t, content, string(backupData))
 }
