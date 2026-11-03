@@ -26,8 +26,9 @@ import (
 // Tests against a session ledger written before the sharded snapshot layout, whose commits hold
 // each snapshot at the flat files/<name>.enc path.
 
-// commitPreLayoutSnapshot commits content as path's snapshot at the flat pre-layout path, as a
-// ledger from before the sharded layout did, and returns the commit before it and the commit.
+// commitPreLayoutSnapshot commits content as path's snapshot the way a ledger from before the
+// sharded layout did: a worktree file at the flat files/<name>.enc path, added to the index and
+// committed from it. It returns the commit before it and the commit.
 func commitPreLayoutSnapshot(t *testing.T, lms *GitLedgerService, session, path, content string) (before, after string) {
 	t.Helper()
 	ledgerDir, err := lms.createSessionLedger(session)
@@ -38,7 +39,13 @@ func commitPreLayoutSnapshot(t *testing.T, lms *GitLedgerService, session, path,
 	require.NoError(t, err)
 	repo, head, err := openLedgerHead(ledgerDir)
 	require.NoError(t, err)
-	hash, err := commitBlob(repo, head, preLayoutSnapshotPath(name), encrypted, ledgerMsgPostMutation)
+	worktreePath := filepath.Join(ledgerDir, filepath.FromSlash(preLayoutSnapshotPath(name)))
+	require.NoError(t, os.MkdirAll(filepath.Dir(worktreePath), constants.PermDirPrivate))
+	require.NoError(t, os.WriteFile(worktreePath, encrypted, constants.PermFilePrivate))
+	w, err := repo.Worktree()
+	require.NoError(t, err)
+	require.NoError(t, w.AddWithOptions(&git.AddOptions{All: true}))
+	hash, err := w.Commit(ledgerMsgPostMutation, &git.CommitOptions{Author: ledgerSignature()})
 	require.NoError(t, err)
 	return head.Hash().String(), hash.String()
 }
@@ -140,6 +147,12 @@ func TestLedgerPreLayout_UpgradeKeepsTheOldTrail(t *testing.T) {
 	oldFiles := filesSubtreeHash(t, ledgerDir)
 	oldCommits, err := lms.ListCommits(session, 0)
 	require.NoError(t, err)
+	indexPath := filepath.Join(ledgerDir, constants.GitDirname, constants.GitIndexFilename)
+	oldIndex, err := os.ReadFile(indexPath)
+	require.NoError(t, err)
+	oldWorktree, err := os.ReadDir(filepath.Join(ledgerDir, constants.FilesDirname))
+	require.NoError(t, err)
+	require.Len(t, oldWorktree, 2, "the old root holds a worktree copy of each snapshot")
 
 	upgraded, err := NewGitLedgerService(&LedgerConfig{EncryptionVault: lms.config.EncryptionVault}, testutil.NewTestLogger(), lms.fileSvc)
 	require.NoError(t, err)
@@ -147,6 +160,12 @@ func TestLedgerPreLayout_UpgradeKeepsTheOldTrail(t *testing.T) {
 	recordMutation(t, upgraded, session, filepath.Join(tempDir, "created.txt"), tempDir, "created")
 
 	assert.Equal(t, oldFiles, filesSubtreeHash(t, ledgerDir), "the flat tree is reused, never rewritten")
+	index, err := os.ReadFile(indexPath)
+	require.NoError(t, err)
+	assert.Equal(t, oldIndex, index, "the old index is left unused")
+	worktree, err := os.ReadDir(filepath.Join(ledgerDir, constants.FilesDirname))
+	require.NoError(t, err)
+	assert.Len(t, worktree, len(oldWorktree), "the old worktree files are left unused")
 	commits, err := upgraded.ListCommits(session, 0)
 	require.NoError(t, err)
 	require.Greater(t, len(commits), len(oldCommits))

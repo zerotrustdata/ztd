@@ -883,28 +883,14 @@ func writePublicKeyRotation(ctx context.Context, fileSvc fs.RuntimeFileService, 
 }
 
 func publicKeyRotationOutboxStatus(ctx context.Context, fileSvc fs.RuntimeFileService, rotation models.PublicKeyRotationState) (bool, bool, error) {
-	exists, err := fileSvc.FileExists(ctx, constants.PublicFeedOutboxPath)
-	if err != nil {
-		return false, false, fmt.Errorf("public-feed: inspect rotation outbox: %w", err)
-	}
-	if !exists {
-		return false, false, nil
-	}
-	data, err := fileSvc.ReadFile(ctx, constants.PublicFeedOutboxPath)
+	entries, err := gateway.ReadPublicOutboxEntries(ctx, fileSvc)
 	if err != nil {
 		return false, false, fmt.Errorf("public-feed: read rotation outbox: %w", err)
 	}
-	for lineNumber, line := range bytes.Split(data, []byte{'\n'}) {
-		if len(bytes.TrimSpace(line)) == 0 {
-			continue
-		}
-		var entry models.PublicOutboxEntry
-		if err := json.Unmarshal(line, &entry); err != nil {
-			return false, false, fmt.Errorf("%w: rotation outbox line %d: %w", constants.ErrPublicFeedOutboxCorrupt, lineNumber+1, err)
-		}
+	for _, entry := range entries {
 		var batch models.PublicFeedBatch
 		if err := json.Unmarshal([]byte(entry.BatchBytes), &batch); err != nil {
-			return false, false, fmt.Errorf("%w: rotation batch line %d: %w", constants.ErrPublicFeedOutboxCorrupt, lineNumber+1, err)
+			return false, false, fmt.Errorf("%w: rotation batch sequence %d: %w", constants.ErrPublicFeedOutboxCorrupt, entry.Sequence, err)
 		}
 		for _, record := range batch.Records {
 			if record.RecordType != models.PublicFeedRecordTypeKeyRevocation {
@@ -912,7 +898,7 @@ func publicKeyRotationOutboxStatus(ctx context.Context, fileSvc fs.RuntimeFileSe
 			}
 			var revocation models.PublicKeyRevocationRecord
 			if err := json.Unmarshal([]byte(record.RecordBytes), &revocation); err != nil {
-				return false, false, fmt.Errorf("%w: rotation record line %d: %w", constants.ErrPublicFeedOutboxCorrupt, lineNumber+1, err)
+				return false, false, fmt.Errorf("%w: rotation record sequence %d: %w", constants.ErrPublicFeedOutboxCorrupt, entry.Sequence, err)
 			}
 			if revocation.SourceID == rotation.SourceID && revocation.RevokedKeyID == rotation.OldKeyID && revocation.NewKeyID == rotation.NewKeyID {
 				return true, entry.Status == models.PublicFeedOutboxStatusAcknowledged, nil

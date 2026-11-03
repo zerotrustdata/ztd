@@ -34,6 +34,10 @@ type publicSnapshotIdentity struct {
 	Record       json.RawMessage `json:"record"`
 }
 
+// publicSnapshotCatalogKind is the kind of the record that marks a dataset as
+// published in the current read model.
+const publicSnapshotCatalogKind = "catalog_snapshot"
+
 func parseSnapshotRecordIdentity(record models.PublicFeedRecord) (key string, identity publicSnapshotIdentity, event bool, err error) {
 	if record.RecordType != models.PublicFeedRecordTypeProjection && record.RecordType != models.PublicFeedRecordTypeEvent {
 		return "", publicSnapshotIdentity{}, false, nil
@@ -201,6 +205,25 @@ func updatePublicSnapshot(ctx context.Context, tx *sql.Tx, batch models.PublicFe
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO snapshot_heads VALUES (?, ?) ON CONFLICT(source_id) DO UPDATE SET high_water_sequence=excluded.high_water_sequence`, batch.SourceID, batch.LastSequence)
 	return err
+}
+
+// snapshotDatasetPresent reports whether the current read model holds a catalog
+// snapshot of datasetID. It seeks the record key prefix that
+// parseSnapshotRecordIdentity writes, so it costs one index lookup.
+func (s *PublicMirrorStore) snapshotDatasetPresent(ctx context.Context, sourceID, datasetID string) (bool, error) {
+	encoded, err := json.Marshal([]string{publicSnapshotCatalogKind, datasetID})
+	if err != nil {
+		return false, fmt.Errorf("mirror snapshot: encode dataset key: %w", err)
+	}
+	// `["kind","dataset"` followed by the identity's next JSON array separator.
+	prefix := string(encoded[:len(encoded)-1])
+	var present bool
+	if err := s.db.QueryRowWithRetry(ctx, `SELECT EXISTS(SELECT 1 FROM snapshot_records
+		WHERE source_id = ? AND record_key >= ? AND record_key < ?)`,
+		sourceID, prefix+",", prefix+"-").Scan(&present); err != nil {
+		return false, fmt.Errorf("mirror snapshot: read dataset: %w", err)
+	}
+	return present, nil
 }
 
 func (s *PublicMirrorStore) snapshotRecords(ctx context.Context, sourceID string) ([]models.PublicFeedRecord, error) {

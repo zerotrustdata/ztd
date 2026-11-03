@@ -152,6 +152,33 @@ func TestValidateAssignmentRecordTrajectoryFieldsRequireEnvelope120(t *testing.T
 	}
 }
 
+func TestValidateAssignmentRecordActivityFamilyBounds(t *testing.T) {
+	record := func(family string, entries int, body string) []byte {
+		records := strings.TrimSuffix(strings.Repeat(body+",", entries), ",")
+		return []byte(`{"schema_version":"1.2.0","message_type":"PublicAssignmentResultProjection","idempotency_key":"run-1:assignment-1:result","record":{"assignment_id":"assignment-1","run_id":"run-1","scenario_id":"scenario-1","result_digest":"` + strings.Repeat("a", 64) + `","activity_summary":{"` + family + `":{"availability":"PUBLIC_ACTIVITY_AVAILABILITY_OBSERVED","records":[` + records + `]}}}}`)
+	}
+	for _, family := range []string{"tool_calls", "policy_decisions", "governed_actions"} {
+		t.Run(family, func(t *testing.T) {
+			require.NoError(t, ValidateAssignmentRecord("1.2.0", record(family, maxToolLoopRecords, `{}`)))
+			assert.ErrorIs(t, ValidateAssignmentRecord("1.2.0", record(family, maxToolLoopRecords+1, `{}`)), constants.ErrEvidenceArtifactTooLarge)
+		})
+	}
+	for _, family := range []string{"model_activity", "tool_decisions"} {
+		t.Run(family, func(t *testing.T) {
+			require.NoError(t, ValidateAssignmentRecord("1.2.0", record(family, maxArrayEntries, `{}`)))
+			assert.ErrorIs(t, ValidateAssignmentRecord("1.2.0", record(family, maxArrayEntries+1, `{}`)), constants.ErrEvidenceArtifactTooLarge)
+		})
+	}
+	t.Run("record strings stay structural", func(t *testing.T) {
+		long := `{"tool_label":"` + strings.Repeat("x", maxStringBytes+1) + `"}`
+		assert.ErrorIs(t, ValidateAssignmentRecord("1.2.0", record("tool_calls", 1, long)), constants.ErrEvidenceArtifactTooLarge)
+	})
+	t.Run("record byte bound still applies", func(t *testing.T) {
+		wide := `{"tool_label":"` + strings.Repeat("x", maxStringBytes) + `"}`
+		assert.ErrorIs(t, ValidateAssignmentRecord("1.2.0", record("tool_calls", maxToolLoopRecords, wide)), constants.ErrEvidenceArtifactTooLarge)
+	})
+}
+
 func TestValidatePublicDisclosureEvents(t *testing.T) {
 	event := []byte(`{"schema_version":"1.5.0","kind":"assignment_completed","dataset_id":"ds","quality_state":"live_in_progress","observed_at":"2026-01-01T00:00:00Z","event_id":"event-1","run_id":"run-1","lifecycle_status":"completed","completed":1,"total":1}`)
 	require.NoError(t, ValidatePublicFeedRecord(models.PublicFeedRecordTypeEvent, event))

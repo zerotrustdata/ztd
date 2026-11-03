@@ -71,6 +71,11 @@ import {
   type ViewSchemaVersion,
 } from './types';
 
+export const MAX_ACTIVITY_RECORDS = 128;
+// One record per tool call. A model's loop length has no fixed limit, so the
+// 256 KiB record bound is what caps these families in practice.
+export const MAX_TOOL_LOOP_RECORDS = 1024;
+
 export class ValidationError extends Error {
   constructor(
     message: string,
@@ -767,14 +772,19 @@ function assertPublicScenarioSummary(value: unknown, path: string): void {
   }
 }
 
-function assertPublicActivityFamily(value: unknown, path: string, validateRecord: (value: unknown, path: string) => void): void {
+function assertPublicActivityFamily(
+  value: unknown,
+  path: string,
+  validateRecord: (value: unknown, path: string) => void,
+  maxRecords: number = MAX_ACTIVITY_RECORDS,
+): void {
   assertObject(value, path);
   assertEnum(value.availability, ACTIVITY_AVAILABILITIES, `${path}.availability`);
   if (value.availability === 'observed') {
     rejectUnknown(value, ['availability', 'records'], path);
     assert(value.unavailable_reason === undefined, `${path}.unavailable_reason`, 'observed activity cannot have unavailable_reason');
     assert(Array.isArray(value.records), `${path}.records`, 'expected array');
-    assert(value.records.length <= 128, `${path}.records`, 'expected at most 128 entries');
+    assert(value.records.length <= maxRecords, `${path}.records`, `expected at most ${maxRecords} entries`);
     for (let index = 0; index < value.records.length; index++) validateRecord(value.records[index], `${path}.records[${index}]`);
     return;
   }
@@ -859,9 +869,9 @@ function assertPublicActivitySummary(value: unknown, path: string): void {
   rejectUnknown(value, ['model_activity', 'tool_decisions', 'tool_calls', 'policy_decisions', 'governed_actions'], path);
   assertPublicActivityFamily(value.model_activity, `${path}.model_activity`, assertPublicModelActivityRecord);
   assertPublicActivityFamily(value.tool_decisions, `${path}.tool_decisions`, assertPublicToolDecisionRecord);
-  assertPublicActivityFamily(value.tool_calls, `${path}.tool_calls`, assertPublicToolCallRecord);
-  assertPublicActivityFamily(value.policy_decisions, `${path}.policy_decisions`, assertPublicPolicyDecisionRecord);
-  assertPublicActivityFamily(value.governed_actions, `${path}.governed_actions`, assertPublicGovernedActionRecord);
+  assertPublicActivityFamily(value.tool_calls, `${path}.tool_calls`, assertPublicToolCallRecord, MAX_TOOL_LOOP_RECORDS);
+  assertPublicActivityFamily(value.policy_decisions, `${path}.policy_decisions`, assertPublicPolicyDecisionRecord, MAX_TOOL_LOOP_RECORDS);
+  assertPublicActivityFamily(value.governed_actions, `${path}.governed_actions`, assertPublicGovernedActionRecord, MAX_TOOL_LOOP_RECORDS);
 }
 
 function assertPublicEvidenceBindings(value: unknown, path: string): void {

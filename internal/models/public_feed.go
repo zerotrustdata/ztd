@@ -146,6 +146,9 @@ type PublicFeedSnapshot struct {
 	WithdrawalDigest  string            `json:"withdrawal_digest,omitempty"`
 	GeneratedAt       time.Time         `json:"generated_at"`
 	Freshness         CampaignFreshness `json:"freshness"`
+	// DatasetID echoes the dataset a `GET /snapshot?dataset=` lookup found in the
+	// current read model. It is empty on every other snapshot.
+	DatasetID string `json:"dataset_id,omitempty"`
 }
 
 // PublicProofCatalogSummary is the summary of the proof catalog for bootstrap.

@@ -141,27 +141,7 @@ func TestHTTPCampaignMirrorProbe_ReportsPresentAndAbsentDatasets(t *testing.T) {
 	assert.False(t, absent)
 }
 
-func TestHTTPCampaignMirrorProbe_DatasetPresentFromHistory(t *testing.T) {
-	_, fileSvc, cfg := newPublicMirrorGateway(t)
-	publishCatalogSnapshots(t, fileSvc, cfg, "eval-run-history", "eval-run-recent")
-
-	bootstrap, err := FetchPublicMirrorBootstrap(t.Context())
-	require.NoError(t, err)
-	require.Len(t, bootstrap.RecentProjections, 2, "the current snapshot retains both datasets")
-
-	probe := NewHTTPCampaignMirrorProbe(t.Context())
-	for datasetID, expected := range map[string]bool{
-		"eval-run-history": true,
-		"eval-run-recent":  true,
-		"eval-run-missing": false,
-	} {
-		present, err := probe.DatasetPresent(t.Context(), datasetID)
-		require.NoError(t, err)
-		assert.Equal(t, expected, present, datasetID)
-	}
-}
-
-func TestHTTPCampaignMirrorProbe_ReadsOneFilteredHistoryPagePerDataset(t *testing.T) {
+func TestHTTPCampaignMirrorProbe_ReadsCurrentSnapshotOncePerDataset(t *testing.T) {
 	gateway, fileSvc, cfg := newPublicMirrorGateway(t)
 	publishCatalogSnapshots(t, fileSvc, cfg, "eval-run-history", "eval-run-recent")
 
@@ -180,7 +160,20 @@ func TestHTTPCampaignMirrorProbe_ReadsOneFilteredHistoryPagePerDataset(t *testin
 		assert.Equal(t, expected, present, datasetID)
 	}
 	assert.Equal(t, int32(0), bootstrapRequests.Load())
-	assert.Equal(t, int32(3), historyRequests.Load())
+	assert.Equal(t, int32(0), historyRequests.Load())
+}
+
+func TestHTTPCampaignMirrorProbe_MirrorWithoutDatasetLookupReadsAbsent(t *testing.T) {
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		assert.NoError(t, json.NewEncoder(w).Encode(models.PublicFeedSnapshot{SourceID: "older-mirror", HighWaterSequence: 7}))
+	}))
+	t.Cleanup(mirror.Close)
+	probe, err := NewHTTPCampaignMirrorProbeWithOrigin(mirror.URL)
+	require.NoError(t, err)
+
+	present, err := probe.DatasetPresent(t.Context(), "eval-run-1")
+	require.NoError(t, err)
+	assert.False(t, present)
 }
 
 func TestGatewayPublisherStatus_ReturnsBootstrapFields(t *testing.T) {

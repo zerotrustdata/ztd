@@ -30,7 +30,11 @@ const (
 	trajectoryVersion = "1.2.0"
 	maxRecordBytes    = 256 * 1024
 	maxArrayEntries   = 128
-	maxStringBytes    = 512
+	// maxToolLoopRecords bounds the activity families that gain one record per
+	// tool call. A model's loop length has no fixed limit, so maxRecordBytes is
+	// what caps these families in practice.
+	maxToolLoopRecords = 1024
+	maxStringBytes     = 512
 )
 
 var hashPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
@@ -297,19 +301,7 @@ func walkStrings(value json.RawMessage) error {
 		return nil
 	}
 	if trimmed[0] == '[' {
-		var values []json.RawMessage
-		if err := json.Unmarshal(trimmed, &values); err != nil {
-			return err
-		}
-		if len(values) > maxArrayEntries {
-			return fmt.Errorf("assignment array bound: %w", constants.ErrEvidenceArtifactTooLarge)
-		}
-		for _, child := range values {
-			if err := walkStrings(child); err != nil {
-				return err
-			}
-		}
-		return nil
+		return walkArray(trimmed, maxArrayEntries)
 	}
 	if trimmed[0] == '{' {
 		var fields map[string]json.RawMessage
@@ -335,7 +327,61 @@ func walkStrings(value json.RawMessage) error {
 				}
 				continue
 			}
+			if key == "activity_summary" {
+				if err := walkActivitySummary(child); err != nil {
+					return err
+				}
+				continue
+			}
 			if err := walkStrings(child); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func walkArray(value json.RawMessage, maxEntries int) error {
+	var values []json.RawMessage
+	if err := json.Unmarshal(value, &values); err != nil {
+		return err
+	}
+	if len(values) > maxEntries {
+		return fmt.Errorf("assignment array bound: %w", constants.ErrEvidenceArtifactTooLarge)
+	}
+	for _, child := range values {
+		if err := walkStrings(child); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// walkActivitySummary holds the per-tool-call families to maxToolLoopRecords
+// and every other family to the general array bound. Each record's strings
+// stay structural either way.
+func walkActivitySummary(value json.RawMessage) error {
+	var families map[string]json.RawMessage
+	if err := json.Unmarshal(value, &families); err != nil {
+		return schemaError(err.Error())
+	}
+	for name, family := range families {
+		if name != "tool_calls" && name != "policy_decisions" && name != "governed_actions" {
+			if err := walkStrings(family); err != nil {
+				return err
+			}
+			continue
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(family, &fields); err != nil {
+			return schemaError(err.Error())
+		}
+		for key, child := range fields {
+			walk := walkStrings
+			if key == "records" {
+				walk = func(records json.RawMessage) error { return walkArray(records, maxToolLoopRecords) }
+			}
+			if err := walk(child); err != nil {
 				return err
 			}
 		}

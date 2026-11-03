@@ -11,11 +11,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -233,4 +236,47 @@ func TestPublishRunCatchUpRebuildsProofWhenScenarioFixtureIsUnpublished(t *testi
 	require.NoError(t, err)
 	assert.Equal(t, rebuilt.Artifacts.ScenarioInputSHA256, state.PublishedProofArtifacts[stale.GetAssignmentId()].ScenarioInputSHA256)
 	assert.Equal(t, rebuilt.Artifacts.ScenarioGoldSHA256, state.PublishedProofArtifacts[stale.GetAssignmentId()].ScenarioGoldSHA256)
+}
+
+// readCountingFileService counts reads of each runtime file.
+type readCountingFileService struct {
+	fs.RuntimeFileService
+	mu    sync.Mutex
+	reads map[string]int
+}
+
+func (f *readCountingFileService) ReadFile(ctx context.Context, relPath string) ([]byte, error) {
+	f.mu.Lock()
+	f.reads[relPath]++
+	f.mu.Unlock()
+	return f.RuntimeFileService.ReadFile(ctx, relPath)
+}
+
+// Catch-up reads each assignment's result a fixed number of times however many
+// assignments the run has: building one assignment's events must not reload the
+// results of all the others.
+func TestPublishRunCatchUpReadsResultsIndependentOfAssignmentCount(t *testing.T) {
+	ctx := context.Background()
+	files := newCampaignRuntimeFileService(t)
+	store := NewStore(files)
+	controller, req, run := scheduledTestCampaign(t, store)
+	assignments, err := store.ListAssignments(ctx, run.GetRunId())
+	require.NoError(t, err)
+	const maxReadsPerResult = 4
+	require.Greater(t, len(assignments), maxReadsPerResult, "the campaign must be larger than the bound to detect per-assignment reloads")
+	executeTestAssignments(t, controller, req, run.GetRunId(), len(assignments))
+
+	counting := &readCountingFileService{RuntimeFileService: files, reads: map[string]int{}}
+	coordinator := NewCampaignPublicationCoordinator(NewStore(counting), counting, NewMemoryCampaignPublicationStateStore(), &batchRecordingCampaignFeedExporter{})
+	_, err = coordinator.PublishRunCatchUp(ctx, run.GetRunId())
+	require.NoError(t, err)
+
+	resultReads := 0
+	for relPath, reads := range counting.reads {
+		if strings.HasSuffix(relPath, "result.json") {
+			resultReads++
+			assert.LessOrEqual(t, reads, maxReadsPerResult, relPath)
+		}
+	}
+	assert.Equal(t, len(assignments), resultReads, "catch-up must read every result")
 }

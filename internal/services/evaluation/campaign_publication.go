@@ -841,10 +841,11 @@ func (c *CampaignPublicationCoordinator) PublishRunCatchUp(ctx context.Context, 
 		return 0, fmt.Errorf("evaluation: publish run catch-up: %w", constants.ErrMissingRequiredField)
 	}
 	c.deferProofMirrorPush = true
+	outerCache := c.aggregateCacheEnabled
 	c.aggregateCacheEnabled = true
 	defer func() {
 		c.deferProofMirrorPush = false
-		c.aggregateCacheEnabled = false
+		c.aggregateCacheEnabled = outerCache
 		c.cachedAggregate = nil
 		c.clearPublicationStateCache()
 	}()
@@ -955,9 +956,17 @@ func (c *CampaignPublicationCoordinator) mirrorCatchUpResetRequired(ctx context.
 	return len(state.PublishedIdempotency) > 0, nil
 }
 
-func (c *CampaignPublicationCoordinator) loadRunAggregateState(ctx context.Context, runID string) (*evalv1.EvaluationRun, []*evalv1.EvaluationAssignment, map[string]*evalv1.EvaluationAssignmentResult, *runAggregateState, error) {
+// activeAggregate returns the run state a catch-up has already loaded, or nil.
+func (c *CampaignPublicationCoordinator) activeAggregate(runID string) *cachedRunAggregateState {
 	if c.aggregateCacheEnabled && c.cachedAggregate != nil && c.cachedAggregate.runID == runID {
-		return c.cachedAggregate.run, c.cachedAggregate.assignments, c.cachedAggregate.results, c.cachedAggregate.state, nil
+		return c.cachedAggregate
+	}
+	return nil
+}
+
+func (c *CampaignPublicationCoordinator) loadRunAggregateState(ctx context.Context, runID string) (*evalv1.EvaluationRun, []*evalv1.EvaluationAssignment, map[string]*evalv1.EvaluationAssignmentResult, *runAggregateState, error) {
+	if cached := c.activeAggregate(runID); cached != nil {
+		return cached.run, cached.assignments, cached.results, cached.state, nil
 	}
 	run, err := c.store.LoadRun(ctx, runID)
 	if err != nil {
@@ -1027,6 +1036,9 @@ func (c *CampaignPublicationCoordinator) loadRunAggregateState(ctx context.Conte
 }
 
 func (c *CampaignPublicationCoordinator) loadRunRelease(ctx context.Context, runID string) (CampaignRelease, error) {
+	if cached := c.activeAggregate(runID); cached != nil {
+		return cached.state.Release, nil
+	}
 	run, err := c.store.LoadRun(ctx, runID)
 	if err != nil {
 		return CampaignRelease{}, fmt.Errorf("evaluation: load public run release: %w", err)

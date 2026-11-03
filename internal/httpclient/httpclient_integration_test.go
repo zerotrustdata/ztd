@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -73,17 +74,22 @@ func TestIPv4DialContext_ResolvesLocalhostToIPv4Only(t *testing.T) {
 	require.NotNil(t, conn)
 	conn.Close() //nolint:errcheck
 
-	// Dial localhost via the IPv4 dialer against an IPv6-only listener.
+	// Dial localhost via the IPv4 dialer on the port of an IPv6-only listener.
 	// The dialer must NOT reach [::1] — it resolves localhost via ip4 and
-	// dials tcp4, so an IPv6-only listener is unreachable.
+	// dials tcp4. The dial usually fails, but it can succeed on 127.0.0.1,
+	// where this test does not own the port number, so the assertion is on
+	// where a connection landed rather than on the dial failing.
 	ipv6Srv := listenIPv6Only(t, ok)
 	_, ipv6Port, err := net.SplitHostPort(ipv6Srv.Listener.Addr().String())
 	require.NoError(t, err)
 	conn, err = IPv4DialContext(context.Background(), "tcp", net.JoinHostPort("localhost", ipv6Port))
-	require.Error(t, err, "IPv4 dialer must not reach an IPv6-only listener")
-	if conn != nil {
-		conn.Close() //nolint:errcheck
+	if err != nil {
+		return
 	}
+	defer conn.Close() //nolint:errcheck
+	remote, isTCP := conn.RemoteAddr().(*net.TCPAddr)
+	require.True(t, isTCP)
+	assert.NotNil(t, remote.IP.To4(), "IPv4 dialer must not reach an IPv6-only listener, connected to %s", remote)
 }
 
 // TestNewIPv4Transport_DialsIPv4Only verifies the transport's DialContext
@@ -112,18 +118,22 @@ func TestNewIPv4Transport_DialsIPv4Only(t *testing.T) {
 // TestNewIPv4Transport_RejectsIPv6OnlyHost confirms an HTTP client on the
 // IPv4 transport cannot reach an IPv6-only listener via localhost.
 func TestNewIPv4Transport_RejectsIPv6OnlyHost(t *testing.T) {
+	var reached atomic.Bool
 	srv := listenIPv6Only(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached.Store(true)
 		w.WriteHeader(http.StatusOK)
 	}))
 	_, port, err := net.SplitHostPort(srv.Listener.Addr().String())
 	require.NoError(t, err)
 
+	// The request usually fails, but this test does not own the port number on
+	// 127.0.0.1, so the assertion is that the IPv6 listener never saw it.
 	client := &http.Client{Transport: NewIPv4Transport(nil), Timeout: 5 * time.Second}
 	resp, err := client.Get(fmt.Sprintf("http://localhost:%s/", port))
-	if resp != nil {
-		resp.Body.Close()
+	if err == nil {
+		resp.Body.Close() //nolint:errcheck
 	}
-	require.Error(t, err, "IPv4 transport must not reach an IPv6-only listener")
+	assert.False(t, reached.Load(), "IPv4 transport must not reach an IPv6-only listener")
 }
 
 // TestNewIPv4Transport_LiteralIPv4DialsDirectly confirms a literal IPv4
