@@ -1128,3 +1128,30 @@ func TestDecodeInferenceProgressEnvelope(t *testing.T) {
 	})
 	assert.False(t, ok)
 }
+
+func TestResultDeadline(t *testing.T) {
+	commandPayload := func(t *testing.T, timeoutSeconds int32) []byte {
+		t.Helper()
+		payload, err := proto.Marshal(&operatorv1.CommandRequested{Command: "ollama pull qwen3.5:4b", TimeoutSeconds: timeoutSeconds})
+		require.NoError(t, err)
+		return payload
+	}
+
+	t.Run("bash command waits for its own execution timeout", func(t *testing.T) {
+		got := resultDeadline(constants.ActionTypeExecuteBash, commandPayload(t, 86400))
+		assert.Equal(t, 24*time.Hour+DispatchTimeout, got)
+	})
+
+	t.Run("bash command without timeout waits for the Operator default", func(t *testing.T) {
+		got := resultDeadline(constants.ActionTypeExecuteBash, commandPayload(t, 0))
+		assert.Equal(t, time.Duration(constants.DefaultCommandExecutionTimeoutSeconds)*time.Second+DispatchTimeout, got)
+	})
+
+	t.Run("undecodable bash payload keeps the default", func(t *testing.T) {
+		assert.Equal(t, DispatchTimeout, resultDeadline(constants.ActionTypeExecuteBash, []byte{0xff, 0xff}))
+	})
+
+	t.Run("other actions keep the default", func(t *testing.T) {
+		assert.Equal(t, DispatchTimeout, resultDeadline(constants.ActionTypeFileEdit, commandPayload(t, 86400)))
+	})
+}

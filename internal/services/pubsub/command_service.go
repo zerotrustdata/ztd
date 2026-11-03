@@ -360,7 +360,7 @@ func payloadToExecutionRequest(msg *PubSubCommandMessage) (*models.ExecutionRequ
 		executionID = protoCmd.ExecutionId
 	}
 
-	timeoutSeconds := 300
+	timeoutSeconds := constants.DefaultCommandExecutionTimeoutSeconds
 	if protoCmd.TimeoutSeconds > 0 {
 		timeoutSeconds = int(protoCmd.TimeoutSeconds)
 	}

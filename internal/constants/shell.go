@@ -36,6 +36,10 @@ const (
 	// MaxShellCommandTimeout is the maximum allowed timeout for shell command execution in seconds
 	MaxShellCommandTimeout = 300
 
+	// DefaultCommandExecutionTimeoutSeconds is the execution timeout an Operator
+	// applies to a CommandRequested that carries no timeout_seconds.
+	DefaultCommandExecutionTimeoutSeconds = 300
+
 	// ShutdownTimeout is the timeout for graceful shutdown in seconds
 	ShutdownTimeout = 15
 
