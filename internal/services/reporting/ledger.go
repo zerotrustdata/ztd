@@ -17,7 +17,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/storage"
 )
 
-func reportLedgerMerkleRoot(ctx context.Context, outDir string, ledger *storage.GitLedgerService) (FileResult, error) {
+func reportLedgerMerkleRoot(ctx context.Context, outDir string, ledger *storage.GitLedgerReader) (FileResult, error) {
 	path := filepath.Join(outDir, constants.ReportLedgerMerkleRootFilename)
 
 	if ctx.Err() != nil {
@@ -45,7 +45,7 @@ func reportLedgerMerkleRoot(ctx context.Context, outDir string, ledger *storage.
 	return res, nil
 }
 
-func reportLedgerCommits(ctx context.Context, outDir string, ledger *storage.GitLedgerService) (FileResult, error) {
+func reportLedgerCommits(ctx context.Context, outDir string, ledger *storage.GitLedgerReader) (FileResult, error) {
 	path := filepath.Join(outDir, constants.ReportLedgerCommitsFilename)
 
 	if ctx.Err() != nil {

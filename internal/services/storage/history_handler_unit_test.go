@@ -93,26 +93,18 @@ func (m *mockEventsStore) ListFileMutationsBySnapshot(_ context.Context, operato
 
 // mockLedger is a mock implementation of ledgerInterface for unit testing
 type mockLedger struct {
-	getFileHistoryFunc         func(filePath string, limit int, sessionID string) ([]FileHistoryEntry, error)
-	snapshotNameErr            error
-	lastCommitHashes           []string
-	restoreFileFromCommitFunc  func(filePath, commitHash, sessionID string) error
-	getFileAtCommitFunc        func(filePath, commitHash, sessionID string) (string, error)
-	mirrorFileCreateFunc       func(operatorSessionID, filePath string) (*LedgerResult, error)
-	completeMirrorCreateFunc   func(result *LedgerResult, operatorSessionID string) error
-	ledgerFileWriteFunc        func(operatorSessionID, filePath string) (*LedgerResult, error)
-	completeMirrorWriteFunc    func(result *LedgerResult, operatorSessionID string) error
-	getFileHistoryCalled       int
-	restoreFileCalled          int
-	getFileAtCommitCalled      int
-	mirrorFileCreateCalled     int
-	completeMirrorCreateCalled int
-	ledgerFileWriteCalled      int
-	completeMirrorWriteCalled  int
-	lastFilePath               string
-	lastCommitHash             string
-	lastSessionID              string
-	lastOperatorSessionID      string
+	getFileHistoryFunc        func(filePath string, limit int, sessionID string) ([]FileHistoryEntry, error)
+	snapshotNameErr           error
+	lastCommitHashes          []string
+	restoreFileFromCommitFunc func(filePath, commitHash, sessionID string) error
+	getFileAtCommitFunc       func(filePath, commitHash, sessionID string) (string, error)
+	getFileHistoryCalled      int
+	restoreFileCalled         int
+	getFileAtCommitCalled     int
+	lastFilePath              string
+	lastCommitHash            string
+	lastSessionID             string
+	lastOperatorSessionID     string
 }
 
 func (m *mockLedger) SnapshotName(filePath string) (string, error) {
@@ -161,46 +153,6 @@ func (m *mockLedger) GetFileAtCommit(filePath, commitHash, sessionID string) (st
 		return m.getFileAtCommitFunc(filePath, commitHash, sessionID)
 	}
 	return "", nil
-}
-
-func (m *mockLedger) MirrorFileCreate(operatorSessionID string, target *fs.FileEditTarget) (*LedgerResult, error) {
-	filePath := targetPath(target)
-	m.mirrorFileCreateCalled++
-	m.lastSessionID = operatorSessionID
-	m.lastFilePath = filePath
-	if m.mirrorFileCreateFunc != nil {
-		return m.mirrorFileCreateFunc(operatorSessionID, filePath)
-	}
-	return &LedgerResult{}, nil
-}
-
-func (m *mockLedger) CompleteMirrorCreate(result *LedgerResult, operatorSessionID string) error {
-	m.completeMirrorCreateCalled++
-	m.lastSessionID = operatorSessionID
-	if m.completeMirrorCreateFunc != nil {
-		return m.completeMirrorCreateFunc(result, operatorSessionID)
-	}
-	return nil
-}
-
-func (m *mockLedger) LedgerFileWrite(operatorSessionID string, target *fs.FileEditTarget) (*LedgerResult, error) {
-	filePath := targetPath(target)
-	m.ledgerFileWriteCalled++
-	m.lastSessionID = operatorSessionID
-	m.lastFilePath = filePath
-	if m.ledgerFileWriteFunc != nil {
-		return m.ledgerFileWriteFunc(operatorSessionID, filePath)
-	}
-	return &LedgerResult{}, nil
-}
-
-func (m *mockLedger) CompleteMirrorWrite(result *LedgerResult, operatorSessionID string) error {
-	m.completeMirrorWriteCalled++
-	m.lastSessionID = operatorSessionID
-	if m.completeMirrorWriteFunc != nil {
-		return m.completeMirrorWriteFunc(result, operatorSessionID)
-	}
-	return nil
 }
 
 // mockLogger is a mock implementation of loggerInterface for unit testing

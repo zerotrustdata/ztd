@@ -147,11 +147,6 @@
       "required": false,
       "description": "End line for line-range operations. Omitted when zero."
     },
-    "create_backup": {
-      "type": "boolean",
-      "required": true,
-      "description": "Whether to create a backup before editing"
-    },
     "create_if_missing": {
       "type": "boolean",
       "required": true,
@@ -216,11 +211,6 @@
       "type": "string",
       "required": false,
       "description": "Resulting file content (for read operations). Omitted when empty."
-    },
-    "backup_path": {
-      "type": "string",
-      "required": false,
-      "description": "Backup file path. Omitted when empty."
     },
     "file_stats": {
       "type": "object",

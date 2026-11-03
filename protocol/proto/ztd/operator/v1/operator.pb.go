@@ -1579,7 +1579,6 @@ type FileEditRequested struct {
 	StartLine       int32                  `protobuf:"varint,10,opt,name=start_line,json=startLine,proto3" json:"start_line,omitempty"`
 	EndLine         int32                  `protobuf:"varint,11,opt,name=end_line,json=endLine,proto3" json:"end_line,omitempty"`
 	PatchContent    string                 `protobuf:"bytes,12,opt,name=patch_content,json=patchContent,proto3" json:"patch_content,omitempty"`
-	CreateBackup    bool                   `protobuf:"varint,13,opt,name=create_backup,json=createBackup,proto3" json:"create_backup,omitempty"`
 	CreateIfMissing bool                   `protobuf:"varint,14,opt,name=create_if_missing,json=createIfMissing,proto3" json:"create_if_missing,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
@@ -1697,13 +1696,6 @@ func (x *FileEditRequested) GetPatchContent() string {
 		return x.PatchContent
 	}
 	return ""
-}
-
-func (x *FileEditRequested) GetCreateBackup() bool {
-	if x != nil {
-		return x.CreateBackup
-	}
-	return false
 }
 
 func (x *FileEditRequested) GetCreateIfMissing() bool {
@@ -6996,7 +6988,6 @@ type FileEditResult struct {
 	DurationSeconds float32                `protobuf:"fixed32,5,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"`
 	BytesWritten    int64                  `protobuf:"varint,6,opt,name=bytes_written,json=bytesWritten,proto3" json:"bytes_written,omitempty"`
 	LinesChanged    int32                  `protobuf:"varint,7,opt,name=lines_changed,json=linesChanged,proto3" json:"lines_changed,omitempty"`
-	BackupPath      string                 `protobuf:"bytes,8,opt,name=backup_path,json=backupPath,proto3" json:"backup_path,omitempty"`
 	ErrorMessage    string                 `protobuf:"bytes,9,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
 	ErrorType       string                 `protobuf:"bytes,10,opt,name=error_type,json=errorType,proto3" json:"error_type,omitempty"`
 	Content         string                 `protobuf:"bytes,11,opt,name=content,proto3" json:"content,omitempty"`
@@ -7083,13 +7074,6 @@ func (x *FileEditResult) GetLinesChanged() int32 {
 		return x.LinesChanged
 	}
 	return 0
-}
-
-func (x *FileEditResult) GetBackupPath() string {
-	if x != nil {
-		return x.BackupPath
-	}
-	return ""
 }
 
 func (x *FileEditResult) GetErrorMessage() string {
@@ -14611,7 +14595,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x04\x10\x05R\n" +
 	"vault_mode\";\n" +
 	"\x16CommandCancelRequested\x12!\n" +
-	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\"\x85\x04\n" +
+	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\"\xf5\x03\n" +
 	"\x11FileEditRequested\x12\x1b\n" +
 	"\tfile_path\x18\x01 \x01(\tR\bfilePath\x12\x1c\n" +
 	"\toperation\x18\x02 \x01(\tR\toperation\x12!\n" +
@@ -14628,9 +14612,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"start_line\x18\n" +
 	" \x01(\x05R\tstartLine\x12\x19\n" +
 	"\bend_line\x18\v \x01(\x05R\aendLine\x12#\n" +
-	"\rpatch_content\x18\f \x01(\tR\fpatchContent\x12#\n" +
-	"\rcreate_backup\x18\r \x01(\bR\fcreateBackup\x12*\n" +
-	"\x11create_if_missing\x18\x0e \x01(\bR\x0fcreateIfMissingJ\x04\b\x0f\x10\x10R\n" +
+	"\rpatch_content\x18\f \x01(\tR\fpatchContent\x12*\n" +
+	"\x11create_if_missing\x18\x0e \x01(\bR\x0fcreateIfMissingJ\x04\b\r\x10\x0eJ\x04\b\x0f\x10\x10R\rcreate_backupR\n" +
 	"vault_mode\"|\n" +
 	" EvaluationWorkspaceSeedRequested\x12!\n" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\x12\x1b\n" +
@@ -15098,7 +15081,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x10duration_seconds\x18\a \x01(\x02R\x0fdurationSeconds\x12#\n" +
 	"\rerror_message\x18\b \x01(\tR\ferrorMessage\x12\x1d\n" +
 	"\n" +
-	"error_type\x18\t \x01(\tR\terrorType\"\xde\x03\n" +
+	"error_type\x18\t \x01(\tR\terrorType\"\xd0\x03\n" +
 	"\x0eFileEditResult\x12!\n" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\x128\n" +
 	"\x06status\x18\x02 \x01(\x0e2 .ztd.operator.v1.ExecutionStatusR\x06status\x12\x1b\n" +
@@ -15106,9 +15089,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\toperation\x18\x04 \x01(\tR\toperation\x12)\n" +
 	"\x10duration_seconds\x18\x05 \x01(\x02R\x0fdurationSeconds\x12#\n" +
 	"\rbytes_written\x18\x06 \x01(\x03R\fbytesWritten\x12#\n" +
-	"\rlines_changed\x18\a \x01(\x05R\flinesChanged\x12\x1f\n" +
-	"\vbackup_path\x18\b \x01(\tR\n" +
-	"backupPath\x12#\n" +
+	"\rlines_changed\x18\a \x01(\x05R\flinesChanged\x12#\n" +
 	"\rerror_message\x18\t \x01(\tR\ferrorMessage\x12\x1d\n" +
 	"\n" +
 	"error_type\x18\n" +
@@ -15117,7 +15098,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\vstdout_size\x18\f \x01(\x05R\n" +
 	"stdoutSize\x12\x1f\n" +
 	"\vstderr_size\x18\r \x01(\x05R\n" +
-	"stderrSize\"\xb4\x02\n" +
+	"stderrSizeJ\x04\b\b\x10\tR\vbackup_path\"\xb4\x02\n" +
 	"\x15ExecutionStatusUpdate\x12!\n" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\x128\n" +
 	"\x06status\x18\x02 \x01(\x0e2 .ztd.operator.v1.ExecutionStatusR\x06status\x12\x18\n" +

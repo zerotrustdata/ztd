@@ -9,7 +9,6 @@ package storage
 
 import (
 	"crypto/ed25519"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -73,26 +72,21 @@ func TestLedgerService_GetDiffStat_BetweenTwoCommits(t *testing.T) {
 	operatorSessionID := "sess-diffstat"
 
 	// First commit: write initial file content
-	result1, err := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, lms.fileSvc, testFile, tempDir))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(testFile, []byte("line one\nline two\n"), 0644))
-	require.NoError(t, lms.CompleteMirrorWrite(result1, operatorSessionID))
+	result1 := recordMutation(t, lms, operatorSessionID, testFile, tempDir, "line one\nline two\n")
 
 	hashBefore := result1.LedgerHashAfter
 	require.NotEmpty(t, hashBefore)
 
 	// Second commit: overwrite with different content
-	result2, err := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, lms.fileSvc, testFile, tempDir))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(testFile, []byte("line one\nline two\nline three\n"), 0644))
-	require.NoError(t, lms.CompleteMirrorWrite(result2, operatorSessionID))
+	result2 := recordMutation(t, lms, operatorSessionID, testFile, tempDir, "line one\nline two\nline three\n")
 
 	hashAfter := result2.LedgerHashAfter
 	require.NotEmpty(t, hashAfter)
 
 	stat, err := lms.GetDiffStat(hashBefore, hashAfter, testFile, operatorSessionID)
 	require.NoError(t, err)
-	assert.NotEmpty(t, stat)
+	assert.Equal(t, "1 file changed, 1 insertion(+)", stat)
+	assert.Equal(t, stat, result2.DiffStat, "the recorded stat is the diff from the unchanged pre-image")
 }
 
 // TestLedgerService_GetDiffStat_SameHashReturnsEmpty verifies that GetDiffStat
@@ -105,10 +99,7 @@ func TestLedgerService_GetDiffStat_SameHashReturnsEmpty(t *testing.T) {
 	testFile := filepath.Join(tempDir, "same_hash.txt")
 	operatorSessionID := "sess-same"
 
-	result, err := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, lms.fileSvc, testFile, tempDir))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(testFile, []byte("content\n"), 0644))
-	require.NoError(t, lms.CompleteMirrorWrite(result, operatorSessionID))
+	result := recordMutation(t, lms, operatorSessionID, testFile, tempDir, "content\n")
 
 	hash := result.LedgerHashAfter
 	require.NotEmpty(t, hash)

@@ -8,7 +8,6 @@
 package storage
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -38,19 +37,13 @@ func TestLedgerService_GetDiffContent_BetweenTwoCommits(t *testing.T) {
 	operatorSessionID := "sess-diffcontent"
 
 	// First commit: write initial file content
-	result1, err := lms.MirrorFileCreate(operatorSessionID, openTestTarget(t, lms.fileSvc, testFile, tempDir))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(testFile, []byte("Line 1\n"), 0644))
-	require.NoError(t, lms.CompleteMirrorCreate(result1, operatorSessionID))
+	result1 := recordMutation(t, lms, operatorSessionID, testFile, tempDir, "Line 1\n")
 
 	hashBefore := result1.LedgerHashAfter
 	require.NotEmpty(t, hashBefore)
 
 	// Second commit: modify file content
-	result2, err := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, lms.fileSvc, testFile, tempDir))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(testFile, []byte("Line 1\nLine 2\n"), 0644))
-	require.NoError(t, lms.CompleteMirrorWrite(result2, operatorSessionID))
+	result2 := recordMutation(t, lms, operatorSessionID, testFile, tempDir, "Line 1\nLine 2\n")
 
 	hashAfter := result2.LedgerHashAfter
 	require.NotEmpty(t, hashAfter)
@@ -69,10 +62,7 @@ func TestLedgerService_GetDiffContent_SameHashReturnsEmpty(t *testing.T) {
 	testFile := filepath.Join(tempDir, "same_hash.txt")
 	operatorSessionID := "sess-same"
 
-	result, err := lms.MirrorFileCreate(operatorSessionID, openTestTarget(t, lms.fileSvc, testFile, tempDir))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(testFile, []byte("content\n"), 0644))
-	require.NoError(t, lms.CompleteMirrorCreate(result, operatorSessionID))
+	result := recordMutation(t, lms, operatorSessionID, testFile, tempDir, "content\n")
 
 	hash := result.LedgerHashAfter
 	require.NotEmpty(t, hash)
@@ -97,15 +87,8 @@ func TestLedgerService_GetDiffContent_PlaintextFromEncryptedSnapshots(t *testing
 	testFile := filepath.Join(tempDir, "plaintext_diff.txt")
 	operatorSessionID := "sess-plaintext-diff"
 
-	result1, err := lms.MirrorFileCreate(operatorSessionID, openTestTarget(t, lms.fileSvc, testFile, tempDir))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(testFile, []byte("alpha\nbeta\n"), 0644))
-	require.NoError(t, lms.CompleteMirrorCreate(result1, operatorSessionID))
-
-	result2, err := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, lms.fileSvc, testFile, tempDir))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(testFile, []byte("alpha\ngamma\n"), 0644))
-	require.NoError(t, lms.CompleteMirrorWrite(result2, operatorSessionID))
+	result1 := recordMutation(t, lms, operatorSessionID, testFile, tempDir, "alpha\nbeta\n")
+	result2 := recordMutation(t, lms, operatorSessionID, testFile, tempDir, "alpha\ngamma\n")
 
 	content, err := lms.GetDiffContent(result1.LedgerHashAfter, result2.LedgerHashAfter, testFile, operatorSessionID)
 	require.NoError(t, err)
@@ -121,12 +104,13 @@ func TestLedgerService_GetDiff_LockedVaultReturnsNothing(t *testing.T) {
 	t.Parallel()
 	lms, _ := setupTestLedgerLocked(t)
 
-	ledgerDir := lms.fileSvc.Resolve(filepath.Join(constants.DataDirname, constants.LedgerDirname))
-	require.NoError(t, lms.initGitRepo(filepath.Join(constants.DataDirname, constants.LedgerDirname)))
-	hash1, err := lms.snapshotLedger(ledgerDir, "first")
+	ledgerDir := lms.fileSvc.Resolve(filepath.Join(lms.baseRelPath, constants.FilesDirname))
+	repo, head, err := openLedgerHead(ledgerDir)
 	require.NoError(t, err)
-	hash2, err := lms.snapshotLedger(ledgerDir, "second")
+	hash1 := head.Hash().String()
+	commit, err := commitBlob(repo, head, "second.enc", []byte("second"), "second")
 	require.NoError(t, err)
+	hash2 := commit.String()
 
 	_, err = lms.diffBetween(ledgerDir, hash1, hash2, "/some/file.txt")
 	require.ErrorIs(t, err, constants.ErrLedgerVaultRequired)

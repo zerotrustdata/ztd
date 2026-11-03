@@ -150,7 +150,6 @@ func TestPayloadToFileEditRequest(t *testing.T) {
 			Operation:       "write",
 			ExecutionId:     "exec-1",
 			Justification:   "test",
-			CreateBackup:    true,
 			CreateIfMissing: true,
 			Content:         "test content",
 			OldContent:      "old content",
@@ -179,7 +178,6 @@ func TestPayloadToFileEditRequest(t *testing.T) {
 		assert.Equal(t, constants.FileOperation("write"), editReq.Operation)
 		assert.Equal(t, filepath.Join(tmpDir, "test.txt"), editReq.FilePath)
 		assert.Equal(t, "test", editReq.Justification)
-		assert.True(t, editReq.CreateBackup)
 		assert.True(t, editReq.CreateIfMissing)
 		assert.Equal(t, "test content", editReq.Content)
 		assert.Equal(t, "old content", editReq.OldContent)
@@ -839,8 +837,8 @@ func TestFileOpsService_HandleFsListRequest(t *testing.T) {
 	})
 }
 
-func TestFileOpsService_BeginLedgerTwoPhaseCommit(t *testing.T) {
-	t.Run("snapshots an existing file", func(t *testing.T) {
+func TestFileOpsService_BeginLedgerMutation(t *testing.T) {
+	t.Run("begins a write for an existing file", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
 		cfg := testutil.NewTestConfig(t)
@@ -857,9 +855,10 @@ func TestFileOpsService_BeginLedgerTwoPhaseCommit(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = target.Close() })
 
-		result, err := svc.beginLedgerTwoPhaseCommit("session-ledger-test", target, "write")
+		result, err := svc.ledger.BeginMutation("session-ledger-test", target)
 		require.NoError(t, err)
-		assert.NotNil(t, result)
+		require.NotNil(t, result)
+		assert.Equal(t, storage.FileMutationWrite, result.Operation)
 	})
 
 	t.Run("returns nil for path traversal attempt", func(t *testing.T) {
@@ -875,7 +874,7 @@ func TestFileOpsService_BeginLedgerTwoPhaseCommit(t *testing.T) {
 		assert.Nil(t, target)
 	})
 
-	t.Run("returns nil when file does not exist and operation is not create/write", func(t *testing.T) {
+	t.Run("begins a creation without a commit for a missing file", func(t *testing.T) {
 		t.Parallel()
 		tmpDir := testutil.OperatorDir(t)
 		cfg := testutil.NewTestConfig(t)
@@ -890,13 +889,18 @@ func TestFileOpsService_BeginLedgerTwoPhaseCommit(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { _ = target.Close() })
 
-		result, err := svc.beginLedgerTwoPhaseCommit("session-ledger-test", target, "replace")
+		result, err := svc.ledger.BeginMutation("session-ledger-test", target)
 		require.NoError(t, err)
-		assert.Nil(t, result)
+		require.NotNil(t, result)
+		assert.Equal(t, storage.FileMutationCreate, result.Operation)
+		commits, err := svc.ledger.ListCommits("session-ledger-test", 0)
+		require.NoError(t, err)
+		require.Len(t, commits, 1, "a creation commits nothing before the host write")
+		assert.Equal(t, commits[0].CommitHash, result.LedgerHashBefore)
 	})
 }
 
-func TestFileOpsService_CompleteLedgerTwoPhaseCommit(t *testing.T) {
+func TestFileOpsService_CompleteLedgerMutation(t *testing.T) {
 	t.Run("returns nil for nil ledger result", func(t *testing.T) {
 		t.Parallel()
 		cfg := testutil.NewTestConfig(t)
@@ -905,8 +909,9 @@ func TestFileOpsService_CompleteLedgerTwoPhaseCommit(t *testing.T) {
 		fileEditSvc := newFileEditTestService(t, cfg, logger)
 		svc := newFileOpsServiceForTest(t, cfg, logger, fileEditSvc, client)
 
-		err := svc.completeLedgerTwoPhaseCommit("session-ledger-test", nil)
-		assert.NoError(t, err)
+		result := &models.FileEditResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}
+		require.NoError(t, svc.completeLedgerMutation("session-ledger-test", nil, result))
+		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status)
 	})
 }
 
@@ -988,7 +993,7 @@ func TestFileOpsService_LedgerFailureFailsClosed(t *testing.T) {
 		t.Cleanup(func() { _ = target.Close() })
 
 		session := "session-ledger-complete"
-		ledgerResult, err := svc.beginLedgerTwoPhaseCommit(session, target, "write")
+		ledgerResult, err := svc.ledger.BeginMutation(session, target)
 		require.NoError(t, err)
 		require.NotNil(t, ledgerResult)
 
@@ -996,11 +1001,11 @@ func TestFileOpsService_LedgerFailureFailsClosed(t *testing.T) {
 		require.NoError(t, v.Close())
 
 		result := &models.FileEditResult{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, FilePath: testFile}
-		finishErr := svc.finishLedgerTwoPhaseCommit(session, ledgerResult, result)
+		finishErr := svc.completeLedgerMutation(session, ledgerResult, result)
 		require.ErrorIs(t, finishErr, constants.ErrLedgerVaultRequired)
 
 		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
-		assert.Contains(t, result.ErrorMessage, "complete ledger two-phase commit")
+		assert.Contains(t, result.ErrorMessage, "complete ledger mutation")
 
 		rr, err := NewPubSubResultsService(cfg, logger, client, newEgressScrubber(t, true))
 		require.NoError(t, err)

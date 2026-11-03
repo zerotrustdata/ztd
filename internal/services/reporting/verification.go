@@ -36,7 +36,7 @@ type VerificationResult struct {
 	Rows      []VerificationRow
 }
 
-func reportVerification(ctx context.Context, outDir string, eventsStore *storage.LocalFirstEventsStore, cl *storage.CommitmentLedger, ledger *storage.GitLedgerService, auditorTrust, actuatorTrust governance.EvidenceSignerSource) (FileResult, VerificationResult, error) {
+func reportVerification(ctx context.Context, outDir string, eventsStore *storage.LocalFirstEventsStore, cl *storage.CommitmentLedger, ledger *storage.GitLedgerReader, auditorTrust, actuatorTrust governance.EvidenceSignerSource) (FileResult, VerificationResult, error) {
 	path := filepath.Join(outDir, constants.ReportVerificationFilename)
 
 	var vr VerificationResult

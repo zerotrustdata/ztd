@@ -94,7 +94,7 @@ func egressContentFields(payload proto.Message) (fields []*string, class egressC
 	case *operatorv1.ExecutionStatusUpdate:
 		return []*string{&p.Command, &p.NewOutput, &p.NewStderr, &p.Message}, egressContent, nil
 	case *operatorv1.FileEditResult:
-		return []*string{&p.FilePath, &p.BackupPath, &p.Content, &p.ErrorMessage, &p.ErrorType}, egressContent, nil
+		return []*string{&p.FilePath, &p.Content, &p.ErrorMessage, &p.ErrorType}, egressContent, nil
 	case *operatorv1.EvaluationWorkspaceSeedResult:
 		return []*string{&p.FilePath, &p.ErrorMessage, &p.ErrorType}, egressContent, nil
 	case *operatorv1.FsListResult:

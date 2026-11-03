@@ -192,10 +192,10 @@ func TestHandleRestoreFileRequest_RecordsFileMutation(t *testing.T) {
 
 	target, err := fileSvc.OpenFileEditTarget(ctx, hostFile, workDir)
 	require.NoError(t, err)
-	create, err := ledger.MirrorFileCreate(sessionID, target)
+	create, err := ledger.BeginMutation(sessionID, target)
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(hostFile, []byte("original\n"), 0o600))
-	require.NoError(t, ledger.CompleteMirrorCreate(create, sessionID))
+	require.NoError(t, ledger.CompleteMutation(create, sessionID))
 	require.NoError(t, target.Close())
 	require.NoError(t, os.WriteFile(hostFile, []byte("edited\n"), 0o600))
 

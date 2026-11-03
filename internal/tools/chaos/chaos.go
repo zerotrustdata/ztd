@@ -45,6 +45,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/paths"
+	"github.com/zerotrustdata/ztd/internal/security"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
@@ -137,9 +138,15 @@ func buildPromptInjEnvelope(id int, stateRoot string, privKey ed25519.PrivateKey
 		payload, false, privKey, keyID, sessionID)
 }
 
+// chaosEditFileName is the file a FILE_MUTATION payload edits, relative to
+// the run's file mutation root.
+func chaosEditFileName(id int) string {
+	return fmt.Sprintf("chaos-edit-%d.txt", id)
+}
+
 func buildFileMutationEnvelope(id int, stateRoot string, privKey ed25519.PrivateKey, keyID string, sessionID string) (*govpkg.GovernanceEnvelope, error) {
 	payload, err := proto.Marshal(&operatorv1.FileEditRequested{
-		FilePath:    fmt.Sprintf("chaos-edit-%d.txt", id),
+		FilePath:    chaosEditFileName(id),
 		Content:     fmt.Sprintf("chaos was here at %d", time.Now().UnixNano()),
 		ExecutionId: fmt.Sprintf("exec-edit-%d", id),
 	})
@@ -323,39 +330,35 @@ func (c *chaosExecutionHandler) ExecuteVerifiedTransaction(ctx context.Context, 
 		return "", nil
 	}
 
-	// Simulate ledger activity for file mutations
+	// Simulate ledger activity for file mutations. Any failure is returned so
+	// the payload counts as failed, never as executed.
 	if eventType == constants.Event.Operator.FileEdit.Requested && c.ledger != nil {
 		req := &operatorv1.FileEditRequested{}
-		if err := proto.Unmarshal(msg.Payload, req); err == nil {
-			slog.Info("Chaos simulating file mutation in ledger", "category", string(constants.ToolDisplayCategoryFile))
-			// Simulate the two-phase ledger commit through the governed target.
-			target, err := c.fileSvc.OpenFileEditTarget(ctx, req.FilePath, c.workDir)
-			if err != nil {
-				slog.Error("OpenFileEditTarget failed", "error", err)
-				return "", nil
-			}
-			defer func() { _ = target.Close() }()
-			res, err := c.ledger.LedgerFileWrite(msg.OperatorSessionID, target)
-			if err != nil {
-				slog.Error("LedgerFileWrite failed", "error", err)
-			}
-			if res != nil {
-				// Create the dummy file so git can see it
-				_ = target.WriteFile([]byte(req.Content), constants.PermFilePrivate)
-				err = c.ledger.CompleteMirrorWrite(res, msg.OperatorSessionID)
-				if err != nil {
-					slog.Error("CompleteMirrorWrite failed", "error", err)
-				} else {
-					slog.Info("Chaos ledger mutation complete", "category", string(constants.ToolDisplayCategoryFile))
-					// Note: State root updates disabled in chaos test to avoid race conditions
-					// that cause hash verification failures in parallel execution
-					count := c.mutationCount.Add(1)
-					slog.Info("Mutation count updated", "mutation_count", count)
-				}
-			}
-		} else {
-			slog.Error("Failed to unmarshal FileEditRequested", "error", err)
+		if err := proto.Unmarshal(msg.Payload, req); err != nil {
+			return "", fmt.Errorf("chaos: decode FileEditRequested: %w", err)
 		}
+		slog.Info("Chaos simulating file mutation in ledger", "category", string(constants.ToolDisplayCategoryFile))
+		// Simulate the ledgered mutation through the governed target.
+		target, err := c.fileSvc.OpenFileEditTarget(ctx, req.FilePath, c.workDir)
+		if err != nil {
+			return "", fmt.Errorf("chaos: open file edit target: %w", err)
+		}
+		defer func() { _ = target.Close() }()
+		res, err := c.ledger.BeginMutation(msg.OperatorSessionID, target)
+		if err != nil {
+			return "", fmt.Errorf("chaos: begin ledger mutation: %w", err)
+		}
+		if err := target.WriteFile([]byte(req.Content), constants.PermFilePrivate); err != nil {
+			return "", fmt.Errorf("chaos: write file edit target: %w", err)
+		}
+		if err := c.ledger.CompleteMutation(res, msg.OperatorSessionID); err != nil {
+			return "", fmt.Errorf("chaos: complete ledger mutation: %w", err)
+		}
+		slog.Info("Chaos ledger mutation complete", "category", string(constants.ToolDisplayCategoryFile))
+		// Note: State root updates disabled in chaos test to avoid race conditions
+		// that cause hash verification failures in parallel execution
+		count := c.mutationCount.Add(1)
+		slog.Info("Mutation count updated", "mutation_count", count)
 	}
 	return "", nil
 }
@@ -392,6 +395,10 @@ func Run(cfg Config) error {
 	// Use shared test vault directory for persistent inspection
 	var baseDir string
 	var testVaultDir string
+	// editDir holds the ordinary files the FILE_MUTATION category edits.
+	// The test vault is protected runtime state, so governed edits there
+	// would be refused; a throwaway root under .ztd/operators/ is not.
+	var editDir string
 	if cfg.DataDir == "" {
 		// The shared test vault lives under the working directory's .ztd/ runtime.
 		cwdFileSvc, err := fs.NewRuntimeFileService("", logger)
@@ -404,13 +411,22 @@ func Run(cfg Config) error {
 		if err := cwdFileSvc.MkdirAll(context.Background(), testRunRelDir, constants.PermDirStandard); err != nil {
 			return fmt.Errorf("%w: %v", constants.ErrDirCreateFailed, err)
 		}
+		editRelDir := filepath.Join(constants.OperatorsDirname, testRunID)
+		if err := cwdFileSvc.MkdirAll(context.Background(), editRelDir, constants.PermDirStandard); err != nil {
+			return fmt.Errorf("%w: %v", constants.ErrDirCreateFailed, err)
+		}
 		testVaultDir = cwdFileSvc.Resolve(constants.TestVaultDirname)
 		baseDir = cwdFileSvc.Resolve(testRunRelDir)
+		editDir = cwdFileSvc.Resolve(editRelDir)
 	} else {
 		baseDir = cfg.DataDir
 		if err := os.MkdirAll(baseDir, constants.PermDirStandard); err != nil {
 			return fmt.Errorf("%w: %v", constants.ErrDirCreateFailed, err)
 		}
+		editDir = baseDir
+	}
+	if security.IsProtectedRuntimePath(filepath.Join(editDir, chaosEditFileName(0))) {
+		return fmt.Errorf("chaos: file mutation root %s must permit governed file edits; use .ztd/operators/: %w", editDir, constants.ErrFileEditProtectedRuntimePath)
 	}
 
 	// Construct fileSvc for .ztd/ I/O within the test run directory
@@ -576,7 +592,7 @@ func Run(cfg Config) error {
 		AuditorSigningKey:     auditorPriv,
 		AuditorKeyID:          hex.EncodeToString(auditorPub),
 		StateRootProvider:     stateRootProvider,
-		ExecutionHandler:      &chaosExecutionHandler{ledger: ledger, fileSvc: fileSvc, workDir: baseDir, stateRoot: stateRootProvider},
+		ExecutionHandler:      &chaosExecutionHandler{ledger: ledger, fileSvc: fileSvc, workDir: editDir, stateRoot: stateRootProvider},
 		Scrubbing:             chaosScrubber,
 		SigningKey:            privKey,
 		KeyID:                 keyID,
@@ -707,6 +723,13 @@ func Run(cfg Config) error {
 	fmt.Printf("Ledger    : %s\n", filepath.Join(dataDir, constants.LedgerDirname))
 	fmt.Printf("\n")
 	printDemoQueries(filepath.Join(dataDir, constants.ChaosDBFilename))
+	if other > 0 ||
+		int(cnt.executedGoodActor.Load()) != generatedCounters.goodActor ||
+		int(cnt.executedFileMut.Load()) != generatedCounters.fileMutation ||
+		int(l1Blocked) != generatedCounters.promptInj ||
+		int(hashFail) != generatedCounters.mitM {
+		return fmt.Errorf("%w: %d payloads failed or were rejected outside their category", constants.ErrChaosOutcomeMismatch, other)
+	}
 	return nil
 }
 

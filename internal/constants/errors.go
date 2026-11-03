@@ -126,6 +126,7 @@ var (
 
 	ErrLedgerSessionNotFound    = errors.New("ledger: no ledger exists for this operator session")
 	ErrLedgerDiffHashesRequired = errors.New("ledger: both commit hashes are required to compute a diff")
+	ErrLedgerSnapshotPreLayout  = errors.New("ledger: the commit predates the sharded snapshot layout; its snapshot cannot be read")
 
 	// CLI approval errors
 	ErrKeyReadFailed             = errors.New("failed to read CLI private key")
@@ -651,6 +652,7 @@ var (
 	ErrSQLQueryFailed            = errors.New("failed to execute SQL query")
 
 	ErrChaosTestDatabaseNotFound = errors.New("chaos test database not found")
+	ErrChaosOutcomeMismatch      = errors.New("chaos payload outcomes differ from their expected outcomes")
 	ErrUnitTestsFailed           = errors.New("unit tests failed")
 	ErrIntegrationTestsFailed    = errors.New("integration tests failed")
 	ErrE2ETestsFailed            = errors.New("e2e tests failed")

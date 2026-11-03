@@ -45,7 +45,7 @@ func setupTestGitLedger(t *testing.T) *storage.GitLedgerService {
 	return ledger
 }
 
-// seedLedgerCommit writes a file through the two-phase ledger commit flow,
+// seedLedgerCommit records a file mutation through BeginMutation and CompleteMutation,
 // producing at least one git commit in the files/ repo.
 func seedLedgerCommit(t *testing.T, ledger *storage.GitLedgerService, sessionID, filePath, content string) {
 	t.Helper()
@@ -54,26 +54,23 @@ func seedLedgerCommit(t *testing.T, ledger *storage.GitLedgerService, sessionID,
 	require.NoError(t, os.MkdirAll(filepath.Dir(filePath), 0o755))
 	require.NoError(t, os.WriteFile(filePath, []byte(content), 0o644))
 
-	// Phase 1: LedgerFileWrite (pre-mutation snapshot).
 	workDir := filepath.Dir(filePath)
 	fileSvc, err := fs.NewRuntimeFileService(workDir, testutil.NewTestLogger())
 	require.NoError(t, err)
 	target, err := fileSvc.OpenFileEditTarget(context.Background(), filePath, workDir)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = target.Close() })
-	result, err := ledger.LedgerFileWrite(sessionID, target)
+	result, err := ledger.BeginMutation(sessionID, target)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-
-	// Phase 2: CompleteMirrorWrite (post-mutation commit).
-	require.NoError(t, ledger.CompleteMirrorWrite(result, sessionID))
+	require.NoError(t, ledger.CompleteMutation(result, sessionID))
 }
 
 func TestReportLedgerMerkleRoot_BootstrapOnly(t *testing.T) {
 	ledger := setupTestGitLedger(t)
 	outDir := testutil.TempDir(t)
 
-	res, err := reportLedgerMerkleRoot(context.Background(), outDir, ledger)
+	res, err := reportLedgerMerkleRoot(context.Background(), outDir, ledger.GitLedgerReader)
 	require.NoError(t, err)
 	assert.Equal(t, constants.ReportLedgerMerkleRootFilename, res.Filename)
 	// Bootstrap creates an initial .gitignore commit, so merkle root exists.
@@ -98,7 +95,7 @@ func TestReportLedgerMerkleRoot_WithCommits(t *testing.T) {
 	seedLedgerCommit(t, ledger, "", srcFile, "hello world")
 
 	outDir := testutil.TempDir(t)
-	res, err := reportLedgerMerkleRoot(context.Background(), outDir, ledger)
+	res, err := reportLedgerMerkleRoot(context.Background(), outDir, ledger.GitLedgerReader)
 	require.NoError(t, err)
 	assert.Equal(t, constants.ReportLedgerMerkleRootFilename, res.Filename)
 	assert.Equal(t, 1, res.RowCount, "should have 1 row with the merkle root")
@@ -118,7 +115,7 @@ func TestReportLedgerCommits_BootstrapOnly(t *testing.T) {
 	ledger := setupTestGitLedger(t)
 	outDir := testutil.TempDir(t)
 
-	res, err := reportLedgerCommits(context.Background(), outDir, ledger)
+	res, err := reportLedgerCommits(context.Background(), outDir, ledger.GitLedgerReader)
 	require.NoError(t, err)
 	assert.Equal(t, constants.ReportLedgerCommitsFilename, res.Filename)
 	// Bootstrap creates an initial .gitignore commit.
@@ -146,7 +143,7 @@ func TestReportLedgerCommits_WithCommits(t *testing.T) {
 	seedLedgerCommit(t, ledger, "", srcFile2, "content 2")
 
 	outDir := testutil.TempDir(t)
-	res, err := reportLedgerCommits(context.Background(), outDir, ledger)
+	res, err := reportLedgerCommits(context.Background(), outDir, ledger.GitLedgerReader)
 	require.NoError(t, err)
 	assert.Equal(t, constants.ReportLedgerCommitsFilename, res.Filename)
 	assert.GreaterOrEqual(t, res.RowCount, 2, "should have at least 2 commits")
@@ -174,7 +171,7 @@ func TestReportLedgerMerkleRoot_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := reportLedgerMerkleRoot(ctx, outDir, ledger)
+	_, err := reportLedgerMerkleRoot(ctx, outDir, ledger.GitLedgerReader)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 }
@@ -186,7 +183,7 @@ func TestReportLedgerCommits_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := reportLedgerCommits(ctx, outDir, ledger)
+	_, err := reportLedgerCommits(ctx, outDir, ledger.GitLedgerReader)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 }
