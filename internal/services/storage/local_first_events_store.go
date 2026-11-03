@@ -212,7 +212,7 @@ func NewLocalFirstEventsStore(config *LocalFirstEventsStoreConfig, db *sqliteuti
 	ass.pruner = sqliteutil.NewPruner(ass.db, logger, interval, eventsStorePrune(config))
 	ass.pruner.Start()
 
-	ass.logger.Info("Local-first events store initialized",
+	ass.logger.Debug("Local-first events store initialized",
 		"data_dir", ass.fileSvc.Resolve(constants.DataDirname),
 		"db_path", db.GetPath())
 
@@ -271,7 +271,7 @@ func (ass *LocalFirstEventsStore) PinnedAuditorPublicKey() ed25519.PublicKey {
 
 // bootstrap initializes the events store (directory structure, database)
 func (ass *LocalFirstEventsStore) bootstrap() error {
-	ass.logger.Info("Bootstrapping events store", "data_dir", ass.fileSvc.Resolve(constants.DataDirname))
+	ass.logger.Debug("Bootstrapping events store", "data_dir", ass.fileSvc.Resolve(constants.DataDirname))
 
 	if err := ass.createDirectoryStructure(); err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreCreateDirFailed, err)
@@ -285,7 +285,7 @@ func (ass *LocalFirstEventsStore) bootstrap() error {
 		return fmt.Errorf("%w: %w", constants.ErrLocalFirstEventsStoreInitDBFailed, err)
 	}
 
-	ass.logger.Info("Events store bootstrap completed successfully")
+	ass.logger.Debug("Events store bootstrap completed successfully")
 	return nil
 }
 
@@ -295,7 +295,7 @@ func (ass *LocalFirstEventsStore) createDirectoryStructure() error {
 		return fmt.Errorf("%w %s: %w", constants.ErrLocalFirstEventsStoreCreateDirPathFailed, constants.DataDirname, err)
 	}
 
-	ass.logger.Info("Events store directory structure ensured",
+	ass.logger.Debug("Events store directory structure ensured",
 		"data_dir", ass.fileSvc.Resolve(constants.DataDirname))
 
 	return nil
@@ -313,7 +313,7 @@ func (ass *LocalFirstEventsStore) verifyWritePermissions() error {
 		ass.logger.Warn("Failed to remove write test file", "path", testRelPath, string(constants.ConnectionStateError), err)
 	}
 
-	ass.logger.Info("Write permissions verified", "path", ass.fileSvc.Resolve(constants.DataDirname))
+	ass.logger.Debug("Write permissions verified", "path", ass.fileSvc.Resolve(constants.DataDirname))
 	return nil
 }
 
@@ -331,7 +331,7 @@ func (ass *LocalFirstEventsStore) initDatabase() error {
 
 	ass.commitmentLedger = NewCommitmentLedger(ass.db, ass.logger, ass.encryptionVault)
 
-	ass.logger.Info("Database schema initialized")
+	ass.logger.Debug("Database schema initialized")
 	return nil
 }
 

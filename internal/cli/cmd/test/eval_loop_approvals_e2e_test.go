@@ -302,7 +302,7 @@ func (a *releaseSmokeCLIApprovalResponder) reconcile(ctx context.Context) {
 		return
 	}
 	if len(pending) > 0 {
-		slog.Info("approvals responder reconcile: pending transactions", "count", len(pending))
+		slog.Debug("approvals responder reconcile: pending transactions", "count", len(pending))
 	}
 	for _, transaction := range pending {
 		if transaction.TransactionHash == "" {
@@ -333,7 +333,7 @@ func (a *releaseSmokeCLIApprovalResponder) answer(ctx context.Context, hash, fla
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	slog.Info("answering transaction via CLI", "hash", hash, "flag", flag)
+	slog.Debug("answering transaction via CLI", "hash", hash, "flag", flag)
 	// The exit status is authoritative: a command that prints the success marker
 	// and then exits non-zero has failed, so it must not be counted as answered.
 	err := cmd.Run()
@@ -341,11 +341,11 @@ func (a *releaseSmokeCLIApprovalResponder) answer(ctx context.Context, hash, fla
 	executionFailed := errors.As(err, &exitErr) && exitErr.ExitCode() == constants.ExitCodeActionExecutionFailed
 	switch {
 	case executionFailed:
-		slog.Info("CLI answer recorded; the approved action failed in execution", "hash", hash, "flag", flag, "stderr", strings.TrimSpace(stderr.String()))
+		slog.Debug("CLI answer recorded; the approved action failed in execution", "hash", hash, "flag", flag, "stderr", strings.TrimSpace(stderr.String()))
 	case err != nil:
 		slog.Error("CLI answer failed", "hash", hash, "flag", flag, "error", err, "stdout", stdout.String(), "stderr", stderr.String())
 	default:
-		slog.Info("CLI answer succeeded", "hash", hash, "flag", flag, "stdout", strings.TrimSpace(stdout.String()))
+		slog.Debug("CLI answer succeeded", "hash", hash, "flag", flag, "stdout", strings.TrimSpace(stdout.String()))
 	}
 	a.record(releaseSmokeApprovalResult{
 		transactionHash: hash,
