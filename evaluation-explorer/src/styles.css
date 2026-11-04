@@ -1330,6 +1330,31 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
 .tribunal-outcome { grid-column: 1 / -1; grid-row: 3; font-size: 10px; }
 .tribunal-seat[data-outcome="approve"] .tribunal-outcome { color: var(--tone-ok); }
 .tribunal-seat[data-outcome="deny"] .tribunal-outcome { color: var(--tone-critical); }
+.deterministic-grades { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.deterministic-grades-pending { color: var(--fg-muted); font-size: 0.75rem; }
+.deterministic-grade { position: relative; min-width: 0; }
+.deterministic-grade summary { display: block; width: 18px; cursor: pointer; list-style: none; }
+.deterministic-grade summary::-webkit-details-marker { display: none; }
+.deterministic-grade summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 50%; }
+.deterministic-grade-circle {
+  display: flex; align-items: center; justify-content: center; box-sizing: border-box; width: 18px; height: 18px;
+  border: 1px solid var(--tone-neutral); border-radius: 50%; color: var(--tone-neutral); font-size: 11px; font-weight: 700; line-height: 1;
+}
+.deterministic-grade[data-tone="ok"] .deterministic-grade-circle { border-color: var(--tone-ok); color: var(--tone-ok); }
+.deterministic-grade[data-tone="critical"] .deterministic-grade-circle { border-color: var(--tone-critical); color: var(--tone-critical); }
+.deterministic-grade[data-tone="warn"] .deterministic-grade-circle { border-color: var(--tone-warn); color: var(--tone-warn); }
+.deterministic-grade[data-tone="info"] .deterministic-grade-circle { border-color: var(--tone-info); color: var(--tone-info); }
+.deterministic-grade[open] .deterministic-grade-circle { outline: 2px solid currentColor; outline-offset: 1px; }
+/* The column is narrow, so a grade's detail opens over the row beside it. */
+.deterministic-grade dl {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 2; box-sizing: border-box; width: 320px; max-height: 240px; overflow-y: auto;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 8px; margin: 0; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 5px; background: var(--bg-elev); box-shadow: 0 4px 12px rgb(0 0 0 / 25%);
+  font-size: 11px; text-align: left;
+}
+.deterministic-grade dl > div { display: contents; }
+.deterministic-grade dt { color: var(--fg-muted); }
+.deterministic-grade dd { margin: 0; overflow-wrap: anywhere; }
 .judge-activity { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .judge-summary { font-size: 11px; color: var(--fg-muted); overflow-wrap: anywhere; }
 .judge-judgments { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
@@ -1391,8 +1416,9 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
 .stream-table thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-elev); }
 .stream-table th:first-child { width: 76px; }
 /* Task and Model share the remaining width; fixed columns keep equal cell padding. */
-.stream-table .stream-tribunal-header { width: 25%; }
-.stream-table .stream-judge-header { width: 22%; }
+.stream-table .stream-tribunal-header { width: 17%; }
+.stream-table .stream-deterministic-header { width: 96px; }
+.stream-table .stream-judge-header { width: 15%; }
 .stream-table .stream-metric-header { width: 88px; }
 .stream-table th:last-child { width: 88px; }
 .stream-table .stream-metric-header, .stream-table .stream-time-header,
@@ -1573,12 +1599,25 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
   background: var(--bg-elev2);
 }
 
+/* A row's grading path takes the room the fixed columns can spare, so every
+   column still fits beside an open navigation drawer. */
+@container (max-width: 1100px) and (min-width: 701px) {
+  .stream-table[data-grading] th, .stream-table[data-grading] td { padding: 10px 7px; }
+  .stream-table[data-grading] th:first-child { width: 65px; }
+  .stream-table[data-grading] .stream-metric-header { width: 72px; }
+  .stream-table[data-grading] th:last-child { width: 72px; }
+  .stream-table[data-grading] .stream-detail-cue { font-size: 0; }
+  .stream-table[data-grading] .stream-detail-cue::after { content: '→'; font-size: 14px; }
+  .stream-table[data-grading] .tribunal-seat { flex-basis: 68px; }
+}
+
 @container (max-width: 1000px) and (min-width: 701px) {
   .stream-table th, .stream-table td { padding: 10px 7px; }
   .stream-table th:first-child { width: 65px; }
   .stream-table .stream-metric-header { width: 78px; }
-  .stream-table .stream-tribunal-header { width: 22%; }
-  .stream-table .stream-judge-header { width: 20%; }
+  .stream-table .stream-tribunal-header { width: 17%; }
+  .stream-table .stream-deterministic-header { width: 96px; }
+  .stream-table .stream-judge-header { width: 15%; }
   .stream-table th:last-child { width: 78px; }
   .stream-detail-cue { font-size: 0; }
   .stream-detail-cue::after { content: '→'; font-size: 14px; }
@@ -1614,11 +1653,14 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
   .stream-table .stream-metric-cell[data-metric="latency_ms"] { grid-column: 2; }
   .stream-table .stream-metric-cell[data-metric="tokens_per_second"] { grid-column: 3; justify-content: flex-end; }
   .stream-metric-cell::before { content: attr(data-label); color: var(--fg-muted); }
-  .stream-table .stream-metric-cell[data-metric="input_tokens"],
   .stream-table .stream-metric-cell[data-metric="output_tokens"] { display: none; }
   .stream-table tbody .stream-tribunal-cell { grid-column: 1 / -1; grid-row: 4; text-align: left; margin-top: 6px; }
   .stream-table tbody .stream-tribunal-cell:empty { display: none; }
-  .stream-table tbody .stream-judge-cell { grid-column: 1 / -1; grid-row: 5; text-align: left; margin-top: 6px; }
+  .stream-table tbody .stream-deterministic-cell { grid-column: 1 / -1; grid-row: 5; text-align: left; margin-top: 6px; }
+  .stream-table tbody .stream-deterministic-cell:empty { display: none; }
+  .deterministic-grade[open] { flex-basis: 100%; }
+  .deterministic-grade dl { position: static; width: auto; max-height: none; margin-top: 4px; box-shadow: none; }
+  .stream-table tbody .stream-judge-cell { grid-column: 1 / -1; grid-row: 6; text-align: left; margin-top: 6px; }
   .stream-table tbody .stream-judge-cell:empty { display: none; }
 }
 

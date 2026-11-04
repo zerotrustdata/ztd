@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.11.0",
+  "schema_version": "1.12.0",
   "enums": {
     "ReleaseBasis": ["recorded", "asserted", "unknown"],
     "QualityState": [
@@ -156,7 +156,8 @@
       "evaluation_failed",
       "evaluation_stopped",
       "judge_started",
-      "judge_completed"
+      "judge_completed",
+      "deterministic_grading_completed"
     ],
     "LiveJudgeSubject": ["criterion", "final_reply", "memory"],
     "LiveJudgeState": ["judging", "met", "not_met", "scored", "failed"],

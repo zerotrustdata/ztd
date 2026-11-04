@@ -1469,9 +1469,10 @@ func (ass *LocalFirstEventsStore) ListFileMutationsBySnapshot(ctx context.Contex
 	return ass.queryFileMutations(ctx, fileMutationsBySnapshotQuery, []interface{}{snapshotName, operatorSessionID, limit})
 }
 
-// queryFileMutations runs a file_mutation_log query whose columns are, in order: id, event_id,
-// filepath, operation, ledger_hash_before, ledger_hash_after, diff_stat, operator_session_id,
-// and the owning event's timestamp. Content columns are decrypted; a locked vault fails the read.
+// queryFileMutations runs a file_mutation_log query whose columns are, in order: id, mutation_uid,
+// event_id, filepath, operation, ledger_hash_before, ledger_hash_after, diff_stat,
+// operator_session_id, and the owning event's timestamp. Content columns are decrypted; a locked
+// vault fails the read.
 func (ass *LocalFirstEventsStore) queryFileMutations(ctx context.Context, query string, args []interface{}) ([]*FileMutationLog, error) {
 	type mutationRow struct {
 		mutation      FileMutationLog

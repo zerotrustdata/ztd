@@ -219,6 +219,40 @@ func TestValidatePublicLiveEventIsTypedAndFailsClosed(t *testing.T) {
 	}
 }
 
+func TestValidatePublicLiveDeterministicGradingEventsKeepTheirShape(t *testing.T) {
+	const envelope = `"schema_version":"1.12.0","dataset_id":"ds","quality_state":"live_in_progress","observed_at":"2026-10-30T12:00:00Z","event_id":"run-1:a-1:deterministic-grading:abc:event","run_id":"run-1","lifecycle_status":"running","completed":0,"total":5`
+	const row = envelope + `,"assignment_id":"a-1","task_id":"tool-select-constraints","variant_id":"gemma4-e2b","role":"primary"`
+	const pass = `{"criterion_id":"role-invoked","status":"EVALUATION_VERDICT_STATUS_PASS"}`
+	const grading = `"kind":"deterministic_grading_completed"`
+	tooMany := strings.TrimSuffix(strings.Repeat(pass+",", maxArrayEntries+1), ",")
+	tests := []struct {
+		name string
+		body string
+		ok   bool
+	}{
+		{name: "every status with a detail", ok: true, body: `{` + row + `,` + grading + `,"deterministic_grades":[` + pass + `,{"criterion_id":"trajectory","status":"EVALUATION_VERDICT_STATUS_FAIL","detail":"wrong tool"},{"criterion_id":"a","status":"EVALUATION_VERDICT_STATUS_UNAVAILABLE"},{"criterion_id":"b","status":"EVALUATION_VERDICT_STATUS_UNSUPPORTED"},{"criterion_id":"c","status":"EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE"}]}`},
+		{name: "no grades", body: `{` + row + `,` + grading + `}`},
+		{name: "no assignment row", body: `{` + envelope + `,` + grading + `,"deterministic_grades":[` + pass + `]}`},
+		{name: "status unspecified", body: `{` + row + `,` + grading + `,"deterministic_grades":[{"criterion_id":"role-invoked"}]}`},
+		{name: "criterion missing", body: `{` + row + `,` + grading + `,"deterministic_grades":[{"status":"EVALUATION_VERDICT_STATUS_PASS"}]}`},
+		{name: "grades over the array bound", body: `{` + row + `,` + grading + `,"deterministic_grades":[` + tooMany + `]}`},
+		{name: "unknown grade field", body: `{` + row + `,` + grading + `,"deterministic_grades":[{"criterion_id":"a","status":"EVALUATION_VERDICT_STATUS_PASS","score":1}]}`},
+		{name: "metric on a grading event", body: `{` + row + `,` + grading + `,"metric_delta":{"pass":{"value":1}},"deterministic_grades":[` + pass + `]}`},
+		{name: "stage on a grading event", body: `{` + row + `,` + grading + `,"stage_label":"grading","deterministic_grades":[` + pass + `]}`},
+		{name: "grades on another kind", body: `{` + row + `,"kind":"stage_updated","deterministic_grades":[` + pass + `]}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := ValidatePublicFeedRecord(models.PublicFeedRecordTypeEvent, []byte(test.body))
+			if test.ok {
+				assert.NoError(t, err)
+				return
+			}
+			assert.ErrorIs(t, err, constants.ErrPublicFeedRecordSchemaInvalid)
+		})
+	}
+}
+
 func TestValidatePublicLiveJudgeEventsKeepTheirShape(t *testing.T) {
 	const row = `"schema_version":"1.11.0","dataset_id":"ds","quality_state":"live_in_progress","observed_at":"2026-10-30T12:00:00Z","event_id":"run-1:a-1:judge:judge-criterion-1:event","run_id":"run-1","assignment_id":"a-1","task_id":"tool-select","variant_id":"gemma4-e2b","role":"primary","lifecycle_status":"running","completed":0,"total":4`
 	const identity = `"judge_variant_id":"qwen3-5-4b","served_model_tag":"qwen3.5:4b","model_digest":"abc","rubric_version":"criterion-v2","index":1,"count":2,"provider_attempt_id":"judge-criterion-1"`
@@ -304,9 +338,11 @@ func TestPublicFeedVocabularyAcceptsKnownValues(t *testing.T) {
 	assert.True(t, publicFeedViewSchemaVersion("1.8.0"))
 	assert.True(t, publicFeedViewSchemaVersion("1.9.0"))
 	assert.True(t, publicFeedViewSchemaVersion("1.10.0"))
+	assert.True(t, publicFeedViewSchemaVersion("1.11.0"))
 	assert.True(t, publicFeedViewSchemaVersion(constants.ExplorerViewSchemaVersion))
 	assert.True(t, publicFeedEventKind("judge_started"))
 	assert.True(t, publicFeedEventKind("judge_completed"))
+	assert.True(t, publicFeedEventKind("deterministic_grading_completed"))
 	assert.False(t, publicFeedViewSchemaVersion("9.0.0"))
 	assert.True(t, publicFeedSnapshotKind("evaluation_summary"))
 	assert.False(t, publicFeedSnapshotKind("unknown"))

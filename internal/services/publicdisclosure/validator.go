@@ -656,7 +656,47 @@ func validatePublicLiveEvent(recordBytes []byte) error {
 			return err
 		}
 	}
-	return validateLiveJudgeEvent(event)
+	if err := validateLiveJudgeEvent(event); err != nil {
+		return err
+	}
+	return validateLiveDeterministicGradingEvent(event)
+}
+
+// validateLiveDeterministicGradingEvent holds deterministic grading events to
+// their shape: grades on their kind only, placed on the graded subject's running
+// assignment row, and never a metric or free-text stage.
+func validateLiveDeterministicGradingEvent(event *evalv1.PublicLiveEvent) error {
+	grades := event.GetDeterministicGrades()
+	if event.GetKind() != "deterministic_grading_completed" {
+		if len(grades) > 0 {
+			return publicFeedSchemaError("deterministic_grades is set on another event kind")
+		}
+		return nil
+	}
+	if len(grades) == 0 || event.GetAssignmentId() == "" || event.GetTaskId() == "" || event.GetVariantId() == "" || event.GetRole() == "" {
+		return publicFeedSchemaError("deterministic grading event requires grades, assignment, task, variant, and role")
+	}
+	if len(event.GetMetricDelta()) > 0 || event.GetStageLabel() != "" || event.GetLifecycleStatus() != "running" {
+		return publicFeedSchemaError("deterministic grading event carries a metric, a stage label, or a non-running lifecycle")
+	}
+	if len(grades) > maxArrayEntries {
+		return publicFeedSchemaError("deterministic_grades exceeds its bound")
+	}
+	for _, grade := range grades {
+		if !bounded(grade.GetCriterionId(), maxStringBytes) {
+			return publicFeedSchemaError("deterministic grade criterion_id is invalid")
+		}
+		switch grade.GetStatus() {
+		case evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS,
+			evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL,
+			evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE,
+			evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSUPPORTED,
+			evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE:
+		default:
+			return publicFeedSchemaError("invalid deterministic grade status")
+		}
+	}
+	return nil
 }
 
 // validateLiveJudgeEvent holds judge events to their shape: a judge block on
@@ -850,7 +890,7 @@ func validatePublicFeedKeyRevocation(recordBytes []byte) error {
 
 func publicFeedViewSchemaVersion(value string) bool {
 	switch value {
-	case "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0", "1.10.0", constants.ExplorerViewSchemaVersion:
+	case "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0", "1.10.0", "1.11.0", constants.ExplorerViewSchemaVersion:
 		return true
 	default:
 		return false
@@ -868,7 +908,7 @@ func publicFeedSnapshotKind(value string) bool {
 
 func publicFeedEventKind(value string) bool {
 	switch value {
-	case "evaluation_queued", "evaluation_started", "assignment_started", "stage_updated", "assignment_completed", "assignment_failed", "metric_updated", "evaluation_completed", "evaluation_failed", "evaluation_stopped", "judge_started", "judge_completed":
+	case "evaluation_queued", "evaluation_started", "assignment_started", "stage_updated", "assignment_completed", "assignment_failed", "metric_updated", "evaluation_completed", "evaluation_failed", "evaluation_stopped", "judge_started", "judge_completed", "deterministic_grading_completed":
 		return true
 	default:
 		return false

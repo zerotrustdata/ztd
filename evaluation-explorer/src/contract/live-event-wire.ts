@@ -8,7 +8,7 @@
 // omitted count is a malformed event and never a count of zero.
 
 import { assertUint64String, assertWireReleaseProvenance, mapCampaignRelease, type WireReleaseProvenance } from './campaign-wire';
-import { JUDGE_ACTIVITY_STATE_VALUES, JUDGE_FAILURE_VALUES, JUDGE_SUBJECT_VALUES } from './proto-enums.generated';
+import { EVALUATION_VERDICT_STATUS_VALUES, JUDGE_ACTIVITY_STATE_VALUES, JUDGE_FAILURE_VALUES, JUDGE_SUBJECT_VALUES } from './proto-enums.generated';
 import { LIVE_EVENT_KINDS, type LiveEvent } from './types';
 import { assertEnum, assertObject, isLiveEvent, rejectUnknown, ValidationError } from './validators';
 
@@ -18,6 +18,7 @@ const LIVE_EVENT_WIRE_FIELDS: readonly string[] = [
   'release', 'release_basis', 'source_revision',
   'event_id', 'run_id', 'assignment_id', 'variant_id', 'role', 'lifecycle_status',
   'completed', 'total', 'stage_label', 'task_id', 'metric_delta', 'judge',
+  'deterministic_grades',
 ];
 
 /** Every field of PublicLiveJudgeActivity. */
@@ -63,6 +64,24 @@ function decodeJudgeWire(value: unknown, path: string): Record<string, unknown> 
   return judge;
 }
 
+/** Every field of PublicLiveDeterministicGrade. */
+const DETERMINISTIC_GRADE_WIRE_FIELDS: readonly string[] = ['criterion_id', 'status', 'detail'];
+
+const VERDICT_STATUS_WIRE_PREFIX = 'EVALUATION_VERDICT_STATUS_';
+
+/** Decode the deterministic grades into view form; the wire status minus its
+ *  prefix, lower-cased, is the view value. isLiveEvent then checks their rules. */
+function decodeDeterministicGradesWire(value: unknown, path: string): unknown {
+  if (!Array.isArray(value)) throw new ValidationError('expected array', path);
+  return value.map((grade: unknown, index) => {
+    const gradePath = `${path}[${index}]`;
+    assertObject(grade, gradePath);
+    rejectUnknown(grade, DETERMINISTIC_GRADE_WIRE_FIELDS, gradePath);
+    assertEnum(grade.status, EVALUATION_VERDICT_STATUS_VALUES as readonly string[], `${gradePath}.status`);
+    return { ...grade, status: grade.status.slice(VERDICT_STATUS_WIRE_PREFIX.length).toLowerCase() };
+  });
+}
+
 const PRESENCE_TRACKED_FIELDS = ['completed', 'total'] as const;
 
 export function isLiveEventKind(kind: string): boolean {
@@ -89,6 +108,7 @@ export function decodeLiveEventWire(value: unknown): LiveEvent {
   const identity = mapCampaignRelease(wire as WireReleaseProvenance);
   const event: Record<string, unknown> = { ...rest, release_basis: identity.release_basis };
   if (rest.judge !== undefined) event.judge = decodeJudgeWire(rest.judge, 'live_event.judge');
+  if (rest.deterministic_grades !== undefined) event.deterministic_grades = decodeDeterministicGradesWire(rest.deterministic_grades, 'live_event.deterministic_grades');
   if (identity.release !== undefined) event.release = identity.release;
   if (identity.source_revision !== undefined) event.source_revision = identity.source_revision;
   isLiveEvent(event);

@@ -24,7 +24,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// HistoryService owns log retrieval, execution history, file history, file restore,
+// HistoryService owns log retrieval, execution history, file history, file restore, and file diffs.
 type HistoryService struct {
 	config         *config.Config
 	logger         *slog.Logger

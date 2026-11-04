@@ -18,6 +18,7 @@
 //     reported separately, not silently dropped.
 
 import { resolveModelProfile } from '../content/framework-catalog';
+import { CURRENT_PLATFORM_RELEASE, newestAdmittedRelease, toReleaseSeries } from '../content/release';
 import { MODEL_ROLE_WIRE_ORDER, MODEL_ROLES } from '../content/roles';
 import { SCENARIO_CATEGORY_COPY, TRAJECTORY_POLICY_META } from '../content/scenario-task';
 import { SECURITY_PRIVACY_EVENTS, TERMINAL_STATUSES } from '../contract/types';
@@ -28,6 +29,7 @@ import type {
   EvaluationSummary,
   EvaluationUnit,
   LiveEvent,
+  LiveDeterministicGrade,
   LiveJudgeActivity,
   LifecycleStatus,
   MetricValue,
@@ -359,13 +361,31 @@ export function assignmentLifecycleEvents(
 }
 
 /** One assignment's row identity in the live stream. Row-attached activity
- *  (Tribunal votes, judge activity) joins rows by this key only, never by time. */
+ *  (Tribunal votes, deterministic grades, judge activity) joins rows by this key
+ *  only, never by time. */
 export function assignmentRowKey(event: LiveEvent): string {
   return `${event.dataset_id}:${event.run_id}:${event.assignment_id}`;
 }
 
 export function isJudgeEvent(event: LiveEvent): boolean {
   return event.judge !== undefined && (event.kind === 'judge_started' || event.kind === 'judge_completed');
+}
+
+export function isDeterministicGradingEvent(event: LiveEvent): boolean {
+  return event.deterministic_grades !== undefined && event.kind === 'deterministic_grading_completed';
+}
+
+/** Deterministic grades per assignment row, in grading order: the latest event
+ *  of a row, so the grades of a persisted result replace an earlier attempt's.
+ *  Events without an assignment never attach to a row. */
+export function deterministicGradesByAssignment(events: LiveEvent[]): Map<string, LiveDeterministicGrade[]> {
+  const rows = new Map<string, LiveDeterministicGrade[]>();
+  for (const event of [...events].sort(compareStreamEventsOldestFirst)) {
+    if (event.assignment_id && isDeterministicGradingEvent(event) && event.deterministic_grades) {
+      rows.set(assignmentRowKey(event), event.deterministic_grades);
+    }
+  }
+  return rows;
 }
 
 const JUDGE_PHASE_ORDER: Record<LiveJudgeActivity['subject'], number> = { criterion: 0, final_reply: 1, memory: 1 };
@@ -522,7 +542,7 @@ function gradeChipSortRank(status: string): number {
 
 /** Display label per published criterion. Judged criteria share one public
  *  label, so a shared label is qualified by the criterion's own name. */
-function criterionLabels(assignment: AssignmentResult): Map<string, string> {
+export function criterionLabels(assignment: AssignmentResult): Map<string, string> {
   const criteria = assignment.scenario_summary?.criteria ?? [];
   const uses = new Map<string, number>();
   for (const criterion of criteria) uses.set(criterion.public_label, (uses.get(criterion.public_label) ?? 0) + 1);
@@ -532,6 +552,11 @@ function criterionLabels(assignment: AssignmentResult): Map<string, string> {
       : criterion.public_label;
     return [criterion.criterion_id, label];
   }));
+}
+
+/** A criterion's published label, else its identifier in words. */
+export function criterionDisplayLabel(labels: Map<string, string> | undefined, criterionId: string): string {
+  return labels?.get(criterionId) ?? criterionId.replace(/[-_]/g, ' ');
 }
 
 /** Grade chips for the verdict strip: every published grade, deterministic and
@@ -544,7 +569,7 @@ export function assignmentGradeChips(assignment: AssignmentResult): AssignmentGr
   const add = (criterionId: string, status: string, code: PublicGradeExplanationCode, detail?: string) => {
     chips.set(criterionId, {
       criterion_id: criterionId,
-      label: labels.get(criterionId) ?? criterionId.replace(/[-_]/g, ' '),
+      label: criterionDisplayLabel(labels, criterionId),
       status: status.toLowerCase(),
       explanation: publicGradeExplanationLabel(code),
       detail,
@@ -1468,6 +1493,25 @@ export function resolveModelSecurity(
   return undefined;
 }
 
+/** Whether the Leaderboard can rank a model: full coverage, verified scored evidence, a
+ *  parameter count, latency and token observations, and security evidence or an allowed N/A. */
+function isLeaderboardQualified(model: ModelSummary, assignments: AssignmentResult[]): boolean {
+  if (model.inventory_only || !model.pass_rate || model.pass_rate.denominator <= 0) return false;
+  if (model.evaluation_coverage !== 1 || model.quality_state !== 'exploratory_verified') return false;
+  if (positive(model.latency_p50_ms?.value) === undefined || positive(model.output_tokens?.value) === undefined ||
+    positive(resolveModelProfile(model).parameter_count) === undefined) return false;
+  const security = resolveModelSecurity(model, assignments);
+  return security !== undefined || model.role === 'lite' || model.security_resistance?.unavailable_reason === 'scenario_not_applicable';
+}
+
+/** The series the Leaderboard opens on: the newest with a model it can rank, so neither a
+ *  platform upgrade nor a run still in progress blanks the page. The build series is the
+ *  fallback before the feed holds a rankable model. */
+export function defaultLeaderboardRelease(models: ModelSummary[], assignments: AssignmentResult[]): string {
+  const release = newestAdmittedRelease(models, (model) => isLeaderboardQualified(model, assignments));
+  return toReleaseSeries(release ?? CURRENT_PLATFORM_RELEASE);
+}
+
 /** Score calculation, in priority order accuracy → security → size → speed → token cost:
  *  100 × pass rate² × √security × 0.9^log2(size ÷ smallest) × (0.85 + 0.10 × speed + 0.05 × tokens),
  *  where smallest is the role's smallest scored parameter count, and speed and tokens are the
@@ -1485,15 +1529,7 @@ export function modelRoleLeaderboardRows(
   evaluations: EvaluationSummary[] = [],
   assignments: AssignmentResult[] = [],
 ): ModelRoleLeaderboardRow[] {
-  const qualified = models.filter((model) => {
-    if (model.inventory_only || !model.pass_rate || model.pass_rate.denominator <= 0) return false;
-    if (model.evaluation_coverage !== 1 || model.quality_state !== 'exploratory_verified') return false;
-    if (role !== 'all' && model.role !== role) return false;
-    if (positive(model.latency_p50_ms?.value) === undefined || positive(model.output_tokens?.value) === undefined ||
-      positive(resolveModelProfile(model).parameter_count) === undefined) return false;
-    const security = resolveModelSecurity(model, assignments);
-    return security !== undefined || model.role === 'lite' || model.security_resistance?.unavailable_reason === 'scenario_not_applicable';
-  });
+  const qualified = models.filter((model) => (role === 'all' || model.role === role) && isLeaderboardQualified(model, assignments));
   const measured = modelSummaryGroups(qualified).map(({ model, sources }) => {
     const securityObservations = sources.flatMap((source) => {
       const security = resolveModelSecurity(source, assignments);

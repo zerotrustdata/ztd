@@ -74,9 +74,9 @@ func NewHistoryHandler(eventsStore eventsStoreInterface, ledger ledgerInterface,
 	}, nil
 }
 
-func (hh *HistoryHandler) HandleFetchHistory(requestJSON []byte) (*operatorv1.FetchHistoryResult, error) {
+func (hh *HistoryHandler) HandleFetchHistory(payload []byte) (*operatorv1.FetchHistoryResult, error) {
 	var request operatorv1.FetchHistoryRequested
-	if err := proto.Unmarshal(requestJSON, &request); err != nil {
+	if err := proto.Unmarshal(payload, &request); err != nil {
 		return hh.fetchHistoryError(fmt.Errorf("invalid request format as protobuf FetchHistoryRequested: %w", err))
 	}
 
@@ -167,9 +167,9 @@ func (hh *HistoryHandler) HandleFetchHistory(requestJSON []byte) (*operatorv1.Fe
 	return result, nil
 }
 
-func (hh *HistoryHandler) HandleFetchFileHistory(ctx context.Context, requestJSON []byte) (*operatorv1.FetchFileHistoryResult, error) {
+func (hh *HistoryHandler) HandleFetchFileHistory(ctx context.Context, payload []byte) (*operatorv1.FetchFileHistoryResult, error) {
 	var request operatorv1.FetchFileHistoryRequested
-	if err := proto.Unmarshal(requestJSON, &request); err != nil {
+	if err := proto.Unmarshal(payload, &request); err != nil {
 		return hh.fetchFileHistoryError(fmt.Errorf("invalid request format as protobuf FetchFileHistoryRequested: %w", err))
 	}
 
@@ -241,9 +241,9 @@ func mutationCommits(mutations []*FileMutationLog) []string {
 // operator_session_id ledger. The restore is a file write by operatorSessionID, the verified
 // executing session, and is mirrored through that session's ledger. A successful restore returns
 // the ledger result for the file mutation record; failures return both the typed result and the underlying error.
-func (hh *HistoryHandler) HandleRestoreFile(ctx context.Context, operatorSessionID string, requestJSON []byte) (*operatorv1.RestoreFileResult, *LedgerResult, error) {
+func (hh *HistoryHandler) HandleRestoreFile(ctx context.Context, operatorSessionID string, payload []byte) (*operatorv1.RestoreFileResult, *LedgerResult, error) {
 	var request operatorv1.RestoreFileRequested
-	if err := proto.Unmarshal(requestJSON, &request); err != nil {
+	if err := proto.Unmarshal(payload, &request); err != nil {
 		return hh.restoreFileError(fmt.Errorf("invalid request format as protobuf RestoreFileRequested: %w", err))
 	}
 

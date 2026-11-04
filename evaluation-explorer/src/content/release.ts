@@ -19,8 +19,6 @@ export function toReleaseSeries(release: string): string {
   return release;
 }
 
-export const DEFAULT_LEADERBOARD_RELEASE = toReleaseSeries(CURRENT_PLATFORM_RELEASE);
-
 function hasKnownRelease(record: ReleaseProvenance): record is ReleaseProvenance & { release: string } {
   return Boolean(record.release) && (record.release_basis === 'recorded' || record.release_basis === 'asserted');
 }
@@ -62,4 +60,17 @@ export function defaultViewRelease(records: Iterable<ReleaseProvenance>): string
     if (hasKnownRelease(record)) releases.add(record.release);
   }
   return Array.from(releases).sort(compareReleasesDescending)[0] ?? CURRENT_PLATFORM_RELEASE;
+}
+
+// The newest attributed release among records that `admits` accepts. Records
+// are checked newest first and the check stops at the first accepted record,
+// so an expensive `admits` runs only as far as it has to.
+export function newestAdmittedRelease<T extends ReleaseProvenance>(
+  records: Iterable<T>,
+  admits: (record: T) => boolean,
+): string | undefined {
+  return Array.from(records)
+    .filter((record): record is T & { release: string } => hasKnownRelease(record))
+    .sort((a, b) => compareReleasesDescending(a.release, b.release))
+    .find(admits)?.release;
 }

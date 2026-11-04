@@ -13,6 +13,7 @@
 package evaluation_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -24,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
@@ -321,6 +323,82 @@ func TestCampaignAgentExecutorIntegration_AnswerScenarioDeclaresNoTools(t *testi
 	require.NotEmpty(t, trace.ModelCalls)
 	assert.Empty(t, trace.ModelCalls[0].ToolsDeclared)
 	assert.Equal(t, "HEALTHY", trace.FinalOutput)
+}
+
+// realStackFeedExporter records every exported feed record in order and shows
+// each batch to onBatch as it arrives.
+type realStackFeedExporter struct {
+	records []evaluation.CampaignPublicFeedRecord
+	onBatch func(records []evaluation.CampaignPublicFeedRecord)
+}
+
+func (e *realStackFeedExporter) HighWaterSequence(context.Context) (int64, error) {
+	return int64(len(e.records)), nil
+}
+
+func (e *realStackFeedExporter) ExportBatch(_ context.Context, records []evaluation.CampaignPublicFeedRecord) error {
+	if e.onBatch != nil {
+		e.onBatch(records)
+	}
+	e.records = append(e.records, records...)
+	return nil
+}
+
+// A real execution publishes its deterministic grades live, before its result is
+// persisted, as one event holding exactly the grades the result then records; the
+// terminal rebuild of those grades is not published again.
+func TestCampaignAgentExecutorIntegration_PublishesDeterministicGradingOnce(t *testing.T) {
+	env := newRealStackAgentRun(t, realStackOptions{
+		singleRole: true, suffix: "deterministic",
+		replies: []fixtures.OllamaReply{{Content: "HEALTHY"}},
+		scenario: func(scenario *evalv1.EvaluationScenarioDefinition) {
+			scenario.AllowedTools = nil
+			scenario.ForbiddenTools = nil
+			scenario.ExpectedTools = nil
+			scenario.TribunalCommands = false
+		},
+	})
+	exporter := &realStackFeedExporter{}
+	gradingEvent := func(record evaluation.CampaignPublicFeedRecord) *evalv1.PublicLiveEvent {
+		if record.RecordType != models.PublicFeedRecordTypeEvent {
+			return nil
+		}
+		event := &evalv1.PublicLiveEvent{}
+		require.NoError(t, evalv1.UnmarshalCanonical([]byte(record.RecordBytes), event))
+		if event.GetKind() != "deterministic_grading_completed" {
+			return nil
+		}
+		return event
+	}
+	resultPersistedAtGrading := []bool{}
+	exporter.onBatch = func(records []evaluation.CampaignPublicFeedRecord) {
+		for _, record := range records {
+			if event := gradingEvent(record); event != nil {
+				exists, err := env.store.AssignmentResultExists(t.Context(), event.GetRunId(), event.GetAssignmentId())
+				require.NoError(t, err)
+				resultPersistedAtGrading = append(resultPersistedAtGrading, exists)
+			}
+		}
+	}
+	env.controller.WithPublication(evaluation.NewCampaignPublicationCoordinator(env.store, env.files, evaluation.NewMemoryCampaignPublicationStateStore(), exporter))
+
+	res := env.executeNext(t)
+
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
+	require.NotEmpty(t, res.GetDeterministicGrades())
+	assert.Equal(t, []bool{false}, resultPersistedAtGrading, "one event, published live before the result is persisted")
+	var grades []*evalv1.PublicLiveDeterministicGrade
+	for _, record := range exporter.records {
+		if event := gradingEvent(record); event != nil {
+			grades = event.GetDeterministicGrades()
+		}
+	}
+	require.Len(t, grades, len(res.GetDeterministicGrades()))
+	for index, grade := range res.GetDeterministicGrades() {
+		assert.Equal(t, grade.GetCriterionId(), grades[index].GetCriterionId())
+		assert.Equal(t, grade.GetStatus(), grades[index].GetStatus())
+		assert.Equal(t, grade.GetDetail(), grades[index].GetDetail())
+	}
 }
 
 func TestCampaignAgentExecutorIntegration_UndeclaredToolCallFailsWithoutDispatch(t *testing.T) {

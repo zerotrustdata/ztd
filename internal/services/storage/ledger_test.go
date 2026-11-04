@@ -354,34 +354,6 @@ func TestLedgerService_DiffBetween_EmptyHashesFailClosed(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrLedgerDiffHashesRequired)
 }
 
-func TestLedgerService_CountLines(t *testing.T) {
-	t.Parallel()
-	lms, tempDir := setupTestLedger(t)
-
-	// Create test file with multiple lines and read it through a governed target
-	testFile := filepath.Join(tempDir, "lines_test.txt")
-	err := os.WriteFile(testFile, []byte("line 1\nline 2\nline 3"), 0644)
-	require.NoError(t, err)
-
-	content, err := openTestTarget(t, lms.fileSvc, testFile, tempDir).ReadFile()
-	require.NoError(t, err)
-	assert.Equal(t, 3, countLines(content))
-
-	// Empty file
-	emptyFile := filepath.Join(tempDir, "empty.txt")
-	err = os.WriteFile(emptyFile, []byte(""), 0644)
-	require.NoError(t, err)
-
-	content, err = openTestTarget(t, lms.fileSvc, emptyFile, tempDir).ReadFile()
-	require.NoError(t, err)
-	assert.Equal(t, 1, countLines(content))
-
-	// Non-existent file: the read fails before countLines is reached; countLines
-	// only receives content the caller has successfully read.
-	_, err = openTestTarget(t, lms.fileSvc, filepath.Join(tempDir, "nonexistent.txt"), tempDir).ReadFile()
-	require.Error(t, err)
-}
-
 // mutationCandidates returns the commits of ledger mutations, given oldest first, in the order the
 // history handler passes them to GetFileHistory.
 func mutationCandidates(results ...*LedgerResult) []string {

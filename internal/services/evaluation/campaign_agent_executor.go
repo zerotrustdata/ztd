@@ -207,6 +207,9 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	if err != nil {
 		return nil, assignmentExecutionError("evaluation: import homogeneous assignment result", err)
 	}
+	if req.GradingActivity != nil {
+		req.GradingActivity.DeterministicGrading(ctx, result.GetDeterministicGrades())
+	}
 	// A trace the Data Operator's evidence does not back, and a trace whose
 	// provider produced no answer or timed out, are never judged and never
 	// promoted: their imported lifecycle and grades stand as they are.

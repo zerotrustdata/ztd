@@ -9,6 +9,8 @@ package evaluation
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -57,11 +59,18 @@ func (c *CampaignPublicationCoordinator) buildAssignmentLiveEventPublishRequests
 	if err != nil {
 		return nil, err
 	}
-	// Judging completes before the assignment's terminal events, so its events
+	// Grading completes before the assignment's terminal events, so its events
 	// are exported first.
 	requests, err := c.buildJudgeActivityPublishRequests(ctx, assignment, result, release, completed, total, observedAt)
 	if err != nil {
 		return nil, err
+	}
+	deterministic, ok, err := buildDeterministicGradingPublishRequest(assignment, result, release, completed, total, observedAt)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		requests = append(requests, deterministic)
 	}
 	scored, err := c.buildScoredModelRoleInvocationPublishRequests(assignment, result, observedAt, completed, total, release)
 	if err != nil {
@@ -394,9 +403,9 @@ func buildAssignmentPassMetricSignal(
 	}, true, nil
 }
 
-// judgeActivityPublishTimeout bounds one live judge event export, so a slow or
-// unreachable mirror cannot stall judging.
-const judgeActivityPublishTimeout = 30 * time.Second
+// gradingActivityPublishTimeout bounds one live grading event export, so a slow
+// or unreachable mirror cannot stall grading.
+const gradingActivityPublishTimeout = 30 * time.Second
 
 // JudgeStartedIdempotencyKey returns the publication key of the live event
 // that a judgment started.
@@ -410,6 +419,19 @@ func JudgeCompletedIdempotencyKey(runID, assignmentID, judgmentID string) string
 	return runID + ":" + assignmentID + ":judge:" + judgmentID
 }
 
+// DeterministicGradingIdempotencyKey returns the publication key of a completed
+// deterministic grading, live or rebuilt from the persisted result. The key names
+// the graded content, so a rebuild of the published grades is not published twice
+// and an attempt that graded differently supersedes them.
+func DeterministicGradingIdempotencyKey(runID, assignmentID string, grades []*evalv1.PublicLiveDeterministicGrade) (string, error) {
+	body, err := evalv1.MarshalCanonical(&evalv1.PublicLiveEvent{DeterministicGrades: grades})
+	if err != nil {
+		return "", fmt.Errorf("evaluation: deterministic grading idempotency key: %w", err)
+	}
+	digest := sha256.Sum256(body)
+	return runID + ":" + assignmentID + ":deterministic-grading:" + hex.EncodeToString(digest[:]), nil
+}
+
 // judgmentID names one judgment: its provider attempt, or, for a request that
 // was never built, its subject and criterion.
 func judgmentID(score judge.Score) string {
@@ -419,9 +441,9 @@ func judgmentID(score judge.Score) string {
 	return "unsent:" + string(score.Subject) + ":" + score.Criterion
 }
 
-// judgeActivityRow is the assignment row judge events attach to: the graded
+// gradingActivityRow is the assignment row grading events attach to: the graded
 // subject's variant and role, the run's release, and the run's progress.
-type judgeActivityRow struct {
+type gradingActivityRow struct {
 	assignment *evalv1.EvaluationAssignment
 	variantID  string
 	role       models.ModelRole
@@ -430,20 +452,20 @@ type judgeActivityRow struct {
 	total      int
 }
 
-func newJudgeActivityRow(assignment *evalv1.EvaluationAssignment, release CampaignRelease, completed, total int) (judgeActivityRow, error) {
+func newGradingActivityRow(assignment *evalv1.EvaluationAssignment, release CampaignRelease, completed, total int) (gradingActivityRow, error) {
 	variantID, err := designatedVariantIDForAssignment(assignment)
 	if err != nil {
-		return judgeActivityRow{}, err
+		return gradingActivityRow{}, err
 	}
 	role, err := designatedRoleLabelForAssignment(assignment)
 	if err != nil {
-		return judgeActivityRow{}, err
+		return gradingActivityRow{}, err
 	}
-	return judgeActivityRow{assignment: assignment, variantID: variantID, role: models.ModelRole(role), release: release, completed: completed, total: total}, nil
+	return gradingActivityRow{assignment: assignment, variantID: variantID, role: models.ModelRole(role), release: release, completed: completed, total: total}, nil
 }
 
 // publishRequest projects, encodes, and validates one judge event.
-func (r judgeActivityRow) publishRequest(activity JudgeActivity, observedAt string) (campaignFeedPublishRequest, error) {
+func (r gradingActivityRow) publishRequest(activity JudgeActivity, observedAt string) (campaignFeedPublishRequest, error) {
 	runID, assignmentID := r.assignment.GetRunId(), r.assignment.GetAssignmentId()
 	key := JudgeStartedIdempotencyKey(runID, assignmentID, judgmentID(activity.Score))
 	if activity.Completed {
@@ -475,19 +497,71 @@ func (r judgeActivityRow) publishRequest(activity JudgeActivity, observedAt stri
 	return campaignFeedPublishRequest{IdempotencyKey: key, RecordType: models.PublicFeedRecordTypeEvent, Body: body}, nil
 }
 
-// JudgeActivityPublisher publishes one assignment's judge activity as it
+// deterministicGradingRequest projects, encodes, and validates one completed
+// deterministic grading event. An assignment with no grades has no event.
+func (r gradingActivityRow) deterministicGradingRequest(grades []*evalv1.DeterministicGrade, observedAt string) (campaignFeedPublishRequest, bool, error) {
+	public := publicLiveDeterministicGrades(grades)
+	if len(public) == 0 {
+		return campaignFeedPublishRequest{}, false, nil
+	}
+	runID, assignmentID := r.assignment.GetRunId(), r.assignment.GetAssignmentId()
+	key, err := DeterministicGradingIdempotencyKey(runID, assignmentID, public)
+	if err != nil {
+		return campaignFeedPublishRequest{}, false, err
+	}
+	event, err := ProjectDeterministicGradingEvent(PublicDeterministicGradingSignal{
+		Release:      r.release,
+		RunID:        runID,
+		AssignmentID: assignmentID,
+		VariantID:    r.variantID,
+		Role:         r.role,
+		TaskID:       r.assignment.GetScenarioId(),
+		ObservedAt:   observedAt,
+		EventID:      key + ":event",
+		Completed:    r.completed,
+		Total:        r.total,
+		Grades:       public,
+	})
+	if err != nil {
+		return campaignFeedPublishRequest{}, false, err
+	}
+	body, err := MarshalPublicLiveEvent(event)
+	if err != nil {
+		return campaignFeedPublishRequest{}, false, err
+	}
+	if err := publicdisclosure.ValidatePublicFeedRecord(models.PublicFeedRecordTypeEvent, body); err != nil {
+		return campaignFeedPublishRequest{}, false, fmt.Errorf("evaluation: validate deterministic grading event: %w", err)
+	}
+	return campaignFeedPublishRequest{IdempotencyKey: key, RecordType: models.PublicFeedRecordTypeEvent, Body: body}, true, nil
+}
+
+// buildDeterministicGradingPublishRequest rebuilds the assignment's deterministic
+// grading event from its persisted result, so the persisted grades are the last
+// ones a row states and they reach assignment-<id>.db.
+func buildDeterministicGradingPublishRequest(assignment *evalv1.EvaluationAssignment, result *evalv1.EvaluationAssignmentResult, release CampaignRelease, completed, total int, observedAt string) (campaignFeedPublishRequest, bool, error) {
+	if len(result.GetDeterministicGrades()) == 0 {
+		return campaignFeedPublishRequest{}, false, nil
+	}
+	row, err := newGradingActivityRow(assignment, release, completed, total)
+	if err != nil {
+		return campaignFeedPublishRequest{}, false, err
+	}
+	return row.deterministicGradingRequest(result.GetDeterministicGrades(), observedAt)
+}
+
+// GradingActivityPublisher publishes one assignment's grading activity as it
 // happens. A publish failure never reaches grading: the first one is kept and
 // reported with the assignment's terminal result.
-type JudgeActivityPublisher struct {
+type GradingActivityPublisher struct {
 	publication *CampaignPublicationCoordinator
-	row         judgeActivityRow
+	row         gradingActivityRow
 	now         func() time.Time
 	err         error
 }
 
-// NewJudgeActivityPublisher prepares the live judge events of one running
+// NewGradingActivityPublisher prepares the live grading events of one running
 // assignment: its row identity, release, and run progress are read once.
-func (c *CampaignPublicationCoordinator) NewJudgeActivityPublisher(ctx context.Context, assignment *evalv1.EvaluationAssignment, now func() time.Time) (*JudgeActivityPublisher, error) {
+func (c *CampaignPublicationCoordinator) NewGradingActivityPublisher(ctx context.Context, assignment *evalv1.EvaluationAssignment, now func() time.Time) (*GradingActivityPublisher, error) {
 	if c == nil || c.store == nil || c.exporter == nil || assignment == nil || now == nil {
 		return nil, fmt.Errorf("evaluation: judge activity publisher: %w", constants.ErrMissingRequiredField)
 	}
@@ -499,34 +573,56 @@ func (c *CampaignPublicationCoordinator) NewJudgeActivityPublisher(ctx context.C
 	if err != nil {
 		return nil, err
 	}
-	row, err := newJudgeActivityRow(assignment, release, completed, total)
+	row, err := newGradingActivityRow(assignment, release, completed, total)
 	if err != nil {
 		return nil, err
 	}
-	return &JudgeActivityPublisher{publication: c, row: row, now: now}, nil
+	return &GradingActivityPublisher{publication: c, row: row, now: now}, nil
 }
 
 // JudgeActivity exports one judge event under its own bounded deadline. After
 // the first failure it publishes nothing more for the assignment, so an
 // unreachable mirror costs judging one timeout; the terminal publication
 // rebuilds every completed judgment from the persisted result.
-func (p *JudgeActivityPublisher) JudgeActivity(ctx context.Context, activity JudgeActivity) {
+func (p *GradingActivityPublisher) JudgeActivity(ctx context.Context, activity JudgeActivity) {
 	if p.err != nil {
 		return
 	}
 	request, err := p.row.publishRequest(activity, p.now().UTC().Format(time.RFC3339Nano))
 	if err == nil {
-		publishCtx, cancel := context.WithTimeout(assignmentPersistContext(ctx), judgeActivityPublishTimeout)
-		_, err = p.publication.exportFeedRecords(publishCtx, p.row.assignment.GetRunId(), []campaignFeedPublishRequest{request})
-		cancel()
+		err = p.export(ctx, request)
 	}
 	if err != nil {
 		p.err = fmt.Errorf("%w: assignment %s judge activity: %w", constants.ErrEvaluationPublicationFailed, p.row.assignment.GetAssignmentId(), err)
 	}
 }
 
+// DeterministicGrading exports the attempt's completed deterministic grading
+// under the same budget as judge activity; the terminal publication rebuilds it
+// from the persisted result.
+func (p *GradingActivityPublisher) DeterministicGrading(ctx context.Context, grades []*evalv1.DeterministicGrade) {
+	if p.err != nil {
+		return
+	}
+	request, ok, err := p.row.deterministicGradingRequest(grades, p.now().UTC().Format(time.RFC3339Nano))
+	if err == nil && ok {
+		err = p.export(ctx, request)
+	}
+	if err != nil {
+		p.err = fmt.Errorf("%w: assignment %s deterministic grading: %w", constants.ErrEvaluationPublicationFailed, p.row.assignment.GetAssignmentId(), err)
+	}
+}
+
+// export sends one grading event under its own bounded deadline.
+func (p *GradingActivityPublisher) export(ctx context.Context, request campaignFeedPublishRequest) error {
+	publishCtx, cancel := context.WithTimeout(assignmentPersistContext(ctx), gradingActivityPublishTimeout)
+	defer cancel()
+	_, err := p.publication.exportFeedRecords(publishCtx, p.row.assignment.GetRunId(), []campaignFeedPublishRequest{request})
+	return err
+}
+
 // Err is the first publish failure, or nil.
-func (p *JudgeActivityPublisher) Err() error {
+func (p *GradingActivityPublisher) Err() error {
 	return p.err
 }
 
@@ -549,7 +645,7 @@ func (c *CampaignPublicationCoordinator) buildJudgeActivityPublishRequests(ctx c
 	if !hasRebuildable {
 		return nil, nil
 	}
-	row, err := newJudgeActivityRow(assignment, release, completed, total)
+	row, err := newGradingActivityRow(assignment, release, completed, total)
 	if err != nil {
 		return nil, err
 	}

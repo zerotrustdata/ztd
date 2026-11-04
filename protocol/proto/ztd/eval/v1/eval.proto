@@ -1428,6 +1428,18 @@ message PublicLiveEvent {
   map<string, PublicLiveMetricValue> metric_delta = 20;
   // judge is set only on judge_started and judge_completed events.
   PublicLiveJudgeActivity judge = 21;
+  // deterministic_grades is set only on deterministic_grading_completed events:
+  // every deterministic grade of the assignment, in grading order.
+  repeated PublicLiveDeterministicGrade deterministic_grades = 22;
+}
+
+// One deterministic grade of the assignment the event names, carrying what the
+// assignment's public grade summary publishes.
+message PublicLiveDeterministicGrade {
+  string criterion_id = 1;
+  EvaluationVerdictStatus status = 2;
+  // Grader output published verbatim under the public model-text bound.
+  string detail = 3;
 }
 
 // What one judge inference grades.

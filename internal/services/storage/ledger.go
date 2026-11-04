@@ -59,8 +59,8 @@ type GitLedgerReader struct {
 // mutation.
 type GitLedgerService struct {
 	*GitLedgerReader
-	// mu serializes ledger writes. A write holds it from reading HEAD to moving the ref, never
-	// across the host write.
+	// mu serializes ledger writes across every session of the runtime. A write holds it from
+	// reading HEAD to moving the ref, never across the host write or a diff.
 	mu sync.Mutex
 }
 
@@ -553,14 +553,7 @@ func (s *GitLedgerService) completeMutation(result *LedgerResult, operatorSessio
 		message = ledgerMsgPostCreation
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	repo, head, err := openLedgerHead(ledgerDir)
-	if err != nil {
-		return err
-	}
-	hashAfter, err := s.commitSnapshot(repo, head, result.SnapshotName, content, fmt.Sprintf(ledgerMsgViaSessionFmt, message, operatorSessionID))
+	repo, hashAfter, err := s.commitOnHead(ledgerDir, result.SnapshotName, content, fmt.Sprintf(ledgerMsgViaSessionFmt, message, operatorSessionID))
 	if err != nil {
 		return fmt.Errorf("ledger: post-mutation commit: %w", err)
 	}
@@ -572,10 +565,28 @@ func (s *GitLedgerService) completeMutation(result *LedgerResult, operatorSessio
 	}
 	result.DiffStat = diff.stat
 	if result.Operation == FileMutationCreate {
-		result.DiffStat = fmt.Sprintf("+%d lines, %d bytes (new file)", countLines(content), len(content))
+		result.DiffStat = fmt.Sprintf("+%d lines, %d bytes (new file)", countLedgerLines(string(content)), len(content))
 	}
 	result.DiffContent = diff.content
 	return nil
+}
+
+// commitOnHead commits a snapshot on top of the ledger's current HEAD under the write lock, and
+// returns the repository it opened. The lock ends when the ref moves: a diff of the commit reads
+// immutable objects and its cost grows with the file, so it never holds up another write.
+func (s *GitLedgerService) commitOnHead(ledgerDir, name string, plaintext []byte, message string) (*git.Repository, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	repo, head, err := openLedgerHead(ledgerDir)
+	if err != nil {
+		return nil, "", err
+	}
+	hash, err := s.commitSnapshot(repo, head, name, plaintext, message)
+	if err != nil {
+		return nil, "", err
+	}
+	return repo, hash, nil
 }
 
 // commitSnapshot encrypts plaintext as the snapshot of name and commits it on top of head.
@@ -1086,7 +1097,7 @@ func formatLedgerDiffStat(patch ledgerPatch) string {
 	return strings.Join(parts, ", ")
 }
 
-// countLedgerLines counts the lines in a diff chunk; a trailing partial line counts as one line.
+// countLedgerLines counts the lines in text; a trailing partial line counts as one line.
 func countLedgerLines(s string) int {
 	if s == "" {
 		return 0
@@ -1096,11 +1107,6 @@ func countLedgerLines(s string) int {
 		n++
 	}
 	return n
-}
-
-// countLines counts the number of lines in file content.
-func countLines(content []byte) int {
-	return strings.Count(string(content), "\n") + 1
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────

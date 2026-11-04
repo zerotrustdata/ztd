@@ -9,7 +9,6 @@ import { evalStore, recordKey } from '../src/state/store';
 import { EvaluationsView } from '../src/views/EvaluationsView';
 import {
   CURRENT_PLATFORM_RELEASE,
-  DEFAULT_LEADERBOARD_RELEASE,
   defaultViewRelease,
   isReleaseSeries,
   matchesRelease,
@@ -108,7 +107,6 @@ describe('release series helpers and matching', () => {
     expect(toReleaseSeries('1.7.2')).toBe('v1.7.x');
     expect(toReleaseSeries('v1.7.x')).toBe('v1.7.x');
     expect(toReleaseSeries('all')).toBe('all');
-    expect(DEFAULT_LEADERBOARD_RELEASE).toBe(currentRelease.replace(/\.\d+$/, '.x'));
   });
 
   it('matches hotfixed versions beneath a release series', () => {

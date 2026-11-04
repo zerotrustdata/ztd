@@ -87,9 +87,10 @@ type AssignmentExecutionRequest struct {
 	// holds context; the homogeneous executor continues its conversation in
 	// its workspace. Nil for a cell's first repetition or a fresh campaign.
 	HeldContext *AgentTrace
-	// JudgeActivity receives each pinned-judge inference as it starts and
-	// completes. Nil when nothing observes execution.
-	JudgeActivity JudgeActivitySink
+	// GradingActivity receives each pinned-judge inference as it starts and
+	// completes, and the attempt's completed deterministic grading. Nil when
+	// nothing observes execution.
+	GradingActivity GradingActivitySink
 }
 
 // JudgeActivity is one pinned-judge inference on an assignment: started, with
@@ -101,10 +102,13 @@ type JudgeActivity struct {
 	Elapsed   time.Duration
 }
 
-// JudgeActivitySink receives judge activity while an assignment executes. It
-// never changes a verdict: the executor grades whatever the sink does.
-type JudgeActivitySink interface {
+// GradingActivitySink receives grading activity while an assignment executes.
+// It never changes a verdict: the executor grades whatever the sink does.
+type GradingActivitySink interface {
 	JudgeActivity(ctx context.Context, activity JudgeActivity)
+	// DeterministicGrading receives every deterministic grade of the attempt
+	// once, when grading completes.
+	DeterministicGrading(ctx context.Context, grades []*evalv1.DeterministicGrade)
 }
 
 // CampaignAssignmentExecutor executes one scored assignment and returns its

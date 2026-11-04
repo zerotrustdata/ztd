@@ -44,10 +44,10 @@ describe('LiveEventStream', () => {
   });
 
   it('omits the empty Tribunal column and links the task and result directly to evidence', () => {
-    render(stream([liveEvent({ metric_delta: { pass: { value: 1 }, latency_ms: { value: 780 }, input_tokens: { value: 350 } } })]));
+    render(stream([liveEvent({ metric_delta: { pass: { value: 1 }, latency_ms: { value: 780 }, output_tokens: { value: 350 } } })]));
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent?.replace(/[▲▼↕]/g, '').trim()))
-      .toEqual(['Result', 'Task', 'Model', 'Latency (ms)', 'Input (tok)', 'Output (tok)', 'Tokens/s', 'Time']);
-    expect(within(rows()[0]!).getAllByRole('cell')).toHaveLength(8);
+      .toEqual(['Result', 'Task', 'Model', 'Latency (ms)', 'Output (tok)', 'Tokens/s', 'Time']);
+    expect(within(rows()[0]!).getAllByRole('cell')).toHaveLength(7);
     const href = '/evaluations/ds-live-a/run-a/assignments/assignment-1';
     expect(screen.getByRole('link', { name: 'tool-select-file-read — View details' })).toHaveAttribute('href', href);
     expect(screen.getByRole('link', { name: /Passed:.*View details/ })).toHaveAttribute('href', href);
@@ -71,7 +71,7 @@ describe('LiveEventStream', () => {
     }, context) as LiveEvent[];
     const activity = liveEvent({
       dataset_id: 'ds-live-run-a', kind: 'stage_updated', lifecycle_status: 'running',
-      metric_delta: { latency_ms: { value: 82 }, input_tokens: { value: 880 }, output_tokens: { value: 27 } },
+      metric_delta: { latency_ms: { value: 82 }, output_tokens: { value: 27 } },
     });
     const events = [...lifecycle('RUNNING'), activity];
     const { rerender } = render(stream(events));
@@ -89,7 +89,7 @@ describe('LiveEventStream', () => {
       .toHaveTextContent(pass === 0 ? '×' : '✓');
     expect(screen.queryByRole('link', { name: /Stage Updated:/ })).not.toBeInTheDocument();
     expect(screen.getByText('82')).toBeInTheDocument();
-    expect(screen.getByText('880')).toBeInTheDocument();
+    expect(screen.getByText('27')).toBeInTheDocument();
     expect(screen.getByText('27')).toBeInTheDocument();
   });
 
@@ -164,7 +164,7 @@ describe('LiveEventStream', () => {
     })], []);
     render(stream([liveEvent()]));
     expect(screen.getByText('1,200')).toBeInTheDocument();
-    expect(screen.getByText('450')).toBeInTheDocument();
+    expect(screen.queryByText('450')).not.toBeInTheDocument();
     expect(screen.getByText('180')).toBeInTheDocument();
     expect(screen.getByText('230.8')).toBeInTheDocument();
   });
@@ -259,15 +259,15 @@ describe('LiveEventStream', () => {
   it('sorts input tokens numerically with unavailable observations last in either direction', async () => {
     const user = userEvent.setup();
     render(stream([
-      liveEvent({ event_id: 'ten', assignment_id: 'ten', metric_delta: { input_tokens: { value: 10 } } }),
-      liveEvent({ event_id: 'two', assignment_id: 'two', metric_delta: { input_tokens: { value: 2 } } }),
+      liveEvent({ event_id: 'ten', assignment_id: 'ten', metric_delta: { output_tokens: { value: 10 } } }),
+      liveEvent({ event_id: 'two', assignment_id: 'two', metric_delta: { output_tokens: { value: 2 } } }),
       liveEvent({ event_id: 'missing', assignment_id: 'missing' }),
     ]));
-    const input = () => rows().map((row) => row.querySelector('[data-label="Input (tok)"]')?.textContent);
-    await user.click(screen.getByRole('button', { name: 'Sort by Input (tok)' }));
-    expect(input()).toEqual(['2', '10', '--']);
-    await user.click(screen.getByRole('button', { name: 'Sort by Input (tok)' }));
-    expect(input()).toEqual(['10', '2', '--']);
+    const output = () => rows().map((row) => row.querySelector('[data-label="Output (tok)"]')?.textContent);
+    await user.click(screen.getByRole('button', { name: 'Sort by Output (tok)' }));
+    expect(output()).toEqual(['2', '10', '--']);
+    await user.click(screen.getByRole('button', { name: 'Sort by Output (tok)' }));
+    expect(output()).toEqual(['10', '2', '--']);
   });
 
   it('updates rows and metrics as new activity arrives', () => {
@@ -372,13 +372,13 @@ describe('LiveEventStream', () => {
       expect(consensusHeader).toBeInTheDocument();
       expect(within(consensusHeader).queryByRole('button')).not.toBeInTheDocument();
       expect(consensusHeader).not.toHaveAttribute('aria-sort');
-      for (const row of rows()) expect(within(row).getAllByRole('cell')).toHaveLength(9);
+      for (const row of rows()) expect(within(row).getAllByRole('cell')).toHaveLength(8);
       expect(within(rowFor('task-a-2')).queryByRole('group', { name: 'Tribunal' })).not.toBeInTheDocument();
 
       await user.click(screen.getByText('Filters', { selector: 'summary' }));
       await user.selectOptions(screen.getByRole('combobox', { name: 'Filter by assignment' }), 'a-2');
       expect(screen.queryByRole('columnheader', { name: 'Consensus' })).not.toBeInTheDocument();
-      expect(within(rows()[0]!).getAllByRole('cell')).toHaveLength(8);
+      expect(within(rows()[0]!).getAllByRole('cell')).toHaveLength(7);
       await user.click(screen.getByRole('button', { name: 'Clear filters' }));
       expect(screen.getByRole('columnheader', { name: 'Consensus' })).toBeInTheDocument();
     });
@@ -550,6 +550,103 @@ describe('LiveEventStream judge activity', () => {
   const rowFor = (task: string) => rows().find((row) => row.textContent?.includes(task)) as HTMLElement;
   const headers = () => screen.getAllByRole('columnheader').map((header) => header.textContent);
 
+  describe('deterministic grades', () => {
+    const graded = (id: string, grades: NonNullable<LiveEvent['deterministic_grades']>, observedAt: string, identity: Partial<LiveEvent> = {}) => liveEvent({
+      event_id: id, kind: 'deterministic_grading_completed', lifecycle_status: 'running', observed_at: observedAt,
+      assignment_id: 'a-1', task_id: 'task-a-1', variant_id: 'model-a', role: 'primary', deterministic_grades: grades, ...identity,
+    });
+    const passed = { criterion_id: 'role-invoked', status: 'pass' as const, detail: 'role invoked' };
+    const failed = { criterion_id: 'file-state', status: 'fail' as const, detail: 'file differs' };
+
+    it('adds no Deterministic column to rows without grades', () => {
+      render(stream([started('a-1', '2026-09-17T08:00:00Z')]));
+      expect(headers()).not.toContain('Deterministic');
+    });
+
+    it('sits between Consensus and Judge', () => {
+      render(stream([
+        started('a-1', '2026-09-17T08:00:00Z'),
+        liveEvent({
+          event_id: 'vote-1', kind: 'stage_updated', lifecycle_status: 'running', observed_at: '2026-09-17T08:00:02Z', assignment_id: 'a-1',
+          stage_label: `tribunal vote\n${JSON.stringify({ member_app_id: 'tribunal-axiom', outcome: 'approve', transaction_id: 'tx-1' })}`,
+        }),
+        graded('g-1', [passed], '2026-09-17T08:00:04Z'),
+        judgeEvent('j-1', judge(), '2026-09-17T08:00:05Z'),
+      ]));
+      const columns = headers();
+      expect(columns.indexOf('Deterministic')).toBe(columns.indexOf('Consensus') + 1);
+      expect(columns.indexOf('Judge')).toBe(columns.indexOf('Deterministic') + 1);
+    });
+
+    it('shows one circle per criterion in grading order, in the row, never as its own row', () => {
+      render(stream([started('a-1', '2026-09-17T08:00:00Z'), graded('g-1', [passed, failed], '2026-09-17T08:00:04Z')]));
+      expect(rows()).toHaveLength(1);
+      const cell = within(rowFor('task-a-1')).getByRole('group', { name: 'Deterministic grades' });
+      const circles = cell.querySelectorAll('summary');
+      expect([...circles].map((circle) => circle.getAttribute('aria-label'))).toEqual(['role invoked: Pass', 'file state: Fail']);
+      expect(cell.querySelector('[data-tone="ok"]')).not.toBeNull();
+      expect(cell.querySelector('[data-tone="critical"]')).not.toBeNull();
+      expect(within(rowFor('task-a-1')).queryByText(/deterministic grading completed/i)).not.toBeInTheDocument();
+    });
+
+    it('expands a circle to what the grader recorded', async () => {
+      render(stream([started('a-1', '2026-09-17T08:00:00Z'), graded('g-1', [failed], '2026-09-17T08:00:04Z')]));
+      const circle = within(rowFor('task-a-1')).getByLabelText('file state: Fail');
+      await userEvent.click(circle);
+      expect(circle.closest('details')).toHaveAttribute('open');
+      expect(within(circle.closest('details') as HTMLElement).getByText('file differs')).toBeInTheDocument();
+    });
+
+    it('states the latest grades of a row, so persisted grades replace an earlier attempt', () => {
+      render(stream([
+        started('a-1', '2026-09-17T08:00:00Z'),
+        graded('g-2', [failed], '2026-09-17T08:00:09Z'),
+        graded('g-1', [passed], '2026-09-17T08:00:04Z'),
+      ]));
+      const cell = within(rowFor('task-a-1')).getByRole('group', { name: 'Deterministic grades' });
+      expect([...cell.querySelectorAll('summary')].map((circle) => circle.getAttribute('aria-label'))).toEqual(['file state: Fail']);
+    });
+
+    it('joins grades by exact run identity only', () => {
+      render(stream([
+        started('a-1', '2026-09-17T08:00:00Z'),
+        graded('g-1', [passed], '2026-09-17T08:00:04Z', { run_id: 'another-run' }),
+      ]));
+      expect(within(rowFor('task-a-1')).queryByRole('group', { name: 'Deterministic grades' })).not.toBeInTheDocument();
+    });
+
+    it('marks grades pending while a running row has judge verdicts and no grades', () => {
+      render(stream([started('a-1', '2026-09-17T08:00:00Z'), judgeEvent('j-1', judge(), '2026-09-17T08:00:03Z')]));
+      expect(headers()).toContain('Deterministic');
+      expect(within(rowFor('task-a-1')).getByText('Pending')).toHaveAttribute('title', 'Deterministic grading runs after the content judgments');
+    });
+
+    it('replaces the pending marker with the grades when they arrive', () => {
+      render(stream([
+        started('a-1', '2026-09-17T08:00:00Z'),
+        judgeEvent('j-1', judge(), '2026-09-17T08:00:03Z'),
+        graded('g-1', [passed], '2026-09-17T08:00:04Z'),
+      ]));
+      expect(within(rowFor('task-a-1')).queryByText('Pending')).not.toBeInTheDocument();
+      expect(within(rowFor('task-a-1')).getByRole('group', { name: 'Deterministic grades' })).toBeInTheDocument();
+    });
+
+    it('leaves a terminal row without grades empty', () => {
+      render(stream([
+        started('a-1', '2026-09-17T08:00:00Z'),
+        judgeEvent('j-1', judge(), '2026-09-17T08:00:03Z'),
+        liveEvent({ event_id: 'done-1', kind: 'assignment_failed', lifecycle_status: 'failed', observed_at: '2026-09-17T08:00:05Z', assignment_id: 'a-1', task_id: 'task-a-1', variant_id: 'model-a', role: 'primary', terminal_status: 'execution_failed' }),
+      ]));
+      expect(headers()).not.toContain('Deterministic');
+      expect(within(rowFor('task-a-1')).queryByText('Pending')).not.toBeInTheDocument();
+    });
+
+    it('marks nothing pending before any judge activity', () => {
+      render(stream([started('a-1', '2026-09-17T08:00:00Z')]));
+      expect(screen.queryByText('Pending')).not.toBeInTheDocument();
+    });
+  });
+
   it('adds no Judge column to rows without judge activity', () => {
     render(stream([started('a-1', '2026-09-17T08:00:00Z')]));
     expect(headers()).not.toContain('Judge');
@@ -574,7 +671,7 @@ describe('LiveEventStream judge activity', () => {
       started('a-1', '2026-09-17T08:00:00Z'),
       liveEvent({
         event_id: 'done-a-1', assignment_id: 'a-1', task_id: 'task-a-1', observed_at: '2026-09-17T08:00:20Z',
-        metric_delta: { latency_ms: { value: 1500 }, input_tokens: { value: 900 } },
+        metric_delta: { latency_ms: { value: 1500 }, output_tokens: { value: 900 } },
       }),
       judgeEvent('j-1-done', done(), '2026-09-17T08:00:30Z'),
     ]));
@@ -583,7 +680,7 @@ describe('LiveEventStream judge activity', () => {
     expect(within(row).getByText('model-a')).toBeInTheDocument();
     expect(within(row).queryByText(/judge completed/i)).not.toBeInTheDocument();
     expect(row.querySelector('[data-metric="latency_ms"]')?.textContent).toBe('1,500');
-    expect(row.querySelector('[data-metric="input_tokens"]')?.textContent).toBe('900');
+    expect(row.querySelector('[data-metric="output_tokens"]')?.textContent).toBe('900');
   });
 
   it('replaces the in-flight judgment with its verdict and summarizes the row', () => {

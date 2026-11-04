@@ -184,6 +184,29 @@ func TestBuildAndVerifyDatabaseCarriesJudgeEvents(t *testing.T) {
 	assert.Equal(t, records, gotRecords)
 }
 
+// TestBuildAndVerifyDatabaseCarriesDeterministicGradingEvents: an assignment's
+// deterministic grading event is proof content of its events database like any
+// other live event.
+func TestBuildAndVerifyDatabaseCarriesDeterministicGradingEvents(t *testing.T) {
+	ctx := context.Background()
+	files := newTestFiles(t)
+	graded := liveEvent("event-deterministic", testRunID, testAssignmentID)
+	graded.SchemaVersion, graded.Kind = constants.ExplorerViewSchemaVersion, "deterministic_grading_completed"
+	graded.TaskId, graded.VariantId, graded.Role = "tool-select-constraints", "gemma4-e2b", "primary"
+	graded.DeterministicGrades = []*evalv1.PublicLiveDeterministicGrade{
+		{CriterionId: "role-invoked", Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, Detail: "designated model role invoked"},
+		{CriterionId: "trajectory", Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, Detail: "wrong tool"},
+	}
+	records := append(validRecords(t), feedRecord(12, models.PublicFeedRecordTypeEvent, marshalEvent(t, graded)))
+
+	data, err := BuildDatabase(ctx, files, testHeader(), records)
+	require.NoError(t, err)
+
+	_, gotRecords, err := VerifyDatabase(ctx, data)
+	require.NoError(t, err)
+	assert.Equal(t, records, gotRecords)
+}
+
 func TestVerifyDatabaseRequiresImage(t *testing.T) {
 	_, _, err := VerifyDatabase(context.Background(), nil)
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
