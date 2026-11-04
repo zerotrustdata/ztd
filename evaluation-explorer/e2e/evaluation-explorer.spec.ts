@@ -4,6 +4,7 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { LIVE_EVENT_KINDS } from '../src/contract/types';
 import { FIXTURE_RELEASE, fixtureEnrichedAssignmentResult, fixtureModelSummaries, fixtureEvaluationSummaries } from '../src/fixtures/fixtures';
+import { formationRun } from '../tests/formation-fixture';
 
 // Keep geometry checks stable while the drawer itself supports animated transitions.
 test.use({ reducedMotion: 'reduce' });
@@ -456,8 +457,11 @@ for (const viewport of [
 
 test('Evals tables keep sortable detail columns at desktop and mobile widths', async ({ page }) => {
   const records = [
-    { ...fixtureEvaluationSummaries[0]!, run_id: 'alpha-run', campaign_id: 'Alpha campaign' },
+    { ...formationRun, run_id: 'alpha-run', campaign_id: 'Alpha campaign' },
     { ...fixtureEvaluationSummaries[0]!, run_id: 'beta-run', campaign_id: 'Beta campaign' },
+    ...(['primary', 'assistant', 'lite'] as const).map((role) => ({
+      ...fixtureModelSummaries[0]!, dataset_id: formationRun.dataset_id, role, variant_id: `current-${role}`, display_name: `Current ${role}`,
+    })),
   ];
   await installMirror(page, records);
   await page.goto('/evaluations?release=all');
@@ -489,18 +493,36 @@ test('Evals tables keep sortable detail columns at desktop and mobile widths', a
     await page.getByRole('tab', { name: /Formations/ }).click();
     const formations = page.getByRole('table', { name: 'Formation catalog', exact: true });
     await expect(formations).toBeVisible();
-    await page.getByRole('searchbox', { name: 'Search formations' }).fill('formation-01');
+    await page.getByRole('searchbox', { name: 'Search formations' }).fill('current-project-formation');
     await expect(formations.locator('tbody tr')).toHaveCount(1);
-    await expect(formations.locator('tbody a')).toHaveCount(3);
+    await expect(formations.locator('tbody a')).toHaveCount(4);
     await page.getByRole('searchbox', { name: 'Search formations' }).fill('');
-    await formations.getByRole('button', { name: 'Sort by Total VRAM', exact: true }).click();
-    await expect(formations.getByRole('columnheader', { name: /Total VRAM/ })).toHaveAttribute('aria-sort', /ascending|descending/);
+    await formations.getByRole('button', { name: 'Sort by Total parameters', exact: true }).click();
+    await expect(formations.getByRole('columnheader', { name: /Total parameters/ })).toHaveAttribute('aria-sort', /ascending|descending/);
   }
   await page.getByRole('tab', { name: /Runs/ }).click();
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator('.evaluations-view .data-table-wrap').evaluateAll((elements) => elements.forEach((element) => { element.scrollLeft = 0; }));
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: 'test-results/evals-tables-desktop.png', fullPage: true });
+});
+
+test('Formations leaderboard ranks the published whole stack and opens run evidence', async ({ page }) => {
+  await installMirror(page, [formationRun]);
+  await page.goto('/leaderboard?release=all');
+  await page.getByRole('banner').getByRole('button', { name: 'Close navigation drawer' }).click();
+  await page.getByRole('button', { name: 'Formations 1', exact: true }).click();
+  for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    const table = page.getByRole('table', { name: 'Formation leaderboard', exact: true });
+    await expect(table).toBeVisible();
+    await expect(table.locator('tbody tr')).toHaveCount(1);
+    await expect(table.locator('tbody tr')).toContainText('56.3');
+    await expect(table.locator('tbody tr')).toContainText('4 judged assignments');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }
+  await page.getByRole('link', { name: 'current-project-formation', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Formation results', exact: true })).toBeVisible();
 });
 
 test('evaluation detail fills the page and stacks context without pushing assignments below a sidebar', async ({ page }, testInfo) => {

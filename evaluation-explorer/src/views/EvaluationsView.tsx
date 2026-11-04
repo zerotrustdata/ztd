@@ -2,9 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 // Evaluations view — one tab at a time: evaluation Runs, Campaigns that group
-// them, and the 3-role Formations catalog (Lite, Assistant, Primary). The
-// catalog is reference data for system-lane campaigns, which execute and score
-// each selected formation as one unit.
+// them, and published frozen formations, scored as complete stacks.
 // Scores are never averaged across suites.
 
 import { useEffect, useMemo, useState } from 'react';
@@ -15,11 +13,7 @@ import { ReleaseSelector } from '../components/ReleaseSelector';
 import { matchesRelease } from '../content/release';
 import {
   deriveCampaignSummaries,
-  EVALUATION_FRAMEWORK_VALUES,
-  FORMATION_CATALOG,
   type CampaignSummaryGroup,
-  type FormationRoleBinding,
-  type FormationTopologySpec,
 } from '../content/framework-catalog';
 import {
   EmptyState,
@@ -30,7 +24,7 @@ import {
   formatPercent,
   formatNumber,
 } from '../components/shared';
-import type { EvaluationSummary, ModelRole } from '../contract/types';
+import type { EvaluationSummary } from '../contract/types';
 import {
   availableQualityFilterOptions,
   EVALUATION_QUALITY_FILTER_STATES,
@@ -39,35 +33,17 @@ import {
 import {
   campaignTerminalProgress,
   nativeResultTone,
-  roleLabel,
   verifierStateTone,
 } from './derived';
 import { OutcomeBreakdown, PanelSection, TonePill } from '../components/evidence';
 import { useSelectedRelease } from '../state/dataset';
 import { evaluationPassRate } from '../utils/run-metrics';
+import { formationGroups } from './formations';
+import { FormationTable } from '../components/FormationTable';
 
 type EvaluationsTab = 'runs' | 'campaigns' | 'formations';
-type FormationKindFilter = 'all' | 'curated' | 'heterogeneous';
 
 const TABS: readonly EvaluationsTab[] = ['runs', 'campaigns', 'formations'];
-
-function FormationModelCell({ binding, role, datasetId }: {
-  binding: FormationRoleBinding;
-  role: ModelRole;
-  datasetId?: string;
-}) {
-  const targetUrl = datasetId
-    ? `/models/${datasetId}/${binding.variant_id}?role=${role}`
-    : `/models/${binding.variant_id}?role=${role}`;
-  return (
-    <div className="eval-cell-stack">
-      <Link to={targetUrl} title={binding.served_model_tag}>{binding.display_name}</Link>
-      <span className="eval-cell-detail">
-        {binding.quantization} · {formatNumber(binding.estimated_model_vram_mib + binding.estimated_kv_cache_mib)} MiB
-      </span>
-    </div>
-  );
-}
 
 function runProgress(run: EvaluationSummary) {
   const terminal = campaignTerminalProgress(run);
@@ -79,7 +55,6 @@ function runProgress(run: EvaluationSummary) {
 
 export function EvaluationsView() {
   const [params, setParams] = useSearchParams();
-  const [formationKind, setFormationKind] = useState<FormationKindFilter>('all');
   const [formationSearch, setFormationSearch] = useState('');
 
   const requestedTab = params.get('view');
@@ -126,17 +101,17 @@ export function EvaluationsView() {
 
   const campaignGroups = useMemo(() => deriveCampaignSummaries(filtered), [filtered]);
 
+  const formations = useMemo(() => formationGroups(filtered), [filtered]);
+  const models = useStoreState((state) => Array.from(state.models.values()));
   const filteredFormations = useMemo(() => {
     const q = formationSearch.trim().toLowerCase();
-    return FORMATION_CATALOG.filter((f) => {
-      if (formationKind !== 'all' && f.kind !== formationKind) return false;
-      if (q) {
-        const hay = `${f.display_name} ${f.id} ${f.description} ${f.primary.display_name} ${f.assistant.display_name} ${f.lite.display_name} ${f.primary.family} ${f.assistant.family} ${f.lite.family}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
+    return formations.filter((formation) => {
+      const variants = Object.values(formation.summary.model_role_mapping);
+      const memberNames = models.filter((m) => variants.includes(m.variant_id) && formation.sources.some(({ run }) => run.dataset_id === m.dataset_id))
+        .map((m) => `${m.display_name} ${m.served_model_tag ?? ''} ${m.model_family ?? ''}`).join(' ');
+      return `${formation.summary.stack_id} ${formation.suite_id} ${variants.join(' ')} ${memberNames}`.toLowerCase().includes(q);
     });
-  }, [formationKind, formationSearch]);
+  }, [formations, formationSearch, models]);
 
   const setFilter = (key: string, value: string, fallback = 'all') => {
     const next = new URLSearchParams(params);
@@ -236,7 +211,6 @@ export function EvaluationsView() {
     [],
   );
 
-  const defaultDatasetId = filtered[0]?.dataset_id ?? evaluations[0]?.dataset_id;
   const campaignColumns = useMemo<DataTableColumn<CampaignSummaryGroup>[]>(() => [
     {
       id: 'campaign', header: 'Campaign', accessorKey: 'title',
@@ -276,37 +250,10 @@ export function EvaluationsView() {
     },
   ], []);
 
-  const formationColumns = useMemo<DataTableColumn<FormationTopologySpec>[]>(() => [
-    {
-      id: 'formation', header: 'Formation', accessorKey: 'display_name',
-      cell: ({ row: { original: formation } }) => (
-        <div className="eval-cell-stack" data-testid={`formation-${formation.id}`} title={formation.description}>
-          <strong>{formation.display_name}</strong>
-          <span className="eval-cell-detail">{formation.kind}</span>
-        </div>
-      ),
-    },
-    ...(['lite', 'assistant', 'primary'] as const).map((role): DataTableColumn<FormationTopologySpec> => ({
-      id: role, header: roleLabel(role), accessorFn: (formation) => formation[role].display_name,
-      cell: ({ row }) => <FormationModelCell binding={row.original[role]} role={role} datasetId={defaultDatasetId} />,
-    })),
-    {
-      id: 'vram', header: 'Total VRAM', accessorKey: 'total_vram_mib',
-      cell: ({ row: { original: formation } }) => (
-        <div className="eval-cell-stack eval-progress-cell">
-          <span>{formatNumber(formation.total_vram_mib)} MiB</span>
-          <div className="formation-vram-track" aria-hidden="true">
-            <div className="formation-vram-fill" style={{ width: `${Math.min(100, formation.vram_utilization_pct * 100)}%` }} />
-          </div>
-        </div>
-      ),
-    },
-  ], [defaultDatasetId]);
-
   const tabLabel: Record<EvaluationsTab, string> = {
     runs: `Runs (${formatNumber(filtered.length)})`,
     campaigns: `Campaigns (${formatNumber(campaignGroups.length)})`,
-    formations: `Formations (${formatNumber(FORMATION_CATALOG.length)})`,
+    formations: `Formations (${formatNumber(formations.length)})`,
   };
 
   return (
@@ -332,27 +279,9 @@ export function EvaluationsView() {
           ))}
         </div>
 
-        {activeTab === 'formations' ? (
-          <div className="eval-toolbar">
-            <select
-              aria-label="Filter formations by kind"
-              value={formationKind}
-              onChange={(e) => setFormationKind(e.target.value as FormationKindFilter)}
-            >
-              <option value="all">All kinds</option>
-              <option value="curated">Curated</option>
-              <option value="heterogeneous">Heterogeneous</option>
-            </select>
-            <input
-              type="search"
-              placeholder="Search formations"
-              aria-label="Search formations"
-              value={formationSearch}
-              onChange={(e) => setFormationSearch(e.target.value)}
-            />
-          </div>
-        ) : (
-          <div className="eval-toolbar">
+        <div className="eval-toolbar">
+            {activeTab === 'formations' ? <input type="search" placeholder="Search formations" aria-label="Search formations"
+              value={formationSearch} onChange={(e) => setFormationSearch(e.target.value)} /> : null}
             <ReleaseSelector defaultRelease="all" />
             <select aria-label="Filter by suite" value={suiteFilter} onChange={(e) => setFilter('suite', e.target.value)}>
               <option value="all">All suites</option>
@@ -378,26 +307,13 @@ export function EvaluationsView() {
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
-          </div>
-        )}
+        </div>
       </div>
 
       {activeTab === 'formations' ? (
         <PanelSection title="Formations">
-          <details className="signal-fold signal-fold-inline">
-            <summary className="signal-fold-summary">
-              <span className="signal-fold-title">Catalog</span>
-              <span className="signal-fold-fact">
-                {formatNumber(filteredFormations.length)} shown · {formatNumber(EVALUATION_FRAMEWORK_VALUES.maxVramBudgetMib)} MiB budget
-              </span>
-            </summary>
-            <p className="panel-note">
-              Lite, Assistant, and Primary stacks. A system-lane campaign scores one stack as a unit.
-              {formatNumber(FORMATION_CATALOG.length)} of {formatNumber(EVALUATION_FRAMEWORK_VALUES.totalFormationsCount)} catalogued stacks are listed.
-            </p>
-          </details>
-          <DataTable data={filteredFormations} columns={formationColumns} pageSize={25} enableColumnVisibility={false}
-            caption="Formation catalog" empty={<p className="table-empty">No formations match these filters.</p>} />
+          <p className="panel-note">Frozen formations from published runs. Each stack is scored as one unit; suites and frozen stack versions remain separate.</p>
+          <FormationTable formations={filteredFormations} />
         </PanelSection>
       ) : filtered.length === 0 ? (
         <div>

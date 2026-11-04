@@ -27,6 +27,8 @@ import {
 } from '../views/derived';
 import type { AssignmentResult, EvaluationSummary, ModelRole, ModelSummary } from '../contract/types';
 import { ModelScoreCoverage } from './evidence';
+import { FormationTable } from './FormationTable';
+import { formationLeaderboardRows } from '../views/formations';
 
 export type LeaderboardSortField =
   | 'rank'
@@ -218,17 +220,21 @@ export function RoleLeadersPanel({
   evaluations,
   assignments = [],
   stats = [],
+  maxArtifactGiB = 0,
 }: {
+  maxArtifactGiB?: number;
   models: ModelSummary[];
   evaluations: EvaluationSummary[];
   assignments?: AssignmentResult[];
   /** Inline summary counts rendered in the panel header row. */
   stats?: { label: string; value: number }[];
 }) {
-  const [category, setCategory] = useState<ModelRole | 'all'>('all');
+  const [category, setCategory] = useState<ModelRole | 'all' | 'formations'>('all');
   const [sortField, setSortField] = useState<LeaderboardSortField>('score');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
+  const formationRows = useMemo(() => formationLeaderboardRows(evaluations, maxArtifactGiB), [evaluations, maxArtifactGiB]);
+  const formationSuites = Array.from(new Set(formationRows.map((row) => row.suite_id)));
   const qualifiedRows = useMemo(
     () => modelRoleLeaderboardRows(models, 'all', evaluations, assignments),
     [models, evaluations, assignments],
@@ -246,7 +252,7 @@ export function RoleLeadersPanel({
   const evaluatedRoles = MODEL_ROLE_WIRE_ORDER.filter((role) => rowsByRole[role].length > 0);
   // Declared union: an overall row is structurally a role row, so inference would collapse it.
   const categoryRows: Array<ModelRoleLeaderboardRow | ModelOverallLeaderboardRow> =
-    category === 'all' ? allRows : rowsByRole[category];
+    category === 'all' ? allRows : category === 'formations' ? [] : rowsByRole[category];
   const columns = LEADERBOARD_COLUMNS.filter((column) => category !== 'all' || column.field !== 'role');
 
   const sortedRows = useMemo(() => {
@@ -265,7 +271,7 @@ export function RoleLeadersPanel({
     }
   };
 
-  const handleCategoryChange = (next: ModelRole | 'all') => {
+  const handleCategoryChange = (next: ModelRole | 'all' | 'formations') => {
     setCategory(next);
     setSortField('score');
     setSortDirection('desc');
@@ -299,10 +305,7 @@ export function RoleLeadersPanel({
         ) : null}
       </div>
 
-      {qualifiedRows.length === 0 ? (
-        <p className="panel-empty">No fully evaluated, verified models across datasets.</p>
-      ) : (
-        <>
+      <>
           <div className="leaderboard-toolbar">
             <div className="leaderboard-categories" role="group" aria-label="Leaderboard category">
               <button
@@ -341,13 +344,27 @@ export function RoleLeadersPanel({
                 <span>Lite</span>{' '}
                 <span className="leaderboard-count-badge">{counts.lite}</span>
               </button>
+              <button type="button" className={`leaderboard-category-chip${category === 'formations' ? ' active' : ''}`}
+                onClick={() => handleCategoryChange('formations')} aria-pressed={category === 'formations'}>
+                <span>Formations</span>{' '}<span className="leaderboard-count-badge">{formationRows.length}</span>
+              </button>
             </div>
             <span className="leaderboard-meta">
-              Showing {sortedRows.length} {category === 'all' ? 'models overall' : `${roleLabel(category)} leaders`}
+              Showing {category === 'formations' ? formationRows.length : sortedRows.length} {category === 'formations' ? 'formations' : category === 'all' ? 'models overall' : `${roleLabel(category)} leaders`}
             </span>
           </div>
 
-          <div className="table-scroll">
+          {category === 'formations' ? (
+            <>
+              <p className="panel-note">Each formation is scored as a whole and ranked within its suite. Completed, verified runs contribute in proportion to their judged assignments. Missing security earns zero credit.</p>
+              {formationSuites.length === 0 ? <p className="panel-empty">No fully evaluated, verified formations yet.</p> : formationSuites.map((suite) => (
+                <section key={suite} aria-label={`Formation suite ${suite}`}>
+                  <h3>{suite}</h3>
+                  <FormationTable formations={formationRows.filter((row) => row.suite_id === suite)} leaderboard />
+                </section>
+              ))}
+            </>
+          ) : <div className="table-scroll">
             <table className="lab-table">
               {category === 'all' ? (
                 <caption className="leaderboard-caption">
@@ -393,7 +410,7 @@ export function RoleLeadersPanel({
                   <tr className="role-leader-empty">
                     <td colSpan={columns.length}>
                       {category === 'all'
-                        ? 'No models have qualified results in all three roles yet.'
+                        ? qualifiedRows.length === 0 ? 'No fully evaluated, verified models across datasets.' : 'No models have qualified results in all three roles yet.'
                         : `No fully evaluated, verified ${roleLabel(category)} models yet.`}
                     </td>
                   </tr>
@@ -468,9 +485,8 @@ export function RoleLeadersPanel({
                 )}
               </tbody>
             </table>
-          </div>
-        </>
-      )}
+          </div>}
+      </>
     </section>
   );
 }

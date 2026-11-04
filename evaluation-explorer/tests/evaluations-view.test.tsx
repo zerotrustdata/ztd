@@ -8,7 +8,6 @@ import type { EvaluationSummary, SnapshotRecord } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
 import { EvaluationDetailView } from '../src/views/EvaluationDetailView';
 import { EvaluationsView } from '../src/views/EvaluationsView';
-import { FORMATION_CATALOG } from '../src/content/framework-catalog';
 
 function evaluation(
   datasetId: string,
@@ -68,15 +67,9 @@ describe('EvaluationsView', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: /Formations/ }));
     const formationsPanel = within(screen.getByRole('region', { name: 'Formations' }));
-    expect(formationsPanel.getByText('formation-01')).toBeInTheDocument();
-    expect(formationsPanel.getByText('formation-02')).toBeInTheDocument();
-    expect(formationsPanel.getByText('formation-03')).toBeInTheDocument();
-    expect(formationsPanel.getByText('formation-04')).toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: 'Filter by status' })).not.toBeInTheDocument();
-
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter formations by kind' }), { target: { value: 'curated' } });
-    expect(formationsPanel.getByTestId('formation-formation-01')).toBeInTheDocument();
-    expect(formationsPanel.queryByTestId('formation-heterogeneous-0000')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Formations (0)' })).toBeInTheDocument();
+    expect(formationsPanel.getByText('No formations match these filters.')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Filter by status' })).toBeInTheDocument();
   });
 
   it('sorts campaign progress and numeric pass rates while preserving filtered run links', () => {
@@ -136,29 +129,6 @@ describe('EvaluationsView', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Campaigns/ }));
     expect(screen.getByRole('link', { name: 'Provider failures' }).closest('tr')).toHaveTextContent('41.5%');
     expect(screen.getByRole('link', { name: 'Evidence failures' }).closest('tr')).toHaveTextContent('95.1%');
-  });
-
-  it('sorts formations by numeric VRAM, searches models, and keeps tables on mobile', () => {
-    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
-    render(<MemoryRouter initialEntries={['/?release=all']}><EvaluationsView /></MemoryRouter>);
-    expect(screen.getByRole('table', { name: 'Model campaigns' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: /Campaigns/ }));
-    expect(screen.getByRole('table', { name: 'Campaigns' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('tab', { name: /Formations/ }));
-    const table = screen.getByRole('table', { name: 'Formation catalog' });
-    fireEvent.click(within(table).getByRole('button', { name: 'Sort by Total VRAM' }));
-    const direction = within(table).getByRole('columnheader', { name: /Total VRAM/ }).getAttribute('aria-sort');
-    const expected = [...FORMATION_CATALOG].sort((a, b) => direction === 'ascending' ? a.total_vram_mib - b.total_vram_mib : b.total_vram_mib - a.total_vram_mib);
-    const ids = within(table).getAllByTestId(/^formation-/).map((cell) => cell.dataset.testid);
-    expect(ids).toEqual(expected.map((formation) => `formation-${formation.id}`));
-    const qwen = within(table).getByTestId('formation-formation-01').closest('tr')!;
-    expect(within(qwen).getAllByRole('link')).toHaveLength(3);
-    expect(qwen).toHaveTextContent('MiB');
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search formations' }), { target: { value: 'formation-01' } });
-    expect(within(table).getAllByRole('row')).toHaveLength(2);
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search formations' }), { target: { value: 'no-such-formation' } });
-    expect(screen.getByText('No formations match these filters.')).toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: 'Sort cards' })).not.toBeInTheDocument();
   });
 
   it('filters runs and separates conformance from campaigns with verifier tones', () => {

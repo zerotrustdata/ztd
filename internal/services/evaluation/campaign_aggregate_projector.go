@@ -186,6 +186,9 @@ type runAggregateState struct {
 	VariantRoles   map[string]*variantRoleAggregate
 	EvaluatedCount uint32
 	Headline       *runHeadlineMetrics
+	Formations     []*formationAggregate
+	SecurityJudged uint32
+	SecurityPassed uint32
 	// RunSeconds is the time the run spent executing assignments; nil until
 	// an assignment has a persisted result. See assignmentRunSeconds.
 	RunSeconds *float64
@@ -209,6 +212,7 @@ type runHeadlineMetrics struct {
 	PassRate            runMetricValue
 	LatencyP50MS        runMetricValue
 	OutputThroughputP50 runMetricValue
+	OutputTokensP50     runMetricValue
 }
 
 // runMetricValue mirrors the explorer RunMetricValue wire shape: one finite
@@ -356,6 +360,9 @@ func (b *variantRoleAggregate) setFrozenVariant(variant *evalv1.ModelVariant) {
 // attachModelRegistry resolves the specifications of heterogeneous slots, which
 // bind only a variant ID, from the campaign's frozen model registry.
 func (s *runAggregateState) attachModelRegistry(registry []*evalv1.ModelVariant) {
+	for _, formation := range s.Formations {
+		formation.State.attachModelRegistry(registry)
+	}
 	for _, bucket := range s.VariantRoles {
 		if bucket == nil || bucket.ServedModelTag != "" {
 			continue
@@ -370,8 +377,20 @@ func (s *runAggregateState) attachModelRegistry(registry []*evalv1.ModelVariant)
 }
 
 // CollectRunAggregateState derives explorer aggregate counters from canonical
-// assignments and terminal results for one homogeneous model-role run.
+// assignments and terminal results, including independent formation populations.
 func CollectRunAggregateState(assignments []*evalv1.EvaluationAssignment, results map[string]*evalv1.EvaluationAssignmentResult) (*runAggregateState, error) {
+	state, err := collectAssignmentAggregateState(assignments, results)
+	if err != nil {
+		return nil, err
+	}
+	state.Formations, err = collectFormationAggregates(assignments, results)
+	if err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
+func collectAssignmentAggregateState(assignments []*evalv1.EvaluationAssignment, results map[string]*evalv1.EvaluationAssignmentResult) (*runAggregateState, error) {
 	if len(assignments) == 0 {
 		return nil, fmt.Errorf("evaluation: collect run aggregate state: %w", constants.ErrMissingRequiredField)
 	}
@@ -487,6 +506,7 @@ func collectRunHeadlineMetrics(assignments []*evalv1.EvaluationAssignment, resul
 	}
 	metrics.LatencyP50MS = performance.LatencyP50MS
 	metrics.OutputThroughputP50 = performance.OutputThroughputP50
+	metrics.OutputTokensP50 = performance.OutputTokensP50
 	return metrics, nil
 }
 
@@ -1277,6 +1297,7 @@ type evaluationSummaryRecord struct {
 	Arm                    string                             `json:"arm"`
 	EvaluationUnit         string                             `json:"evaluation_unit"`
 	ModelRoleMapping       map[string]string                  `json:"model_role_mapping"`
+	Formations             []formationSummaryRecord           `json:"formations,omitempty"`
 	LifecycleState         string                             `json:"lifecycle_state"`
 	RunStatus              string                             `json:"run_status"`
 	AssignmentTotal        uint32                             `json:"assignment_total"`
@@ -1331,6 +1352,7 @@ func buildEvaluationSummaryRecord(input evaluationSummaryInput) (*evaluationSumm
 		Arm:                 armForRun(run),
 		EvaluationUnit:      evaluationUnitForRun(run),
 		ModelRoleMapping:    buildModelRoleMapping(state),
+		Formations:          buildFormationSummaryRecords(state),
 		LifecycleState:      lifecycleStateForAggregate(state),
 		RunStatus:           CampaignRunStatus(summary, input.Report, state.Executing),
 		AssignmentTotal:     state.Scheduled,

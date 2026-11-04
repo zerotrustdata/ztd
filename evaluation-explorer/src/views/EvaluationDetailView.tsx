@@ -11,6 +11,8 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useActiveDatasetId, useSelectedRelease } from '../state/dataset';
 import { releaseLabel } from '../content/release';
 import { recordKey, useStoreState } from '../state/store';
+import { FormationTable } from '../components/FormationTable';
+import { formationGroups } from './formations';
 import { AssignmentTable } from '../components/AssignmentTable';
 import { EvidenceChain, OutcomeBreakdown, PageHero, PanelSection, TonePill } from '../components/evidence';
 import {
@@ -136,6 +138,10 @@ export function EvaluationDetailView() {
           <MetricCard variant="tile" label="Latency p50" metric={run.headline_metrics.latency_p50_ms} formatter={formatLatency} />
           <MetricCard variant="tile" label="Output throughput p50" metric={run.headline_metrics.output_throughput_p50_tokens_per_second ?? run.headline_metrics.throughput} formatter={formatThroughput} />
         </div>
+      </PanelSection> : null}
+
+      {run.formations?.length ? <PanelSection title="Formation results">
+        <FormationTable formations={formationGroups([run])} />
       </PanelSection> : null}
 
       {run.native_result ? (

@@ -2,10 +2,11 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 // Leaderboard view — the dedicated Model Leaderboard & Role Performance directory.
-// Ranks fully evaluated, verified models across Overall, Primary, Assistant, and Lite
+// Ranks fully evaluated, verified models and whole formations
 // using the composite role score formula.
 
 import { useMemo } from 'react';
+import { qualifiedFormationRuns } from './formations';
 import { useSelectedRelease, useUserPref, PREF } from '../state/dataset';
 import { useStoreState } from '../state/store';
 import { RoleLeadersPanel } from '../components/RoleLeadersPanel';
@@ -28,13 +29,15 @@ export function LeaderboardView() {
   const [filters, setFilters] = useUserPref<LeaderboardFilterPrefs>(PREF.filters, {});
   const allModels = useStoreState((state) => Array.from(state.models.values()));
   const assignments = useStoreState((state) => Array.from(state.assignments.values()));
-  const defaultRelease = useMemo(() => defaultLeaderboardRelease(allModels, assignments), [allModels, assignments]);
+  const allEvaluations = useStoreState((state) => Array.from(state.evaluations.values()));
+  const defaultRelease = useMemo(() => {
+    const formationDatasets = new Set(allEvaluations.filter((run) => run.evaluation_unit === 'system').map((run) => run.dataset_id));
+    return defaultLeaderboardRelease(allModels.filter((model) => !formationDatasets.has(model.dataset_id)), assignments, qualifiedFormationRuns(allEvaluations));
+  }, [allModels, assignments, allEvaluations]);
   const release = toReleaseSeries(useSelectedRelease(defaultRelease));
 
   const models = useMemo(() => allModels.filter((record) => matchesRelease(record, release)), [allModels, release]);
-  const evaluations = useStoreState((state) =>
-    Array.from(state.evaluations.values()).filter((record) => matchesRelease(record, release)),
-  );
+  const evaluations = useMemo(() => allEvaluations.filter((record) => matchesRelease(record, release)), [allEvaluations, release]);
 
   const artifactBudgetGiB = Number(filters.maxArtifactGiB);
   const modelsWithinBudget = useMemo(
@@ -117,6 +120,7 @@ export function LeaderboardView() {
             <li>Doublings = log<sub>2</sub>(total parameters ÷ smallest in role). Each doubling costs 10%. This is not measured resource cost.</li>
             <li>Speed and tokens are best-in-role ÷ model; lower latency and fewer tokens score higher.</li>
             <li>Specifications describe the frozen provider variant. Artifact size is storage, not runtime memory.</li>
+            <li>Formations use the same formula within each suite, with whole-stack accuracy and security and total parameters across unique member variants.</li>
           </ul>
         </details>
       </header>
@@ -140,6 +144,7 @@ export function LeaderboardView() {
         evaluations={evaluations}
         assignments={assignments}
         stats={summaryStats}
+        maxArtifactGiB={artifactBudgetGiB}
       />
     </div>
   );
