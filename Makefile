@@ -297,6 +297,7 @@ help:
 		'  protocol-test             Run Node protocol tests and Go hash-parity vectors' \
 		'  protocol-lint             Typecheck the Node protocol bindings' \
 		'  demos-test                Test the fictional business simulation' \
+		'  vhs                       Record a governed agent demo: make vhs CLIENT=goose PROMPT="..." [THINK=1] [MODEL=tag]' \
 		'  claude-plugin-test        Test, shellcheck, and validate the Claude Code plugin' \
 		'  website-build             Build zerotrustdata.io: homepage, journal, llms-full.txt' \
 		'  website-test              Test the website generator and Worker' \
@@ -965,6 +966,16 @@ console-test:
 .PHONY: demos-test
 demos-test:
 	@python3 -B -m unittest discover -s demos/zero-trust-paper-company/tests -v
+
+# Record `ztd mcp agent run $(CLIENT)` against the paper company with VHS.
+# See scripts/demo-record.sh for prerequisites and outputs (build/demos/).
+# Optional: MODEL=<ollama tag> (default qwen2.5:0.5b), THINK=1 adds a qwen3:0.6b
+# thinking scene. DEMO_THINK_MODEL and DEMO_TRIBUNAL pass through from the
+# environment or the make command line. The script does not pull models.
+.PHONY: vhs
+vhs:
+	@test -n "$(CLIENT)" -a -n "$(PROMPT)" || { echo 'usage: make vhs CLIENT=goose PROMPT="I am Priya in finance. Which invoice is past due?" [THINK=1] [MODEL=tag] [DEMO_THINK_MODEL=tag] [DEMO_TRIBUNAL=tag]'; exit 2; }
+	@DEMO_MODEL="$(MODEL)" DEMO_THINK="$(THINK)" bash scripts/demo-record.sh "$(CLIENT)" "$(PROMPT)"
 
 .PHONY: explorer-lint
 explorer-lint:
