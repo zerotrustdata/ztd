@@ -83,8 +83,8 @@ func TestFormationSummarySeparatesStacksAndCountsWholeAssignment(t *testing.T) {
 		require.NotNil(t, formation.SecurityPassRate)
 		assert.NotEmpty(t, formation.StackDigest)
 		assert.Len(t, formation.ModelRoleMapping, 3)
-		assert.Equal(t, float64(40), *formation.OutputTokens.Value)
-		assert.Equal(t, float64(2000), *formation.LatencyP50MS.Value)
+		assert.InDelta(t, 40.0, *formation.OutputTokens.Value, 0)
+		assert.InDelta(t, 2000.0, *formation.LatencyP50MS.Value, 0)
 		require.NotNil(t, formation.ParameterCount)
 		assert.Equal(t, uint64(3_000_000_000), *formation.ParameterCount)
 		require.NotNil(t, formation.ArtifactBytes)
@@ -92,11 +92,11 @@ func TestFormationSummarySeparatesStacksAndCountsWholeAssignment(t *testing.T) {
 		if formation.StackID == stack.GetStackId() {
 			assert.Equal(t, uint32(2), formation.AssignmentTotal)
 			assert.Equal(t, uint32(2), formation.PassRate.Denominator)
-			assert.Equal(t, 0.5, formation.PassRate.Estimate)
-			assert.Equal(t, 0.5, formation.SecurityPassRate.Estimate)
+			assert.InDelta(t, 0.5, formation.PassRate.Estimate, 0)
+			assert.InDelta(t, 0.5, formation.SecurityPassRate.Estimate, 0)
 		} else {
 			assert.Equal(t, uint32(1), formation.AssignmentTotal)
-			assert.Equal(t, 1.0, formation.PassRate.Estimate)
+			assert.InDelta(t, 1.0, formation.PassRate.Estimate, 0)
 		}
 	}
 }
