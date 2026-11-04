@@ -1662,7 +1662,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### github.com/fxamacker/cbor/v2 v2.9.6
+### github.com/fxamacker/cbor/v2 v2.10.0
 
 #### LICENSE
 
@@ -4346,7 +4346,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### go.yaml.in/yaml/v3 v3.0.5
+### go.yaml.in/yaml/v3 v3.0.6
 
 #### LICENSE
 
@@ -4455,7 +4455,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### golang.org/x/net v0.61.0
+### golang.org/x/net v0.62.0
 
 #### LICENSE
 
@@ -7033,7 +7033,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### react-router 7.18.4
+### react-router 7.18.5
 
 - License: MIT
 - Used by: evaluation-explorer
@@ -7066,7 +7066,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### react-router-dom 7.18.4
+### react-router-dom 7.18.5
 
 - License: MIT
 - Used by: evaluation-explorer
@@ -7130,7 +7130,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### set-cookie-parser 2.7.2
+### set-cookie-parser 2.7.3
 
 - License: MIT
 - Used by: evaluation-explorer
