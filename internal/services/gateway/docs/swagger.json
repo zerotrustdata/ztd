@@ -5451,6 +5451,10 @@
                 "batch_count": {
                     "type": "integer"
                 },
+                "dataset_id": {
+                    "description": "DatasetID echoes the dataset a `GET /snapshot?dataset=` lookup found in the\ncurrent read model. It is empty on every other snapshot.",
+                    "type": "string"
+                },
                 "feed_chain_hash": {
                     "type": "string"
                 },
