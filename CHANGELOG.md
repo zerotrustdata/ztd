@@ -15,11 +15,7 @@ compatible with the previous release in the same minor series. See `INV-REL-VER-
 
 | Version | Date | Description | Notes |
 |---------|------|-------------|-------|
-<<<<<<< HEAD
-| 1.9.0 | 2026-11-04 | Deterministic grades in the Evaluation Explorer Live view with a per-criterion Deterministic column and `deterministic_grading_completed` live event, Explorer view schema 1.12.0, removal of the Live view Input column, `make vhs` governed agent demo recordings, and file mutation diffs outside the ledger write lock. | [v1.9.0](docs/release_notes/v1.9.x/v1.9.0.md) |
-=======
 | 1.9.0 | 2026-11-04 | Deterministic grades in the Evaluation Explorer Live view with a per-criterion Deterministic column and `deterministic_grading_completed` live event, Explorer view schema 1.12.0, removal of the Live view Input column, and `make vhs` governed agent demo recordings. | [v1.9.0](docs/release_notes/v1.9.x/v1.9.0.md) |
->>>>>>> main
 
 ## v1.8.x
 
