@@ -300,6 +300,9 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 	assessment := assessAgentTrace(execReq, trace, lifecycle, agentTraceEvidenceError(execReq, trace))
 	if assessment.invalid != nil {
 		lifecycle = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE
+		if want := invalidEvidenceReason(assessment.invalid); req.Result.GetPublicFailureReason() != want {
+			failures = append(failures, fmt.Sprintf("stored invalid evidence reason %q does not match agent trace reason %q", req.Result.GetPublicFailureReason(), want))
+		}
 	}
 	if req.Result.GetLifecycleStatus() != lifecycle {
 		failures = append(failures, fmt.Sprintf("stored lifecycle %s does not match agent trace lifecycle %s", req.Result.GetLifecycleStatus(), lifecycle))
@@ -368,17 +371,12 @@ func verifyAssignmentTraceModels(req AssignmentExecutionRequest, trace *AgentTra
 	}
 	for _, call := range trace.ModelCalls {
 		role := designated
-		switch {
-		case call.Purpose == agentModelCallPurposeInterrogation:
-			if system {
-				role = formationInterrogatorRole
-			}
-		case !call.IsTurn():
-			if !strings.HasPrefix(call.Purpose, agentModelCallPurposeTribunalPrefix) {
+		if !call.IsTurn() {
+			if call.Purpose != agentModelCallPurposeInterrogation && !strings.HasPrefix(call.Purpose, agentModelCallPurposeTribunalPrefix) {
 				return fmt.Errorf("unknown model call purpose %q: %w", call.Purpose, constants.ErrEvaluationEvidenceTraceMismatch)
 			}
 			if system {
-				role = formationTribunalRoleForTrace(trace, call.Purpose)
+				role = formationSupportCallRole(trace, call.Purpose)
 				if role == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED {
 					return fmt.Errorf("unknown Tribunal stage purpose %q: %w", call.Purpose, constants.ErrEvaluationEvidenceTraceMismatch)
 				}

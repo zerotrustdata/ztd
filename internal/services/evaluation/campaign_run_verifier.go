@@ -201,8 +201,12 @@ func (v *CampaignRunVerifier) VerifyRun(ctx context.Context, store *Store, runID
 			continue
 		}
 		probeReq := AssignmentExecutionRequest{Assignment: assignment, ScenarioTools: scenarioTools, Binding: executionBinding}
+		// A traceless executor failure records no execution for a probe to gate:
+		// a probe with no signed verdict freezes no record and fails only its
+		// assignment (INV-EVAL-CAMP-31), a stopped run may never have probed the
+		// model, and a negative probe excludes only the cells that reached it.
 		var probe *evalv1.ModelToolCallingProbe
-		if catalog.GetToolCallingProbeRequired() && assignmentDeclaresTools(probeReq) {
+		if catalog.GetToolCallingProbeRequired() && assignmentDeclaresTools(probeReq) && (agentTrace != nil || !isExecutorFailureResult(result)) {
 			variant, variantErr := assignmentToolCallingVariant(probeReq)
 			if variantErr != nil {
 				failures = append(failures, variantErr.Error())

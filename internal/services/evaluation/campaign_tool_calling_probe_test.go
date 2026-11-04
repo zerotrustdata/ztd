@@ -267,6 +267,10 @@ func assertProbeDispatchFailsOnlyAssignment(t *testing.T, probeErr error) {
 	exists, err := store.AssignmentResultExists(ctx, req.RunID, result.GetAssignmentId())
 	require.NoError(t, err)
 	assert.True(t, exists, "the failed assignment has its terminal result")
+
+	report, err := NewCampaignRunVerifier(time.Now).VerifyRun(ctx, store, req.RunID, req.Catalog, req.ScenarioArtifacts)
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus(), report.GetFailureReasons())
 }
 
 func TestCampaignToolCallingGateReusesOnlyRunAndVariantProbe(t *testing.T) {

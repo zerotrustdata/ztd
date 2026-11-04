@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strings"
 
 	"google.golang.org/protobuf/proto"
 
@@ -277,6 +278,10 @@ func verifyScenarioObservation(trace *AgentTrace, observation AgentScenarioObser
 		if err != nil || want != call.ResultJSON {
 			return fail()
 		}
+	} else if call.IsDenied() {
+		if err := verifyDeniedObservation(call); err != nil {
+			return fmt.Errorf("scenario observation %s: %w", observation.Kind, err)
+		}
 	} else {
 		if err := verifyNativeToolCallRequest(trace, call); err != nil {
 			return err
@@ -290,6 +295,37 @@ func verifyScenarioObservation(trace *AgentTrace, observation AgentScenarioObser
 	}
 	if observation.Disclosure != ScenarioSeedDisclosureProse {
 		return fail()
+	}
+	return nil
+}
+
+// verifyDeniedObservation binds what the trace records about a governance
+// rejection to the shape dispatch records it in. A rejection carries no request
+// envelope: the Gateway attaches the admitted envelope only to a dispatch that
+// executed, as it does for a denied tool call. The caller verifies the signed
+// receipt that makes the call a denial, and grading reads only that receipt.
+func verifyDeniedObservation(call AgentToolCall) error {
+	fail := func(reason string) error {
+		return fmt.Errorf("denied observation %s: %w", reason, constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	if call.Success {
+		return fail("claims success")
+	}
+	if call.PolicyDecision != agentPolicyDecisionDeny {
+		return fail("is not recorded as a policy denial")
+	}
+	if call.ActionType != call.Receipt.GetActionType() {
+		return fail("action differs from its receipt")
+	}
+	if call.ErrorType != agentToolErrorSecurity || !strings.HasPrefix(call.Error, agentToolDenialPrefix) {
+		return fail("is not recorded as a security failure")
+	}
+	want, err := agentToolFailureJSON(agentToolFailure{ErrorType: call.ErrorType, Error: call.Error})
+	if err != nil {
+		return fmt.Errorf("denied observation: encode failure: %w", err)
+	}
+	if want != call.ResultJSON {
+		return fail("result differs from the denial")
 	}
 	return nil
 }
@@ -357,18 +393,25 @@ func verifyNativeToolCallResult(trace *AgentTrace, call AgentToolCall) error {
 }
 
 func verifyNativeToolCallRequest(trace *AgentTrace, call AgentToolCall) error {
-	fail := func() error {
-		return fmt.Errorf("native tool request: %w", constants.ErrEvaluationEvidenceTraceMismatch)
+	fail := func(reason string) error {
+		return fmt.Errorf("native tool request %s %s: %w", call.ToolName, reason, constants.ErrEvaluationEvidenceTraceMismatch)
 	}
-	if call.RequestEnvelope == nil || call.RequestEnvelope.GovernanceEnvelope == nil || call.Receipt == nil || call.IngressRefusalCode != operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNSPECIFIED {
-		return fail()
+	if call.RequestEnvelope == nil || call.RequestEnvelope.GovernanceEnvelope == nil {
+		return fail("has no request envelope")
+	}
+	if call.Receipt == nil || call.IngressRefusalCode != operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNSPECIFIED {
+		return fail("has no executed receipt")
 	}
 	envelope := call.RequestEnvelope.GovernanceEnvelope
 	hash, err := govhash.GenerateMessageID(envelope)
-	if err != nil || hash != envelope.GetTransactionHash() || hash != call.Receipt.GetTransactionHash() || envelope.GetId() != call.TransactionID ||
-		envelope.GetOperatorId() != trace.Data.OperatorID || envelope.GetOperatorSessionId() != trace.Data.SessionID ||
-		envelope.GetInvestigationId() != trace.InvestigationID || envelope.GetTaskId() != trace.EvaluationAttemptID {
-		return fail()
+	if err != nil || hash != envelope.GetTransactionHash() || hash != call.Receipt.GetTransactionHash() || envelope.GetId() != call.TransactionID {
+		return fail("envelope hash is not the receipt's transaction")
+	}
+	if envelope.GetOperatorId() != trace.Data.OperatorID || envelope.GetOperatorSessionId() != trace.Data.SessionID {
+		return fail("envelope targets another Operator session")
+	}
+	if envelope.GetInvestigationId() != trace.InvestigationID || envelope.GetTaskId() != trace.EvaluationAttemptID {
+		return fail("envelope belongs to another investigation or attempt")
 	}
 	_, governed, err := agentToolActionType(call.ToolName)
 	if err != nil {
@@ -378,11 +421,11 @@ func verifyNativeToolCallRequest(trace *AgentTrace, call AgentToolCall) error {
 		return verifyGovernedToolCallRequest(trace, call, governed, envelope)
 	}
 	if envelope.GetActionType() != string(constants.ActionTypeMcpCall) || envelope.GetTargetResource() != call.ToolName {
-		return fail()
+		return fail("envelope action or target differs from the call")
 	}
 	var payload operatorv1.McpCallRequested
 	if err := proto.Unmarshal(envelope.GetPayload(), &payload); err != nil || payload.GetToolName() != call.ToolName || payload.GetExecutionId() != call.CallID {
-		return fail()
+		return fail("envelope payload is not this call")
 	}
 	want := call.ArgumentsJSON
 	if call.ApprovedArgumentsJSON != "" {
@@ -391,7 +434,7 @@ func verifyNativeToolCallRequest(trace *AgentTrace, call AgentToolCall) error {
 	if call.ToolName == constants.MCPToolRunShellCommand {
 		var request models.RunShellCommandRequest
 		if err := json.Unmarshal([]byte(want), &request); err != nil {
-			return fail()
+			return fail("arguments do not decode")
 		}
 		if request.WorkingDir == "" {
 			request.WorkingDir = trace.Workspace.Root
@@ -408,18 +451,18 @@ func verifyNativeToolCallRequest(trace *AgentTrace, call AgentToolCall) error {
 		spec, _ := catalog.Tool(call.ToolName)
 		request := decodeAgentToolRequest(spec, true, want)
 		if request.Failure != nil {
-			return fail()
+			return fail("arguments do not validate")
 		}
 		request.Arguments.SetEventReceiptListDefaults(trace.InvestigationID)
 		want, err = request.Arguments.CanonicalJSON()
 		if err != nil {
-			return fail()
+			return fail("arguments do not canonicalize")
 		}
 	}
 	actual, err := canonicalizeToolJSON(payload.GetArgumentsJson())
 	expected, expectedErr := canonicalizeToolJSON(want)
 	if err != nil || expectedErr != nil || actual != expected {
-		return fail()
+		return fail("envelope arguments differ from the recorded arguments")
 	}
 	return nil
 }

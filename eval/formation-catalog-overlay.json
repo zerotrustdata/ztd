@@ -6768,6 +6768,54 @@
         "estimated_kv_cache_mib": 512,
         "model_digest": "470fceb39b4300f47cc3b35d6e0a31321757fbcc4afdb4177484ca745bf92f37"
       }
+    },
+    {
+      "id": "v191-formation-01",
+      "display_name": "v191-formation-01",
+      "description": "hf.co/Jackrong/Qwen3.5-4B-Neo-GGUF:Q4_K_M primary, ministral-3:3b assistant, gemma4:12b lite",
+      "max_vram_mib": 16384,
+      "primary": {
+        "variant_id": "hf-co-jackrong-qwen3-5-4b-neo-gguf-q4-k-m",
+        "display_name": "hf.co/Jackrong/Qwen3.5-4B-Neo-GGUF:Q4_K_M",
+        "provider": "qwen35",
+        "family": "qwen35",
+        "provider_class": "ollama",
+        "served_model_tag": "hf.co/Jackrong/Qwen3.5-4B-Neo-GGUF:Q4_K_M",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 4205751296,
+        "estimated_model_vram_mib": 2507,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "6d44a26327e6e044a5c684aa54f9c1461819d2d3556d73e37d3c4ea04f75961e"
+      },
+      "assistant": {
+        "variant_id": "ministral-3-3b",
+        "display_name": "ministral-3:3b",
+        "provider": "mistral3",
+        "family": "mistral3",
+        "provider_class": "ollama",
+        "served_model_tag": "ministral-3:3b",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 3849090048,
+        "estimated_model_vram_mib": 2295,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "f04aa1c738f64e13c625b82ae92504fc0260fa6723b509ed1ece0fa188179b1d"
+      },
+      "lite": {
+        "variant_id": "gemma4-12b",
+        "display_name": "gemma4:12b",
+        "provider": "gemma4",
+        "family": "gemma4",
+        "provider_class": "ollama",
+        "served_model_tag": "gemma4:12b",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 11907350576,
+        "estimated_model_vram_mib": 7098,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "6114515d63c17436a7c0417d82820ac65ad643e2806c5a3c89cb62846436ed0b"
+      }
     }
   ],
   "removed_formation_ids": [

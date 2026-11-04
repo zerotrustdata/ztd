@@ -20,6 +20,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
+	"github.com/zerotrustdata/ztd/internal/services/inference"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
@@ -184,10 +185,12 @@ func TestExecuteNextAssignment_PublicationFailureKeepsPersistedResult(t *testing
 	assert.True(t, exists)
 }
 
-func TestRepairAssignmentsWithoutResults_BackfillsTerminalLifecycle(t *testing.T) {
-	files := newCampaignMemoryFileService()
-	store := NewStore(files)
-	controller := NewCampaignController(store, nil, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
+// scheduledRepairRun schedules a small run and returns its controller, store,
+// run ID, and assignments, none of which has a result yet.
+func scheduledRepairRun(t *testing.T, now time.Time) (*CampaignController, *Store, string, []*evalv1.EvaluationAssignment) {
+	t.Helper()
+	store := NewStore(newCampaignMemoryFileService())
+	controller := NewCampaignController(store, nil, func() time.Time { return now }, func(prefix string) string { return prefix + "-1" })
 	req := testCampaignInitRequest(t)
 	catalog := req.Catalog
 	truncated := &evalv1.EvaluationScenarioCatalog{
@@ -204,21 +207,312 @@ func TestRepairAssignmentsWithoutResults_BackfillsTerminalLifecycle(t *testing.T
 	require.NoError(t, err)
 	_, err = controller.ScheduleRun(context.Background(), req.RunID)
 	require.NoError(t, err)
-
 	assignments, err := store.ListAssignments(context.Background(), req.RunID)
 	require.NoError(t, err)
-	assignment := assignments[0]
-	assignment.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED
-	assignment.CompletedAt = timestamppb.New(time.Unix(1_700_000_100, 0).UTC())
-	require.NoError(t, store.SaveAssignment(context.Background(), assignment))
+	require.NotEmpty(t, assignments)
+	return controller, store, req.RunID, assignments
+}
 
-	repaired, err := controller.RepairAssignmentsWithoutResults(context.Background(), req.RunID)
-	require.NoError(t, err)
-	assert.Equal(t, 1, repaired)
+// Repair records a result the verifier accepts for every terminal lifecycle
+// that reached it without one. COMPLETED claims an execution that has no
+// evidence, so its recovered result is FAILED.
+func TestRepairAssignmentsWithoutResults_RecoveredResultVerifies(t *testing.T) {
+	ctx := context.Background()
+	completedAt := time.Unix(1_700_000_100, 0).UTC()
+	tests := []struct {
+		name      string
+		lifecycle evalv1.EvaluationAssignmentLifecycleStatus
+		want      evalv1.EvaluationAssignmentLifecycleStatus
+	}{
+		{"stopped", evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_STOPPED, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_STOPPED},
+		{"failed", evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED},
+		{"provider failed", evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED},
+		{"grader failed", evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED},
+		{"invalid evidence", evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE},
+		{"completed without evidence", evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			controller, store, runID, assignments := scheduledRepairRun(t, completedAt.Add(time.Hour))
+			assignment := assignments[0]
+			assignment.LifecycleStatus = tt.lifecycle
+			assignment.CompletedAt = timestamppb.New(completedAt)
+			require.NoError(t, store.SaveAssignment(ctx, assignment))
 
-	exists, err := store.AssignmentResultExists(context.Background(), req.RunID, assignment.GetAssignmentId())
+			repaired, err := controller.RepairAssignmentsWithoutResults(ctx, runID)
+			require.NoError(t, err)
+			assert.Equal(t, 1, repaired)
+
+			result, err := store.LoadAssignmentResult(ctx, runID, assignment.GetAssignmentId())
+			require.NoError(t, err)
+			stored, err := store.LoadAssignment(ctx, runID, assignment.GetAssignmentId())
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, result.GetLifecycleStatus())
+			assert.Equal(t, executionFailureDetailPrefix+string(ExecutionFailureRecovered), result.GetDeterministicGrades()[0].GetDetail())
+			assert.Equal(t, completedAt, result.GetCompletedAt().AsTime(), "repair keeps the recorded completion time")
+			require.NoError(t, ValidateAssignmentResultDigest(result))
+			assert.Empty(t, verifyExecutorFailureResult(stored, result))
+		})
+	}
+}
+
+// A cancelled run's stopped assignments have no result until repair records
+// one. The whole run then verifies with the lifecycle cancel gave them, including
+// a tool-bearing assignment whose run stopped before its model was probed.
+func TestRepairAssignmentsWithoutResults_CancelledRunVerifies(t *testing.T) {
+	for _, probeRequired := range []bool{false, true} {
+		t.Run(fmt.Sprintf("tool calling probe required %t", probeRequired), func(t *testing.T) {
+			ctx := context.Background()
+			now := time.Unix(1_700_000_100, 0).UTC()
+			store := NewStore(newCampaignMemoryFileService())
+			controller := NewCampaignController(store, nil, func() time.Time { return now }, func(prefix string) string { return prefix + "-1" })
+			req := testCampaignInitRequest(t)
+			req.Catalog.ToolCallingProbeRequired = probeRequired
+			digest, err := ComputeScenarioCatalogDigest(req.Catalog)
+			require.NoError(t, err)
+			req.Catalog.CatalogDigest = digest
+			_, err = controller.InitializeCampaign(ctx, req)
+			require.NoError(t, err)
+			scheduled, err := controller.ScheduleRun(ctx, req.RunID)
+			require.NoError(t, err)
+
+			stopped, err := controller.CancelRun(ctx, req.RunID)
+			require.NoError(t, err)
+			require.Equal(t, scheduled, stopped)
+			repaired, err := controller.RepairAssignmentsWithoutResults(ctx, req.RunID)
+			require.NoError(t, err)
+			require.Equal(t, stopped, repaired)
+
+			report, err := NewCampaignRunVerifier(func() time.Time { return now }).VerifyRun(ctx, store, req.RunID, req.Catalog, req.ScenarioArtifacts)
+			require.NoError(t, err)
+			assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus(), report.GetFailureReasons())
+			assert.Equal(t, uint32(scheduled), report.GetVerifiedAssignmentCount())
+		})
+	}
+}
+
+// cancelledToolProbeRun schedules and cancels a run whose catalog requires the
+// tool-calling probe, so no assignment executed and no probe was frozen.
+func cancelledToolProbeRun(t *testing.T, store *Store, now time.Time) (*CampaignController, CampaignInitRequest, []*evalv1.EvaluationAssignment) {
+	t.Helper()
+	ctx := context.Background()
+	controller := NewCampaignController(store, nil, func() time.Time { return now }, func(prefix string) string { return prefix + "-1" })
+	req := testCampaignInitRequest(t)
+	req.Catalog.ToolCallingProbeRequired = true
+	digest, err := ComputeScenarioCatalogDigest(req.Catalog)
 	require.NoError(t, err)
-	assert.True(t, exists)
+	req.Catalog.CatalogDigest = digest
+	_, err = controller.InitializeCampaign(ctx, req)
+	require.NoError(t, err)
+	_, err = controller.ScheduleRun(ctx, req.RunID)
+	require.NoError(t, err)
+	_, err = controller.CancelRun(ctx, req.RunID)
+	require.NoError(t, err)
+	assignments, err := store.ListAssignments(ctx, req.RunID)
+	require.NoError(t, err)
+	require.NotEmpty(t, assignments)
+	return controller, req, assignments
+}
+
+// saveMisclassifiedStoppedResult persists the record repair once wrote for a
+// stopped assignment: internal_error carrying the STOPPED lifecycle.
+func saveMisclassifiedStoppedResult(t *testing.T, store *Store, assignment *evalv1.EvaluationAssignment, mutate func(*evalv1.EvaluationAssignmentResult)) *evalv1.EvaluationAssignmentResult {
+	t.Helper()
+	result := executorFailureAssignmentResult(assignment, ExecutionFailureInternal, "", assignment.GetCompletedAt())
+	result.LifecycleStatus = assignment.GetLifecycleStatus()
+	if mutate != nil {
+		mutate(result)
+	}
+	digest, err := ComputeAssignmentResultDigest(result)
+	require.NoError(t, err)
+	result.ResultDigest = digest
+	require.NoError(t, store.SaveAssignmentResult(context.Background(), result))
+	return result
+}
+
+// Repair replaces a stopped result it misclassified as internal_error, once,
+// and the whole run then verifies, including cells whose model was never probed.
+func TestRepairAssignmentsWithoutResults_ReplacesMisclassifiedStoppedResults(t *testing.T) {
+	ctx := context.Background()
+	now := time.Unix(1_700_000_100, 0).UTC()
+	store := NewStore(newCampaignRuntimeFileService(t))
+	controller, req, assignments := cancelledToolProbeRun(t, store, now)
+	for _, assignment := range assignments {
+		saveMisclassifiedStoppedResult(t, store, assignment, nil)
+	}
+	verify := func() *evalv1.EvaluationVerificationReport {
+		report, err := NewCampaignRunVerifier(func() time.Time { return now }).VerifyRun(ctx, store, req.RunID, req.Catalog, req.ScenarioArtifacts)
+		require.NoError(t, err)
+		return report
+	}
+	require.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, verify().GetStatus())
+
+	repaired, err := controller.RepairAssignmentsWithoutResults(ctx, req.RunID)
+	require.NoError(t, err)
+	assert.Equal(t, len(assignments), repaired)
+	report := verify()
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus(), report.GetFailureReasons())
+
+	repaired, err = controller.RepairAssignmentsWithoutResults(ctx, req.RunID)
+	require.NoError(t, err)
+	assert.Zero(t, repaired, "a replaced result is not replaced again")
+}
+
+// Repair replaces only the exact misclassified record. A genuine executor
+// failure and a stopped record carrying anything else are left as stored.
+func TestRepairAssignmentsWithoutResults_LeavesOtherStoredResults(t *testing.T) {
+	ctx := context.Background()
+	now := time.Unix(1_700_000_100, 0).UTC()
+	failedLifecycle := evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED
+	tests := []struct {
+		name      string
+		lifecycle evalv1.EvaluationAssignmentLifecycleStatus
+		mutate    func(*evalv1.EvaluationAssignmentResult)
+		trace     bool
+	}{
+		{name: "internal error on a failed assignment", lifecycle: failedLifecycle},
+		{name: "stopped record with a tool call", mutate: func(r *evalv1.EvaluationAssignmentResult) {
+			r.ToolCalls = []*evalv1.ToolCallRecord{{CallId: "c1"}}
+		}},
+		{name: "stopped record with a sealed trace", trace: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := NewStore(newCampaignRuntimeFileService(t))
+			controller, req, assignments := cancelledToolProbeRun(t, store, now)
+			for _, assignment := range assignments {
+				require.NoError(t, store.SaveAssignmentResult(ctx, mustRecoveredResult(t, controller, assignment)))
+			}
+			target := assignments[0]
+			if tt.lifecycle != evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_UNSPECIFIED {
+				target.LifecycleStatus = tt.lifecycle
+				require.NoError(t, store.SaveAssignment(ctx, target))
+			}
+			stored := saveMisclassifiedStoppedResult(t, store, target, tt.mutate)
+			if tt.trace {
+				workspace, err := NewScenarioWorkspace(agentTestWorkingDirectory, req.RunID, "attempt-1")
+				require.NoError(t, err)
+				traceBody, err := SealAgentTrace(&AgentTrace{RunID: req.RunID, AssignmentID: target.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Workspace: AgentTraceWorkspace(workspace), Input: testAgentTraceInput(), FinalOutput: "Checkout fails on payment timeouts."})
+				require.NoError(t, err)
+				require.NoError(t, store.SaveAssignmentAgentTrace(ctx, req.RunID, target.GetAssignmentId(), traceBody))
+			}
+
+			repaired, err := controller.RepairAssignmentsWithoutResults(ctx, req.RunID)
+			require.NoError(t, err)
+			assert.Zero(t, repaired)
+			kept, err := store.LoadAssignmentResult(ctx, req.RunID, target.GetAssignmentId())
+			require.NoError(t, err)
+			assert.True(t, proto.Equal(stored, kept))
+		})
+	}
+}
+
+func mustRecoveredResult(t *testing.T, controller *CampaignController, assignment *evalv1.EvaluationAssignment) *evalv1.EvaluationAssignmentResult {
+	t.Helper()
+	result, err := controller.recoverTerminalAssignmentResult(assignment)
+	require.NoError(t, err)
+	return result
+}
+
+// A traceless executor failure records no execution, so a tool-bearing cell
+// verifies without a probe: a probe with no signed verdict freezes no record
+// (INV-EVAL-CAMP-31). Any other result still requires one.
+func TestVerifyRun_ProbeRequiredOnlyForResultsThatRecordExecution(t *testing.T) {
+	ctx := context.Background()
+	now := time.Unix(1_700_000_100, 0).UTC()
+	failureResult := func(execErr error) func(*testing.T, *evalv1.EvaluationAssignment) *evalv1.EvaluationAssignmentResult {
+		return func(t *testing.T, assignment *evalv1.EvaluationAssignment) *evalv1.EvaluationAssignmentResult {
+			t.Helper()
+			result, err := BuildExecutorFailureAssignmentResult(AssignmentExecutionRequest{Assignment: assignment}, execErr, now)
+			require.NoError(t, err)
+			return result
+		}
+	}
+	tests := []struct {
+		name   string
+		build  func(*testing.T, *evalv1.EvaluationAssignment) *evalv1.EvaluationAssignmentResult
+		passes bool
+	}{
+		{name: "provider stream error", build: failureResult(fmt.Errorf("probe: %w", constants.ErrInferenceProviderStreamError)), passes: true},
+		{name: "provider timeout", build: failureResult(fmt.Errorf("probe: %w", constants.ErrInferenceBackendTimeout)), passes: true},
+		{name: "internal error", build: failureResult(fmt.Errorf("probe: %w", constants.ErrEvaluationToolCallingProbeFailed)), passes: true},
+		{name: "completed without a probe", build: func(t *testing.T, assignment *evalv1.EvaluationAssignment) *evalv1.EvaluationAssignmentResult {
+			t.Helper()
+			result := executorFailureAssignmentResult(assignment, ExecutionFailureInternal, "", timestamppb.New(now))
+			result.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
+			result.DeterministicGrades[0].CriterionId = "scenario-content"
+			digest, err := ComputeAssignmentResultDigest(result)
+			require.NoError(t, err)
+			result.ResultDigest = digest
+			return result
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := NewStore(newCampaignMemoryFileService())
+			controller, req, assignments := cancelledToolProbeRun(t, store, now)
+			var target *evalv1.EvaluationAssignment
+			for _, assignment := range assignments {
+				tools, err := scenarioToolsForAssignment(req.Catalog, assignment)
+				require.NoError(t, err)
+				if target == nil && assignmentDeclaresTools(AssignmentExecutionRequest{Assignment: assignment, ScenarioTools: tools}) {
+					target = assignment
+					continue
+				}
+				require.NoError(t, store.SaveAssignmentResult(ctx, mustRecoveredResult(t, controller, assignment)))
+			}
+			require.NotNil(t, target)
+			result := tt.build(t, target)
+			target.LifecycleStatus = result.GetLifecycleStatus()
+			require.NoError(t, store.SaveAssignment(ctx, target))
+			require.NoError(t, store.SaveAssignmentResult(ctx, result))
+
+			report, err := NewCampaignRunVerifier(func() time.Time { return now }).VerifyRun(ctx, store, req.RunID, req.Catalog, req.ScenarioArtifacts)
+			require.NoError(t, err)
+			if tt.passes {
+				assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus(), report.GetFailureReasons())
+				return
+			}
+			assert.Contains(t, report.GetFailureReasons(), fmt.Sprintf("assignment %s is missing a verified run tool-calling probe", target.GetAssignmentId()))
+		})
+	}
+}
+
+// Every attempt class has a categorical reason the verifier accepts.
+func TestIsProviderFailureReason_AcceptsEveryAttemptClass(t *testing.T) {
+	for _, class := range inference.AttemptFailureClasses() {
+		assert.True(t, isProviderFailureReason(providerFailureReason(class)), string(class))
+	}
+	assert.False(t, isProviderFailureReason("provider said: secret"))
+}
+
+// Only the recovered class follows the assignment's lifecycle. Every other
+// class keeps its fixed lifecycle, so a stopped result recording internal_error
+// and a recovered result disagreeing with its assignment do not verify.
+func TestVerifyExecutorFailureResult_RejectsRecoveredLifecycleMismatch(t *testing.T) {
+	stoppedLifecycle := evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_STOPPED
+	failedLifecycle := evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED
+	completedLifecycle := evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
+	completedAt := timestamppb.New(time.Unix(1_700_000_100, 0).UTC())
+	tests := []struct {
+		name       string
+		class      ExecutionFailureClass
+		assignment evalv1.EvaluationAssignmentLifecycleStatus
+		result     evalv1.EvaluationAssignmentLifecycleStatus
+	}{
+		{"internal error on a stopped assignment", ExecutionFailureInternal, stoppedLifecycle, stoppedLifecycle},
+		{"recovered failed on a stopped assignment", ExecutionFailureRecovered, stoppedLifecycle, failedLifecycle},
+		{"recovered stopped on a failed assignment", ExecutionFailureRecovered, failedLifecycle, stoppedLifecycle},
+		{"recovered completed on a completed assignment", ExecutionFailureRecovered, completedLifecycle, completedLifecycle},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assignment := &evalv1.EvaluationAssignment{AssignmentId: "a1", RunId: "r1", CampaignId: "c1", LifecycleStatus: tt.assignment}
+			result := executorFailureAssignmentResult(assignment, tt.class, "", completedAt)
+			result.LifecycleStatus = tt.result
+			assert.NotEmpty(t, verifyExecutorFailureResult(assignment, result))
+		})
+	}
 }
 
 // A running assignment whose frozen scenario names a tool the agent catalog
@@ -349,6 +643,7 @@ func TestClassifyExecutionFailure_MapsSentinelsToClosedClasses(t *testing.T) {
 		{name: "evidence", err: fmt.Errorf("observe: %w", constants.ErrEvaluationObservationUnavailable), want: ExecutionFailureEvidence},
 		{name: "held context", err: assignmentExecutionError("held context", constants.ErrEvaluationHeldContextUnavailable), want: ExecutionFailureHeldContext},
 		{name: "scenario contract", err: assignmentExecutionError("scope tools", constants.ErrEvaluationScenarioContractInvalid), want: ExecutionFailureScenarioContract},
+		{name: "recovered without result", err: constants.ErrEvaluationRecoveredResultMissing, want: ExecutionFailureRecovered},
 		{name: "verification", err: fmt.Errorf("verify: %w", constants.ErrEvalRunVerificationFailed), want: ExecutionFailureVerification},
 		{name: "inference backend", err: fmt.Errorf("infer: %w", constants.ErrInferenceBackendUnavailable), want: ExecutionFailureProvider},
 		{name: "provider stream error", err: fmt.Errorf("infer: %w", constants.ErrInferenceProviderStreamError), want: ExecutionFailureProvider},

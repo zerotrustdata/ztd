@@ -502,6 +502,52 @@ describe('LiveEventStream', () => {
       expect(table.getByText('qwen-4b')).toBeInTheDocument();
     });
 
+    // A formation publishes its role invocations as it finishes, and its terminal
+    // lifecycle names only the designated role. A role row that stayed Invoked read
+    // as an investigation still running beside the next one.
+    it.each([
+      { terminal: 'invalid_evidence', kind: 'assignment_failed', lifecycle: 'failed', label: 'Invalid Evidence' },
+      { terminal: 'provider_failed', kind: 'assignment_failed', lifecycle: 'failed', label: 'Provider Failed' },
+    ] as const)('settles every role row of a formation assignment that ended $terminal', ({ terminal, kind, lifecycle, label }) => {
+      const invoked = (role: 'lite' | 'assistant' | 'primary', variant: string) => liveEvent({
+        event_id: `run-a:a1:invocation-scored:${role}:event`, kind: 'stage_updated', assignment_id: 'a1', role, variant_id: variant,
+        task_id: 'wrong-port-config', lifecycle_status: 'running', metric_delta: { latency_ms: { value: 1000 } },
+        stage_label: `model role invoked · ${role} · ${variant} · wrong-port-config`, observed_at: '2026-09-17T08:02:00Z',
+      });
+      render(stream([
+        invoked('lite', 'liquid-lfm'),
+        invoked('assistant', 'granite-3b'),
+        invoked('primary', 'qwen-4b'),
+        liveEvent({
+          event_id: 'run-a:a1:lifecycle', kind, assignment_id: 'a1', role: 'primary', variant_id: 'qwen-4b', task_id: 'wrong-port-config',
+          lifecycle_status: lifecycle, terminal_status: terminal, observed_at: '2026-09-17T08:02:00Z',
+        }),
+      ]));
+      expect(rows()).toHaveLength(3);
+      expect(screen.queryByText('Invoked')).not.toBeInTheDocument();
+      expect(screen.getAllByText(label)).toHaveLength(3);
+    });
+
+    it('settles the role rows of a completed formation assignment with its verdict', () => {
+      evalStore.loadFixtures([assignment({ assignment_id: 'a1', terminal_status: 'model_failed', metric_values: { pass: { value: 0 } } })], []);
+      render(stream([
+        liveEvent({ event_id: 'a1:lite', kind: 'stage_updated', assignment_id: 'a1', role: 'lite', variant_id: 'liquid-lfm', lifecycle_status: 'running', stage_label: 'model role invoked · lite · liquid-lfm · task', observed_at: '2026-09-17T08:02:00Z' }),
+        liveEvent({ event_id: 'a1:primary', kind: 'assignment_completed', assignment_id: 'a1', role: 'primary', variant_id: 'qwen-4b', lifecycle_status: 'completed', observed_at: '2026-09-17T08:02:00Z' }),
+      ]));
+      expect(screen.queryByText('Invoked')).not.toBeInTheDocument();
+      expect(screen.getAllByText('Model failed')).toHaveLength(2);
+    });
+
+    it('keeps a role row of a running assignment Invoked, and another assignment\'s result does not settle it', () => {
+      render(stream([
+        liveEvent({ event_id: 'a1:lite', kind: 'stage_updated', assignment_id: 'a1', role: 'lite', variant_id: 'liquid-lfm', lifecycle_status: 'running', stage_label: 'model role invoked · lite · liquid-lfm · task', observed_at: '2026-09-17T08:02:00Z' }),
+        liveEvent({ event_id: 'a1:primary', kind: 'assignment_started', assignment_id: 'a1', role: 'primary', variant_id: 'qwen-4b', lifecycle_status: 'running', observed_at: '2026-09-17T08:01:00Z' }),
+        liveEvent({ event_id: 'a2:primary', kind: 'assignment_failed', assignment_id: 'a2', role: 'primary', variant_id: 'qwen-4b', lifecycle_status: 'failed', terminal_status: 'invalid_evidence', observed_at: '2026-09-17T08:03:00Z' }),
+      ]));
+      expect(screen.getByText('Invoked')).toBeInTheDocument();
+      expect(screen.getAllByText('Invalid Evidence')).toHaveLength(1);
+    });
+
     it('renders a spinner when connecting and a status dot when live', () => {
       const { rerender } = render(
         <MemoryRouter>

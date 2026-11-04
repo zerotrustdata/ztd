@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -85,15 +86,17 @@ func ClassifyAttemptFailure(err error) AttemptFailureClass {
 	}
 }
 
-func (c AttemptFailureClass) valid() bool {
-	switch c {
-	case AttemptFailureBackendUnavailable, AttemptFailureBackendTimeout, AttemptFailureModelNotFound,
+// AttemptFailureClasses returns every class ClassifyAttemptFailure can return.
+func AttemptFailureClasses() []AttemptFailureClass {
+	return []AttemptFailureClass{
+		AttemptFailureBackendUnavailable, AttemptFailureBackendTimeout, AttemptFailureModelNotFound,
 		AttemptFailureCapabilityRejected, AttemptFailureContextOverflow, AttemptFailureResponseInvalid,
-		AttemptFailureStreamError, AttemptFailureGenerateFailed, AttemptFailureCanceled, AttemptFailureInternal:
-		return true
-	default:
-		return false
+		AttemptFailureStreamError, AttemptFailureGenerateFailed, AttemptFailureCanceled, AttemptFailureInternal,
 	}
+}
+
+func (c AttemptFailureClass) valid() bool {
+	return slices.Contains(AttemptFailureClasses(), c)
 }
 
 type fileAttemptStore struct {

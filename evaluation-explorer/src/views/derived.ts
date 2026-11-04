@@ -132,12 +132,25 @@ export function isTribunalVoteEvent(event: LiveEvent): boolean {
   return event.stage_label?.startsWith(TRIBUNAL_VOTE_PREFIX) ?? false;
 }
 
+const SETTLED_LIFECYCLES = new Set<LiveEvent['lifecycle_status']>(['completed', 'failed', 'stopped']);
+
+/** True for a row whose assignment has ended: its own terminal result, or a
+ *  formation role row that took the assignment's terminal status. */
+export function isSettledAssignmentRow(event: LiveEvent): boolean {
+  return isTerminalStreamKind(event.kind)
+    || (Boolean(event.assignment_id) && ASSIGNMENT_ROW_KINDS.has(event.kind) && !isTribunalVoteEvent(event) && SETTLED_LIFECYCLES.has(event.lifecycle_status));
+}
+
 /** One stream row per assignment, carrying the assignment's current status.
  *  Multi-role formation assignments (e.g. investigations suite) maintain separate
- *  rows per role so Lite, Assistant, and Primary stages remain visible.
- *  Tribunal vote events are preserved as their own rows. */
+ *  rows per role so Lite, Assistant, and Primary stages remain visible. A terminal
+ *  event names only the designated role, so every other role row takes that
+ *  assignment's terminal status; it keeps its own kind, model, and metrics, and
+ *  still counts once in progress. Tribunal vote events are preserved as their own
+ *  rows. */
 function collapseAssignmentRows(events: LiveEvent[]): LiveEvent[] {
   const rows = new Map<string, LiveEvent>();
+  const terminals = new Map<string, LiveEvent>();
   const metrics = new Map<string, NonNullable<LiveEvent['metric_delta']>>();
   const metricKey = (event: LiveEvent) =>
     `${event.dataset_id}:${event.run_id}:${event.assignment_id}:${event.variant_id}:${event.role}`;
@@ -161,6 +174,11 @@ function collapseAssignmentRows(events: LiveEvent[]): LiveEvent[] {
       metrics.set(key, { ...metrics.get(key), ...event.metric_delta });
     }
     if (STREAM_HIDDEN_KINDS.has(event.kind)) continue;
+    if (event.assignment_id && isTerminalStreamKind(event.kind)) {
+      const key = assignmentRowKey(event);
+      const known = terminals.get(key);
+      terminals.set(key, known ? currentAssignmentEvent(known, event) : event);
+    }
 
     let key: string;
     if (isTribunalVoteEvent(event)) {
@@ -184,9 +202,16 @@ function collapseAssignmentRows(events: LiveEvent[]): LiveEvent[] {
     const observed = metrics.get(metricKey(event));
     // Terminal lifecycle records carry no measurements. Retain the observations
     // already published for this assignment's model and role; result deltas win.
-    return isTerminalStreamKind(event.kind) && observed
-      ? { ...event, metric_delta: { ...observed, ...event.metric_delta } }
-      : event;
+    if (isTerminalStreamKind(event.kind)) {
+      return observed ? { ...event, metric_delta: { ...observed, ...event.metric_delta } } : event;
+    }
+    const terminal = event.assignment_id && ASSIGNMENT_ROW_KINDS.has(event.kind) && !isTribunalVoteEvent(event)
+      ? terminals.get(assignmentRowKey(event))
+      : undefined;
+    if (!terminal) return event;
+    const settled: LiveEvent = { ...event, lifecycle_status: terminal.lifecycle_status };
+    if (terminal.terminal_status) settled.terminal_status = terminal.terminal_status;
+    return settled;
   });
 }
 
