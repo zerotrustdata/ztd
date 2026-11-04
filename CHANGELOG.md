@@ -11,6 +11,12 @@ compatible with the previous release in the same minor series. See `INV-REL-VER-
 
 ---
 
+## v1.8.x
+
+| Version | Date | Description | Notes |
+|---------|------|-------------|-------|
+| 1.8.0 | 2026-11-04 | Typed governed Ollama model pull and copy, single-path file ledger with sharded snapshots, signed failed observer receipts as evidence, append-only public publisher outbox, `eval formations create` rename, removal of the hidden `operator model` commands and file-edit backup fields, and Explorer leaderboard release series. | [v1.8.0](docs/release_notes/v1.8.x/v1.8.0.md) |
+
 ## v1.7.x
 
 | Version | Date | Description | Notes |

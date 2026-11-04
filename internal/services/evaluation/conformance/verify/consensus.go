@@ -117,7 +117,7 @@ func (r *recordCheck) consensusReceipt(bracketRuntime string, receipt *operatorv
 	if err != nil {
 		return oracle.Outcome{}, err
 	}
-	if observation && (outcome.Kind != oracle.OutcomeExecuted || outcome.Commitment == nil) {
+	if observation && outcome.Kind != oracle.OutcomeRejected && outcome.Commitment == nil {
 		return oracle.Outcome{}, constants.ErrConformanceReceiptUnclassifiable
 	}
 	if runtime != bracketRuntime {

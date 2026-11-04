@@ -1483,6 +1483,7 @@ var (
 	ErrEvaluationPostureUnsupported          = errors.New("evaluation: governance posture is unsupported")
 	ErrEvaluationRunGovernanceChanged        = errors.New("evaluation: Gateway posture or consensus binding differs from what the run froze at start; start a new run")
 	ErrEvaluationObservationUnavailable      = errors.New("evaluation: independent observation is unavailable")
+	ErrEvaluationObservationFailed           = errors.New("evaluation: observer signed a failed receipt")
 	ErrEvaluationReportPersistFailed         = errors.New("evaluation: report persistence failed")
 	ErrEvaluationTargetAmbiguous             = errors.New("evaluation: target operator selection is ambiguous")
 	ErrEvaluationDispatchFailed              = errors.New("evaluation: governed dispatch failed")

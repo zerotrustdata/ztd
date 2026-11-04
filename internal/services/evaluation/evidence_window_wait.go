@@ -99,7 +99,7 @@ func awaitEvidenceWindows(
 
 // missingEvidenceWindowsError marks windows that never arrived as unavailable
 // evidence, keeping why the wait ended and a sample of the missing attempts.
-func missingEvidenceWindowsError(kind, hint string, cause error, pending map[string]struct{}) error {
+func missingEvidenceWindowsError[V any](kind, hint string, cause error, pending map[string]V) error {
 	ids := make([]string, 0, len(pending))
 	for id := range pending {
 		ids = append(ids, id)

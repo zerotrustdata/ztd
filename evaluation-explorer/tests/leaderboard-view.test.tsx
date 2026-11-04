@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -10,6 +11,10 @@ import { MODEL_ROLE_WIRE_ORDER } from '../src/content/roles';
 import { evalStore } from '../src/state/store';
 import { PREF } from '../src/state/dataset';
 import { LeaderboardView } from '../src/views/LeaderboardView';
+
+const currentRelease = readFileSync('../VERSION', 'utf8').trim();
+const currentSeries = currentRelease.replace(/\.\d+$/, '.x');
+const currentPatches = [0, 1, 2, 3].map((patch) => currentRelease.replace(/\.\d+$/, `.${patch}`));
 
 describe('LeaderboardView', () => {
   beforeEach(() => {
@@ -372,7 +377,7 @@ describe('LeaderboardView', () => {
     expect(panel.getByRole('link', { name: 'Unknown artifact size' })).toBeInTheDocument();
   });
 
-  it('defaults to v1.7.x and includes all v1.7.0, v1.7.1, v1.7.2, and v1.7.3 models in the leaderboard', () => {
+  it('defaults to the current release series and includes every patch release in the leaderboard', () => {
     const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
     const makeModel = (variant_id: string, display_name: string, release: string): ModelSummary[] =>
       MODEL_ROLE_WIRE_ORDER.map((role) => ({
@@ -393,12 +398,9 @@ describe('LeaderboardView', () => {
       }));
 
     evalStore.loadFixtures([
-      ...makeModel('model-170', 'Model v1.7.0', 'v1.7.0'),
-      ...makeModel('model-171', 'Model v1.7.1', 'v1.7.1'),
-      ...makeModel('model-172', 'Model v1.7.2', 'v1.7.2'),
-      ...makeModel('model-173', 'Model v1.7.3', 'v1.7.3'),
-      ...makeModel('model-160', 'Model v1.6.0', 'v1.6.0'),
-      ...makeModel('model-161', 'Model v1.6.1', 'v1.6.1'),
+      ...currentPatches.flatMap((release) => makeModel(`model-${release}`, `Model ${release}`, release)),
+      ...makeModel('model-090', 'Model v0.9.0', 'v0.9.0'),
+      ...makeModel('model-091', 'Model v0.9.1', 'v0.9.1'),
     ], []);
 
     // Render leaderboard with default route (no query param)
@@ -409,31 +411,29 @@ describe('LeaderboardView', () => {
     );
 
     const selector = screen.getByRole('combobox', { name: 'Filter by release' }) as HTMLSelectElement;
-    expect(selector.value).toBe('v1.7.x');
+    expect(selector.value).toBe(currentSeries);
 
     const options = Array.from(selector.options).map((opt) => opt.value);
-    expect(options).toEqual(['all', 'v1.7.x', 'v1.6.x']);
-    expect(options).not.toContain('v1.7.0');
-    expect(options).not.toContain('v1.7.1');
-    expect(options).not.toContain('v1.7.2');
-    expect(options).not.toContain('v1.7.3');
-    expect(options).not.toContain('v1.6.0');
+    expect(options).toEqual(['all', currentSeries, 'v0.9.x']);
+    for (const release of currentPatches) {
+      expect(options).not.toContain(release);
+    }
+    expect(options).not.toContain('v0.9.0');
 
     const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
-    // All v1.7.0, v1.7.1, v1.7.2, and v1.7.3 models must be included in the leaderboard
-    expect(panel.getByRole('link', { name: 'Model v1.7.0' })).toBeInTheDocument();
-    expect(panel.getByRole('link', { name: 'Model v1.7.1' })).toBeInTheDocument();
-    expect(panel.getByRole('link', { name: 'Model v1.7.2' })).toBeInTheDocument();
-    expect(panel.getByRole('link', { name: 'Model v1.7.3' })).toBeInTheDocument();
+    // Every patch release of the current series must be included in the leaderboard
+    for (const release of currentPatches) {
+      expect(panel.getByRole('link', { name: `Model ${release}` })).toBeInTheDocument();
+    }
 
-    // v1.6.x models must not be included
-    expect(panel.queryByRole('link', { name: 'Model v1.6.0' })).not.toBeInTheDocument();
-    expect(panel.queryByRole('link', { name: 'Model v1.6.1' })).not.toBeInTheDocument();
+    // Models of an older series must not be included
+    expect(panel.queryByRole('link', { name: 'Model v0.9.0' })).not.toBeInTheDocument();
+    expect(panel.queryByRole('link', { name: 'Model v0.9.1' })).not.toBeInTheDocument();
 
-    // Selecting v1.6.x switches to v1.6.x models
-    fireEvent.change(selector, { target: { value: 'v1.6.x' } });
-    expect(panel.getByRole('link', { name: 'Model v1.6.0' })).toBeInTheDocument();
-    expect(panel.getByRole('link', { name: 'Model v1.6.1' })).toBeInTheDocument();
-    expect(panel.queryByRole('link', { name: 'Model v1.7.0' })).not.toBeInTheDocument();
+    // Selecting the older series switches to its models
+    fireEvent.change(selector, { target: { value: 'v0.9.x' } });
+    expect(panel.getByRole('link', { name: 'Model v0.9.0' })).toBeInTheDocument();
+    expect(panel.getByRole('link', { name: 'Model v0.9.1' })).toBeInTheDocument();
+    expect(panel.queryByRole('link', { name: `Model ${currentPatches[0]}` })).not.toBeInTheDocument();
   });
 });

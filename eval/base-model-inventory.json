@@ -1,8 +1,8 @@
 {
   "campaign_id": "eval-genesis-homogeneous",
-  "model_registry_digest": "1f22ee38b067de8ed68017070fdb5b9ea87da3c1174506a74acaa3cd8722137e",
-  "model_count": 102,
-  "homogeneous_cell_count": 8670,
+  "model_registry_digest": "d2553beebca6b1697f36e114845aedb4fc71f54ad3ade2472f0fc25d307eb26a",
+  "model_count": 85,
+  "homogeneous_cell_count": 7225,
   "variants": [
     {
       "variantId": "impulse2000-smollm3-3b-q4-k-m",
@@ -99,36 +99,6 @@
       ]
     },
     {
-      "variantId": "gemma4-26b",
-      "providerClass": "ollama",
-      "servedModelTag": "gemma4:26b",
-      "modelDigest": "6263f0954d68ce3dbd2db7753e011d8d2b907bc575c18d289022c3a13d2f7f27",
-      "modelFamily": "gemma4",
-      "parameterCount": "26000000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 262144
-    },
-    {
-      "variantId": "gemma4-26b-moe",
-      "providerClass": "ollama",
-      "servedModelTag": "gemma4:26b-moe",
-      "modelDigest": "ba166c93e417269e790fce7f468d30688339615c11d6e33c0cc1db9b3b946bbf",
-      "modelFamily": "gemma4",
-      "parameterCount": "26000000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 262144
-    },
-    {
-      "variantId": "gemma4-31b",
-      "providerClass": "ollama",
-      "servedModelTag": "gemma4:31b",
-      "modelDigest": "5abb6f7bc9d298be675e731081b58509aecceef44639b6f83a3e27977ab6b5a0",
-      "modelFamily": "gemma4",
-      "parameterCount": "31000000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 262144
-    },
-    {
       "variantId": "gemma4-e2b",
       "providerClass": "ollama",
       "servedModelTag": "gemma4:e2b",
@@ -184,53 +154,6 @@
           "observationDetail": "provider advertised context_limit=131072"
         }
       ]
-    },
-    {
-      "variantId": "glm-4-7-flash-latest",
-      "providerClass": "ollama",
-      "servedModelTag": "glm-4.7-flash:latest",
-      "modelDigest": "4475827791a269b02c8ec49b1c3bc1abb5846bacf3fae015b75d33986322d8f6",
-      "modelFamily": "glm4moelite",
-      "parameterCount": "29900000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 202752,
-      "capabilityObservations": [
-        {
-          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "completion probe returned expected text"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "tool-call probe returned probe_echo"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "structured-output probe returned valid JSON"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_THINKING",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "thinking probe returned visible thinking or expected answer text"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "provider advertised context_limit=202752"
-        }
-      ]
-    },
-    {
-      "variantId": "gpt-oss-20b",
-      "providerClass": "ollama",
-      "servedModelTag": "gpt-oss:20b",
-      "modelDigest": "6346595768108197ef89b04e9a77e05d9976254a26668772d0e106a7b4dad8b1",
-      "modelFamily": "gpt-oss",
-      "parameterCount": "20914757184",
-      "quantization": "Q4_0",
-      "contextLimit": 131072
     },
     {
       "variantId": "granite3-3-2b",
@@ -560,70 +483,6 @@
       "quantization": "Q4_K_M"
     },
     {
-      "variantId": "huggingface-co-unsloth-glm-4-7-flash-gguf-q4-k-m",
-      "providerClass": "ollama",
-      "servedModelTag": "huggingface.co/unsloth/GLM-4.7-Flash-GGUF:Q4_K_M",
-      "modelDigest": "ae19295826a587920de43065116e64c8463488d4f6316d5088da94055058a7fb",
-      "modelFamily": "deepseek2",
-      "parameterCount": "29900000000",
-      "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "huggingface-co-unsloth-qwen3-6-35b-a3b-gguf-ud-q4-k-m",
-      "providerClass": "ollama",
-      "servedModelTag": "huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_M",
-      "modelDigest": "9a08a32201995fe6495ee77b63306b100054c4daba49512e3e39d580dd8cbd3e",
-      "modelFamily": "qwen35moe",
-      "parameterCount": "34700000000",
-      "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "huggingface-co-unsloth-qwen3-8-27b-gguf-ud-q4-k-m",
-      "providerClass": "ollama",
-      "servedModelTag": "huggingface.co/unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M",
-      "modelDigest": "bbbf1a40230b3ddc3b61e538123de826b71e7cde802643ccb6f0b8b03c03153a",
-      "modelFamily": "qwen35",
-      "parameterCount": "27300000000",
-      "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "huggingface-co-unsloth-gpt-oss-20b-gguf-q4-0",
-      "providerClass": "ollama",
-      "servedModelTag": "huggingface.co/unsloth/gpt-oss-20b-GGUF:Q4_0",
-      "modelDigest": "6346595768108197ef89b04e9a77e05d9976254a26668772d0e106a7b4dad8b1",
-      "modelFamily": "gpt-oss",
-      "parameterCount": "20900000000",
-      "quantization": "Q4_0",
-      "contextLimit": 131072,
-      "capabilityObservations": [
-        {
-          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "completion probe returned expected text"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "tool-call probe returned probe_echo"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "structured-output probe returned valid JSON"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_THINKING",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "thinking probe returned visible thinking or expected answer text"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "provider advertised context_limit=131072"
-        }
-      ]
-    },
-    {
       "variantId": "kitsonk-watt-tool-8b-latest",
       "providerClass": "ollama",
       "servedModelTag": "kitsonk/watt-tool-8B:latest",
@@ -842,43 +701,6 @@
       ]
     },
     {
-      "variantId": "north-mini-code-1-0-latest",
-      "providerClass": "ollama",
-      "servedModelTag": "north-mini-code-1.0:latest",
-      "modelDigest": "d8b269ad5c7c7144ce104b83ce93bc3efb85e0f74e01be6be5f5d6f7ca90b60f",
-      "modelFamily": "cohere2moe",
-      "parameterCount": "30500000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 500000,
-      "capabilityObservations": [
-        {
-          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "completion probe returned expected text"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "tool-call probe returned probe_echo"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "structured-output probe returned valid JSON"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_THINKING",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "thinking probe returned visible thinking or expected answer text"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "provider advertised context_limit=500000"
-        }
-      ]
-    },
-    {
       "variantId": "olmo-3-7b",
       "providerClass": "ollama",
       "servedModelTag": "olmo-3:7b",
@@ -1051,61 +873,6 @@
       "contextLimit": 262144
     },
     {
-      "variantId": "qwen3-6-35b-a3b",
-      "providerClass": "ollama",
-      "servedModelTag": "qwen3.6:35b-a3b",
-      "modelDigest": "9a08a32201995fe6495ee77b63306b100054c4daba49512e3e39d580dd8cbd3e",
-      "modelFamily": "qwen35moe",
-      "parameterCount": "34700000000",
-      "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "qwen3-6-35b-a3b-q4-k-m",
-      "providerClass": "ollama",
-      "servedModelTag": "qwen3.6:35b-a3b-q4_K_M",
-      "modelDigest": "07d35212591fc27746f0a317c975a6d68754fb38e9053d82e25f06057af28522",
-      "modelFamily": "qwen35moe",
-      "parameterCount": "36000000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 262144,
-      "capabilityObservations": [
-        {
-          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "completion probe returned expected text"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "tool-call probe returned probe_echo"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "structured-output probe returned valid JSON"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_THINKING",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "thinking probe returned visible thinking or expected answer text"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "provider advertised context_limit=262144"
-        }
-      ]
-    },
-    {
-      "variantId": "qwen3-8-27b",
-      "providerClass": "ollama",
-      "servedModelTag": "qwen3.8:27b",
-      "modelDigest": "bbbf1a40230b3ddc3b61e538123de826b71e7cde802643ccb6f0b8b03c03153a",
-      "modelFamily": "qwen35",
-      "parameterCount": "27300000000",
-      "quantization": "Q4_K_M"
-    },
-    {
       "variantId": "qwen3-0-6b",
       "providerClass": "ollama",
       "servedModelTag": "qwen3:0.6b",
@@ -1216,43 +983,6 @@
       "quantization": "F16"
     },
     {
-      "variantId": "smollm3-3b",
-      "providerClass": "ollama",
-      "servedModelTag": "smollm3:3b",
-      "modelDigest": "e9cf8ed8eb210e0b9ddd314bb73260253d461c16d57da7f4459e4327fc580512",
-      "modelFamily": "smollm3",
-      "parameterCount": "3100000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 65536,
-      "capabilityObservations": [
-        {
-          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "completion probe returned expected text"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
-          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
-          "observationDetail": "tool-call probe did not return probe_echo"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "structured-output probe returned valid JSON"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_THINKING",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "thinking probe returned visible thinking or expected answer text"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "provider advertised context_limit=65536"
-        }
-      ]
-    },
-    {
       "variantId": "spark-x2-6-4b",
       "providerClass": "ollama",
       "servedModelTag": "spark-x2.6:4b",
@@ -1270,117 +1000,6 @@
       "modelFamily": "llama",
       "parameterCount": "1000000000",
       "quantization": "Q4_0"
-    },
-    {
-      "variantId": "toolace-8b",
-      "providerClass": "ollama",
-      "servedModelTag": "toolace:8b",
-      "modelDigest": "293dad8c912059a9f27a3b8d7ae123a2beccca76d2bb1cd1ed832deb146f210e",
-      "modelFamily": "llama",
-      "parameterCount": "8029999999",
-      "quantization": "Q8_0",
-      "contextLimit": 131072,
-      "capabilityObservations": [
-        {
-          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "completion probe returned expected text"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
-          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
-          "observationDetail": "provider rejected tool-call probe"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
-          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
-          "observationDetail": "structured-output probe returned invalid schema payload"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_THINKING",
-          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
-          "observationDetail": "provider rejected thinking probe"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "provider advertised context_limit=131072"
-        }
-      ]
-    },
-    {
-      "variantId": "watttool-8b",
-      "providerClass": "ollama",
-      "servedModelTag": "watttool:8b",
-      "modelDigest": "a588b16a11785acef4685d26967a390892e1464935ea94c56e018576725aa80e",
-      "modelFamily": "llama",
-      "parameterCount": "8000000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 131072,
-      "capabilityObservations": [
-        {
-          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
-          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
-          "observationDetail": "completion probe returned unexpected output"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
-          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
-          "observationDetail": "tool-call probe did not return probe_echo"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "structured-output probe returned valid JSON"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_THINKING",
-          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
-          "observationDetail": "provider rejected thinking probe"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "provider advertised context_limit=131072"
-        }
-      ]
-    },
-    {
-      "variantId": "xlam2-8b-fc-r",
-      "providerClass": "ollama",
-      "servedModelTag": "xlam2:8b-fc-r",
-      "modelDigest": "6289cc92099210c18c422d9fd01792965eab3233deca6ae8e6ccd6b2b5cdd12b",
-      "modelFamily": "llama",
-      "parameterCount": "8029999999",
-      "quantization": "Q4_K_M",
-      "contextLimit": 131072,
-      "capabilityObservations": [
-        {
-          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
-          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
-          "observationDetail": "completion probe returned unexpected output"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "tool-call probe returned probe_echo"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "structured-output probe returned valid JSON"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_THINKING",
-          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
-          "observationDetail": "provider rejected thinking probe"
-        },
-        {
-          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
-          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
-          "observationDetail": "provider advertised context_limit=131072"
-        }
-      ]
     }
   ],
   "variants_inference": [
@@ -1413,18 +1032,6 @@
       "digest": "38044be4f923e5a55264ed7df4eaac2676651a905f735197c504045140c02bd3"
     },
     {
-      "model": "gemma4:26b",
-      "digest": "6263f0954d68ce3dbd2db7753e011d8d2b907bc575c18d289022c3a13d2f7f27"
-    },
-    {
-      "model": "gemma4:26b-moe",
-      "digest": "ba166c93e417269e790fce7f468d30688339615c11d6e33c0cc1db9b3b946bbf"
-    },
-    {
-      "model": "gemma4:31b",
-      "digest": "5abb6f7bc9d298be675e731081b58509aecceef44639b6f83a3e27977ab6b5a0"
-    },
-    {
       "model": "gemma4:e2b",
       "digest": "b37049369adfe3d2b653af0ab301a062ca5cbe96ace6aa0d3f2559ee9b563fc2"
     },
@@ -1435,14 +1042,6 @@
     {
       "model": "gemma4:e4b-it-qat",
       "digest": "ee665637121887cf3befff38abbb1be4ee117c7db867d97a67e29049ecd7e15f"
-    },
-    {
-      "model": "glm-4.7-flash:latest",
-      "digest": "4475827791a269b02c8ec49b1c3bc1abb5846bacf3fae015b75d33986322d8f6"
-    },
-    {
-      "model": "gpt-oss:20b",
-      "digest": "6346595768108197ef89b04e9a77e05d9976254a26668772d0e106a7b4dad8b1"
     },
     {
       "model": "granite3.3:2b",
@@ -1549,22 +1148,6 @@
       "digest": "89e70d6532d46faa1c63418a283eff7355d393909b4d16986a6820de439d3081"
     },
     {
-      "model": "huggingface.co/unsloth/GLM-4.7-Flash-GGUF:Q4_K_M",
-      "digest": "ae19295826a587920de43065116e64c8463488d4f6316d5088da94055058a7fb"
-    },
-    {
-      "model": "huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_M",
-      "digest": "9a08a32201995fe6495ee77b63306b100054c4daba49512e3e39d580dd8cbd3e"
-    },
-    {
-      "model": "huggingface.co/unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M",
-      "digest": "bbbf1a40230b3ddc3b61e538123de826b71e7cde802643ccb6f0b8b03c03153a"
-    },
-    {
-      "model": "huggingface.co/unsloth/gpt-oss-20b-GGUF:Q4_0",
-      "digest": "6346595768108197ef89b04e9a77e05d9976254a26668772d0e106a7b4dad8b1"
-    },
-    {
       "model": "kitsonk/watt-tool-8B:latest",
       "digest": "a588b16a11785acef4685d26967a390892e1464935ea94c56e018576725aa80e"
     },
@@ -1645,10 +1228,6 @@
       "digest": "24e550a16a7081881be2f1f0d91e8cc13a597472735c04119f035a0a85c67e0c"
     },
     {
-      "model": "north-mini-code-1.0:latest",
-      "digest": "d8b269ad5c7c7144ce104b83ce93bc3efb85e0f74e01be6be5f5d6f7ca90b60f"
-    },
-    {
       "model": "olmo-3:7b",
       "digest": "0b1574046d328df12ae932970a2ca7508fa544865582f3ef0824e4d5884974a9"
     },
@@ -1709,18 +1288,6 @@
       "digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90"
     },
     {
-      "model": "qwen3.6:35b-a3b",
-      "digest": "9a08a32201995fe6495ee77b63306b100054c4daba49512e3e39d580dd8cbd3e"
-    },
-    {
-      "model": "qwen3.6:35b-a3b-q4_K_M",
-      "digest": "07d35212591fc27746f0a317c975a6d68754fb38e9053d82e25f06057af28522"
-    },
-    {
-      "model": "qwen3.8:27b",
-      "digest": "bbbf1a40230b3ddc3b61e538123de826b71e7cde802643ccb6f0b8b03c03153a"
-    },
-    {
       "model": "qwen3:0.6b",
       "digest": "7df6b6e09427a769808717c0a93cadc4ae99ed4eb8bf5ca557c90846becea435"
     },
@@ -1769,28 +1336,12 @@
       "digest": "297281b699fc51376006233ca400cd664c4f7b80ed88a47ef084f1e4b089803b"
     },
     {
-      "model": "smollm3:3b",
-      "digest": "e9cf8ed8eb210e0b9ddd314bb73260253d461c16d57da7f4459e4327fc580512"
-    },
-    {
       "model": "spark-x2.6:4b",
       "digest": "3df9a31aa87b5671ac7a9854a7aa6cbf96692cf2827cc2fe7c2b766fea0e640a"
     },
     {
       "model": "tinyllama:1.1b",
       "digest": "2644915ede352ea7bdfaff0bfac0be74c719d5d5202acb63a6fb095b52f394a4"
-    },
-    {
-      "model": "toolace:8b",
-      "digest": "293dad8c912059a9f27a3b8d7ae123a2beccca76d2bb1cd1ed832deb146f210e"
-    },
-    {
-      "model": "watttool:8b",
-      "digest": "a588b16a11785acef4685d26967a390892e1464935ea94c56e018576725aa80e"
-    },
-    {
-      "model": "xlam2:8b-fc-r",
-      "digest": "6289cc92099210c18c422d9fd01792965eab3233deca6ae8e6ccd6b2b5cdd12b"
     }
   ]
 }

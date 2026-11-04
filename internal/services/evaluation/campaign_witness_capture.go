@@ -9,7 +9,10 @@ package evaluation
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -119,11 +122,11 @@ func (c *CampaignWitnessCapture) WaitForRunModelProvenanceEvidence(ctx context.C
 	if c == nil || runID == "" {
 		return fmt.Errorf("evaluation: wait for run model provenance evidence: %w", constants.ErrMissingRequiredField)
 	}
-	attemptIDs, err := c.runScoredAttemptIDs(ctx, runID)
+	attempts, err := c.runScoredAttempts(ctx, runID)
 	if err != nil {
 		return fmt.Errorf("evaluation: wait for run model provenance evidence: %w", err)
 	}
-	return c.waitForModelProvenanceEvidence(ctx, runID, attemptIDs)
+	return c.waitForModelProvenanceEvidence(ctx, runID, attempts)
 }
 
 // WaitForRunProviderObservationEvidence waits until every scored attempt of one
@@ -134,30 +137,93 @@ func (c *CampaignWitnessCapture) WaitForRunProviderObservationEvidence(ctx conte
 	if c == nil || runID == "" {
 		return fmt.Errorf("evaluation: wait for run provider observation evidence: %w", constants.ErrMissingRequiredField)
 	}
-	attemptIDs, err := c.runScoredAttemptIDs(ctx, runID)
+	attempts, err := c.runScoredAttempts(ctx, runID)
 	if err != nil {
 		return fmt.Errorf("evaluation: wait for run provider observation evidence: %w", err)
 	}
-	return c.waitForProviderObservationEvidence(ctx, runID, attemptIDs)
+	return c.waitForProviderObservationEvidence(ctx, runID, attempts)
 }
 
-// runScoredAttemptIDs returns the provider attempt ID of every scored inference in
-// one run's persisted assignment results that reached its provider.
-func (c *CampaignWitnessCapture) runScoredAttemptIDs(ctx context.Context, runID string) ([]string, error) {
+// runScoredAttempts maps the provider attempt ID of every scored inference in one
+// run's persisted assignment results that reached its provider to the assignment
+// that holds it.
+func (c *CampaignWitnessCapture) runScoredAttempts(ctx context.Context, runID string) (map[string]string, error) {
 	results, err := c.persistedResults(ctx, runID)
 	if err != nil {
 		return nil, err
 	}
-	var attemptIDs []string
-	for _, result := range results {
+	attempts := make(map[string]string)
+	for assignmentID, result := range results {
 		for _, record := range scoredModelInferences(result) {
 			// A governance-rejected inference has no provider attempt.
 			if attemptID := record.GetProviderAttemptId(); attemptID != "" {
-				attemptIDs = append(attemptIDs, attemptID)
+				attempts[attemptID] = assignmentID
 			}
 		}
 	}
-	return attemptIDs, nil
+	return attempts, nil
+}
+
+// failedObservationAttempts returns the pending attempts whose sealed trace holds
+// a FAILED receipt for action, each with that receipt's summary. Only the
+// assignments holding a pending attempt are read. A window never follows such a
+// receipt, because the observer publishes a completion only when its handler
+// succeeds. This decides only how long the run waits; verification still fails
+// closed on the window the attempt does not hold.
+func (c *CampaignWitnessCapture) failedObservationAttempts(ctx context.Context, runID string, action constants.ActionType, attempts map[string]string, pending map[string]struct{}) (map[string]string, error) {
+	assignments := make(map[string]struct{})
+	for id := range pending {
+		assignments[attempts[id]] = struct{}{}
+	}
+	failed := make(map[string]string)
+	for assignmentID := range assignments {
+		trace, err := c.store.LoadAssignmentAgentTrace(ctx, runID, assignmentID)
+		if err != nil {
+			if errors.Is(err, constants.ErrNotFound) {
+				continue
+			}
+			return nil, fmt.Errorf("evaluation: read failed observations: %w", err)
+		}
+		for _, call := range trace.ModelCalls {
+			if _, isPending := pending[call.ProviderAttemptID]; !isPending {
+				continue
+			}
+			for _, receipt := range call.ObservationReceipts {
+				if constants.ActionType(receipt.GetActionType()) == action && receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED {
+					failed[call.ProviderAttemptID] = receipt.GetResultSummary()
+				}
+			}
+		}
+	}
+	return failed, nil
+}
+
+// awaitRunEvidence waits for the pending windows of one evidence kind that can
+// still arrive (see awaitEvidenceWindows) and then reports the attempts whose
+// observer signed a failure, wrapping constants.ErrEvaluationObservationFailed.
+func (c *CampaignWitnessCapture) awaitRunEvidence(ctx context.Context, runID string, action constants.ActionType, kind, hint string, attempts map[string]string, pending map[string]struct{}, watch evidenceWindowWatch, capture evidenceWindowCapture) error {
+	if len(pending) == 0 {
+		return nil
+	}
+	failed, err := c.failedObservationAttempts(ctx, runID, action, attempts, pending)
+	if err != nil {
+		return err
+	}
+	for id := range failed {
+		delete(pending, id)
+	}
+	missing := func(cause error) error {
+		return missingEvidenceWindowsError(kind, hint, cause, pending)
+	}
+	if err := awaitEvidenceWindows(ctx, pending, watch, capture, missing); err != nil {
+		return err
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	ids := slices.Sorted(maps.Keys(failed))
+	cause := fmt.Errorf("%w: %s", constants.ErrEvaluationObservationFailed, failed[ids[0]])
+	return missingEvidenceWindowsError(kind, hint, cause, failed)
 }
 
 // persistedResults loads the persisted result of every assignment in one run that
@@ -274,14 +340,11 @@ func (c *CampaignWitnessCapture) captureModelProvenanceWindow(ctx context.Contex
 
 // waitForModelProvenanceEvidence seals the Gateway's attestation window for every
 // attempt the run does not yet hold, driven by the Gateway's attestation-recorded
-// events (see awaitEvidenceWindows). Malformed evidence and read failures return
+// events (see awaitRunEvidence). Malformed evidence and read failures return
 // immediately.
-func (c *CampaignWitnessCapture) waitForModelProvenanceEvidence(ctx context.Context, runID string, attemptIDs []string) error {
-	pending := make(map[string]struct{}, len(attemptIDs))
-	for _, id := range attemptIDs {
-		if id == "" {
-			continue
-		}
+func (c *CampaignWitnessCapture) waitForModelProvenanceEvidence(ctx context.Context, runID string, attempts map[string]string) error {
+	pending := make(map[string]struct{}, len(attempts))
+	for id := range attempts {
 		_, err := c.store.LoadModelProvenanceWindow(ctx, runID, id)
 		if err == nil {
 			continue
@@ -291,28 +354,19 @@ func (c *CampaignWitnessCapture) waitForModelProvenanceEvidence(ctx context.Cont
 		}
 		pending[id] = struct{}{}
 	}
-	if len(pending) == 0 {
-		return nil
-	}
-	missing := func(cause error) error {
-		return missingEvidenceWindowsError("model provenance attestation", "check Provenance Operator logs and storage throughput", cause, pending)
-	}
 	sealWindow := func(ctx context.Context, id string) (bool, error) {
 		return c.captureModelProvenanceWindow(ctx, runID, id)
 	}
-	return awaitEvidenceWindows(ctx, pending, c.provenance.WatchRecorded, sealWindow, missing)
+	return c.awaitRunEvidence(ctx, runID, constants.ActionTypeModelProvenanceObservation, "model provenance attestation", "check Provenance Operator logs and storage throughput", attempts, pending, c.provenance.WatchRecorded, sealWindow)
 }
 
 // waitForProviderObservationEvidence seals the Gateway's observation window and
 // attempt record for every attempt the run does not yet hold, driven by the
-// Gateway's observation-recorded events (see awaitEvidenceWindows). Read failures
+// Gateway's observation-recorded events (see awaitRunEvidence). Read failures
 // return immediately.
-func (c *CampaignWitnessCapture) waitForProviderObservationEvidence(ctx context.Context, runID string, attemptIDs []string) error {
-	pending := make(map[string]struct{}, len(attemptIDs))
-	for _, id := range attemptIDs {
-		if id == "" {
-			continue
-		}
+func (c *CampaignWitnessCapture) waitForProviderObservationEvidence(ctx context.Context, runID string, attempts map[string]string) error {
+	pending := make(map[string]struct{}, len(attempts))
+	for id := range attempts {
 		windowHeld, attemptHeld, err := c.providerEvidenceHeld(ctx, runID, id)
 		if err != nil {
 			return fmt.Errorf("evaluation: wait for provider observation %s: %w", id, err)
@@ -321,14 +375,8 @@ func (c *CampaignWitnessCapture) waitForProviderObservationEvidence(ctx context.
 			pending[id] = struct{}{}
 		}
 	}
-	if len(pending) == 0 {
-		return nil
-	}
-	missing := func(cause error) error {
-		return missingEvidenceWindowsError("provider observation", "check Observer logs and storage throughput", cause, pending)
-	}
 	sealWindow := func(ctx context.Context, id string) (bool, error) {
 		return c.captureProviderEvidence(ctx, runID, id)
 	}
-	return awaitEvidenceWindows(ctx, pending, c.providers.WatchRecorded, sealWindow, missing)
+	return c.awaitRunEvidence(ctx, runID, constants.ActionTypeProviderBoundaryObservation, "provider observation", "check Observer logs and storage throughput", attempts, pending, c.providers.WatchRecorded, sealWindow)
 }

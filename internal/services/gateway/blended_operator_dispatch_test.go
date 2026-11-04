@@ -109,8 +109,12 @@ func TestDispatchObservationReturnsEmbeddedObserverReceipt(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, string(constants.ActionTypeProviderBoundaryObservation), receipt.GetActionType())
 
-	_, err = serviceWithStatus(operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED).DispatchObservation(t.Context(), request)
+	// A failed observer still signed its outcome: the receipt comes back with the
+	// error, so the caller can claim its commitment and knows no window follows.
+	receipt, err = serviceWithStatus(operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED).DispatchObservation(t.Context(), request)
 	require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, receipt.GetStatus())
+	require.Equal(t, string(constants.ActionTypeProviderBoundaryObservation), receipt.GetActionType())
 
 	commandPayload, err := proto.Marshal(&operatorv1.CommandRequested{Command: "echo hello", ExecutionId: "execution"})
 	require.NoError(t, err)

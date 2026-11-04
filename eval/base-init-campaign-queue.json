@@ -1,34 +1,10 @@
 {
-  "pattern": "eval-init-\u003cvariant_id\u003e (legacy init-campaign for gemma4:e4b)",
+  "pattern": "eval-init-<variant_id> (legacy init-campaign for gemma4:e4b)",
   "cells_per_run": 85,
   "cells_per_run_l2_enforced": 78,
   "inventory_dir": ".ztd/eval/inventories",
   "generate_command": "./ztd eval rollout add --all",
   "models": [
-    {
-      "variant_id": "qwen3-8-27b",
-      "served_model_tag": "qwen3.8:27b",
-      "campaign_id": "eval-init-qwen3-8-27b",
-      "inventory_file": ".ztd/eval/inventories/eval-init-qwen3-8-27b.json",
-      "homogeneous_cell_count": 85,
-      "status": "pending"
-    },
-    {
-      "variant_id": "qwen3-6-35b-a3b",
-      "served_model_tag": "qwen3.6:35b-a3b",
-      "campaign_id": "eval-init-qwen3-6-35b-a3b",
-      "inventory_file": ".ztd/eval/inventories/eval-init-qwen3-6-35b-a3b.json",
-      "homogeneous_cell_count": 85,
-      "status": "pending"
-    },
-    {
-      "variant_id": "gpt-oss-20b",
-      "served_model_tag": "gpt-oss:20b",
-      "campaign_id": "eval-init-gpt-oss-20b",
-      "inventory_file": ".ztd/eval/inventories/eval-init-gpt-oss-20b.json",
-      "homogeneous_cell_count": 85,
-      "status": "pending"
-    },
     {
       "variant_id": "smollm2-135m",
       "served_model_tag": "smollm2:135m",
