@@ -998,6 +998,11 @@ func (c *CampaignPublicationCoordinator) loadRunAggregateState(ctx context.Conte
 	if err := state.attachScenarioCatalog(catalog, assignments, results); err != nil {
 		return nil, nil, nil, nil, err
 	}
+	spec, err := c.store.LoadCampaignSpec(ctx, run.GetCampaignBinding().GetCampaignId())
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	state.attachModelRegistry(spec.GetModelRegistry())
 	state.Release = release
 	if c.leaseLiveness != nil {
 		state.RunSummary, err = NewCampaignController(c.store, nil, nil, nil).RunSummary(ctx, runID)

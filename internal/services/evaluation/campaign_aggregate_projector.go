@@ -225,8 +225,8 @@ type runMetricValue struct {
 type variantRoleAggregate struct {
 	VariantID string
 	Role      string
-	// Specifications come from the frozen candidate variant;
-	// empty and zero when only a heterogeneous slot ID is bound.
+	// Specifications come from the frozen candidate variant, or from the frozen
+	// model registry through attachModelRegistry for a heterogeneous slot.
 	ServedModelTag       string
 	ParameterCount       uint64
 	ParameterCountSource operatorv1.ParameterCountSource
@@ -339,6 +339,36 @@ func assignmentIsSettled(assignment *evalv1.EvaluationAssignment, hasResult bool
 	return assignmentLifecycleIsTerminal(assignment.GetLifecycleStatus())
 }
 
+// setFrozenVariant copies a frozen candidate's specifications onto the bucket.
+func (b *variantRoleAggregate) setFrozenVariant(variant *evalv1.ModelVariant) {
+	b.ServedModelTag = variant.GetServedModelTag()
+	b.ParameterCount = variant.GetParameterCount()
+	b.ParameterCountSource = variant.GetParameterCountSource()
+	b.ModelDigest = variant.GetModelDigest()
+	b.ModelFamily = variant.GetModelFamily()
+	b.ModelFormat = variant.GetModelFormat()
+	b.ArtifactSizeBytes = variant.GetArtifactSizeBytes()
+	b.Quantization = variant.GetQuantization()
+	b.ContextLimit = variant.GetContextLimit()
+	b.ProviderClass = variant.GetProviderClass()
+}
+
+// attachModelRegistry resolves the specifications of heterogeneous slots, which
+// bind only a variant ID, from the campaign's frozen model registry.
+func (s *runAggregateState) attachModelRegistry(registry []*evalv1.ModelVariant) {
+	for _, bucket := range s.VariantRoles {
+		if bucket == nil || bucket.ServedModelTag != "" {
+			continue
+		}
+		for _, variant := range registry {
+			if variant.GetVariantId() == bucket.VariantID {
+				bucket.setFrozenVariant(variant)
+				break
+			}
+		}
+	}
+}
+
 // CollectRunAggregateState derives explorer aggregate counters from canonical
 // assignments and terminal results for one homogeneous model-role run.
 func CollectRunAggregateState(assignments []*evalv1.EvaluationAssignment, results map[string]*evalv1.EvaluationAssignmentResult) (*runAggregateState, error) {
@@ -363,16 +393,7 @@ func CollectRunAggregateState(assignments []*evalv1.EvaluationAssignment, result
 			scheduledVariants[pair.variantID] = struct{}{}
 			bucket := variantRoleAggregateFor(state, pair.variantID, pair.role)
 			if pair.variant != nil {
-				bucket.ServedModelTag = pair.variant.GetServedModelTag()
-				bucket.ParameterCount = pair.variant.GetParameterCount()
-				bucket.ParameterCountSource = pair.variant.GetParameterCountSource()
-				bucket.ModelDigest = pair.variant.GetModelDigest()
-				bucket.ModelFamily = pair.variant.GetModelFamily()
-				bucket.ModelFormat = pair.variant.GetModelFormat()
-				bucket.ArtifactSizeBytes = pair.variant.GetArtifactSizeBytes()
-				bucket.Quantization = pair.variant.GetQuantization()
-				bucket.ContextLimit = pair.variant.GetContextLimit()
-				bucket.ProviderClass = pair.variant.GetProviderClass()
+				bucket.setFrozenVariant(pair.variant)
 			}
 		}
 		designatedVariantID, err := designatedVariantIDForAssignment(assignment)
@@ -1164,6 +1185,7 @@ func BuildVerifiedModelSummaryViewRecords(input VerifiedModelSummaryProjectionIn
 	if err := state.attachScenarioCatalog(input.Catalog, input.Assignments, input.Results); err != nil {
 		return nil, err
 	}
+	state.attachModelRegistry(input.Spec.GetModelRegistry())
 	state.Release = input.Release
 	return appendVerifiedModelSummaryRecords(nil, input.Run.GetRunId(), CampaignDatasetID(input.Run.GetRunId()), input.Report.GetVerifiedAt().AsTime().UTC().Format(time.RFC3339Nano), state, input.Report, input.Applicability.EligibleModelBuckets)
 }
@@ -1725,7 +1747,8 @@ func homogeneousVariantRole(assignment *evalv1.EvaluationAssignment) (string, st
 type assignmentVariantRolePair struct {
 	variantID string
 	role      string
-	// variant is the frozen candidate identity; heterogeneous slots bind only an ID.
+	// variant is the frozen candidate identity; heterogeneous slots bind only an ID
+	// and resolve through attachModelRegistry.
 	variant *evalv1.ModelVariant
 }
 
