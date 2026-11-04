@@ -119,6 +119,7 @@ function Shell() {
               <Route path="/tasks" element={<TasksView />} />
               <Route path="/tasks/:taskId" element={<TasksView />} />
               <Route path="/methodology" element={<MethodologyView />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </main>
         </div>

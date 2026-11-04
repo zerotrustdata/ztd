@@ -27,7 +27,15 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SCEN_FILE="$REPO_ROOT/demos/vhs-scenarios.json"
 
 ids="$*"
-[ -n "$ids" ] || ids="$(python3 -c 'import json,sys; print(" ".join(s["id"] for s in json.load(open(sys.argv[1]))["scenarios"]))' "$SCEN_FILE")" || exit 1
+known="$(python3 -c 'import json,sys; print(" ".join(s["id"] for s in json.load(open(sys.argv[1]))["scenarios"]))' "$SCEN_FILE")" || exit 1
+[ -n "$ids" ] || ids="$known"
+# Reject an unknown id before any take is recorded.
+for id in $ids; do
+    case " $known " in
+        *" $id "*) ;;
+        *) echo "ERROR: unknown scenario: $id (known: $known)" >&2; exit 1 ;;
+    esac
+done
 
 OUT="${DEMO_OUT:-$REPO_ROOT/build/demos}/scenarios-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$OUT"
@@ -48,34 +56,41 @@ for id in $ids; do
 done
 
 OUT="$OUT" IDS="$ids" SCEN_FILE="$SCEN_FILE" python3 - <<'PY'
-import json, os, subprocess
+import glob, json, os
 out = os.environ["OUT"]
 byid = {s["id"]: s for s in json.load(open(os.environ["SCEN_FILE"]))["scenarios"]}
+STATUS = {2: "COMPLETED", 3: "FAILED", 4: "CANCELLED", 5: "TIMEOUT"}
 rows = []
 for n, sid in enumerate(os.environ["IDS"].split(), 1):
     s = byid.get(sid, {"title": sid, "domain": "", "prompt": "", "shows": ""})
     d = os.path.join(out, "%d-%s" % (n, sid))
     status = open(d + ".status").read().strip() if os.path.exists(d + ".status") else "FAILED"
     secs = open(d + ".seconds").read().strip() if os.path.exists(d + ".seconds") else "?"
-    rec, calls, video = {}, "-", "-"
+    rec, calls, video, attempts, log = {}, "-", "-", "-", "-"
+    logs = sorted(glob.glob(d + "/vhs-attempt-*.log"), key=lambda f: int(f.rsplit("-", 1)[1].split(".")[0]))
+    if logs:
+        attempts = str(len(logs))
+        log = "[%s](%d-%s/%s)" % (os.path.basename(logs[-1]), n, sid, os.path.basename(logs[-1]))
     if os.path.exists(d + "/recording.json"):
         rec = json.load(open(d + "/recording.json"))
         try:
             receipts = json.load(open(d + "/receipts.json"))["event_receipts"]
-            calls = ", ".join("%s" % r.get("target_resource", "?") for r in receipts)
+            calls = ", ".join("%s %s" % (r.get("target_resource", "?"), STATUS.get(r.get("status"), "?")) for r in receipts)
         except (OSError, ValueError, KeyError):
             pass
         video = "[demo.mp4](%d-%s/demo.mp4)" % (n, sid)
-    rows.append((n, s, status, secs, rec, calls, video))
+    rows.append((n, s, status, secs, rec, calls, video, attempts, log))
 with open(os.path.join(out, "INDEX.md"), "w") as f:
     f.write("# Demo scenarios\n\nOne take per persona. Watch each, keep the good ones, delete the rest.\n\n")
-    f.write("| # | Persona and task | Domain | Video | THINK | Attempts | Signed tool calls | Audit | Wall time |\n|---|---|---|---|---|---|---|---|---|\n")
-    for n, s, status, secs, rec, calls, video in rows:
-        f.write("| %d | %s | %s | %s | %s | %s | %s | %s | %ss |\n" % (
-            n, s["title"], s["domain"], video, "yes" if rec.get("think") else "no", rec.get("attempts", "-"),
-            calls, "chain OK, head seq %s" % rec["audit_head_seq"] if rec else status, secs))
+    f.write("| # | Persona and task | Domain | Video | THINK | Attempts | Signed tool calls | Audit | Wall time | Log |\n|---|---|---|---|---|---|---|---|---|---|\n")
+    for n, s, status, secs, rec, calls, video, attempts, log in rows:
+        # A failed take has no recording.json: show the configured THINK and the attempts that ran.
+        think = rec.get("think", s.get("think"))
+        f.write("| %d | %s | %s | %s | %s | %s | %s | %s | %ss | %s |\n" % (
+            n, s["title"], s["domain"], video, "yes" if think else "no", rec.get("attempts", attempts),
+            calls, "chain OK, head seq %s" % rec["audit_head_seq"] if rec else status, secs, log))
     f.write("\n## Prompts and what a good take shows\n\n")
-    for n, s, status, secs, rec, calls, video in rows:
+    for n, s, status, secs, rec, calls, video, attempts, log in rows:
         f.write("%d. **%s** (`%s`)\n   - Prompt: %s\n   - Shows: %s\n" % (n, s["title"], s.get("id", ""), s["prompt"], s["shows"]))
 print("index: " + os.path.join(out, "INDEX.md"))
 PY
