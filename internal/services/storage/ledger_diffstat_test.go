@@ -89,6 +89,27 @@ func TestLedgerService_GetDiffStat_BetweenTwoCommits(t *testing.T) {
 	assert.Equal(t, stat, result2.DiffStat, "the recorded stat is the diff from the unchanged pre-image")
 }
 
+// TestLedgerService_NewFileDiffStatCountsItsLines pins the stat recorded for a creation: a trailing
+// newline ends a line rather than starting one, and an empty file has no lines.
+func TestLedgerService_NewFileDiffStatCountsItsLines(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, content, want string
+	}{
+		{name: "empty", content: "", want: "+0 lines, 0 bytes (new file)"},
+		{name: "one_terminated_line", content: "a\n", want: "+1 lines, 2 bytes (new file)"},
+		{name: "two_terminated_lines", content: "a\nb\n", want: "+2 lines, 4 bytes (new file)"},
+		{name: "unterminated_last_line", content: "a\nb", want: "+2 lines, 3 bytes (new file)"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			lms, tempDir := setupTestLedgerForDiffStat(t)
+			result := recordMutation(t, lms, "sess-new-file", filepath.Join(tempDir, tc.name+".txt"), tempDir, tc.content)
+			assert.Equal(t, tc.want, result.DiffStat)
+		})
+	}
+}
+
 // TestLedgerService_GetDiffStat_SameHashReturnsEmpty verifies that GetDiffStat
 // returns an empty string when the same hash is provided for both parameters,
 // as there is no diff to calculate.
