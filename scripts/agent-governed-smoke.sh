@@ -239,6 +239,24 @@ install_ollama() {
         || die "Ollama did not answer on :11434 (see $SMOKE_ROOT/logs/ollama.log)"
 }
 
+# Stage $MODEL on the Ollama at $OLLAMA_HOST. The ollama CLI is the happy path.
+# Without it (a server that is already running, shared or remote), skip the pull
+# when the tag is resident, otherwise pull it over the HTTP API.
+ollama_pull_model() {
+    if command -v ollama >/dev/null 2>&1; then
+        run_timeout "$PULL_TIMEOUT" ollama pull "$MODEL"
+        return
+    fi
+    if curl -fsS -o /dev/null "$OLLAMA_HOST/api/show" -H 'Content-Type: application/json' -d "{\"name\":\"$MODEL\"}" 2>/dev/null; then
+        log "ollama CLI not on PATH; $MODEL is already resident at $OLLAMA_HOST"
+        return 0
+    fi
+    log "ollama CLI not on PATH; pulling $MODEL through $OLLAMA_HOST/api/pull"
+    run_timeout "$PULL_TIMEOUT" curl -fsS -o "$SMOKE_ROOT/logs/ollama-pull.json" "$OLLAMA_HOST/api/pull" \
+        -H 'Content-Type: application/json' -d "{\"name\":\"$MODEL\",\"stream\":false}" || return 1
+    grep -q '"success"' "$SMOKE_ROOT/logs/ollama-pull.json"
+}
+
 start_llamacpp() {
     endpoint="${ZTD_SMOKE_LLAMACPP_ENDPOINT:-http://127.0.0.1:8080}"
     if curl -fsS -o /dev/null "$endpoint/v1/models" 2>/dev/null; then
@@ -262,7 +280,7 @@ case "$BACKEND" in
         install_ollama
         export OLLAMA_HOST="${OLLAMA_HOST:-http://127.0.0.1:11434}"
         log "pulling $MODEL"
-        run_timeout "$PULL_TIMEOUT" ollama pull "$MODEL" \
+        ollama_pull_model \
             || die "ollama pull $MODEL failed or exceeded ${PULL_TIMEOUT}s"
         show="$(curl -fsS "$OLLAMA_HOST/api/show" -H 'Content-Type: application/json' -d "{\"name\":\"$MODEL\"}")" \
             || die "ollama show $MODEL failed"

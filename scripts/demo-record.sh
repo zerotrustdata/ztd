@@ -47,9 +47,16 @@
 # same Ollama to the Gateway with --inference-ollama-endpoint. `ztd eval models
 # freeze` inventories the provider through the typed inventory command.
 #
+# DEMO_AGENT_TIMEOUT (seconds, default 180) is how long the tape waits for the
+# agent to print its exit code; vhs discards the whole take when it expires, so
+# raise it on a CPU-only host (a small model there can need 240s or more).
+# DEMO_ATTEMPTS (default 10) is how many takes are tried for a signed tool call.
+#
 # Output (default build/demos/<time>-<client>/): demo.mp4, demo.txt (text
-# frames), prompt.txt, tape, receipts.json, and recording.json, which binds the
-# video's sha256 to the audit chain head it was recorded against.
+# frames), prompt.txt, tape, vhs.log (the winning attempt's log; every attempt
+# keeps vhs-attempt-<n>.log), receipts.json (only the receipts the winning
+# attempt added; receipts-all.json has every attempt's), and recording.json,
+# which binds the video's sha256 to the audit chain head it was recorded against.
 #
 # Bash 3.2 compatible (macOS /bin/bash).
 
@@ -69,7 +76,7 @@ THINK="${DEMO_THINK:-}"
 TITLE=""
 MODEL="${DEMO_MODEL:-qwen2.5:0.5b}"
 THINK_MODEL="${DEMO_THINK_MODEL:-qwen3:0.6b}"
-TIMEOUT="${DEMO_AGENT_TIMEOUT:-90}"
+TIMEOUT="${DEMO_AGENT_TIMEOUT:-180}"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 log() { echo "==> $*"; }
@@ -210,25 +217,50 @@ printf '%s\n' "$tape" >"$OUT/demo.tape"
 
 # A tiny local model sometimes returns nothing or a malformed call, so retry
 # until this attempt added a signed tool-call receipt, completed or refused.
-# Whether the answer is any good is not checked.
-calls() {
-    (cd "$ROOT" && ztd audit event-receipts --app "spiffe://ztd.local/app/$CLIENT") 2>/dev/null |
-        grep -c 'MCP_CALL' || true
+# Whether the answer is any good is not checked. All attempts share one root, so
+# the receipt ids present before an attempt tell its receipts from earlier ones.
+receipts_json() {
+    (cd "$ROOT" && ztd audit event-receipts --app "spiffe://ztd.local/app/$CLIENT" --json) 2>/dev/null || true
+}
+# Prints MCP_CALL transaction ids that are not in the newline-separated list $1.
+new_calls() {
+    receipts_json | BEFORE="$1" python3 -c '
+import json, os, sys
+try:
+    data = json.load(sys.stdin)
+except ValueError:
+    sys.exit(0)
+before = set(os.environ["BEFORE"].split())
+for r in data.get("event_receipts") or []:
+    if r.get("action_type") == "MCP_CALL" and r.get("transaction_id") not in before:
+        print(r["transaction_id"])
+'
 }
 attempt=1
 while :; do
-    before="$(calls)"
+    before_ids="$(new_calls "")"
     log "recording attempt $attempt/${DEMO_ATTEMPTS:-10} (agent timeout ${TIMEOUT}s) -> $OUT/demo.mp4"
-    (cd "$ROOT" && vhs "$OUT/demo.tape") >"$OUT/vhs.log" 2>&1 || true
-    [ -f "$OUT/demo.mp4" ] && [ "$(calls)" -gt "$before" ] && break
+    (cd "$ROOT" && vhs "$OUT/demo.tape") >"$OUT/vhs-attempt-$attempt.log" 2>&1 || true
+    [ -f "$OUT/demo.mp4" ] && [ -n "$(new_calls "$before_ids")" ] && break
     [ -f "$OUT/demo.mp4" ] && mv "$OUT/demo.mp4" "$OUT/failed-attempt-$attempt.mp4"
-    [ "$attempt" -lt "${DEMO_ATTEMPTS:-10}" ] || die "no tool-call receipt after $attempt attempts (see $OUT)"
+    [ "$attempt" -lt "${DEMO_ATTEMPTS:-10}" ] || die "no tool-call receipt after $attempt attempts (see $OUT/vhs-attempt-*.log)"
     attempt=$((attempt + 1))
 done
+cp "$OUT/vhs-attempt-$attempt.log" "$OUT/vhs.log"
 
 # Evidence: bind the video to the audit chain it was recorded against.
 cp "$ROOT/prompt.txt" "$OUT/prompt.txt"
-(cd "$ROOT" && ztd audit event-receipts --app "spiffe://ztd.local/app/$CLIENT" --json) >"$OUT/receipts.json"
+# receipts-all.json is every attempt's receipts; receipts.json keeps only the
+# ones the winning attempt added, so it matches the video's attempt.
+receipts_json >"$OUT/receipts-all.json"
+BEFORE="$before_ids" OUT="$OUT" python3 - <<'PY'
+import json, os
+out = os.environ["OUT"]
+before = set(os.environ["BEFORE"].split())
+data = json.load(open(os.path.join(out, "receipts-all.json")))
+data["event_receipts"] = [r for r in data.get("event_receipts") or [] if r.get("transaction_id") not in before]
+json.dump(data, open(os.path.join(out, "receipts.json"), "w"), indent=2)
+PY
 (cd "$ROOT" && ztd audit verify) >"$OUT/audit-verify.txt"
 grep -q 'Audit chain OK' "$OUT/audit-verify.txt" || die "audit verify did not report Audit chain OK"
 if command -v sha256sum >/dev/null 2>&1; then sum="$(sha256sum "$OUT/demo.mp4")"; else sum="$(shasum -a 256 "$OUT/demo.mp4")"; fi

@@ -94,6 +94,11 @@ The Gateway must be running and the CLI must be enrolled (ztd auth enroll user)
 before launching the TUI. If the CLI session expires, run this command:
 ztd auth refresh
 
+At startup the UI asks the terminal for its background color (OSC 11). A PTY
+that never answers, such as script(1) or a bare pty wrapper, stalls the launch
+for up to 5 seconds. When scripting, set TERM=screen-256color (or tmux-256color)
+to skip the query and keep colors.
+
 Controls:
   q / Ctrl+C       Quit
   1 2 3 5 6 7 8    Switch view

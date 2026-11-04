@@ -398,6 +398,7 @@ func TestModelsPull_SelectionIsResolvedAgainstPullCatalog(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrEvaluationSelectionEmpty)
 	_, err = runModelsCmd(t, root, "pull", "unknown:1b")
 	require.ErrorIs(t, err, constants.ErrInferenceModelNotFound)
+	require.ErrorContains(t, err, "not in "+evaluation.DefaultModelPullCatalogRelPath)
 	_, err = runModelsCmd(t, root, "pull", "--family", "llama")
 	require.ErrorIs(t, err, constants.ErrEvaluationSelectionEmpty)
 	_, err = runModelsCmd(t, root, "pull", "--catalog")
@@ -413,4 +414,18 @@ func TestPullCatalogVariantsParsesParameterCounts(t *testing.T) {
 	assert.Equal(t, uint64(9_000_000_000), variants[0].GetParameterCount())
 	assert.Equal(t, "fam", variants[0].GetModelFamily())
 	assert.Zero(t, variants[1].GetParameterCount())
+}
+
+func TestPullCatalogMissHintNamesNearestCatalogTags(t *testing.T) {
+	models := []evaluation.ModelPullEntry{
+		{ServedModelTag: "qwen2.5:0.5b-instruct"},
+		{ServedModelTag: "qwen2.5:7b"},
+		{ServedModelTag: "glm-5.3-air"},
+	}
+	hint := pullCatalogMissHint(models, []string{"qwen2.5:0.5b"})
+	assert.Contains(t, hint, "qwen2.5:0.5b-instruct")
+	assert.NotContains(t, hint, "qwen2.5:7b")
+	assert.Contains(t, hint, "already resident")
+	hint = pullCatalogMissHint(models, []string{"qwen2.5:3b"})
+	assert.Contains(t, hint, "qwen2.5:7b")
 }
