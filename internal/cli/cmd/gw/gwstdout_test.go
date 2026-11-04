@@ -160,3 +160,25 @@ func TestPrintListenHostNotice(t *testing.T) {
 		})
 	}
 }
+
+func TestPrintNextSteps_SignedInOmitsLogin(t *testing.T) {
+	cmd, buf := newOutputCmd()
+	printNextStepsFor(cmd, constants.PostureDoctrine, serve.GatewayConfig{ListenHost: constants.LocalhostIP}, "192.168.1.100", true)
+
+	out := buf.String()
+	bin := getBinaryName()
+	assert.NotContains(t, out, bin+" login")
+	assert.Contains(t, out, bin+" auth enroll pending")
+	assert.Contains(t, out, bin+" gw status")
+}
+
+func TestGatewayRestartUnknownFlagExplainsLaunchProfile(t *testing.T) {
+	cmd := gatewayRestartCmd()
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs([]string{"--posture", "consensus"})
+	err := cmd.Execute()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown flag: --posture")
+	assert.Contains(t, err.Error(), "gw stop && gw start --posture")
+}

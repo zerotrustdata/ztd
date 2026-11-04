@@ -66,13 +66,13 @@ var capabilityFlags = []struct {
 // operatorStatus is one Operator row of `gw status`. Registry documents and the
 // local launch profile both map onto it so every Operator renders identically.
 type operatorStatus struct {
-	ID           string
-	Type         string
-	Status       string
-	Host         string
-	Dir          string
-	Port         int
-	Capabilities constants.OperatorCapabilities
+	ID           string                         `json:"id"`
+	Type         string                         `json:"type"`
+	Status       string                         `json:"status"`
+	Host         string                         `json:"host"`
+	Dir          string                         `json:"dir,omitempty"`
+	Port         int                            `json:"port,omitempty"`
+	Capabilities constants.OperatorCapabilities `json:"capabilities"`
 
 	// reported maps a start flag to its value. A missing key means the source
 	// did not report the flag; an empty value means it was reported unset.
@@ -80,10 +80,10 @@ type operatorStatus struct {
 }
 
 type operatorInventory struct {
-	Operators []operatorStatus
+	Operators []operatorStatus `json:"operators"`
 	// Unavailable is why the Gateway registry could not be listed ("" when it
 	// could). Remote Operators are only known through the registry.
-	Unavailable string
+	Unavailable string `json:"unavailable,omitempty"`
 }
 
 func operatorStatusFromDocument(op *operatorv1.OperatorDocument) operatorStatus {

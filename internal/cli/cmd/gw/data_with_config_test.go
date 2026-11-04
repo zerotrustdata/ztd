@@ -236,7 +236,7 @@ func TestDataSettingsCmdWithConfig_ValidResponse(t *testing.T) {
 	err := cmd.RunE(cmd, nil)
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "Platform Settings")
-	assert.Equal(t, []string{"/db/settings/platform_settings"}, client.GetCalls)
+	assert.Equal(t, []string{constants.APIPaths.DataSettings}, client.GetCalls)
 }
 
 func TestDataSettingsCmdWithConfig_InvalidJSONResponse(t *testing.T) {
@@ -284,7 +284,7 @@ func TestDataStoreCmdWithConfig_ListModeCallsQuery(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "Documents in collection 'test_collection'")
 	assert.Len(t, client.PostCalls, 1)
-	assert.Contains(t, client.PostCalls[0].Path, "/db/test_collection/_query")
+	assert.Contains(t, client.PostCalls[0].Path, "/api/v1/data/test_collection/_query")
 }
 
 func TestDataStoreCmdWithConfig_DocumentModeCallsGet(t *testing.T) {
@@ -302,7 +302,7 @@ func TestDataStoreCmdWithConfig_DocumentModeCallsGet(t *testing.T) {
 	err := cmd.RunE(cmd, nil)
 	require.NoError(t, err)
 	assert.Contains(t, buf.String(), "Document test_collection/doc1")
-	assert.Equal(t, []string{"/db/test_collection/doc1"}, client.GetCalls)
+	assert.Equal(t, []string{"/api/v1/data/test_collection/doc1"}, client.GetCalls)
 }
 
 func TestDataStoreCmdWithConfig_PostError(t *testing.T) {

@@ -85,5 +85,5 @@ func TestGatewaySettingsCmdWithConfig_ValidResponsePrintsSettings(t *testing.T) 
 	output := buf.String()
 	assert.Contains(t, output, "posture")
 	assert.Contains(t, output, "consensus")
-	assert.Equal(t, []string{"/api/settings"}, client.GetCalls)
+	assert.Equal(t, []string{constants.APIPaths.DataSettings}, client.GetCalls)
 }
