@@ -596,7 +596,7 @@ Valid posture values are 'doctrine', 'consensus', 'ratify', and 'notary'.`,
 			cmd.Printf("[ztd] Gateway started (PID: %d)\n", pid)
 			cmd.Println()
 			printListenHostNotice(cmd, gatewayCfg.ListenHost)
-			printNextSteps(cmd, posture, gatewayCfg, network.GetExternalInterfaceIP())
+			printNextStepsFor(cmd, posture, gatewayCfg, network.GetExternalInterfaceIP(), cliSignedIn(cmd.Context(), fileSvc, cfg))
 
 			return nil
 		},
@@ -752,7 +752,11 @@ one. The complete launch configuration is read from the persisted launch profile
 (.ztd/pids/operator-launch-profile.json) and restored across the restart. If the
 profile is missing, malformed, or unsupported, the restart fails closed rather
 than falling back to default settings. Network identity is re-detected on every
-restart.`,
+restart.
+
+Restart replays the launch profile and takes no configuration flags. To change
+the posture or any other start flag, run "gw stop" and then "gw start" with the
+new flags.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := configLoader("")
 			if err != nil {
@@ -855,10 +859,13 @@ restart.`,
 			cmd.Printf("[ztd] Gateway posture: %s\n", profile.Config.Posture.Description())
 			cmd.Println()
 			printListenHostNotice(cmd, profile.Config.ListenHost)
-			printNextSteps(cmd, profile.Config.Posture, profile.Config, network.GetExternalInterfaceIP())
+			printNextStepsFor(cmd, profile.Config.Posture, profile.Config, network.GetExternalInterfaceIP(), cliSignedIn(cmd.Context(), fileSvc, cfg))
 			return nil
 		},
 	}
+	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return fmt.Errorf("%w\nrestart replays the persisted launch profile; to change the posture or other settings run: gw stop && gw start --posture <posture> ...", err)
+	})
 	cmd.Flags().BoolVar(&acceptUnrecoverable, shared.FlagAcceptUnrecoverable, false, shared.AcceptUnrecoverableHelp)
 
 	return cmd
@@ -942,7 +949,7 @@ Gateway over mTLS.`,
 				return fmt.Errorf("%w: %w", constants.ErrInternal, err)
 			}
 
-			resp, err := client.Get("/api/settings")
+			resp, err := client.Get(constants.APIPaths.DataSettings)
 			if err != nil {
 				return fmt.Errorf("%w: %w", constants.ErrHTTPRequestExecuteFailed, err)
 			}

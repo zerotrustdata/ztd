@@ -171,7 +171,7 @@ func dataSettingsCmdWithConfig(configLoader func(string) (*config.Config, error)
 				return fmt.Errorf("data: create API client: %w", err)
 			}
 
-			resp, err := client.Get("/db/settings/platform_settings")
+			resp, err := client.Get(constants.APIPaths.DataSettings)
 			if err != nil {
 				return fmt.Errorf("data: fetch settings: %w", err)
 			}
@@ -237,7 +237,7 @@ or provide --document-id to fetch a specific document.`,
 				query := models.DocQueryRequest{
 					Filters: []models.DocFilter{},
 				}
-				resp, err := client.Post(fmt.Sprintf("/db/%s/_query", collection), query)
+				resp, err := client.Post(constants.APIPaths.DataPrefix+collection+constants.APIPaths.QueryPrefix, query)
 				if err != nil {
 					return fmt.Errorf("data: query collection: %w", err)
 				}
@@ -246,7 +246,7 @@ or provide --document-id to fetch a specific document.`,
 				cmd.Println(string(resp))
 			} else {
 				// Get specific document
-				resp, err := client.Get(fmt.Sprintf("/db/%s/%s", collection, documentID))
+				resp, err := client.Get(constants.APIPaths.DataPrefix + collection + "/" + documentID)
 				if err != nil {
 					return fmt.Errorf("data: fetch document: %w", err)
 				}

@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
+	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -26,6 +27,16 @@ import (
 // consensus summary and the posture the Gateway reports.
 func consensusStatusLine(h models.HealthResponse) string {
 	return "Consensus  " + h.Consensus.Describe(h.Posture)
+}
+
+// gatewayStatusJSON is the --json shape of `gw status`.
+type gatewayStatusJSON struct {
+	Running   bool                   `json:"running"`
+	State     string                 `json:"state"`
+	PID       int                    `json:"pid,omitempty"`
+	Health    *models.HealthResponse `json:"health,omitempty"`
+	Operators *operatorInventory     `json:"operators,omitempty"`
+	Console   string                 `json:"console,omitempty"`
 }
 
 func printGatewayStatus(cmd *cobra.Command, cfg *config.Config, clientFactory authcmd.APIClientFactory, fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)) error {
@@ -57,12 +68,27 @@ func printGatewayStatus(cmd *cobra.Command, cfg *config.Config, clientFactory au
 		}
 	}
 	if !running {
+		if output.JSONEnabled(cmd) {
+			return output.WriteJSON(cmd.OutOrStdout(), gatewayStatusJSON{State: "stopped"})
+		}
 		cmd.Println("Gateway  stopped")
 		return nil
 	}
 	state := "running"
 	if healthy {
 		state = "online"
+	}
+	if output.JSONEnabled(cmd) {
+		var launched serve.GatewayConfig
+		if profile, err := serve.ReadLaunchProfile(fileSvc); err == nil {
+			launched = profile.Config
+		}
+		inv := collectOperatorInventory(client, fileSvc, cfg)
+		out := gatewayStatusJSON{Running: true, State: state, PID: pid, Operators: &inv, Console: consoleOriginFor(launched.PublicBaseURL, launched.HTTPSPort) + "/console/"}
+		if healthy {
+			out.Health = &health
+		}
+		return output.WriteJSON(cmd.OutOrStdout(), out)
 	}
 	if pid > 0 {
 		cmd.Printf("Gateway  %s (PID %d)\n", state, pid)

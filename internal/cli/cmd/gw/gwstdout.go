@@ -8,6 +8,7 @@
 package gw
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strconv"
@@ -15,8 +16,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 )
 
@@ -77,16 +81,36 @@ type nextStep struct {
 // with the headless sign-in. A same-host Operator gets its own working
 // directory, because Operator start refuses the Gateway's runtime tree.
 func printNextSteps(cmd *cobra.Command, posture constants.Posture, cfg serve.GatewayConfig, externalIP string) {
+	printNextStepsFor(cmd, posture, cfg, externalIP, false)
+}
+
+// cliSignedIn reports whether this CLI already holds a signed-in session (a
+// stored CLI session ID), so post-start guidance can omit the login steps.
+// It reads local credentials only; no network I/O.
+func cliSignedIn(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config) bool {
+	if fileSvc == nil || cfg == nil {
+		return false
+	}
+	creds, err := auth.NewCredentialStore(fileSvc, cfg).LoadCredentials(ctx)
+	return err == nil && creds != nil && creds.CLISessionID != ""
+}
+
+// printNextStepsFor is printNextSteps with the login steps omitted when the CLI
+// is already signed in.
+func printNextStepsFor(cmd *cobra.Command, posture constants.Posture, cfg serve.GatewayConfig, externalIP string, signedIn bool) {
 	bin := getBinaryName()
 	var steps []nextStep
 	if posture.RequiresL2() {
 		steps = append(steps, nextStep{bin + " consensus enroll tribunal --model <tag>", "Bind a consensus if none is bound (L2 posture: governed actions fail closed until one is bound)"})
 	}
-	if posture.RequiresL3() {
+	switch {
+	case signedIn:
+		// Already signed in: login guidance would only be noise.
+	case posture.RequiresL3():
 		steps = append(steps,
 			nextStep{bin + " login web", "Register a passkey (required: " + string(posture) + " posture enforces L3)"},
 			nextStep{bin + " login", "Headless CLI sign-in (Console and L3 approvals need a passkey)"})
-	} else {
+	default:
 		steps = append(steps,
 			nextStep{bin + " login", "Sign in headless (CLI and TUI)"},
 			nextStep{bin + " login web", "Sign in with a browser passkey (enables the Console)"})
