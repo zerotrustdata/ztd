@@ -24,7 +24,7 @@ Enter
 Show
 
 # Scene 1: who is asking, and what.
-Type "# Zero Trust Paper Company: a governed {{CLIENT}} session"
+Type "# {{TITLE}}"
 Enter
 Type "cat prompt.txt"
 Enter

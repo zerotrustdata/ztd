@@ -1,0 +1,77 @@
+{
+  "about": "Fixed persona scenarios for `make vhs-scenarios` (see demos/README.md). Each entry is one Zero Trust Paper Company employee doing a day-to-day task through a governed agent. Prompts, people, roles and records come from demos/zero-trust-paper-company (README.md, SCENARIOS.md, seed.py). `calls` are the only API calls the small local model is told about; each must be answerable from the seeded data. Edit a prompt to tailor a take; the order is the recording order. Run locally only: no CI workflow runs this.",
+  "scenarios": [
+    {
+      "id": "priya-finance",
+      "persona": "Priya Shah",
+      "role": "Controller",
+      "domain": "finance",
+      "title": "Priya Shah, Controller: chasing the overdue invoice",
+      "client": "goose",
+      "think": false,
+      "prompt": "I am Priya Shah, the controller. Which customer invoice is past due, and how much is still outstanding?",
+      "calls": [
+        {"method": "GET", "path": "/accounting/past-due", "role": "finance"}
+      ],
+      "shows": "Past-due list: INV-1001 for Acorn, $249.90 invoiced, $50.00 paid, $199.90 outstanding. Read-only finance call, signed MCP_CALL receipt."
+    },
+    {
+      "id": "alex-operations",
+      "persona": "Alex Chen",
+      "role": "Operations and systems lead",
+      "domain": "operations",
+      "title": "Alex Chen, Operations: the morning stock check",
+      "client": "goose",
+      "think": true,
+      "prompt": "I am Alex in operations. Which paper products are low on stock, and should I reorder anything?",
+      "calls": [
+        {"method": "GET", "path": "/inventory/stock", "role": "ops"}
+      ],
+      "shows": "Warehouse stock with reorder points (recycled paper 65 cartons vs reorder point 70; wrap below its point of 20). Also adds the thinking scene: qwen3:0.6b thinks through governed inference and the signed thinking is shown."
+    },
+    {
+      "id": "jamie-procurement",
+      "persona": "Jamie Park",
+      "role": "Procurement",
+      "domain": "procurement",
+      "title": "Jamie Park, Procurement: checking the Northstar contract",
+      "client": "goose",
+      "think": false,
+      "prompt": "I am Jamie in procurement. Find our Northstar supplier contract and tell me what it covers.",
+      "calls": [
+        {"method": "GET", "path": "/documents/search?q=Northstar", "role": "procurement"},
+        {"method": "GET", "path": "/purchasing/orders", "role": "procurement"}
+      ],
+      "shows": "Confidential retrieval: DOC-201 returns to procurement with a paragraph citation (the public role sees nothing). Open purchase orders PO-1001 and PO-1002 already cover the shortages."
+    },
+    {
+      "id": "sam-support",
+      "persona": "Sam Rivera",
+      "role": "Customer support",
+      "domain": "customer-support",
+      "title": "Sam Rivera, Support: where is Beacon's order?",
+      "client": "goose",
+      "think": false,
+      "prompt": "I am Sam in support. Beacon Community School is asking where its order is. Check ticket TKT-1002 and the delivery route. Tell me the status without guessing a delivery time.",
+      "calls": [
+        {"method": "GET", "path": "/support/tickets/TKT-1002", "role": "support"},
+        {"method": "GET", "path": "/dispatch/routes/RTE-1001", "role": "support"}
+      ],
+      "shows": "Ticket TKT-1002 is pending with one reply; ORD-1002 is loaded on the Eastside school run (RTE-1001). The data holds schedule, not a live ETA, so a good answer does not invent one."
+    },
+    {
+      "id": "morgan-compliance",
+      "persona": "Morgan Reed",
+      "role": "Administrator and compliance reviewer",
+      "domain": "security-compliance",
+      "title": "Morgan Reed, Compliance: can operations read payroll?",
+      "client": "goose",
+      "think": false,
+      "prompt": "I am Morgan Reed, the compliance reviewer. Verify that the operations role cannot read payroll: request the payroll endpoint as operations and tell me whether it was allowed.",
+      "calls": [
+        {"method": "GET", "path": "/hr/payroll", "role": "ops"}
+      ],
+      "shows": "The denied path: the governed call is admitted and receipted, and the application answers 403 forbidden (SCENARIOS.md section 7). Evidence of the refusal lands in the signed receipts and audit chain."
+    }
+  ]
+}
