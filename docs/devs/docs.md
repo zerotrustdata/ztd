@@ -322,7 +322,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.7.0 Release Notes](../release_notes/v1.7.x/v1.7.0.md): Signed judge evidence and live activity, evaluation correctness and model residency, enrollment diagnostics, network probe address restrictions, and release reliability.
 - [v1.6.0 Release Notes](../release_notes/v1.6.x/v1.6.0.md): Typed agent personas, Tribunal stage tiers and Lite L2 votes, Lite Triage and Interrogator, the tool-calling probe, and no-masking evaluation prompts.
 - [v1.8.0 Release Notes](../release_notes/v1.8.x/v1.8.0.md): Typed governed Ollama model pull and copy, the single-path file ledger, failed observer receipts as evidence, the append-only publisher outbox, and renamed CLI commands and catalog files.
-- [v1.9.0 Release Notes](../release_notes/v1.9.x/v1.9.0.md): Deterministic grades in the Evaluation Explorer Live view, the `deterministic_grading_completed` live event, Explorer view schema 1.12.0, and `make vhs` governed agent demo recordings.
+- [v1.9.0 Release Notes](../release_notes/v1.9.x/v1.9.0.md): Deterministic grades in the Evaluation Explorer Live view, the `deterministic_grading_completed` live event, Explorer view schema 1.12.0, `make vhs` governed agent demo recordings, and file mutation diffs outside the ledger write lock.
 
 ## Procedures
 
