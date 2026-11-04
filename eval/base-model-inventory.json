@@ -1,8 +1,8 @@
 {
   "campaign_id": "eval-genesis-homogeneous",
-  "model_registry_digest": "d2553beebca6b1697f36e114845aedb4fc71f54ad3ade2472f0fc25d307eb26a",
-  "model_count": 85,
-  "homogeneous_cell_count": 7225,
+  "model_registry_digest": "4332650e98f47c10182643aec2a2d9c64587c690f99cb3c81814fe39e35ffb4a",
+  "model_count": 106,
+  "homogeneous_cell_count": 9010,
   "variants": [
     {
       "variantId": "impulse2000-smollm3-3b-q4-k-m",
@@ -42,6 +42,86 @@
       "contextLimit": 1048576
     },
     {
+      "variantId": "deepseek-r1-1-5b",
+      "providerClass": "ollama",
+      "servedModelTag": "deepseek-r1:1.5b",
+      "modelDigest": "e0979632db5a88d1a53884cb2a941772d10ff5d055aabaa6801c4e36f3a6c2d7",
+      "modelFamily": "qwen2",
+      "parameterCount": "1777088000",
+      "quantization": "Q4_K_M",
+      "contextLimit": 131072,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
+          "observationDetail": "completion probe returned unexpected output"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
+          "observationDetail": "tool-call probe did not return a structured probe_echo call"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
+          "observationDetail": "structured-output probe returned invalid schema payload"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "thinking probe returned visible thinking or expected answer text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=131072"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "1117322768",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "deepseek-r1-7b",
+      "providerClass": "ollama",
+      "servedModelTag": "deepseek-r1:7b",
+      "modelDigest": "755ced02ce7befdb13b7ca74e1e4d08cddba4986afdb63a480f2c93d3140383f",
+      "modelFamily": "qwen2",
+      "parameterCount": "7615616512",
+      "quantization": "Q4_K_M",
+      "contextLimit": 131072,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
+          "observationDetail": "completion probe returned unexpected output"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
+          "observationDetail": "tool-call probe did not return a structured probe_echo call"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
+          "observationDetail": "structured-output probe returned invalid schema payload"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "thinking probe returned visible thinking or expected answer text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=131072"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "4683075440",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
       "variantId": "deepseek-r1-8b",
       "providerClass": "ollama",
       "servedModelTag": "deepseek-r1:8b",
@@ -50,6 +130,366 @@
       "parameterCount": "8200000000",
       "quantization": "Q4_K_M",
       "contextLimit": 131072
+    },
+    {
+      "variantId": "functiongemma-270m",
+      "providerClass": "ollama",
+      "servedModelTag": "functiongemma:270m",
+      "modelDigest": "7c19b650567acfb1bee50d12bb286370e8a54d8877f6a0ecfd01f8c8fdc223bb",
+      "modelFamily": "gemma3",
+      "parameterCount": "268098176",
+      "quantization": "Q8_0",
+      "contextLimit": 32768,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
+          "observationDetail": "tool-call probe did not return a structured probe_echo call"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=32768"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "300807157",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "gemma2-2b-instruct-q4-k-m",
+      "providerClass": "ollama",
+      "servedModelTag": "gemma2:2b-instruct-q4_K_M",
+      "modelDigest": "cb2d06dce81356b9799c814de8dab1f2dd265084d16ea22f88e1bff70206fabd",
+      "modelFamily": "gemma2",
+      "parameterCount": "2614341888",
+      "quantization": "Q4_K_M",
+      "contextLimit": 8192,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected tool-call probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=8192"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "1708591777",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "gemma2-9b",
+      "providerClass": "ollama",
+      "servedModelTag": "gemma2:9b",
+      "modelDigest": "ff02c3702f322b9e075e9568332d96c0a7028002f1a5a056e0a6784320a4db0b",
+      "modelFamily": "gemma2",
+      "parameterCount": "9241705984",
+      "quantization": "Q4_0",
+      "contextLimit": 8192,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected tool-call probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=8192"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "5443152417",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "gemma2-9b-instruct-q4-k-m",
+      "providerClass": "ollama",
+      "servedModelTag": "gemma2:9b-instruct-q4_K_M",
+      "modelDigest": "c20bec88025f3aefa420efd64dca0ee4abc8e36078d6b74b0f660cdcbd5d1982",
+      "modelFamily": "gemma2",
+      "parameterCount": "9241705984",
+      "quantization": "Q4_K_M",
+      "contextLimit": 8192,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected tool-call probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=8192"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "5761067555",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "gemma3-1b",
+      "providerClass": "ollama",
+      "servedModelTag": "gemma3:1b",
+      "modelDigest": "97558784bdc9175075a72655bf360b15da17df6b3b9e5182af9f8c0c8e58ba7c",
+      "modelFamily": "gemma3",
+      "parameterCount": "999885952",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected tool-call probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
+          "observationDetail": "structured-output probe returned invalid schema payload"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=32768"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "806067407",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "gemma3-270m",
+      "providerClass": "ollama",
+      "servedModelTag": "gemma3:270m",
+      "modelDigest": "e7d36fb2c3b3293cfe56d55889867a064b3a2b22e98335f2e6e8a387e081d6be",
+      "modelFamily": "gemma3",
+      "parameterCount": "268098176",
+      "quantization": "Q8_0",
+      "contextLimit": 32768,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected tool-call probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
+          "observationDetail": "structured-output probe returned invalid schema payload"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=32768"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "291554930",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "gemma3-4b",
+      "providerClass": "ollama",
+      "servedModelTag": "gemma3:4b",
+      "modelDigest": "68ceab7e468a31c988b44d5a4984a0e21f58c4f7158c6ce29c1804babac38df7",
+      "modelFamily": "gemma3",
+      "parameterCount": "3880101888",
+      "quantization": "Q4_K_M",
+      "contextLimit": 131072,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected tool-call probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=131072"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "3350272403",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "gemma3n-e2b",
+      "providerClass": "ollama",
+      "servedModelTag": "gemma3n:e2b",
+      "modelDigest": "dae166dc6a5e93061da12b75b887ce7c72cb91785d547b88c7503047f8411ffd",
+      "modelFamily": "gemma3n",
+      "parameterCount": "4458122848",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected tool-call probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=32768"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "7836324540",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "gemma3n-e4b",
+      "providerClass": "ollama",
+      "servedModelTag": "gemma3n:e4b",
+      "modelDigest": "0a377808afeaafcbf5dcc2b1844594a1b60a50cd18e7e3e469cfd64e7bb7faa5",
+      "modelFamily": "gemma3n",
+      "parameterCount": "6868990448",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected tool-call probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=32768"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "9768581852",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
     },
     {
       "variantId": "gemma4-12b",
@@ -380,6 +820,86 @@
       "modelFamily": "llama",
       "parameterCount": "8029999999",
       "quantization": "Q4_K_M"
+    },
+    {
+      "variantId": "hf-co-salesforce-xlam-2-1b-fc-r-gguf-latest",
+      "providerClass": "ollama",
+      "servedModelTag": "hf.co/Salesforce/xLAM-2-1b-fc-r-gguf:latest",
+      "modelDigest": "7cff8a9eb0ed04af02e5c940561eb4f5ec539bd662a346a6e636dfe5c0aea45b",
+      "modelFamily": "qwen2",
+      "parameterCount": "1543714304",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
+          "observationDetail": "completion probe returned unexpected output"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
+          "observationDetail": "tool-call probe dispatch failed (provider_stream_error)"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=32768"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "986048963",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "hf-co-salesforce-xlam-2-3b-fc-r-gguf-latest",
+      "providerClass": "ollama",
+      "servedModelTag": "hf.co/Salesforce/xLAM-2-3b-fc-r-gguf:latest",
+      "modelDigest": "fd17426d66d96214eab71bf83fc95c313795b8f779be0361aa6a8dd6c2fe3b53",
+      "modelFamily": "qwen2",
+      "parameterCount": "3085938688",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
+          "observationDetail": "tool-call probe dispatch failed (provider_stream_error)"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=32768"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "1929903428",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
     },
     {
       "variantId": "hf-co-xhtoken-spark-x2-6-4b-gguf-q4-k-m",
@@ -833,6 +1353,326 @@
       "contextLimit": 32768
     },
     {
+      "variantId": "qwen2-5-coder-7b-instruct-q4-k-m",
+      "providerClass": "ollama",
+      "servedModelTag": "qwen2.5-coder:7b-instruct-q4_K_M",
+      "modelDigest": "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
+      "modelFamily": "qwen2",
+      "parameterCount": "7615616512",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
+          "observationDetail": "tool-call probe did not return a structured probe_echo call"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=32768"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "4683087561",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "qwen2-5-0-5b",
+      "providerClass": "ollama",
+      "servedModelTag": "qwen2.5:0.5b",
+      "modelDigest": "a8b0c51577010a279d933d14c2a8ab4b268079d44c5c8830c0a93900f1827c67",
+      "modelFamily": "qwen2",
+      "parameterCount": "494032768",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
+          "observationDetail": "tool-call probe did not return a structured probe_echo call"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=32768"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "397821319",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "qwen2-5-0-5b-instruct",
+      "providerClass": "ollama",
+      "servedModelTag": "qwen2.5:0.5b-instruct",
+      "modelDigest": "a8b0c51577010a279d933d14c2a8ab4b268079d44c5c8830c0a93900f1827c67",
+      "modelFamily": "qwen2",
+      "parameterCount": "494032768",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
+          "observationDetail": "completion probe returned unexpected output"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_FAIL",
+          "observationDetail": "tool-call probe did not return a structured probe_echo call"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=32768"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "397821319",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "qwen2-5-0-5b-instruct-q4-k-m",
+      "providerClass": "ollama",
+      "servedModelTag": "qwen2.5:0.5b-instruct-q4_K_M",
+      "modelDigest": "a8b0c51577010a279d933d14c2a8ab4b268079d44c5c8830c0a93900f1827c67",
+      "modelFamily": "qwen2",
+      "parameterCount": "494032768",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "tool-call probe returned a structured probe_echo call"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=32768"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "397821319",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "qwen2-5-1-5b-instruct-q4-k-m",
+      "providerClass": "ollama",
+      "servedModelTag": "qwen2.5:1.5b-instruct-q4_K_M",
+      "modelDigest": "65ec06548149b04c096a120e4a6da9d4017ea809c91734ea5631e89f96ddc57b",
+      "modelFamily": "qwen2",
+      "parameterCount": "1543714304",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "tool-call probe returned a structured probe_echo call"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=32768"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "986061892",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "qwen2-5-14b-instruct-q4-k-m",
+      "providerClass": "ollama",
+      "servedModelTag": "qwen2.5:14b-instruct-q4_K_M",
+      "modelDigest": "7cdf5a0187d5c58cc5d369b255592f7841d1c4696d45a8c8a9489440385b22f6",
+      "modelFamily": "qwen2",
+      "parameterCount": "14770033664",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "tool-call probe returned a structured probe_echo call"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=32768"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "8988124069",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "qwen2-5-3b",
+      "providerClass": "ollama",
+      "servedModelTag": "qwen2.5:3b",
+      "modelDigest": "357c53fb659c5076de1d65ccb0b397446227b71a42be9d1603d46168015c9e4b",
+      "modelFamily": "qwen2",
+      "parameterCount": "3085938688",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "tool-call probe returned a structured probe_echo call"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=32768"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "1929912432",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
+      "variantId": "qwen2-5-7b",
+      "providerClass": "ollama",
+      "servedModelTag": "qwen2.5:7b",
+      "modelDigest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e",
+      "modelFamily": "qwen2",
+      "parameterCount": "7615616512",
+      "quantization": "Q4_K_M",
+      "contextLimit": 32768,
+      "capabilityObservations": [
+        {
+          "capability": "MODEL_CAPABILITY_KIND_COMPLETION",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "completion probe returned expected text"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_TOOL_CALLING",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "tool-call probe returned a structured probe_echo call"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_STRUCTURED_OUTPUT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "structured-output probe returned valid JSON"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_THINKING",
+          "outcome": "EVALUATION_VERDICT_STATUS_UNSUPPORTED",
+          "observationDetail": "provider rejected thinking probe"
+        },
+        {
+          "capability": "MODEL_CAPABILITY_KIND_CONTEXT_LIMIT",
+          "outcome": "EVALUATION_VERDICT_STATUS_PASS",
+          "observationDetail": "provider advertised context_limit=32768"
+        }
+      ],
+      "modelFormat": "gguf",
+      "artifactSizeBytes": "4683087332",
+      "parameterCountSource": "PARAMETER_COUNT_SOURCE_MODEL_METADATA"
+    },
+    {
       "variantId": "qwen3-5-0-8b",
       "providerClass": "ollama",
       "servedModelTag": "qwen3.5:0.8b",
@@ -1020,8 +1860,52 @@
       "digest": "3df9a31aa87b5671ac7a9854a7aa6cbf96692cf2827cc2fe7c2b766fea0e640a"
     },
     {
+      "model": "deepseek-r1:1.5b",
+      "digest": "e0979632db5a88d1a53884cb2a941772d10ff5d055aabaa6801c4e36f3a6c2d7"
+    },
+    {
+      "model": "deepseek-r1:7b",
+      "digest": "755ced02ce7befdb13b7ca74e1e4d08cddba4986afdb63a480f2c93d3140383f"
+    },
+    {
       "model": "deepseek-r1:8b",
       "digest": "6995872bfe4c521a67b32da386cd21d5c6e819b6e0d62f79f64ec83be99f5763"
+    },
+    {
+      "model": "functiongemma:270m",
+      "digest": "7c19b650567acfb1bee50d12bb286370e8a54d8877f6a0ecfd01f8c8fdc223bb"
+    },
+    {
+      "model": "gemma2:2b-instruct-q4_K_M",
+      "digest": "cb2d06dce81356b9799c814de8dab1f2dd265084d16ea22f88e1bff70206fabd"
+    },
+    {
+      "model": "gemma2:9b",
+      "digest": "ff02c3702f322b9e075e9568332d96c0a7028002f1a5a056e0a6784320a4db0b"
+    },
+    {
+      "model": "gemma2:9b-instruct-q4_K_M",
+      "digest": "c20bec88025f3aefa420efd64dca0ee4abc8e36078d6b74b0f660cdcbd5d1982"
+    },
+    {
+      "model": "gemma3:1b",
+      "digest": "97558784bdc9175075a72655bf360b15da17df6b3b9e5182af9f8c0c8e58ba7c"
+    },
+    {
+      "model": "gemma3:270m",
+      "digest": "e7d36fb2c3b3293cfe56d55889867a064b3a2b22e98335f2e6e8a387e081d6be"
+    },
+    {
+      "model": "gemma3:4b",
+      "digest": "68ceab7e468a31c988b44d5a4984a0e21f58c4f7158c6ce29c1804babac38df7"
+    },
+    {
+      "model": "gemma3n:e2b",
+      "digest": "dae166dc6a5e93061da12b75b887ce7c72cb91785d547b88c7503047f8411ffd"
+    },
+    {
+      "model": "gemma3n:e4b",
+      "digest": "0a377808afeaafcbf5dcc2b1844594a1b60a50cd18e7e3e469cfd64e7bb7faa5"
     },
     {
       "model": "gemma4:12b",
@@ -1102,6 +1986,14 @@
     {
       "model": "hf.co/Salesforce/Llama-xLAM-2-8b-fc-r-gguf:latest",
       "digest": "6289cc92099210c18c422d9fd01792965eab3233deca6ae8e6ccd6b2b5cdd12b"
+    },
+    {
+      "model": "hf.co/Salesforce/xLAM-2-1b-fc-r-gguf:latest",
+      "digest": "7cff8a9eb0ed04af02e5c940561eb4f5ec539bd662a346a6e636dfe5c0aea45b"
+    },
+    {
+      "model": "hf.co/Salesforce/xLAM-2-3b-fc-r-gguf:latest",
+      "digest": "fd17426d66d96214eab71bf83fc95c313795b8f779be0361aa6a8dd6c2fe3b53"
     },
     {
       "model": "hf.co/XHToken/Spark-X2.6-4B-GGUF:Q4_K_M",
@@ -1270,6 +2162,38 @@
     {
       "model": "qwen2.5-coder:7b",
       "digest": "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364"
+    },
+    {
+      "model": "qwen2.5-coder:7b-instruct-q4_K_M",
+      "digest": "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364"
+    },
+    {
+      "model": "qwen2.5:0.5b",
+      "digest": "a8b0c51577010a279d933d14c2a8ab4b268079d44c5c8830c0a93900f1827c67"
+    },
+    {
+      "model": "qwen2.5:0.5b-instruct",
+      "digest": "a8b0c51577010a279d933d14c2a8ab4b268079d44c5c8830c0a93900f1827c67"
+    },
+    {
+      "model": "qwen2.5:0.5b-instruct-q4_K_M",
+      "digest": "a8b0c51577010a279d933d14c2a8ab4b268079d44c5c8830c0a93900f1827c67"
+    },
+    {
+      "model": "qwen2.5:1.5b-instruct-q4_K_M",
+      "digest": "65ec06548149b04c096a120e4a6da9d4017ea809c91734ea5631e89f96ddc57b"
+    },
+    {
+      "model": "qwen2.5:14b-instruct-q4_K_M",
+      "digest": "7cdf5a0187d5c58cc5d369b255592f7841d1c4696d45a8c8a9489440385b22f6"
+    },
+    {
+      "model": "qwen2.5:3b",
+      "digest": "357c53fb659c5076de1d65ccb0b397446227b71a42be9d1603d46168015c9e4b"
+    },
+    {
+      "model": "qwen2.5:7b",
+      "digest": "845dbda0ea48ed749caafd9e6037047aa19acfcfd82e704d7ca97d631a0b697e"
     },
     {
       "model": "qwen3.5:0.8b",

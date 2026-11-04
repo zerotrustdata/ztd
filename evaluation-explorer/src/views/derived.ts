@@ -132,12 +132,25 @@ export function isTribunalVoteEvent(event: LiveEvent): boolean {
   return event.stage_label?.startsWith(TRIBUNAL_VOTE_PREFIX) ?? false;
 }
 
+const SETTLED_LIFECYCLES = new Set<LiveEvent['lifecycle_status']>(['completed', 'failed', 'stopped']);
+
+/** True for a row whose assignment has ended: its own terminal result, or a
+ *  formation role row that took the assignment's terminal status. */
+export function isSettledAssignmentRow(event: LiveEvent): boolean {
+  return isTerminalStreamKind(event.kind)
+    || (Boolean(event.assignment_id) && ASSIGNMENT_ROW_KINDS.has(event.kind) && !isTribunalVoteEvent(event) && SETTLED_LIFECYCLES.has(event.lifecycle_status));
+}
+
 /** One stream row per assignment, carrying the assignment's current status.
  *  Multi-role formation assignments (e.g. investigations suite) maintain separate
- *  rows per role so Lite, Assistant, and Primary stages remain visible.
- *  Tribunal vote events are preserved as their own rows. */
+ *  rows per role so Lite, Assistant, and Primary stages remain visible. A terminal
+ *  event names only the designated role, so every other role row takes that
+ *  assignment's terminal status; it keeps its own kind, model, and metrics, and
+ *  still counts once in progress. Tribunal vote events are preserved as their own
+ *  rows. */
 function collapseAssignmentRows(events: LiveEvent[]): LiveEvent[] {
   const rows = new Map<string, LiveEvent>();
+  const terminals = new Map<string, LiveEvent>();
   const metrics = new Map<string, NonNullable<LiveEvent['metric_delta']>>();
   const metricKey = (event: LiveEvent) =>
     `${event.dataset_id}:${event.run_id}:${event.assignment_id}:${event.variant_id}:${event.role}`;
@@ -161,6 +174,11 @@ function collapseAssignmentRows(events: LiveEvent[]): LiveEvent[] {
       metrics.set(key, { ...metrics.get(key), ...event.metric_delta });
     }
     if (STREAM_HIDDEN_KINDS.has(event.kind)) continue;
+    if (event.assignment_id && isTerminalStreamKind(event.kind)) {
+      const key = assignmentRowKey(event);
+      const known = terminals.get(key);
+      terminals.set(key, known ? currentAssignmentEvent(known, event) : event);
+    }
 
     let key: string;
     if (isTribunalVoteEvent(event)) {
@@ -184,9 +202,16 @@ function collapseAssignmentRows(events: LiveEvent[]): LiveEvent[] {
     const observed = metrics.get(metricKey(event));
     // Terminal lifecycle records carry no measurements. Retain the observations
     // already published for this assignment's model and role; result deltas win.
-    return isTerminalStreamKind(event.kind) && observed
-      ? { ...event, metric_delta: { ...observed, ...event.metric_delta } }
-      : event;
+    if (isTerminalStreamKind(event.kind)) {
+      return observed ? { ...event, metric_delta: { ...observed, ...event.metric_delta } } : event;
+    }
+    const terminal = event.assignment_id && ASSIGNMENT_ROW_KINDS.has(event.kind) && !isTribunalVoteEvent(event)
+      ? terminals.get(assignmentRowKey(event))
+      : undefined;
+    if (!terminal) return event;
+    const settled: LiveEvent = { ...event, lifecycle_status: terminal.lifecycle_status };
+    if (terminal.terminal_status) settled.terminal_status = terminal.terminal_status;
+    return settled;
   });
 }
 
@@ -960,10 +985,11 @@ export function runsForVariant(
   evaluations: EvaluationSummary[],
 ): EvaluationSummary[] {
   const runIds = new Set(
-    assignments.filter((a) => a.variant_id === variantId).map((a) => a.run_id),
+    assignments.filter((a) => a.variant_id === variantId).map((a) => `${a.dataset_id}:${a.run_id}`),
   );
   return evaluations
-    .filter((e) => runIds.has(e.run_id))
+    .filter((e) => runIds.has(`${e.dataset_id}:${e.run_id}`) || Object.values(e.model_role_mapping ?? {}).includes(variantId) ||
+      e.formations?.some((formation) => Object.values(formation.model_role_mapping).includes(variantId)))
     .sort((a, b) => a.started_at?.localeCompare(b.started_at ?? '') ?? 0);
 }
 
@@ -1507,8 +1533,10 @@ function isLeaderboardQualified(model: ModelSummary, assignments: AssignmentResu
 /** The series the Leaderboard opens on: the newest with a model it can rank, so neither a
  *  platform upgrade nor a run still in progress blanks the page. The build series is the
  *  fallback before the feed holds a rankable model. */
-export function defaultLeaderboardRelease(models: ModelSummary[], assignments: AssignmentResult[]): string {
-  const release = newestAdmittedRelease(models, (model) => isLeaderboardQualified(model, assignments));
+export function defaultLeaderboardRelease(models: ModelSummary[], assignments: AssignmentResult[], qualifiedFormationRuns: EvaluationSummary[] = []): string {
+  const release = newestAdmittedRelease([
+    ...models.filter((model) => isLeaderboardQualified(model, assignments)), ...qualifiedFormationRuns,
+  ], () => true);
   return toReleaseSeries(release ?? CURRENT_PLATFORM_RELEASE);
 }
 
@@ -1529,7 +1557,9 @@ export function modelRoleLeaderboardRows(
   evaluations: EvaluationSummary[] = [],
   assignments: AssignmentResult[] = [],
 ): ModelRoleLeaderboardRow[] {
-  const qualified = models.filter((model) => (role === 'all' || model.role === role) && isLeaderboardQualified(model, assignments));
+  const formationDatasets = new Set(evaluations.filter((run) => run.evaluation_unit === 'system').map((run) => run.dataset_id));
+  const qualified = models.filter((model) => !formationDatasets.has(model.dataset_id) &&
+    (role === 'all' || model.role === role) && isLeaderboardQualified(model, assignments));
   const measured = modelSummaryGroups(qualified).map(({ model, sources }) => {
     const securityObservations = sources.flatMap((source) => {
       const security = resolveModelSecurity(source, assignments);
@@ -1559,13 +1589,8 @@ export function modelRoleLeaderboardRows(
       : { latency, tokens, size });
   }
 
-  const { speed: speedWeight, tokens: tokensWeight } = LEADERBOARD_EFFICIENCY_WEIGHTS;
   const rows = measured.map(({ model, sources, latency, tokens, size, security }) => {
     const roleBest = best.get(model.role)!;
-    const sizeFactor = (1 - LEADERBOARD_TOTAL_PARAMETER_DOUBLING_PENALTY) ** Math.log2(size / roleBest.size);
-    const efficiency = 1 - speedWeight - tokensWeight +
-      speedWeight * (roleBest.latency / latency) +
-      tokensWeight * (roleBest.tokens / tokens);
     const passRate = model.pass_rate!.estimate;
     const runDurations = Object.fromEntries(sources.map((source) => [source.dataset_id, modelRunSeconds(source, evaluations)]));
     const effectiveSecurity = security ?? (model.role === 'lite' ? 0.5 : 0);
@@ -1574,7 +1599,7 @@ export function modelRoleLeaderboardRows(
       model,
       sources,
       run_durations: runDurations,
-      score: 100 * (passRate ** 2) * Math.sqrt(effectiveSecurity) * sizeFactor * efficiency,
+      score: leaderboardScore(passRate, effectiveSecurity, { latency, tokens, size }, roleBest),
       pass_rate: passRate,
       security,
       latency_p50_ms: latency,
@@ -1586,6 +1611,18 @@ export function modelRoleLeaderboardRows(
   });
   rows.sort(compareModelLeaderboardScores);
   return rows.map((row, index) => ({ ...row, rank: index + 1 }));
+}
+
+/** Shared score formula; callers choose a comparable role or formation suite population. */
+export function leaderboardScore(
+  accuracy: number, security: number,
+  measured: { latency: number; tokens: number; size: number },
+  best: { latency: number; tokens: number; size: number },
+): number {
+  const { speed, tokens } = LEADERBOARD_EFFICIENCY_WEIGHTS;
+  const sizeFactor = (1 - LEADERBOARD_TOTAL_PARAMETER_DOUBLING_PENALTY) ** Math.log2(measured.size / best.size);
+  const efficiency = 1 - speed - tokens + speed * best.latency / measured.latency + tokens * best.tokens / measured.tokens;
+  return 100 * accuracy ** 2 * Math.sqrt(security) * sizeFactor * efficiency;
 }
 
 function compareModelLeaderboardScores(a: ModelLeaderboardRow, b: ModelLeaderboardRow): number {

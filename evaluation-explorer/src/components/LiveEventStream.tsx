@@ -14,6 +14,7 @@ import {
   deterministicGradesByAssignment,
   isDeterministicGradingEvent,
   isJudgeEvent,
+  isSettledAssignmentRow,
   isTribunalVoteEvent,
   judgeActivityByAssignment,
   roleLabel,
@@ -146,7 +147,7 @@ function deterministicGradesPending(
   grades: Map<string, LiveDeterministicGrade[]>,
   judgments: Map<string, LiveJudgeActivity[]>,
 ): boolean {
-  if (!event.assignment_id || isTerminalAssignmentEvent(event)) return false;
+  if (!event.assignment_id || isSettledAssignmentRow(event)) return false;
   const row = assignmentRowKey(event);
   return judgments.has(row) && !grades.has(row);
 }
@@ -295,16 +296,18 @@ function streamResult(event: LiveEvent, assignment: AssignmentResult | undefined
     }
     return { label: 'Vote', symbol: '•', tone: 'info' };
   }
-  if (isTerminalAssignmentEvent(event)) {
+  if (isSettledAssignmentRow(event)) {
     const status = event.terminal_status ?? assignment?.terminal_status;
     if (status && status !== 'completed' && status !== 'model_failed') {
       return { label: displayLabel(status)!, symbol: '!', tone: 'neutral' };
     }
-    const pass = assignmentMetricValues(event, assignment).pass?.value;
+    // A formation is one outcome: its role rows state the assignment's verdict.
+    const pass = assignmentMetricValues(event, assignment).pass?.value ?? assignment?.metric_values.pass?.value;
     if (status === 'model_failed' || pass === 0) {
       return { label: 'Model failed', symbol: '×', tone: 'critical' };
     }
-    if (event.kind === 'assignment_failed') return { label: 'Failed', symbol: '!', tone: 'neutral' };
+    const ended = event.kind === 'assignment_completed' ? 'completed' : event.kind === 'assignment_failed' ? 'failed' : event.lifecycle_status;
+    if (ended !== 'completed') return { label: 'Failed', symbol: '!', tone: 'neutral' };
     return { label: pass === 1 ? 'Passed' : 'Completed', symbol: '✓', tone: 'ok' };
   }
   if (event.stage_label?.toLowerCase().startsWith('model role invoked')) {

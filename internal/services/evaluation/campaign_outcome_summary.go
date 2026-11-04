@@ -33,6 +33,11 @@ func AssignmentOutcomeSummary(result *evalv1.EvaluationAssignmentResult) string 
 		fmt.Fprintf(&line, " reason=%q", result.GetPublicFailureReason())
 		return line.String()
 	}
+	// INVALID_EVIDENCE carries no grades, so its reason is the whole outcome.
+	if result.GetLifecycleStatus() == evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE && result.GetPublicFailureReason() != "" {
+		fmt.Fprintf(&line, " reason=%q", result.GetPublicFailureReason())
+		return line.String()
+	}
 	if rate, ok := DeterministicPassRate(result); ok {
 		fmt.Fprintf(&line, " pass_rate=%.1f%%", rate*100)
 	}

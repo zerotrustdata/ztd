@@ -255,7 +255,7 @@ const ENVELOPE_FIELDS = [
 const CATALOG_FIELDS = [...ENVELOPE_FIELDS, 'dataset_kind', 'title', 'description', 'limitations', 'model_count', 'evaluated_count', 'suite_count', 'run_count', 'assignment_count', 'provider_request_count', 'provider_token_count', 'retry_count', 'verifier_passed_count', 'verifier_failed_count', 'generated_at', 'provider_environment'] as const;
 const MODEL_FIELDS = [...ENVELOPE_FIELDS, 'variant_id', 'display_name', 'served_model_tag', 'parameter_count', 'parameter_count_source', 'model_digest', 'model_family', 'model_format', 'artifact_size_bytes', 'context_limit', 'role', 'backend_provider_class', 'quantization_weight_class', 'inventory_only', 'evaluation_coverage', 'pass_rate', 'agreement_pairwise', 'agreement_all_five', 'repeatability', 'latency_p50_ms', 'latency_p95_ms', 'output_throughput_p50', 'output_throughput_p95', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'security_resistance', 'terminal_outcomes', 'unavailable_reasons'] as const;
 const SUITE_FIELDS = [...ENVELOPE_FIELDS, 'suite_id', 'display_name', 'task_count', 'assignment_count', 'status', 'verifier_state', 'verifier_failure_summary', 'model_coverage', 'metric_summaries', 'limitations'] as const;
-const EVALUATION_FIELDS = [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'run_status', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'run_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'headline_metrics', 'evidence_link', 'native_result'] as const;
+const EVALUATION_FIELDS = [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'formations', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'run_status', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'run_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'headline_metrics', 'evidence_link', 'native_result'] as const;
 const ASSIGNMENT_FIELDS = [...ENVELOPE_FIELDS, 'assignment_id', 'run_id', 'task_id', 'scenario_id', 'variant_id', 'role', 'repetition', 'scenario_category', 'evaluation_unit', 'stack_id', 'scenario_summary', 'semantic_grade_summaries', 'activity_summary', 'evidence_bindings', 'benchmark_observations', 'terminal_status', 'metric_values', 'missingness_reason', 'stage_summary', 'resource_summary', 'verification_disposition', 'verification_metadata', 'model_response', 'failure_output', 'role_transcripts', 'trajectory_outcome', 'guided_retry_count', 'failure_reason', 'tools_declared'] as const;
 const METHODOLOGY_FIELDS = [...ENVELOPE_FIELDS, 'metric_definitions', 'suite_definitions', 'limitations'] as const;
 const LIVE_EVENT_FIELDS = [...ENVELOPE_FIELDS, 'event_id', 'run_id', 'assignment_id', 'task_id', 'variant_id', 'role', 'lifecycle_status', 'terminal_status', 'completed', 'total', 'stage_label', 'metric_delta', 'judge', 'deterministic_grades', 'feed_sequence'] as const;
@@ -634,6 +634,73 @@ export function isEvaluationSummary(value: unknown): asserts value is Evaluation
   assertString(value.arm, 'evaluation_summary.arm');
   assertOptional(value.evaluation_unit, 'evaluation_summary.evaluation_unit', (v, p) => assertEnum(v, EVALUATION_UNITS, p));
   assertOptional(value.stack_id, 'evaluation_summary.stack_id', assertString);
+  if (value.formations !== undefined) {
+    assert(schemaAtLeast(value.schema_version, '1.13.0'), 'evaluation_summary.formations', 'requires schema 1.13.0');
+    assert(value.evaluation_unit === 'system' && value.native_result === undefined, 'evaluation_summary.formations', 'requires a system campaign');
+    assert(Array.isArray(value.formations), 'evaluation_summary.formations', 'expected array');
+    const identities = new Set<string>();
+    let scheduled = 0;
+    for (const [index, formation] of value.formations.entries()) {
+      const path = `evaluation_summary.formations[${index}]`;
+      assertObject(formation, path);
+      rejectUnknown(formation, ['stack_id', 'stack_digest', 'model_role_mapping', 'assignment_total', 'terminal_outcomes', 'pass_rate', 'security_pass_rate', 'latency_p50_ms', 'output_tokens', 'output_throughput_p50', 'run_seconds', 'parameter_count', 'artifact_size_bytes'], path);
+      assertString(formation.stack_id, `${path}.stack_id`);
+      assert(!identities.has(formation.stack_id), path, 'duplicate stack identity');
+      identities.add(formation.stack_id);
+      assertString(formation.stack_digest, `${path}.stack_digest`);
+      assert(/^[0-9a-f]{64}$/u.test(formation.stack_digest), path, 'expected stack SHA-256');
+      assertObject(formation.model_role_mapping, `${path}.model_role_mapping`);
+      rejectUnknown(formation.model_role_mapping, MODEL_ROLES, `${path}.model_role_mapping`);
+      for (const role of MODEL_ROLES) assertString(formation.model_role_mapping[role], `${path}.model_role_mapping.${role}`);
+      assertInteger(formation.assignment_total, `${path}.assignment_total`);
+      assert(formation.assignment_total > 0, path, 'requires scheduled assignments');
+      scheduled += formation.assignment_total;
+      assertObject(formation.terminal_outcomes, `${path}.terminal_outcomes`);
+      rejectUnknown(formation.terminal_outcomes, TERMINAL_STATUSES, `${path}.terminal_outcomes`);
+      let terminal = 0;
+      for (const status of TERMINAL_STATUSES) {
+        const count = formation.terminal_outcomes[status];
+        assertInteger(count, `${path}.terminal_outcomes.${status}`);
+        assert(count >= 0, path, 'negative outcome count');
+        terminal += count;
+      }
+      assert(terminal <= formation.assignment_total, path, 'outcomes exceed scheduled assignments');
+      for (const field of ['pass_rate', 'security_pass_rate'] as const) {
+        assertOptional(formation[field], `${path}.${field}`, assertConfidenceInterval);
+        const rate = formation[field];
+        if (rate !== undefined) {
+          assertObject(rate, `${path}.${field}`);
+          assertNumber(rate.denominator, `${path}.${field}.denominator`);
+          assertNumber(rate.estimate, `${path}.${field}.estimate`);
+          assertNumber(rate.lower, `${path}.${field}.lower`);
+          assertNumber(rate.upper, `${path}.${field}.upper`);
+          assert(rate.lower >= 0 && rate.upper <= 1, path, 'rate must lie in [0, 1]');
+          assertInteger(formation.terminal_outcomes.completed, `${path}.terminal_outcomes.completed`);
+          assertInteger(formation.terminal_outcomes.model_failed, `${path}.terminal_outcomes.model_failed`);
+          const judged = formation.terminal_outcomes.completed + formation.terminal_outcomes.model_failed;
+          assert(rate.denominator > 0 && rate.denominator <= judged, path, 'rate requires judged assignments');
+          if (field === 'pass_rate') {
+            assert(rate.denominator === judged && rate.estimate === formation.terminal_outcomes.completed / judged, path, 'pass rate must match verdict counts');
+          }
+        }
+      }
+      for (const field of ['latency_p50_ms', 'output_tokens', 'output_throughput_p50'] as const) {
+        assertMetricValue(formation[field], `${path}.${field}`);
+        const metric: unknown = formation[field];
+        assertObject(metric, `${path}.${field}`);
+        assertOptional(metric.value, `${path}.${field}.value`, assertNumber);
+        assert(metric.value === undefined || metric.value >= 0, path, 'negative measurement');
+      }
+      assertOptional(formation.run_seconds, `${path}.run_seconds`, assertNumber);
+      assert(formation.run_seconds === undefined || formation.run_seconds >= 0, path, 'negative execution time');
+      for (const field of ['parameter_count', 'artifact_size_bytes'] as const) {
+        assertOptional(formation[field], `${path}.${field}`, assertInteger);
+        assert(formation[field] === undefined || formation[field] > 0, `${path}.${field}`, 'must be a positive safe integer');
+      }
+    }
+    assertNumber(value.assignment_total, 'evaluation_summary.assignment_total');
+    assert(scheduled <= value.assignment_total, 'evaluation_summary.formations', 'formation assignments exceed run total');
+  }
   if (schemaAtLeast(value.schema_version, '1.5.0')) {
     assert(value.evaluation_unit !== undefined, 'evaluation_summary.evaluation_unit', 'required for schema 1.5.0');
     if (value.evaluation_unit === 'model') {

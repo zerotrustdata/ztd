@@ -41,6 +41,7 @@ import {
   normalizeQualityFilter,
 } from '../utils/feed-state';
 import { datasetLabel, modelSummaryGroups, roleLabel } from './derived';
+import { formationGroups } from './formations';
 
 interface ModelFilters {
   search: string;
@@ -163,6 +164,7 @@ export function ModelsView() {
     Array.from(state.evaluations.values()).filter((record) => matchesRelease(record, release)),
   );
   const assignments = useStoreState((state) => Array.from(state.assignments.values()));
+  const formations = useMemo(() => formationGroups(evaluations), [evaluations]);
 
   const profilesByKey = useMemo(() => {
     const map = new Map<string, ReturnType<typeof resolveModelProfile>>();
@@ -183,7 +185,11 @@ export function ModelsView() {
       set.add(`${asg.dataset_id}:${asg.run_id}`);
     }
     for (const run of evaluations) {
-      for (const variantId of Object.values(run.model_role_mapping ?? {})) {
+      const variantIds = new Set([
+        ...Object.values(run.model_role_mapping ?? {}),
+        ...(run.formations ?? []).flatMap((formation) => Object.values(formation.model_role_mapping)),
+      ]);
+      for (const variantId of variantIds) {
         if (!variantId) continue;
         let set = map.get(variantId);
         if (!set) {
@@ -416,6 +422,15 @@ export function ModelsView() {
         },
       },
       {
+        id: 'formations',
+        header: 'Formations',
+        accessorFn: (model: ModelSummary) => formations.filter((group) => Object.values(group.summary.model_role_mapping).includes(model.variant_id)).length,
+        cell: ({ row }) => {
+          const count = formations.filter((group) => Object.values(group.summary.model_role_mapping).includes(row.original.variant_id)).length;
+          return count > 0 ? <Link to={`/models/${row.original.dataset_id}/${row.original.variant_id}?role=${row.original.role}#model-formations`}>{formatNumber(count)}</Link> : '—';
+        },
+      },
+      {
         id: 'quality',
         header: 'Quality',
         accessorKey: 'quality_state',
@@ -423,7 +438,7 @@ export function ModelsView() {
         enableSorting: false,
       },
     ],
-    [profilesByKey, runsByVariant, sourceCountByKey],
+    [profilesByKey, runsByVariant, sourceCountByKey, formations],
   );
 
   const updateFilter = (patch: Partial<ModelFilters>) => setFilters({ ...filters, ...patch });

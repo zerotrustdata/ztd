@@ -208,6 +208,29 @@ func TestCampaignAssignmentVerifier_AcceptsStoredInvalidEvidenceFromSchemaPin(t 
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus(), "%v", report.GetFailureReasons())
 }
 
+// A stored INVALID_EVIDENCE has to state the reason its trace recomputes to, so
+// the public result cannot name a different cause than the evidence does.
+func TestCampaignAssignmentVerifier_FlagsStoredInvalidEvidenceWithoutItsReason(t *testing.T) {
+	trace := verifiedGradingTrace(t, evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN)
+	req := verifiedGradingRequest(trace, &ScenarioPlayerExpectations{Triage: &TriageExpectation{
+		Complexity: []constants.TriageComplexity{constants.TriageComplexitySimple},
+		Intent:     []constants.TriageIntent{constants.TriageIntentAction},
+		Posture:    []constants.TriagePosture{constants.TriagePostureNormal},
+	}})
+	relabelAgentTrace(t, trace, agentTraceSchemaVersionV6)
+	result := storedHomogeneousResult(t, req, trace)
+	require.Equal(t, invalidEvidenceReasonUnclassified, result.GetPublicFailureReason())
+	require.Equal(t, result.GetPublicFailureReason(), result.GetFailureReason())
+
+	result.PublicFailureReason = ""
+	digest, err := ComputeAssignmentResultDigest(result)
+	require.NoError(t, err)
+	result.ResultDigest = digest
+	report := verifyStoredHomogeneous(t, req, trace, result, nil)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, report.GetStatus())
+	assert.Contains(t, report.GetFailureReasons(), `stored invalid evidence reason "" does not match agent trace reason "`+invalidEvidenceReasonUnclassified+`"`)
+}
+
 // A campaign assignment whose v7 trace was relabelled to an earlier version
 // cannot be stored COMPLETED: the verifier applies the schema pin, so the
 // COMPLETED lifecycle is flagged.

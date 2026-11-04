@@ -10,12 +10,12 @@
 // and checked-in explorer fixtures. See src/contract/CONTRACT.md for the
 // ownership map and integration decisions.
 //
-// FROZEN at schema_version 1.12.0 on 2026-11-04. A change to any enum value
+// FROZEN at schema_version 1.13.0 on 2026-11-04. A change to any enum value
 // or required field is a contract revision: bump VIEW_SCHEMA_VERSION and
 // update descriptor.json and validators.
 
-export const VIEW_SCHEMA_VERSION = '1.12.0' as const;
-export const SUPPORTED_VIEW_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '1.10.0', '1.11.0', '1.12.0'] as const;
+export const VIEW_SCHEMA_VERSION = '1.13.0' as const;
+export const SUPPORTED_VIEW_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '1.10.0', '1.11.0', '1.12.0', '1.13.0'] as const;
 export type ViewSchemaVersion = (typeof SUPPORTED_VIEW_SCHEMA_VERSIONS)[number];
 
 export const ACTIVITY_AVAILABILITIES = ['observed', 'unavailable', 'not_applicable'] as const;
@@ -570,6 +570,25 @@ export interface EvaluationHeadlineMetrics {
   throughput?: MetricValue<number>;
 }
 
+/** One frozen formation's complete assignment population in a run. Metrics
+ * include all scored role calls once per assignment, not averaged role scores. */
+export interface FormationSummary {
+  stack_id: string;
+  stack_digest: string;
+  model_role_mapping: Record<ModelRole, string>;
+  assignment_total: number;
+  terminal_outcomes: Record<TerminalStatus, number>;
+  pass_rate?: ConfidenceInterval;
+  security_pass_rate?: ConfidenceInterval;
+  latency_p50_ms: MetricValue<number>;
+  output_tokens: MetricValue<number>;
+  output_throughput_p50: MetricValue<number>;
+  run_seconds?: number;
+  /** Unique installed variants across slots; absent if any member is unknown. */
+  parameter_count?: number;
+  artifact_size_bytes?: number;
+}
+
 /** 4. evaluation_summary: per-run identity, lifecycle, and headline metrics. */
 export interface EvaluationSummary extends ViewRecordEnvelope {
   kind: 'evaluation_summary';
@@ -579,6 +598,7 @@ export interface EvaluationSummary extends ViewRecordEnvelope {
   arm: string;
   evaluation_unit?: EvaluationUnit;
   stack_id?: string;
+  formations?: FormationSummary[];
   primary_invocation_share?: MetricValue<number>;
   correlated_failure_rate?: MetricValue<number>;
   benchmark_unavailable_reasons?: string[];

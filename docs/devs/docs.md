@@ -269,6 +269,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [The day my evals deleted the repo](../../website/content/posts/the-day-my-evals-deleted-the-repo.md): Build in Public field notes on an eval bug that wiped the repo root, evals bypassing L1–L5, and demo-driven v1.1.0 testing.
 - [Ugly evals, pprof, and the bugs in L2–L5](../../website/content/posts/ugly-evals-pprof-and-the-bugs-in-l2-l5.md): Build in Public field notes on bolted-on evaluations, pprof profiling, and the bugs they exposed across L2–L5.
 - [Action receipts grew legs](../../website/content/posts/action-receipts-grew-legs.md): Build in Public field notes on removing the duplicate receipt store, correcting event-driven terminology, evaluation fairness, and Tribunal consensus.
+- [Shirtless in a field with a reference monitor](../../website/content/posts/shirtless-in-a-field-with-a-reference-monitor.md): Build in Public field notes on eighteen months of ztd, the 1972 reference monitor design, local-first data custody, the v1.4.0–v1.9.0 releases, and an invitation to join.
 - [Commercial License and Services Terms](../../website/content/terms.md): Commercial license plans, production limits, and services terms for purchases on zerotrustdata.io, published at `/terms/`.
 - [Evaluation Explorer Runbook](../../evaluation-explorer/RUNBOOK.md): Operational runbook for developing and building the Evaluation Explorer SPA.
 - [Evaluation Explorer Contract](../../evaluation-explorer/src/contract/CONTRACT.md): Browser view contract, canonical schema validators, and release provenance rules.
@@ -323,6 +324,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.6.0 Release Notes](../release_notes/v1.6.x/v1.6.0.md): Typed agent personas, Tribunal stage tiers and Lite L2 votes, Lite Triage and Interrogator, the tool-calling probe, and no-masking evaluation prompts.
 - [v1.8.0 Release Notes](../release_notes/v1.8.x/v1.8.0.md): Typed governed Ollama model pull and copy, the single-path file ledger, failed observer receipts as evidence, the append-only publisher outbox, and renamed CLI commands and catalog files.
 - [v1.9.0 Release Notes](../release_notes/v1.9.x/v1.9.0.md): Deterministic grades in the Evaluation Explorer Live view, the `deterministic_grading_completed` live event, Explorer view schema 1.12.0, `make vhs` governed agent demo recordings, and file mutation diffs outside the ledger write lock.
+- [v1.9.1 Release Notes](../release_notes/v1.9.x/v1.9.1.md): Published frozen formation results and leaderboard, feed-derived model membership, formation-aware release selection, local persona demo scenarios, and the Explorer view schema 1.13.0 upgrade requirement.
 
 ## Procedures
 

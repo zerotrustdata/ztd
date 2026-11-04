@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 480" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Shirtless in a field with a reference monitor</title>
+  <desc id="desc">Agents pass through a five-layer reference monitor to Operators that connect outbound only. Below, a lone figure dances in an open field while a dashed green outline of a follower waits beside them.</desc>
+  <defs>
+    <radialGradient id="glow">
+      <stop stop-color="#72f6de" stop-opacity=".1"/>
+      <stop offset="1" stop-color="#72f6de" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="monitor" x1="190" y1="84" x2="370" y2="252" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#24463f"/>
+      <stop offset="1" stop-color="#122626"/>
+    </linearGradient>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r=".7" fill="#608d89" opacity=".28"/>
+    </pattern>
+  </defs>
+  <path fill="#0b171a" d="M0 0h560v480H0z"/>
+  <path fill="url(#grid)" d="M0 0h560v480H0z"/>
+  <circle cx="280" cy="170" r="210" fill="url(#glow)"/>
+  <path d="M20 40V20h20M520 20h20v20M20 440v20h20M520 460h20v-20" stroke="#41645f"/>
+
+  <g font-family="monospace" font-size="9" letter-spacing="2" fill="#91b6b0">
+    <text x="35" y="49">06 / REFERENCE MONITOR</text>
+    <text x="525" y="49" text-anchor="end">EST. 1972</text>
+  </g>
+
+  <!-- Subjects: they can ask. -->
+  <g font-family="monospace" font-size="8" letter-spacing="1.2" fill="#91b6b0" text-anchor="middle">
+    <rect x="35" y="94" width="96" height="28" rx="5" fill="#101f22" stroke="#41645f"/>
+    <text x="83" y="111">AGENT</text>
+    <rect x="35" y="154" width="96" height="28" rx="5" fill="#101f22" stroke="#41645f"/>
+    <text x="83" y="171">MODEL</text>
+    <rect x="35" y="214" width="96" height="28" rx="5" fill="#101f22" stroke="#41645f"/>
+    <text x="83" y="231">MCP CLIENT</text>
+  </g>
+  <g stroke="#608d89" stroke-dasharray="3 4">
+    <path d="M131 108c28 0 32 34 59 46M131 168h59M131 228c28 0 32-34 59-46"/>
+  </g>
+  <path d="m184 164 7 4-7 4" stroke="#72f6de"/>
+
+  <!-- The mediator. -->
+  <rect x="190" y="84" width="180" height="168" rx="8" fill="url(#monitor)" stroke="#72f6de" stroke-opacity=".7"/>
+  <text x="280" y="106" text-anchor="middle" font-family="monospace" font-size="9" letter-spacing="2" fill="#72f6de">ALWAYS INVOKED</text>
+  <path d="M190 116h180" stroke="#72f6de" stroke-opacity=".3"/>
+  <g font-family="monospace" font-size="9" letter-spacing="1.2" fill="#c9e4de">
+    <text x="208" y="136">L1  DOCTRINE</text>
+    <text x="208" y="160">L2  CONSENSUS</text>
+    <text x="208" y="184">L3  NOTARY</text>
+    <text x="208" y="208">L4  WARDEN</text>
+    <text x="208" y="232">L5  ACTUATOR</text>
+  </g>
+  <g fill="#72f6de">
+    <circle cx="350" cy="133" r="2.5"/>
+    <circle cx="350" cy="157" r="2.5"/>
+    <circle cx="350" cy="181" r="2.5"/>
+    <circle cx="350" cy="205" r="2.5"/>
+    <circle cx="350" cy="229" r="2.5"/>
+  </g>
+
+  <!-- Operators dial out; nothing dials in. -->
+  <g stroke="#72f6de" stroke-opacity=".55">
+    <path d="M430 108h-60M430 168h-60M430 228h-60"/>
+    <path d="m377 104-7 4 7 4M377 164l-7 4 7 4M377 224l-7 4 7 4"/>
+  </g>
+  <g fill="#122626" stroke="#608d89">
+    <rect x="430" y="94" width="28" height="28" rx="4"/>
+    <rect x="464" y="94" width="28" height="28" rx="4"/>
+    <rect x="498" y="94" width="28" height="28" rx="4"/>
+    <rect x="430" y="154" width="28" height="28" rx="4"/>
+    <rect x="464" y="154" width="28" height="28" rx="4"/>
+    <rect x="498" y="154" width="28" height="28" rx="4"/>
+    <rect x="430" y="214" width="28" height="28" rx="4"/>
+    <rect x="464" y="214" width="28" height="28" rx="4"/>
+    <rect x="498" y="214" width="28" height="28" rx="4"/>
+  </g>
+  <text x="478" y="264" text-anchor="middle" font-family="monospace" font-size="8" letter-spacing="1.2" fill="#91b6b0">OUTBOUND ONLY</text>
+
+  <!-- The field. -->
+  <path d="M20 392c90-22 170-26 260-20s170 12 260 2" stroke="#41645f"/>
+  <g stroke="#41645f" stroke-linecap="round">
+    <path d="M62 386l-3-8M66 386l1-9M71 385l4-7M452 381l-3-8M456 381l1-9M461 380l4-7M500 380l-3-7M505 380l2-8"/>
+  </g>
+
+  <!-- The dancer. -->
+  <g stroke="#f4f7f5" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="238" cy="306" r="9"/>
+    <path d="M238 315l-3 32"/>
+    <path d="M237 322l-20-20-6-20"/>
+    <path d="M237 322l20-12 12-22"/>
+    <path d="M235 347l-17 12-5 15"/>
+    <path d="M235 347l13 13 16 7"/>
+  </g>
+  <g stroke="#72f6de" stroke-opacity=".6" stroke-linecap="round">
+    <path d="M198 290c-6 8-7 16-4 24M186 284c-9 12-10 26-5 38M282 294c6 8 7 16 4 24M294 288c9 12 10 26 5 38"/>
+  </g>
+
+  <!-- The follower, any minute now. -->
+  <g stroke="#72f6de" stroke-width="1.6" stroke-dasharray="3 4" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="362" cy="318" r="9"/>
+    <path d="M362 327v28M362 334l-14 15M362 334l14 15M362 355l-12 19M362 355l12 19"/>
+  </g>
+  <text x="362" y="298" text-anchor="middle" font-family="monospace" font-size="13" fill="#72f6de">?</text>
+
+  <g font-family="monospace" font-size="9" letter-spacing="2" fill="#91b6b0">
+    <text x="35" y="426">ONE BINARY / UNDER 50 MB</text>
+    <text x="525" y="426" text-anchor="end">FOLLOWERS: PENDING</text>
+  </g>
+</svg>

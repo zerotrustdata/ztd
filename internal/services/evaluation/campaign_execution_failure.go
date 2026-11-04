@@ -51,6 +51,11 @@ const (
 	ExecutionFailureCanceled    ExecutionFailureClass = "canceled"
 	ExecutionFailureTimeout     ExecutionFailureClass = "timeout"
 	ExecutionFailureInternal    ExecutionFailureClass = "internal_error"
+	// ExecutionFailureRecovered is an assignment that reached a terminal lifecycle
+	// with no persisted result, such as one a run cancel stopped. Repair records
+	// it; nothing is known about an execution beyond that lifecycle, so this is
+	// the one class whose result carries the assignment's lifecycle.
+	ExecutionFailureRecovered ExecutionFailureClass = "recovered_without_result"
 )
 
 // ClassifyExecutionFailure maps an executor error to its fixed failure
@@ -72,6 +77,8 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 		return ExecutionFailurePosture
 	case errors.Is(err, constants.ErrEvalRunVerificationFailed):
 		return ExecutionFailureVerification
+	case errors.Is(err, constants.ErrEvaluationRecoveredResultMissing):
+		return ExecutionFailureRecovered
 	case errors.Is(err, constants.ErrEvaluationObservationUnavailable):
 		return ExecutionFailureEvidence
 	case errors.Is(err, constants.ErrEvaluationHeldContextUnavailable):
@@ -137,6 +144,12 @@ func executorFailureAssignmentResult(assignment *evalv1.EvaluationAssignment, cl
 		lifecycle = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED
 	case ExecutionFailureGrader:
 		lifecycle = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED
+	case ExecutionFailureRecovered:
+		// COMPLETED claims an execution, which a traceless result cannot evidence.
+		status := assignment.GetLifecycleStatus()
+		if isTerminalAssignmentLifecycle(status) && status != evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED {
+			lifecycle = status
+		}
 	}
 	return &evalv1.EvaluationAssignmentResult{
 		SchemaVersion:   CampaignSchemaVersion,
@@ -169,7 +182,7 @@ const (
 var executionFailureClasses = []ExecutionFailureClass{
 	ExecutionFailureProvider, ExecutionFailureGrader, ExecutionFailureTarget, ExecutionFailurePosture, ExecutionFailureEvidence, ExecutionFailureHeldContext, ExecutionFailureVerification,
 	ExecutionFailureDispatch, ExecutionFailureInvalidInput, ExecutionFailureScenarioContract, ExecutionFailureRehydration, ExecutionFailureCanceled,
-	ExecutionFailureTimeout, ExecutionFailureInternal,
+	ExecutionFailureTimeout, ExecutionFailureInternal, ExecutionFailureRecovered,
 }
 
 // verifyExecutorFailureResult structurally verifies a result the executor
@@ -206,58 +219,20 @@ func verifyExecutorFailureResult(assignment *evalv1.EvaluationAssignment, result
 	return failures
 }
 
+// isExecutorFailureResult reports whether result is a traceless executor
+// failure, which records no execution. It only selects the check that applies:
+// verifyExecutorFailureResult still requires the exact shape.
+func isExecutorFailureResult(result *evalv1.EvaluationAssignmentResult) bool {
+	grades := result.GetDeterministicGrades()
+	return len(grades) == 1 && grades[0].GetCriterionId() == executionFailureCriterion
+}
+
 // isProviderFailureReason reports whether reason is one of the fixed
 // providerFailureReason sentences.
 func isProviderFailureReason(reason string) bool {
-	for _, class := range []inference.AttemptFailureClass{
-		"", inference.AttemptFailureCapabilityRejected, inference.AttemptFailureContextOverflow, inference.AttemptFailureBackendTimeout,
-		inference.AttemptFailureBackendUnavailable, inference.AttemptFailureModelNotFound, inference.AttemptFailureResponseInvalid,
-		inference.AttemptFailureGenerateFailed, inference.AttemptFailureCanceled,
-	} {
-		if reason == providerFailureReason(class) {
-			return true
-		}
-	}
-	return false
-}
-
-// BuildRecoveredTerminalAssignmentResult materializes one terminal result for
-// an assignment that reached a terminal lifecycle without a persisted result.
-func BuildRecoveredTerminalAssignmentResult(assignment *evalv1.EvaluationAssignment, now time.Time) (*evalv1.EvaluationAssignmentResult, error) {
-	if assignment == nil || !isTerminalAssignmentLifecycle(assignment.GetLifecycleStatus()) {
-		return nil, fmt.Errorf("evaluation: build recovered terminal assignment result: %w", constants.ErrMissingRequiredField)
-	}
-	if now.IsZero() {
-		now = time.Now().UTC()
-	}
-	completedAt := assignment.GetCompletedAt()
-	if completedAt == nil {
-		completedAt = timestamppb.New(now)
-	}
-	result := &evalv1.EvaluationAssignmentResult{
-		SchemaVersion:   CampaignSchemaVersion,
-		AssignmentId:    assignment.GetAssignmentId(),
-		RunId:           assignment.GetRunId(),
-		CampaignId:      assignment.GetCampaignId(),
-		Lane:            assignment.GetLane(),
-		LifecycleStatus: assignment.GetLifecycleStatus(),
-		DeterministicGrades: []*evalv1.DeterministicGrade{
-			{
-				GradeId:     assignment.GetAssignmentId() + ":recovered-terminal",
-				CriterionId: "recovered-terminal",
-				Status:      evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL,
-				Detail:      "recovered terminal assignment lifecycle without a persisted result record",
-				Basis:       basisStructural,
-			},
-		},
-		CompletedAt: completedAt,
-	}
-	digest, err := ComputeAssignmentResultDigest(result)
-	if err != nil {
-		return nil, err
-	}
-	result.ResultDigest = digest
-	return result, nil
+	return slices.ContainsFunc(inference.AttemptFailureClasses(), func(class inference.AttemptFailureClass) bool {
+		return reason == providerFailureReason(class)
+	})
 }
 
 func assignmentExecutionError(scope string, err error) error {
@@ -315,10 +290,11 @@ func assignmentPersistContext(ctx context.Context) context.Context {
 }
 
 // RepairAssignmentsWithoutResults backfills persisted terminal results for
-// assignments that already reached a terminal lifecycle, and resolves a
-// running one whose frozen scenario contract the executor rejects before it
-// acts. The caller must hold the run lease, so no live process is executing
-// the running assignment.
+// assignments that already reached a terminal lifecycle, replaces a recovered
+// result repair misclassified as internal_error, and resolves a running
+// assignment whose frozen scenario contract the executor rejects before it acts.
+// The caller must hold the run lease, so no live process is executing the running
+// assignment.
 func (c *CampaignController) RepairAssignmentsWithoutResults(ctx context.Context, runID string) (int, error) {
 	if c == nil || c.store == nil || runID == "" {
 		return 0, fmt.Errorf("evaluation: repair assignments without results: %w", constants.ErrMissingRequiredField)
@@ -340,13 +316,13 @@ func (c *CampaignController) RepairAssignmentsWithoutResults(ctx context.Context
 		if err != nil {
 			return repaired, err
 		}
-		if exists {
-			continue
-		}
 		var result *evalv1.EvaluationAssignmentResult
-		if running {
+		switch {
+		case exists:
+			result, err = c.replacementForMisclassifiedResult(ctx, assignment)
+		case running:
 			result, err = c.rejectedScenarioContractResult(ctx, assignment)
-		} else {
+		default:
 			result, err = c.recoverTerminalAssignmentResult(assignment)
 		}
 		if err != nil {
@@ -397,20 +373,53 @@ func (c *CampaignController) rejectedScenarioContractResult(ctx context.Context,
 	return BuildExecutorFailureAssignmentResult(req, scopeErr, c.now().UTC())
 }
 
-func (c *CampaignController) recoverTerminalAssignmentResult(assignment *evalv1.EvaluationAssignment) (*evalv1.EvaluationAssignmentResult, error) {
-	recoveredErr := constants.ErrEvaluationRecoveredResultMissing
-	req := AssignmentExecutionRequest{Assignment: assignment, AttemptID: "recovered"}
-	result, err := BuildExecutorFailureAssignmentResult(req, recoveredErr, c.now().UTC())
-	if err != nil {
-		return BuildRecoveredTerminalAssignmentResult(assignment, c.now().UTC())
+// replacementForMisclassifiedResult is the recovered failure result for a
+// terminal assignment whose stored result isMisclassifiedRecoveredResult and
+// which has no agent trace. It returns nil for any other assignment.
+func (c *CampaignController) replacementForMisclassifiedResult(ctx context.Context, assignment *evalv1.EvaluationAssignment) (*evalv1.EvaluationAssignmentResult, error) {
+	if !isTerminalAssignmentLifecycle(assignment.GetLifecycleStatus()) {
+		return nil, nil
 	}
-	result.LifecycleStatus = assignment.GetLifecycleStatus()
-	digest, err := ComputeAssignmentResultDigest(result)
+	traced, err := c.store.AssignmentAgentTraceExists(ctx, assignment.GetRunId(), assignment.GetAssignmentId())
+	if err != nil || traced {
+		return nil, err
+	}
+	stored, err := c.store.LoadAssignmentResult(ctx, assignment.GetRunId(), assignment.GetAssignmentId())
 	if err != nil {
 		return nil, err
 	}
-	result.ResultDigest = digest
-	return result, nil
+	if !isMisclassifiedRecoveredResult(assignment, stored) {
+		return nil, nil
+	}
+	return c.recoverTerminalAssignmentResult(assignment)
+}
+
+// isMisclassifiedRecoveredResult reports whether result is exactly the record
+// repair wrote before ExecutionFailureRecovered existed: internal_error carrying
+// the assignment's lifecycle. The executor records internal_error only as FAILED,
+// so a different lifecycle came from repair, and such a result holds nothing the
+// assignment does not. Anything else is left for the verifier to judge.
+func isMisclassifiedRecoveredResult(assignment *evalv1.EvaluationAssignment, result *evalv1.EvaluationAssignmentResult) bool {
+	lifecycle := assignment.GetLifecycleStatus()
+	if lifecycle == evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED {
+		return false
+	}
+	expected := executorFailureAssignmentResult(assignment, ExecutionFailureInternal, "", result.GetCompletedAt())
+	expected.LifecycleStatus = lifecycle
+	expected.ResultDigest = result.GetResultDigest()
+	return proto.Equal(expected, result) && ValidateAssignmentResultDigest(result) == nil
+}
+
+// recoverTerminalAssignmentResult is the recovered failure result for a terminal
+// assignment with no persisted result. It keeps the completion time the
+// assignment recorded, such as the time a cancel stopped it, not the repair time.
+func (c *CampaignController) recoverTerminalAssignmentResult(assignment *evalv1.EvaluationAssignment) (*evalv1.EvaluationAssignmentResult, error) {
+	completedAt := c.now().UTC()
+	if recorded := assignment.GetCompletedAt(); recorded != nil {
+		completedAt = recorded.AsTime()
+	}
+	req := AssignmentExecutionRequest{Assignment: assignment, AttemptID: "recovered"}
+	return BuildExecutorFailureAssignmentResult(req, constants.ErrEvaluationRecoveredResultMissing, completedAt)
 }
 
 // importPersistedAgentTrace rebuilds a homogeneous assignment result from the
@@ -449,12 +458,12 @@ func importSealedAgentTrace(req AssignmentExecutionRequest, trace *AgentTrace, n
 	return ImportAssignmentResultFromAgentTrace(req, trace, ref, now, newID)
 }
 
-// RegradeAssignmentsFromAgentTraces re-imports each terminal homogeneous
-// assignment result from its sealed agent trace when the trace imports to a
-// different lifecycle than the stored result, such as an INVALID_EVIDENCE that
-// a since-fixed import check recorded for valid evidence. The sealed trace is
-// the evidence and is never changed; the regraded result keeps the stored
-// completion time. The caller must hold the run lease.
+// RegradeAssignmentsFromAgentTraces re-imports each terminal assignment result
+// from its sealed agent trace when the trace imports to a different lifecycle than
+// the stored result, such as an INVALID_EVIDENCE that a since-fixed import check
+// recorded for valid evidence, or to a different INVALID_EVIDENCE reason. The
+// sealed trace is the evidence and is never changed; the regraded result keeps the
+// stored completion time. The caller must hold the run lease.
 func (c *CampaignController) RegradeAssignmentsFromAgentTraces(ctx context.Context, runID string) (int, error) {
 	if c == nil || c.store == nil || runID == "" {
 		return 0, fmt.Errorf("evaluation: regrade assignments: %w", constants.ErrMissingRequiredField)
@@ -483,16 +492,26 @@ func (c *CampaignController) RegradeAssignmentsFromAgentTraces(ctx context.Conte
 	if err != nil {
 		return 0, err
 	}
+	var formationStackSet *HeterogeneousStackSet
+	if run.GetLane() == evalv1.EvaluationLane_EVALUATION_LANE_SYSTEM {
+		formationStackSet, err = c.store.LoadHeterogeneousStackSet(ctx, spec.GetCampaignId())
+		if err != nil {
+			return 0, fmt.Errorf("evaluation: regrade assignments: frozen formations: %w", err)
+		}
+		if err := validateCampaignFormationDigest(spec, formationStackSet); err != nil {
+			return 0, fmt.Errorf("evaluation: regrade assignments: frozen formations: %w", err)
+		}
+	}
 	assignments, err := c.store.ListAssignments(ctx, runID)
 	if err != nil {
 		return 0, err
 	}
 	regraded := 0
 	for _, assignment := range assignments {
-		if assignment == nil || IsHeterogeneousAssignment(assignment) || !isTerminalAssignmentLifecycle(assignment.GetLifecycleStatus()) {
+		if assignment == nil || !isTerminalAssignmentLifecycle(assignment.GetLifecycleStatus()) {
 			continue
 		}
-		result, err := c.regradeAssignment(ctx, spec, artifacts, assignment)
+		result, err := c.regradeAssignment(ctx, spec, formationStackSet, artifacts, assignment)
 		if err != nil {
 			return regraded, fmt.Errorf("evaluation: regrade assignment %s: %w", assignment.GetAssignmentId(), err)
 		}
@@ -509,8 +528,8 @@ func (c *CampaignController) RegradeAssignmentsFromAgentTraces(ctx context.Conte
 
 // regradeAssignment returns the result one assignment's sealed agent trace
 // imports to, or nil when the assignment has no persisted result and trace or
-// the trace imports to the stored lifecycle.
-func (c *CampaignController) regradeAssignment(ctx context.Context, spec *evalv1.EvaluationCampaignSpec, artifacts map[string]ScenarioArtifacts, assignment *evalv1.EvaluationAssignment) (*evalv1.EvaluationAssignmentResult, error) {
+// the trace imports to the stored lifecycle and reason.
+func (c *CampaignController) regradeAssignment(ctx context.Context, spec *evalv1.EvaluationCampaignSpec, formationStackSet *HeterogeneousStackSet, artifacts map[string]ScenarioArtifacts, assignment *evalv1.EvaluationAssignment) (*evalv1.EvaluationAssignmentResult, error) {
 	runID, assignmentID := assignment.GetRunId(), assignment.GetAssignmentId()
 	if exists, err := c.store.AssignmentResultExists(ctx, runID, assignmentID); err != nil || !exists {
 		return nil, err
@@ -526,7 +545,7 @@ func (c *CampaignController) regradeAssignment(ctx context.Context, spec *evalv1
 	if err != nil {
 		return nil, err
 	}
-	req, err := c.frozenAssignmentRequest(ctx, spec, CampaignExecutionBinding{}, nil, artifacts, assignment, trace.EvaluationAttemptID)
+	req, err := c.frozenAssignmentRequest(ctx, spec, CampaignExecutionBinding{}, formationStackSet, artifacts, assignment, trace.EvaluationAttemptID)
 	if err != nil {
 		return nil, err
 	}
@@ -534,7 +553,9 @@ func (c *CampaignController) regradeAssignment(ctx context.Context, spec *evalv1
 	if err != nil {
 		return nil, err
 	}
-	if result.GetLifecycleStatus() == stored.GetLifecycleStatus() {
+	sameReason := result.GetLifecycleStatus() != evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE ||
+		result.GetPublicFailureReason() == stored.GetPublicFailureReason()
+	if result.GetLifecycleStatus() == stored.GetLifecycleStatus() && sameReason {
 		return nil, nil
 	}
 	return result, nil

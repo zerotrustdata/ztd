@@ -1,5 +1,18 @@
 [
   {
+    "slug": "shirtless-in-a-field-with-a-reference-monitor",
+    "title": "Shirtless in a field with a reference monitor",
+    "date": "2026-11-04",
+    "description": "Eighteen months in, ztd is real, working, and live: a 1972 reference monitor for AI in one binary under 50 MB, with outbound-only Operators and local-first custody of your data. Not there yet, but very close. Come dance.",
+    "author": "Danny",
+    "tags": ["Engineering", "Releases"],
+    "artwork": {
+      "src": "/journal-reference-monitor.svg",
+      "alt": "Agents passing through a five-layer reference monitor to outbound-only Operators, above a lone figure dancing in an open field while a dashed green outline of a follower waits beside them.",
+      "caption": "ASK → MEDIATE → EXECUTE"
+    }
+  },
+  {
     "slug": "action-receipts-grew-legs",
     "title": "Action receipts grew legs",
     "date": "2026-10-24",

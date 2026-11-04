@@ -94,6 +94,21 @@ func formationTribunalRoleForTrace(trace *AgentTrace, purpose string) evalv1.Mod
 // in a formation assignment; a homogeneous assignment's candidate runs it.
 const formationInterrogatorRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
 
+// formationSupportCallRole is the stack slot a formation assignment dispatches a
+// non-turn model call on: the Interrogator's, or the Tribunal stage's. It is
+// UNSPECIFIED for any other purpose. The executor dispatches by the same slots;
+// both evidence checks read them here.
+func formationSupportCallRole(trace *AgentTrace, purpose string) evalv1.ModelCampaignRole {
+	switch {
+	case purpose == agentModelCallPurposeInterrogation:
+		return formationInterrogatorRole
+	case strings.HasPrefix(purpose, agentModelCallPurposeTribunalPrefix):
+		return formationTribunalRoleForTrace(trace, purpose)
+	default:
+		return evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_UNSPECIFIED
+	}
+}
+
 // runTribunal routes one run_shell_command proposal through Tribunal authoring
 // on the Gateway (POST /api/v1/operators/intents). The Gateway
 // deliberates over governed member inferences and dispatches only an approved
@@ -164,7 +179,7 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 		if failure == modelCallGovernanceRejected {
 			record.PolicyDecision = agentPolicyDecisionDeny
 			r.trace.TerminalClassification = AgentTerminalClassificationPolicyDenial
-			return r.fail(record, agentToolFailure{ErrorType: agentToolErrorSecurity, Error: "SECURITY VIOLATION: Tribunal inference was rejected by required governance"})
+			return r.fail(record, agentToolFailure{ErrorType: agentToolErrorSecurity, Error: agentToolDenialPrefix + "Tribunal inference was rejected by required governance"})
 		}
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: fmt.Sprintf(tribunalInferenceFailedMsg, failure)})
 	}

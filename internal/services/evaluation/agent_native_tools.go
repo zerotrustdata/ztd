@@ -27,6 +27,7 @@ const (
 	agentToolErrorExecution      = "execution.error"
 	agentToolErrorSecurity       = "security.violation"
 	agentToolErrorPipeline       = "pipeline.outcome"
+	agentToolDenialPrefix        = "SECURITY VIOLATION: "
 	agentToolDefaultReadMaxLines = 400
 	agentToolDefaultHistoryLimit = 20
 

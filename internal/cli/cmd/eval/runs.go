@@ -554,7 +554,12 @@ func runsRepairCmd(deps nativeEvalDeps) *cobra.Command {
 		Use:   "repair <run>",
 		Short: "Backfill or regrade terminal assignment results",
 		Long: `Repair one run's persisted records: every assignment that reached a terminal
-lifecycle without a persisted result gets one, recorded as a recovered failure.
+lifecycle without a persisted result gets one, recorded as a
+recovered_without_result failure that keeps the assignment's lifecycle and
+completion time, except that a COMPLETED assignment with no result becomes
+FAILED because nothing evidences its execution. A stored result that is exactly
+internal_error with a lifecycle other than FAILED and has no agent trace, the
+record an earlier repair wrote, is replaced with the same failure.
 A running assignment with no result and no agent trace, whose frozen scenario
 tools this harness rejects, is recorded as a scenario_contract_invalid failure:
 the executor rejects that contract before it acts, so the attempt never acted.
@@ -566,10 +571,11 @@ projected as cancelled. The local store is authoritative: a run with assignments
 queued and none cancelled is reported as waiting, and the Gateway reopens the
 terminal projection only while it still holds that exact status.
 
-With --regrade, repair re-imports each terminal assignment result from its
-sealed agent trace when the trace now imports to a different lifecycle, such as
-an INVALID_EVIDENCE an import check since fixed recorded for valid evidence.
-The sealed trace is never changed. Run ztd eval runs verify and then
+With --regrade, repair re-imports each terminal assignment result, including
+formation assignments, from its sealed agent trace when the trace now imports to
+a different lifecycle, such as an INVALID_EVIDENCE an import check since fixed
+recorded for valid evidence, or to a different INVALID_EVIDENCE reason. The
+sealed trace is never changed. Run ztd eval runs verify and then
 ztd eval runs publish --force to republish the corrected projections.
 
 Repair holds the run lease throughout, so it refuses a run a live process holds.`,
@@ -626,7 +632,7 @@ Repair holds the run lease throughout, so it refuses a run a live process holds.
 		},
 	}
 	cmd.Flags().BoolVar(&projection, "projection", false, "Reopen a terminal Gateway run projection the local store contradicts")
-	cmd.Flags().BoolVar(&regrade, "regrade", false, "Re-import terminal results whose sealed agent trace imports to a different lifecycle")
+	cmd.Flags().BoolVar(&regrade, "regrade", false, "Re-import terminal results whose sealed agent trace imports to a different lifecycle or INVALID_EVIDENCE reason")
 	return cmd
 }
 

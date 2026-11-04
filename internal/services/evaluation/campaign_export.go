@@ -403,6 +403,7 @@ func (e *CampaignExporter) ExportRun(
 	if err := aggregateState.attachScenarioCatalog(catalog, assignments, results); err != nil {
 		return nil, err
 	}
+	aggregateState.attachModelRegistry(spec.GetModelRegistry())
 	aggregateState.Release = release
 	if RunAggregateComplete(assignments, results, aggregateState) {
 		if aggregateState.ProviderEnvironment, err = observationReader.ObservedProviderEnvironment(ctx, results); err != nil {

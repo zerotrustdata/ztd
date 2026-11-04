@@ -187,24 +187,17 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 		grades = append(grades, g.gradeToolAllowlist())
 	}
 
-	fileStatePassed := true
-	if !triageOnly && len(g.req.ScenarioGold.FileState) > 0 {
-		var detail string
-		fileStatePassed, detail = g.evaluateFileState()
-		grades = append(grades, g.newGrade("file-state", basisObservation, fileStatePassed, "workspace file state matches scenario objective", detail))
-	}
-
-	probePassed := true
-	if !triageOnly && g.req.ScenarioGold.GovernedProbe != nil {
-		var detail string
-		probePassed, detail = g.evaluateGovernedProbe()
-		grades = append(grades, g.newGrade("governed-probe", basisObservation, probePassed, "governed probe passed in workspace", detail))
+	checks := finalChecks{fileState: finalCheck{passed: true}, probe: finalCheck{passed: true}}
+	if !triageOnly {
+		var checkGrades []*evalv1.DeterministicGrade
+		checks, checkGrades = g.gradeFinalChecks()
+		grades = append(grades, checkGrades...)
 	}
 
 	var semanticGrades []*evalv1.SemanticGrade
 	if !triageOnly {
 		semanticGrades = g.semanticGrades()
-		grades = append(grades, g.gradeRoleCriteria(traj.Passed, contentPassed, fileStatePassed, probePassed)...)
+		grades = append(grades, g.gradeRoleCriteriaAfterChecks(traj.Passed, contentPassed, checks)...)
 		grades = append(grades, g.gradePipelineCriteria(invoked)...)
 	}
 	if !triageOnly {
@@ -215,6 +208,10 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 		return nil, err
 	}
 	grades = append(grades, playerGrades...)
+
+	if pubReason == "" && checks.outcomeUnmeasured() {
+		privReason, pubReason = scenarioFinalCheckDeniedReason, scenarioFinalCheckDeniedReason
+	}
 
 	if contentUnavailable {
 		for _, grade := range grades {
@@ -415,54 +412,154 @@ func (g homogeneousGrader) gradeRoleCriteria(trajPassed, contentPassed, fileStat
 	return grades
 }
 
-func (g homogeneousGrader) evaluateFileState() (bool, string) {
-	if len(g.req.ScenarioGold.FileState) == 0 {
-		return true, ""
+// finalCheck is the outcome of a final file-state or governed-probe check. A
+// check governance denied never ran, so it is neither passed nor failed: its
+// signed rejection says the outcome was not measured, not that the model missed
+// it. Detail states an unmet check.
+type finalCheck struct {
+	passed bool
+	denied bool
+	detail string
+}
+
+// notMissed reports that the check found no observed mismatch.
+func (c finalCheck) notMissed() bool {
+	return c.passed || c.denied
+}
+
+// finalChecks holds a scenario's two final checks. A check the scenario does not
+// define has passed.
+type finalChecks struct {
+	fileState finalCheck
+	probe     finalCheck
+}
+
+func (c finalChecks) denied() bool {
+	return c.fileState.denied || c.probe.denied
+}
+
+// outcomeUnmeasured reports that a check was denied and the file state shows no
+// observed miss, which would name its own cause.
+func (c finalChecks) outcomeUnmeasured() bool {
+	return c.denied() && c.fileState.notMissed()
+}
+
+func (g homogeneousGrader) gradeFinalChecks() (finalChecks, []*evalv1.DeterministicGrade) {
+	checks := finalChecks{fileState: finalCheck{passed: true}, probe: finalCheck{passed: true}}
+	var grades []*evalv1.DeterministicGrade
+	if len(g.req.ScenarioGold.FileState) > 0 {
+		checks.fileState = g.evaluateFileState()
+		grades = append(grades, g.finalCheckGrade("file-state", "workspace file state matches scenario objective", checks.fileState))
 	}
+	if g.req.ScenarioGold.GovernedProbe != nil {
+		checks.probe = g.evaluateGovernedProbe()
+		grades = append(grades, g.finalCheckGrade("governed-probe", "governed probe passed in workspace", checks.probe))
+	}
+	return checks, grades
+}
+
+// gradeRoleCriteriaAfterChecks grades the role criteria against the final checks.
+// A denied check is unmeasured, not unmet: a role grade cannot pass on it and does
+// not fail on it.
+func (g homogeneousGrader) gradeRoleCriteriaAfterChecks(trajPassed, contentPassed bool, checks finalChecks) []*evalv1.DeterministicGrade {
+	grades := g.gradeRoleCriteria(trajPassed, contentPassed, checks.fileState.notMissed(), checks.probe.notMissed())
+	if !checks.denied() {
+		return grades
+	}
+	for _, grade := range grades {
+		if grade.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS {
+			markFinalCheckDenied(grade)
+		}
+	}
+	return grades
+}
+
+// finalCheckGrade is the observation grade of one final check. A denied check is
+// UNAVAILABLE, like every other outcome that was not observed.
+func (g homogeneousGrader) finalCheckGrade(criterionID, passDetail string, check finalCheck) *evalv1.DeterministicGrade {
+	grade := g.newGrade(criterionID, basisObservation, check.passed, passDetail, check.detail)
+	if check.denied {
+		markFinalCheckDenied(grade)
+	}
+	return grade
+}
+
+func markFinalCheckDenied(grade *evalv1.DeterministicGrade) {
+	grade.Status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE
+	grade.Detail = scenarioFinalCheckDeniedReason
+	grade.Score = 0
+}
+
+// scenarioFinalCheckDeniedReason is the public failure reason of a scenario whose
+// final check governance refused: the outcome was not measured, so the assignment
+// says that instead of reporting a model failure.
+const scenarioFinalCheckDeniedReason = "Governance denied the final check, so the outcome was not measured."
+
+// evaluateFileState reports the first observed mismatch; a check governance
+// denied does not hide one found by a later check.
+func (g homogeneousGrader) evaluateFileState() finalCheck {
+	if len(g.req.ScenarioGold.FileState) == 0 {
+		return finalCheck{passed: true}
+	}
+	denied := false
 	for _, state := range g.req.ScenarioGold.FileState {
 		filePath, err := g.view.Workspace.FilePath(state.Path)
 		if err != nil {
-			return false, fmt.Sprintf("invalid file_state path %q: %v", state.Path, err)
+			return finalCheck{detail: fmt.Sprintf("invalid file_state path %q: %v", state.Path, err)}
 		}
 		if state.Absent {
 			args := (models.RunShellCommandRequest{Command: "test", Args: []string{"!", "-e", filePath}, WorkingDir: g.view.Workspace.Root}).CanonicalJSON()
 			call := g.observationFor(scenarioObservationFile, constants.MCPToolRunShellCommand, args)
+			if call != nil && call.IsDenied() {
+				denied = true
+				continue
+			}
 			if call == nil || !successfulProbeObservation(call) {
-				return false, "missing successful Operator absence observation for " + state.Path
+				return finalCheck{detail: "missing successful Operator absence observation for " + state.Path}
 			}
 			continue
 		}
 		args, err := canonicalToolJSON(mcp.FileReadRequest{Path: filePath})
 		if err != nil {
-			return false, err.Error()
+			return finalCheck{detail: err.Error()}
 		}
 		call := g.observationFor(scenarioObservationFile, constants.MCPToolReadFile, args)
+		if call != nil && call.IsDenied() {
+			denied = true
+			continue
+		}
 		if call == nil || !call.Success || call.Receipt == nil {
-			return false, "missing successful signed Operator file observation for " + state.Path
+			return finalCheck{detail: "missing successful signed Operator file observation for " + state.Path}
 		}
 		var result mcp.FileReadResult
 		if err := json.Unmarshal([]byte(call.Receipt.GetResultSummary()), &result); err != nil || result.Path != filePath || result.Offset != 0 || result.Limit != 0 {
-			return false, "incomplete Operator file observation for " + state.Path
+			return finalCheck{detail: "incomplete Operator file observation for " + state.Path}
 		}
 		failures := state.Check(result.Content, true)
 		if len(failures) > 0 {
-			return false, fmt.Sprintf("%s: %s", state.Path, strings.Join(failures, ", "))
+			return finalCheck{detail: fmt.Sprintf("%s: %s", state.Path, strings.Join(failures, ", "))}
 		}
 	}
-	return true, "workspace file state matches scenario objective"
+	if denied {
+		return finalCheck{denied: true, detail: scenarioFinalCheckDeniedReason}
+	}
+	return finalCheck{passed: true}
 }
 
-func (g homogeneousGrader) evaluateGovernedProbe() (bool, string) {
+func (g homogeneousGrader) evaluateGovernedProbe() finalCheck {
 	probe := g.req.ScenarioGold.GovernedProbe
 	if probe == nil {
-		return true, ""
+		return finalCheck{passed: true}
 	}
 	args := (models.RunShellCommandRequest{Command: probe.Command, Args: probe.Args, WorkingDir: g.view.Workspace.Root}).CanonicalJSON()
 	call := g.observationFor(scenarioObservationProbe, constants.MCPToolRunShellCommand, args)
-	if call == nil || !successfulProbeObservation(call) {
-		return false, "missing successful signed Operator probe observation"
+	if call != nil && call.IsDenied() {
+		return finalCheck{denied: true, detail: scenarioFinalCheckDeniedReason}
 	}
-	return true, "governed probe passed in workspace"
+	if call == nil || !successfulProbeObservation(call) {
+		return finalCheck{detail: "missing successful signed Operator probe observation"}
+	}
+	return finalCheck{passed: true}
 }
 
 func successfulProbeObservation(call *AgentToolCall) bool {

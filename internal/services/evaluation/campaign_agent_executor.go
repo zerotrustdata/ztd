@@ -1470,7 +1470,7 @@ func (r *agentRun) recordDispatch(record *AgentToolCall, dispatched GovernedTool
 		if reason == "" {
 			reason = "governance rejected the action"
 		}
-		completed, err := r.fail(*record, agentToolFailure{ErrorType: agentToolErrorSecurity, Error: "SECURITY VIOLATION: " + reason})
+		completed, err := r.fail(*record, agentToolFailure{ErrorType: agentToolErrorSecurity, Error: agentToolDenialPrefix + reason})
 		if err != nil {
 			return true, err
 		}
@@ -1687,6 +1687,8 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 	if invalidErr != nil {
 		result.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE
 		result.InvalidEvidenceDetail = invalidErr.Error()
+		result.FailureReason = invalidEvidenceReason(invalidErr)
+		result.PublicFailureReason = result.FailureReason
 	} else {
 		result.LifecycleStatus = lifecycle
 		result.DeterministicGrades = grading.DeterministicGrades

@@ -8,11 +8,11 @@
 // metrics, terminal outcomes, suite results, catalog formations, and assignments.
 
 import { useMemo } from 'react';
+import { formationGroups } from './formations';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useActiveDatasetId, useSelectedRelease } from '../state/dataset';
 import { modelRecordKey, useStoreState } from '../state/store';
 import {
-  formationsForVariant,
   resolveModelProfile,
   type CapabilityProbeStatus,
 } from '../content/framework-catalog';
@@ -158,7 +158,9 @@ export function ModelDetailView() {
     return Array.from(map.values());
   }, [activeDatasetRuns, model.variant_id, allVariantAssignments, allEvaluations]);
 
-  const modelFormations = useMemo(() => formationsForVariant(model.variant_id), [model.variant_id]);
+  const modelFormations = useMemo(() => formationGroups(allEvaluations).flatMap((formation) =>
+    (['primary', 'assistant', 'lite'] as const).filter((role) => formation.summary.model_role_mapping[role] === model.variant_id)
+      .map((role) => ({ formation, role }))), [model.variant_id, allEvaluations]);
 
   return (
     <div className="model-detail">
@@ -278,21 +280,19 @@ export function ModelDetailView() {
               </PanelSection>
             ) : null}
             {modelFormations.length > 0 ? (
-              <PanelSection title={`Formations (${modelFormations.length})`} collapsed signal={modelFormations.slice(0, 3).map(({ formation }) => formation.display_name).join(', ')}>
+              <PanelSection id="model-formations" title={`Formations (${modelFormations.length})`} collapsed signal={modelFormations.slice(0, 3).map(({ formation }) => formation.summary.stack_id).join(', ')}>
                 <p className="panel-note">Stacks that bind this variant. A system-lane campaign scores the stack as one unit.</p>
                 <ul className="run-card-list">
                   {modelFormations.slice(0, 6).map(({ formation, role }) => (
-                    <li key={`${formation.id}:${role}`} className="run-card formation-mini-card">
+                    <li key={`${formation.key}:${role}`} className="run-card formation-mini-card">
                       <div className="formation-mini-head">
-                        <Link to="/evaluations?view=formations">
-                          {formation.display_name}
+                        <Link to={`/evaluations/${formation.sources[0]!.run.dataset_id}/${formation.sources[0]!.run.run_id}`}>
+                          {formation.summary.stack_id}
                         </Link>
                         <span className={`role-badge role-badge-${role}`}>{roleLabel(role)}</span>
                       </div>
-                      <p className="formation-mini-desc">{formation.description}</p>
-                      <span className="formation-vram-tag">
-                        {formation.total_vram_mib.toLocaleString('en-US')} / {formation.max_vram_mib.toLocaleString('en-US')} MiB VRAM
-                      </span>
+                      <p className="formation-mini-desc">{formation.suite_id} · {formation.sources.length} runs</p>
+                      <code title="Frozen stack digest">{formation.summary.stack_digest.slice(0, 12)}</code>
                     </li>
                   ))}
                 </ul>

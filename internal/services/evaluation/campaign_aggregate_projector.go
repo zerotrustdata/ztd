@@ -186,6 +186,9 @@ type runAggregateState struct {
 	VariantRoles   map[string]*variantRoleAggregate
 	EvaluatedCount uint32
 	Headline       *runHeadlineMetrics
+	Formations     []*formationAggregate
+	SecurityJudged uint32
+	SecurityPassed uint32
 	// RunSeconds is the time the run spent executing assignments; nil until
 	// an assignment has a persisted result. See assignmentRunSeconds.
 	RunSeconds *float64
@@ -209,6 +212,7 @@ type runHeadlineMetrics struct {
 	PassRate            runMetricValue
 	LatencyP50MS        runMetricValue
 	OutputThroughputP50 runMetricValue
+	OutputTokensP50     runMetricValue
 }
 
 // runMetricValue mirrors the explorer RunMetricValue wire shape: one finite
@@ -225,8 +229,8 @@ type runMetricValue struct {
 type variantRoleAggregate struct {
 	VariantID string
 	Role      string
-	// Specifications come from the frozen candidate variant;
-	// empty and zero when only a heterogeneous slot ID is bound.
+	// Specifications come from the frozen candidate variant, or from the frozen
+	// model registry through attachModelRegistry for a heterogeneous slot.
 	ServedModelTag       string
 	ParameterCount       uint64
 	ParameterCountSource operatorv1.ParameterCountSource
@@ -339,9 +343,54 @@ func assignmentIsSettled(assignment *evalv1.EvaluationAssignment, hasResult bool
 	return assignmentLifecycleIsTerminal(assignment.GetLifecycleStatus())
 }
 
+// setFrozenVariant copies a frozen candidate's specifications onto the bucket.
+func (b *variantRoleAggregate) setFrozenVariant(variant *evalv1.ModelVariant) {
+	b.ServedModelTag = variant.GetServedModelTag()
+	b.ParameterCount = variant.GetParameterCount()
+	b.ParameterCountSource = variant.GetParameterCountSource()
+	b.ModelDigest = variant.GetModelDigest()
+	b.ModelFamily = variant.GetModelFamily()
+	b.ModelFormat = variant.GetModelFormat()
+	b.ArtifactSizeBytes = variant.GetArtifactSizeBytes()
+	b.Quantization = variant.GetQuantization()
+	b.ContextLimit = variant.GetContextLimit()
+	b.ProviderClass = variant.GetProviderClass()
+}
+
+// attachModelRegistry resolves the specifications of heterogeneous slots, which
+// bind only a variant ID, from the campaign's frozen model registry.
+func (s *runAggregateState) attachModelRegistry(registry []*evalv1.ModelVariant) {
+	for _, formation := range s.Formations {
+		formation.State.attachModelRegistry(registry)
+	}
+	for _, bucket := range s.VariantRoles {
+		if bucket == nil || bucket.ServedModelTag != "" {
+			continue
+		}
+		for _, variant := range registry {
+			if variant.GetVariantId() == bucket.VariantID {
+				bucket.setFrozenVariant(variant)
+				break
+			}
+		}
+	}
+}
+
 // CollectRunAggregateState derives explorer aggregate counters from canonical
-// assignments and terminal results for one homogeneous model-role run.
+// assignments and terminal results, including independent formation populations.
 func CollectRunAggregateState(assignments []*evalv1.EvaluationAssignment, results map[string]*evalv1.EvaluationAssignmentResult) (*runAggregateState, error) {
+	state, err := collectAssignmentAggregateState(assignments, results)
+	if err != nil {
+		return nil, err
+	}
+	state.Formations, err = collectFormationAggregates(assignments, results)
+	if err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
+func collectAssignmentAggregateState(assignments []*evalv1.EvaluationAssignment, results map[string]*evalv1.EvaluationAssignmentResult) (*runAggregateState, error) {
 	if len(assignments) == 0 {
 		return nil, fmt.Errorf("evaluation: collect run aggregate state: %w", constants.ErrMissingRequiredField)
 	}
@@ -363,16 +412,7 @@ func CollectRunAggregateState(assignments []*evalv1.EvaluationAssignment, result
 			scheduledVariants[pair.variantID] = struct{}{}
 			bucket := variantRoleAggregateFor(state, pair.variantID, pair.role)
 			if pair.variant != nil {
-				bucket.ServedModelTag = pair.variant.GetServedModelTag()
-				bucket.ParameterCount = pair.variant.GetParameterCount()
-				bucket.ParameterCountSource = pair.variant.GetParameterCountSource()
-				bucket.ModelDigest = pair.variant.GetModelDigest()
-				bucket.ModelFamily = pair.variant.GetModelFamily()
-				bucket.ModelFormat = pair.variant.GetModelFormat()
-				bucket.ArtifactSizeBytes = pair.variant.GetArtifactSizeBytes()
-				bucket.Quantization = pair.variant.GetQuantization()
-				bucket.ContextLimit = pair.variant.GetContextLimit()
-				bucket.ProviderClass = pair.variant.GetProviderClass()
+				bucket.setFrozenVariant(pair.variant)
 			}
 		}
 		designatedVariantID, err := designatedVariantIDForAssignment(assignment)
@@ -466,6 +506,7 @@ func collectRunHeadlineMetrics(assignments []*evalv1.EvaluationAssignment, resul
 	}
 	metrics.LatencyP50MS = performance.LatencyP50MS
 	metrics.OutputThroughputP50 = performance.OutputThroughputP50
+	metrics.OutputTokensP50 = performance.OutputTokensP50
 	return metrics, nil
 }
 
@@ -1164,6 +1205,7 @@ func BuildVerifiedModelSummaryViewRecords(input VerifiedModelSummaryProjectionIn
 	if err := state.attachScenarioCatalog(input.Catalog, input.Assignments, input.Results); err != nil {
 		return nil, err
 	}
+	state.attachModelRegistry(input.Spec.GetModelRegistry())
 	state.Release = input.Release
 	return appendVerifiedModelSummaryRecords(nil, input.Run.GetRunId(), CampaignDatasetID(input.Run.GetRunId()), input.Report.GetVerifiedAt().AsTime().UTC().Format(time.RFC3339Nano), state, input.Report, input.Applicability.EligibleModelBuckets)
 }
@@ -1255,6 +1297,7 @@ type evaluationSummaryRecord struct {
 	Arm                    string                             `json:"arm"`
 	EvaluationUnit         string                             `json:"evaluation_unit"`
 	ModelRoleMapping       map[string]string                  `json:"model_role_mapping"`
+	Formations             []formationSummaryRecord           `json:"formations,omitempty"`
 	LifecycleState         string                             `json:"lifecycle_state"`
 	RunStatus              string                             `json:"run_status"`
 	AssignmentTotal        uint32                             `json:"assignment_total"`
@@ -1309,6 +1352,7 @@ func buildEvaluationSummaryRecord(input evaluationSummaryInput) (*evaluationSumm
 		Arm:                 armForRun(run),
 		EvaluationUnit:      evaluationUnitForRun(run),
 		ModelRoleMapping:    buildModelRoleMapping(state),
+		Formations:          buildFormationSummaryRecords(state),
 		LifecycleState:      lifecycleStateForAggregate(state),
 		RunStatus:           CampaignRunStatus(summary, input.Report, state.Executing),
 		AssignmentTotal:     state.Scheduled,
@@ -1725,7 +1769,8 @@ func homogeneousVariantRole(assignment *evalv1.EvaluationAssignment) (string, st
 type assignmentVariantRolePair struct {
 	variantID string
 	role      string
-	// variant is the frozen candidate identity; heterogeneous slots bind only an ID.
+	// variant is the frozen candidate identity; heterogeneous slots bind only an ID
+	// and resolve through attachModelRegistry.
 	variant *evalv1.ModelVariant
 }
 

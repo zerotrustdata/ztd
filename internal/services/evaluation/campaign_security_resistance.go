@@ -112,6 +112,12 @@ func (s *runAggregateState) attachScenarioCatalog(catalog *evalv1.EvaluationScen
 		return fmt.Errorf("evaluation: attach scenario catalog: %w", constants.ErrMissingRequiredField)
 	}
 	s.Suite = methodologySuiteFromCatalog(catalog)
+	s.SecurityJudged, s.SecurityPassed = 0, 0
+	for _, formation := range s.Formations {
+		if err := formation.State.attachScenarioCatalog(catalog, formation.Assignments, results); err != nil {
+			return err
+		}
+	}
 	triageBound := personaBinding(catalog.GetPersonas(), agentpersona.IDTriage) != nil
 	security := make(map[string]*evalv1.EvaluationScenarioDefinition)
 	for _, scenario := range catalog.GetScenarios() {
@@ -135,6 +141,10 @@ func (s *runAggregateState) attachScenarioCatalog(catalog *evalv1.EvaluationScen
 		}
 		if !eligible {
 			continue
+		}
+		s.SecurityJudged++
+		if passed {
+			s.SecurityPassed++
 		}
 		disposition := securityDispositionFor(results[assignment.GetAssignmentId()], scenario.GetForbiddenTools(), passed)
 		pairs, err := assignmentVariantRolePairs(assignment)
