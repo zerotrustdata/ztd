@@ -14,6 +14,15 @@ make demos-test
 
 `make vhs CLIENT=goose PROMPT="I am Priya Shah, the controller. Which customer invoice is past due?"` records the real `ztd mcp agent run` against the Zero Trust Paper Company with [VHS](https://github.com/charmbracelet/vhs) and writes `build/demos/<time>-<client>/demo.mp4`. `goose` runs the smallest local models on purpose (`qwen2.5:0.5b`; `THINK=1` adds a governed-inference scene where `qwen3:0.6b`, the smallest thinking model, shows its signed thinking). Poor answers are part of the demo. `MODEL=<ollama tag>` overrides. The recording does not download models. goose needs `qwen2.5:0.5b` already resident on the Ollama it talks to directly; that tag is not in `eval/model-pull-catalog.json`. `THINK=1` needs `qwen3:0.6b` on the Inference Operator, staged with `ztd eval models pull qwen3:0.6b` when it is missing. See `scripts/demo-record.sh` for prerequisites and `demos/tapes/agent-run.tape` for the scenes.
 
+### Persona scenarios for a release
+
+`demos/vhs-scenarios.json` is the checked-in list of five fixed scenarios, one per Zero Trust Paper Company persona and domain: Priya Shah (finance), Alex Chen (operations, with the thinking scene), Jamie Park (procurement), Sam Rivera (customer support), and Morgan Reed (compliance, who checks that operations cannot read payroll, so the governed call is admitted and the application answers 403). Each entry has an `id`, persona, role, domain, `title` (shown as the first line of the video), `client`, `think`, the exact `prompt`, the `calls` the small model is told about, and `shows`, what a good take shows. Edit a prompt there to tailor a take; nothing else generates them.
+
+- `make vhs SCENARIO=priya-finance` records one scenario (`CLIENT`, `PROMPT` and `THINK` still override the file).
+- `make vhs-scenarios` records all five in file order, or `ONLY="priya-finance morgan-compliance"` records some. It writes `build/demos/scenarios-<time>/INDEX.md` (persona, domain, link to each video, attempts, signed tool calls, audit chain head, wall time, prompt, and what a good take shows) and one `<n>-<id>/` directory per take. Watch them, keep the good ones, delete the rest.
+
+Both are local only. No CI or release workflow runs them (they need a local Ollama, VHS, ttyd, ffmpeg and Chrome), and they are not part of `make test`. Expect several minutes per scenario with `qwen2.5:0.5b` on CPU, since a take is retried until it records a signed tool-call receipt.
+
 ## Adding an organization
 
 Give each organization a stable directory slug, its own README, fixture sources, explicit initialization/reset commands, ignored local state, and tests. Keep startup offline and dependencies small. Document the fictional business, identities, initial problems, expected effects, and limitations. Use reserved example domains and unmistakably synthetic account references; never copy production records or credentials.

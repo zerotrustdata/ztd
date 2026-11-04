@@ -298,6 +298,7 @@ help:
 		'  protocol-lint             Typecheck the Node protocol bindings' \
 		'  demos-test                Test the fictional business simulation' \
 		'  vhs                       Record a governed agent demo: make vhs CLIENT=goose PROMPT="..." [THINK=1] [MODEL=tag]' \
+		'  vhs-scenarios             Record the five persona demo scenarios (local only): make vhs-scenarios [ONLY="id ..."]' \
 		'  claude-plugin-test        Test, shellcheck, and validate the Claude Code plugin' \
 		'  website-build             Build zerotrustdata.io: homepage, journal, llms-full.txt' \
 		'  website-test              Test the website generator and Worker' \
@@ -974,8 +975,15 @@ demos-test:
 # environment or the make command line. The script does not pull models.
 .PHONY: vhs
 vhs:
-	@test -n "$(CLIENT)" -a -n "$(PROMPT)" || { echo 'usage: make vhs CLIENT=goose PROMPT="I am Priya in finance. Which invoice is past due?" [THINK=1] [MODEL=tag] [DEMO_THINK_MODEL=tag] [DEMO_TRIBUNAL=tag]'; exit 2; }
-	@DEMO_MODEL="$(MODEL)" DEMO_THINK="$(THINK)" bash scripts/demo-record.sh "$(CLIENT)" "$(PROMPT)"
+	@test -n "$(SCENARIO)" -o \( -n "$(CLIENT)" -a -n "$(PROMPT)" \) || { echo 'usage: make vhs CLIENT=goose PROMPT="I am Priya in finance. Which invoice is past due?" [THINK=1] [MODEL=tag] [DEMO_THINK_MODEL=tag] [DEMO_TRIBUNAL=tag]  or  make vhs SCENARIO=<id from demos/vhs-scenarios.json>'; exit 2; }
+	@DEMO_SCENARIO="$(SCENARIO)" DEMO_MODEL="$(MODEL)" DEMO_THINK="$(THINK)" bash scripts/demo-record.sh "$(CLIENT)" "$(PROMPT)"
+
+# Record every persona scenario in demos/vhs-scenarios.json, one take each, with
+# an INDEX.md to review (build/demos/scenarios-<time>/). ONLY="id id" picks
+# some. Local only: no CI workflow runs it.
+.PHONY: vhs-scenarios
+vhs-scenarios:
+	@DEMO_MODEL="$(MODEL)" bash scripts/demo-scenarios.sh $(ONLY)
 
 .PHONY: explorer-lint
 explorer-lint:

@@ -16,6 +16,11 @@
 #   make vhs CLIENT=goose THINK=1 PROMPT="..."   # adds the smallest thinking model scene
 #   bash scripts/demo-record.sh goose "I am Priya in finance. Which invoice is past due?"
 #
+# A fixed persona scenario from demos/vhs-scenarios.json (client, prompt, THINK,
+# the API calls the model is told about, and the title card come from the file):
+#   make vhs SCENARIO=priya-finance
+#   make vhs-scenarios                 # every scenario, one take each (scripts/demo-scenarios.sh)
+#
 # Needs on PATH: vhs, ttyd, ffmpeg, a Chromium/Chrome (ROD_BROWSER_BIN to
 # choose one), python3, an ssh-agent holding a key (same as the smoke), and the
 # agent binary. goose also needs Ollama already serving the model (free, CPU).
@@ -55,9 +60,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PAPER="$REPO_ROOT/demos/zero-trust-paper-company/paper.py"
 
+SCEN_FILE="$REPO_ROOT/demos/vhs-scenarios.json"
+SCENARIO="${DEMO_SCENARIO:-}"
+
 CLIENT="${1:-}"
 PROMPT="${2:-}"
-THINK="${DEMO_THINK:-0}"
+THINK="${DEMO_THINK:-}"
+TITLE=""
 MODEL="${DEMO_MODEL:-qwen2.5:0.5b}"
 THINK_MODEL="${DEMO_THINK_MODEL:-qwen3:0.6b}"
 TIMEOUT="${DEMO_AGENT_TIMEOUT:-90}"
@@ -65,9 +74,39 @@ TIMEOUT="${DEMO_AGENT_TIMEOUT:-90}"
 die() { echo "ERROR: $*" >&2; exit 1; }
 log() { echo "==> $*"; }
 
-if [ -z "$CLIENT" ] || [ -z "$PROMPT" ]; then
-    die "usage: demo-record.sh <client> \"<prompt>\"  (clients: claude codex devin gemini goose)"
+# Scenario fields come from the checked-in file; an explicit client, prompt or
+# THINK still wins.
+scn() {
+    python3 - "$SCEN_FILE" "$SCENARIO" "$1" "$PAPER" <<'PY'
+import json, sys
+path, sid, field, paper = sys.argv[1:5]
+for s in json.load(open(path))["scenarios"]:
+    if s["id"] == sid:
+        break
+else:
+    sys.exit("unknown scenario: " + sid + " (see demos/vhs-scenarios.json)")
+if field == "hint":
+    print(" or ".join(json.dumps([paper, "call", c["method"], c["path"], "--role", c["role"]], separators=(",", ":")) for c in s["calls"]))
+elif field == "think":
+    print(1 if s["think"] else 0)
+else:
+    print(s[field])
+PY
+}
+HINT_CALLS=""
+if [ -n "$SCENARIO" ]; then
+    [ -n "$CLIENT" ] || CLIENT="$(scn client)" || exit 1
+    [ -n "$PROMPT" ] || PROMPT="$(scn prompt)" || exit 1
+    [ -n "$THINK" ] || THINK="$(scn think)" || exit 1
+    TITLE="$(scn title)" || exit 1
+    HINT_CALLS="$(scn hint)" || exit 1
 fi
+THINK="${THINK:-0}"
+if [ -z "$CLIENT" ] || [ -z "$PROMPT" ]; then
+    die "usage: demo-record.sh <client> \"<prompt>\"  or  DEMO_SCENARIO=<id> demo-record.sh  (clients: claude codex devin gemini goose)"
+fi
+[ -n "$TITLE" ] || TITLE="Zero Trust Paper Company: a governed $CLIENT session"
+TITLE="$(printf '%s' "$TITLE" | tr '"' "'")"
 for tool in vhs ttyd ffmpeg python3 ssh-add; do
     command -v "$tool" >/dev/null 2>&1 || die "$tool is required on PATH (VHS needs ttyd and ffmpeg; see demos/README.md)"
 done
@@ -94,7 +133,7 @@ case "$CLIENT" in
 esac
 
 [ -x "$REPO_ROOT/ztd" ] || make -C "$REPO_ROOT" build-go
-OUT="${DEMO_OUT:-$REPO_ROOT/build/demos}/$(date +%Y%m%d-%H%M%S)-$CLIENT"
+OUT="${DEMO_OUT:-$REPO_ROOT/build/demos}/${DEMO_NAME:-$(date +%Y%m%d-%H%M%S)-${SCENARIO:-$CLIENT}}"
 ROOT="${DEMO_ROOT:-$OUT/root}"
 mkdir -p "$OUT" "$ROOT/home" "$ROOT/bin"
 OUT="$(cd "$OUT" && pwd)"
@@ -148,7 +187,9 @@ fi
 {
     printf '%s\n' "$PROMPT"
     if [ "${DEMO_HINT:-$([ "$CLIENT" = goose ] && echo 1 || echo 0)}" = 1 ]; then
-        printf '\n%s\n' "You work for the fictional Zero Trust Paper Company. Query its API with run_shell_command (command python3). Valid args: [\"$PAPER\",\"call\",\"GET\",\"/accounting/past-due\",\"--role\",\"finance\"] or [\"$PAPER\",\"call\",\"GET\",\"/inventory/stock\",\"--role\",\"ops\"] or [\"$PAPER\",\"call\",\"GET\",\"/documents/search?q=Northstar\",\"--role\",\"procurement\"]. Use the one that answers the question."
+        # The three default calls, or the calls the selected scenario lists.
+        [ -n "$HINT_CALLS" ] || HINT_CALLS="[\"$PAPER\",\"call\",\"GET\",\"/accounting/past-due\",\"--role\",\"finance\"] or [\"$PAPER\",\"call\",\"GET\",\"/inventory/stock\",\"--role\",\"ops\"] or [\"$PAPER\",\"call\",\"GET\",\"/documents/search?q=Northstar\",\"--role\",\"procurement\"]"
+        printf '\n%s\n' "You work for the fictional Zero Trust Paper Company. Query its API with run_shell_command (command python3). Valid args: $HINT_CALLS. Use the one that answers the question."
     fi
 } >"$ROOT/prompt.txt"
 
@@ -156,6 +197,7 @@ cmd="ztd mcp agent run $CLIENT -- $agent_args \"\$(cat prompt.txt)\"; echo \"age
 tape="$(cat "$REPO_ROOT/demos/tapes/agent-run.tape")"
 tape="${tape//\{\{OUT\}\}/$OUT}"
 tape="${tape//\{\{CLIENT\}\}/$CLIENT}"
+tape="${tape//\{\{TITLE\}\}/$TITLE}"
 tape="${tape//\{\{TIMEOUT\}\}/$TIMEOUT}"
 think_scene=""
 if [ "$THINK" = 1 ]; then
@@ -190,7 +232,7 @@ cp "$ROOT/prompt.txt" "$OUT/prompt.txt"
 (cd "$ROOT" && ztd audit verify) >"$OUT/audit-verify.txt"
 grep -q 'Audit chain OK' "$OUT/audit-verify.txt" || die "audit verify did not report Audit chain OK"
 if command -v sha256sum >/dev/null 2>&1; then sum="$(sha256sum "$OUT/demo.mp4")"; else sum="$(shasum -a 256 "$OUT/demo.mp4")"; fi
-OUT="$OUT" CLIENT="$CLIENT" MODEL="$MODEL" THINK="$THINK" THINK_MODEL="$THINK_MODEL" SUM="${sum%% *}" ztd_version="$(ztd --version 2>/dev/null | head -n 1)" python3 - <<'PY'
+OUT="$OUT" SCENARIO="$SCENARIO" TITLE="$TITLE" ATTEMPTS="$attempt" CLIENT="$CLIENT" MODEL="$MODEL" THINK="$THINK" THINK_MODEL="$THINK_MODEL" SUM="${sum%% *}" ztd_version="$(ztd --version 2>/dev/null | head -n 1)" python3 - <<'PY'
 import json, os, re
 out = os.environ["OUT"]
 verify = open(os.path.join(out, "audit-verify.txt")).read()
@@ -198,6 +240,9 @@ head = re.search(r"Head: seq=(\d+) hash=([0-9a-f]+)", verify)
 receipts = json.load(open(os.path.join(out, "receipts.json")))
 txs = sorted({m for m in re.findall(r'"transaction_id":\s*"([0-9a-f]{64})"', json.dumps(receipts))})
 json.dump({
+    "scenario": os.environ["SCENARIO"] or None,
+    "title": os.environ["TITLE"],
+    "attempts": int(os.environ["ATTEMPTS"]),
     "client": os.environ["CLIENT"],
     "model": os.environ["MODEL"] if os.environ["CLIENT"] == "goose" else None,
     "think": os.environ["THINK"] == "1",
