@@ -41,6 +41,35 @@ func pullCatalogVariants(models []evaluation.ModelPullEntry) []*evalv1.ModelVari
 	return variants
 }
 
+// pullCatalogMissHint explains that pull stages only tags listed in
+// eval/model-pull-catalog.json, names the nearest catalog tags, and points at
+// the alternative for a model that is already resident in the backend.
+func pullCatalogMissHint(models []evaluation.ModelPullEntry, ids []string) string {
+	var near []string
+	for _, id := range ids {
+		base, _, _ := strings.Cut(id, ":")
+		var prefixed, sameBase []string
+		for _, model := range models {
+			switch {
+			case strings.HasPrefix(model.ServedModelTag, id):
+				prefixed = append(prefixed, model.ServedModelTag)
+			case strings.HasPrefix(model.ServedModelTag, base+":"):
+				sameBase = append(sameBase, model.ServedModelTag)
+			}
+		}
+		if len(prefixed) > 0 {
+			near = append(near, prefixed...)
+		} else {
+			near = append(near, sameBase...)
+		}
+	}
+	hint := "The tag is not in " + evaluation.DefaultModelPullCatalogRelPath + ", so pull cannot stage it."
+	if len(near) > 0 {
+		hint += " Nearest catalog tags: " + strings.Join(near, ", ") + "."
+	}
+	return hint + " A tag already resident in the inference backend (for example one pulled with ollama pull) can be used directly without pulling."
+}
+
 func modelsPullCmd(deps nativeEvalDeps) *cobra.Command {
 	var timeout time.Duration
 	var dryRun bool
@@ -76,6 +105,9 @@ Examples:
 				}
 				selected, err := selector.Resolve(pullCatalogVariants(catalog.Models))
 				if err != nil {
+					if errors.Is(err, constants.ErrInferenceModelNotFound) {
+						return fmt.Errorf("evaluation: models pull: %w\n%s", err, pullCatalogMissHint(catalog.Models, selector.IDs))
+					}
 					return fmt.Errorf("evaluation: models pull: %w", err)
 				}
 				for _, variant := range selected {

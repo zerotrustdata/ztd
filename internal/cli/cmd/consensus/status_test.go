@@ -167,6 +167,24 @@ func TestConsensusStatus_BindingFetchErrorIsNotUnbound(t *testing.T) {
 	require.NotErrorIs(t, err, constants.ErrTxL2ConsensusNotConfigured)
 }
 
+func TestConsensusStatus_DisabledTombstoneIsUnbound(t *testing.T) {
+	client := &routedClient{
+		bodies: map[string][]byte{
+			constants.APIPaths.AuthPlatformEnrollmentConsensus: []byte(`{"id":"consensus_binding","enabled":false}`),
+			constants.APIPaths.Health:                          healthBody(t, models.HealthResponse{Posture: constants.PostureDoctrine}),
+		},
+	}
+	cmd := testCmd(t, client)
+	cmd.PersistentFlags().Bool("json", false, "JSON output")
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"status", "--json"})
+	require.NoError(t, cmd.Execute())
+	var actual consensusStatus
+	require.NoError(t, json.Unmarshal(output.Bytes(), &actual))
+	require.False(t, actual.Bound)
+}
+
 func TestConsensusStatus_HealthFailureReturnsError(t *testing.T) {
 	errBoom := errors.New("health down")
 	client := &routedClient{

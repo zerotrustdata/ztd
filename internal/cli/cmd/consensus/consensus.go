@@ -79,6 +79,12 @@ func fetchBinding(client authcmd.APIClient) (*models.ConsensusPolicy, error) {
 		}
 		return nil, fmt.Errorf("consensus binding: %w", err)
 	}
+	var probe struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if json.Unmarshal(body, &probe) == nil && probe.Enabled != nil && !*probe.Enabled {
+		return nil, nil // unbind leaves a disabled tombstone: treat as "not bound"
+	}
 	return decodeConsensusBinding(body)
 }
 
