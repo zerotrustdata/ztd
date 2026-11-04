@@ -1331,6 +1331,7 @@ details.tribunal-seat[data-outcome="no_vote"] { border-color: var(--fg-muted); }
 .tribunal-seat[data-outcome="approve"] .tribunal-outcome { color: var(--tone-ok); }
 .tribunal-seat[data-outcome="deny"] .tribunal-outcome { color: var(--tone-critical); }
 .deterministic-grades { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.deterministic-grades-pending { color: var(--fg-muted); font-size: 0.75rem; }
 .deterministic-grade { position: relative; min-width: 0; }
 .deterministic-grade summary { display: block; width: 18px; cursor: pointer; list-style: none; }
 .deterministic-grade summary::-webkit-details-marker { display: none; }

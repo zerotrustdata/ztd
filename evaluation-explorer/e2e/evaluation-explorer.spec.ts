@@ -396,6 +396,7 @@ for (const viewport of [
 
     const live = page.getByRole('region', { name: 'Live activity', exact: true });
     await expect(live.locator('tbody tr')).toHaveCount(1);
+    await expect(live.locator('tbody .stream-deterministic-cell').getByText('Pending')).toHaveCount(0);
     const grades = live.getByRole('group', { name: 'Deterministic grades' });
     await expect(grades.locator('summary')).toHaveCount(criteria.length);
     if (viewport.width > 1000) {
@@ -422,6 +423,34 @@ for (const viewport of [
     await expect(grades.locator('details[open]').getByText('criterion satisfied')).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);
+  });
+
+  test(`Live activity marks grades pending while content judgments run at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const row = {
+      dataset_id: 'ds-live-grading', run_id: 'live-grading-run', assignment_id: 'judged-assignment', task_id: 'tool-arg-shell-command',
+      variant_id: 'qwen3:8b', role: 'primary', quality_state: 'live_in_progress', lifecycle_status: 'running', completed: 0, total: 75,
+      ...FIXTURE_RELEASE, release_basis: 'PUBLIC_RELEASE_BASIS_RECORDED', schema_version: '1.12.0',
+    };
+    const run = { ...fixtureEvaluationSummaries[0]!, dataset_id: 'ds-live-grading', run_id: 'live-grading-run', model_role_mapping: { primary: 'qwen3:8b' } };
+    await installMirror(page, [run,
+      { ...row, kind: 'assignment_started', event_id: 'judged-started', observed_at: '2026-10-16T14:58:00.000Z' },
+      {
+        ...row, kind: 'judge_started', event_id: 'judged-content', observed_at: '2026-10-16T14:58:02.000Z',
+        judge: {
+          judge_variant_id: 'qwen3-5-4b', served_model_tag: 'qwen3.5:4b', model_digest: 'abc123', subject: 'JUDGE_SUBJECT_CRITERION', criterion_id: 'scenario-content',
+          index: 1, count: 1, rubric_version: 'scenario-content-v1', state: 'JUDGE_ACTIVITY_STATE_JUDGING', provider_attempt_id: 'judge-criterion-1',
+        },
+      },
+    ]);
+    await page.goto('/?release=all');
+    if (viewport.width <= 768) await page.getByRole('banner').getByRole('button', { name: 'Close navigation drawer' }).click();
+
+    const live = page.getByRole('region', { name: 'Live activity', exact: true });
+    await expect(live.locator('tbody tr')).toHaveCount(1);
+    await expect(live.locator('tbody .stream-deterministic-cell').getByText('Pending')).toBeVisible();
+    await expect(live.getByRole('group', { name: 'Deterministic grades' })).toHaveCount(0);
+    expect(await live.locator('.stream-scroll').evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   });
 }
 

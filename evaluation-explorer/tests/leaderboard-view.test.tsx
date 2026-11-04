@@ -6,7 +6,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { allFixtureSnapshotRecords, fixtureLiveEvents } from '../src/fixtures/fixtures';
-import type { ModelSummary } from '../src/contract/types';
+import type { EvaluationSummary, ModelSummary } from '../src/contract/types';
+import { VIEW_SCHEMA_VERSION } from '../src/contract/types';
 import { MODEL_ROLE_WIRE_ORDER } from '../src/content/roles';
 import { evalStore } from '../src/state/store';
 import { PREF } from '../src/state/dataset';
@@ -377,7 +378,7 @@ describe('LeaderboardView', () => {
     expect(panel.getByRole('link', { name: 'Unknown artifact size' })).toBeInTheDocument();
   });
 
-  it('defaults to the current release series and includes every patch release in the leaderboard', () => {
+  it('opens on the current series when it has rankable models and includes every patch release', () => {
     const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
     const makeModel = (variant_id: string, display_name: string, release: string): ModelSummary[] =>
       MODEL_ROLE_WIRE_ORDER.map((role) => ({
@@ -435,5 +436,92 @@ describe('LeaderboardView', () => {
     expect(panel.getByRole('link', { name: 'Model v0.9.0' })).toBeInTheDocument();
     expect(panel.getByRole('link', { name: 'Model v0.9.1' })).toBeInTheDocument();
     expect(panel.queryByRole('link', { name: `Model ${currentPatches[0]}` })).not.toBeInTheDocument();
+  });
+
+  describe('when the build series has nothing to rank', () => {
+    const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
+    const rankable = (variant_id: string, display_name: string, release: string): ModelSummary[] =>
+      MODEL_ROLE_WIRE_ORDER.map((role) => ({
+        ...source,
+        variant_id,
+        display_name,
+        role,
+        release,
+        release_basis: 'recorded' as const,
+        quality_state: 'exploratory_verified' as const,
+        inventory_only: false,
+        evaluation_coverage: 1,
+        parameter_count: 4_000_000_000,
+        latency_p50_ms: { value: 1000 },
+        output_tokens: { value: 100 },
+        pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
+        security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 },
+      }));
+    const runningEvaluation: EvaluationSummary = {
+      schema_version: VIEW_SCHEMA_VERSION,
+      kind: 'evaluation_summary',
+      dataset_id: 'ds-running',
+      observed_at: '2026-10-06T00:00:00Z',
+      quality_state: 'live_in_progress',
+      run_id: 'run-running',
+      suite_id: 'suite',
+      arm: 'platform',
+      evaluation_unit: 'model',
+      release: currentRelease,
+      release_basis: 'recorded',
+      lifecycle_state: 'running',
+      assignment_total: 10,
+      assignment_completed: 1,
+      assignment_failed: 0,
+      terminal_outcomes: { completed: 1, model_failed: 0, grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
+      verifier_state: 'not_run',
+      headline_metrics: {},
+    };
+
+    it('opens on the newest series with a rankable model', () => {
+      evalStore.loadFixtures([
+        ...rankable('older', 'Older model', 'v0.8.0'),
+        ...rankable('newer', 'Newer model', 'v0.9.1'),
+      ], []);
+      render(<MemoryRouter initialEntries={['/leaderboard']}><LeaderboardView /></MemoryRouter>);
+      expect(screen.getByRole('combobox', { name: 'Filter by release' })).toHaveValue('v0.9.x');
+      const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+      expect(panel.getByRole('link', { name: 'Newer model' })).toBeInTheDocument();
+      expect(panel.queryByRole('link', { name: 'Older model' })).not.toBeInTheDocument();
+    });
+
+    it('stays on the rankable series while a newer series is still running', () => {
+      const unverified = rankable('running', 'Running model', currentRelease)
+        .map((model) => ({ ...model, quality_state: 'live_in_progress' as const }));
+      evalStore.loadFixtures([...rankable('newer', 'Newer model', 'v0.9.1'), ...unverified, runningEvaluation], []);
+      render(<MemoryRouter initialEntries={['/leaderboard']}><LeaderboardView /></MemoryRouter>);
+      const selector = screen.getByRole('combobox', { name: 'Filter by release' }) as HTMLSelectElement;
+      expect(selector).toHaveValue('v0.9.x');
+      expect(Array.from(selector.options).map((option) => option.value)).toContain(currentSeries);
+      const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+      expect(panel.getByRole('link', { name: 'Newer model' })).toBeInTheDocument();
+    });
+
+    it('honors an explicit release that has nothing to rank', () => {
+      evalStore.loadFixtures([...rankable('newer', 'Newer model', 'v0.9.1'), runningEvaluation], []);
+      render(<MemoryRouter initialEntries={[`/leaderboard?release=${currentSeries}`]}><LeaderboardView /></MemoryRouter>);
+      expect(screen.getByRole('combobox', { name: 'Filter by release' })).toHaveValue(currentSeries);
+      const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+      expect(panel.getByText('No fully evaluated, verified models across datasets.')).toBeInTheDocument();
+      expect(panel.queryByRole('link', { name: 'Newer model' })).not.toBeInTheDocument();
+    });
+
+    it('falls back to the build series when no model in the feed is rankable', () => {
+      evalStore.loadFixtures([runningEvaluation], []);
+      render(<MemoryRouter initialEntries={['/leaderboard']}><LeaderboardView /></MemoryRouter>);
+      expect(screen.getByRole('combobox', { name: 'Filter by release' })).toHaveValue(currentSeries);
+    });
+
+    it('does not rank unattributed models into a default series', () => {
+      const unattributed = rankable('unattributed', 'Unattributed model', 'v0.9.1').map((model) => ({ ...model, release: undefined, release_basis: undefined }));
+      evalStore.loadFixtures(unattributed, []);
+      render(<MemoryRouter initialEntries={['/leaderboard']}><LeaderboardView /></MemoryRouter>);
+      expect(screen.getByRole('combobox', { name: 'Filter by release' })).toHaveValue(currentSeries);
+    });
   });
 });

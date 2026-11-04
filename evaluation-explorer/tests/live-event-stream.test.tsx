@@ -614,6 +614,37 @@ describe('LiveEventStream judge activity', () => {
       ]));
       expect(within(rowFor('task-a-1')).queryByRole('group', { name: 'Deterministic grades' })).not.toBeInTheDocument();
     });
+
+    it('marks grades pending while a running row has judge verdicts and no grades', () => {
+      render(stream([started('a-1', '2026-09-17T08:00:00Z'), judgeEvent('j-1', judge(), '2026-09-17T08:00:03Z')]));
+      expect(headers()).toContain('Deterministic');
+      expect(within(rowFor('task-a-1')).getByText('Pending')).toHaveAttribute('title', 'Deterministic grading runs after the content judgments');
+    });
+
+    it('replaces the pending marker with the grades when they arrive', () => {
+      render(stream([
+        started('a-1', '2026-09-17T08:00:00Z'),
+        judgeEvent('j-1', judge(), '2026-09-17T08:00:03Z'),
+        graded('g-1', [passed], '2026-09-17T08:00:04Z'),
+      ]));
+      expect(within(rowFor('task-a-1')).queryByText('Pending')).not.toBeInTheDocument();
+      expect(within(rowFor('task-a-1')).getByRole('group', { name: 'Deterministic grades' })).toBeInTheDocument();
+    });
+
+    it('leaves a terminal row without grades empty', () => {
+      render(stream([
+        started('a-1', '2026-09-17T08:00:00Z'),
+        judgeEvent('j-1', judge(), '2026-09-17T08:00:03Z'),
+        liveEvent({ event_id: 'done-1', kind: 'assignment_failed', lifecycle_status: 'failed', observed_at: '2026-09-17T08:00:05Z', assignment_id: 'a-1', task_id: 'task-a-1', variant_id: 'model-a', role: 'primary', terminal_status: 'execution_failed' }),
+      ]));
+      expect(headers()).not.toContain('Deterministic');
+      expect(within(rowFor('task-a-1')).queryByText('Pending')).not.toBeInTheDocument();
+    });
+
+    it('marks nothing pending before any judge activity', () => {
+      render(stream([started('a-1', '2026-09-17T08:00:00Z')]));
+      expect(screen.queryByText('Pending')).not.toBeInTheDocument();
+    });
   });
 
   it('adds no Judge column to rows without judge activity', () => {

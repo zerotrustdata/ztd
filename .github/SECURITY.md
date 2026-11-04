@@ -9,8 +9,8 @@
 
 | Version | Supported |
 |---|---|
-| `v1.3.x` | Yes — security fixes ship as `v1.3.x` patch releases; the latest patch is the supported one |
-| Versions other than `v1.3.x` | No — unsupported; upgrade to the latest `v1.3.x` |
+| `v1.9.x` | Yes — security fixes ship as `v1.9.x` patch releases; the latest patch is the supported one |
+| Versions other than `v1.9.x` | No — unsupported; upgrade to the latest `v1.9.x` |
 
 Security fixes land on `main` and ship in the next patch release of a supported line.
 

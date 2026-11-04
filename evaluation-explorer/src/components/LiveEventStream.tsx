@@ -27,7 +27,9 @@ import { SCENARIO_TASK_BY_ID } from '../content/scenario-task';
 import {
   MODEL_ROLES,
   type AssignmentResult,
+  type LiveDeterministicGrade,
   type LiveEvent,
+  type LiveJudgeActivity,
   type MetricValue,
   type ModelRole,
 } from '../contract/types';
@@ -134,6 +136,19 @@ function isAssignmentLevelEvent(event: LiveEvent): boolean {
 
 function isTerminalAssignmentEvent(event: LiveEvent): boolean {
   return event.kind === 'assignment_completed' || event.kind === 'assignment_failed';
+}
+
+/** Content judgments finish before deterministic grading, whose `scenario-content`
+ *  grade includes their verdicts, so a running row can hold Judge verdicts and no
+ *  grades yet. A terminal row without grades was never graded. */
+function deterministicGradesPending(
+  event: LiveEvent,
+  grades: Map<string, LiveDeterministicGrade[]>,
+  judgments: Map<string, LiveJudgeActivity[]>,
+): boolean {
+  if (!event.assignment_id || isTerminalAssignmentEvent(event)) return false;
+  const row = assignmentRowKey(event);
+  return judgments.has(row) && !grades.has(row);
 }
 
 function applyAssignmentResourceSummary(
@@ -481,7 +496,8 @@ export function LiveEventStream({
   const safePage = Math.min(page, Math.max(0, pageCount - 1));
   const pageEvents = sortedVisible.slice(safePage * STREAM_PAGE_SIZE, (safePage + 1) * STREAM_PAGE_SIZE);
   const showTribunal = pageEvents.some((event) => event.assignment_id && tribunalVotes.has(assignmentRowKey(event)));
-  const showDeterministic = pageEvents.some((event) => event.assignment_id && deterministicGrades.has(assignmentRowKey(event)));
+  const showDeterministic = pageEvents.some((event) => (event.assignment_id && deterministicGrades.has(assignmentRowKey(event))) ||
+    deterministicGradesPending(event, deterministicGrades, judgeActivity));
   const showJudge = pageEvents.some((event) => event.assignment_id && judgeActivity.has(assignmentRowKey(event)));
 
   function handleSort(field: StreamSortField): void {
@@ -608,6 +624,9 @@ export function LiveEventStream({
                     ) : null}
                     {showDeterministic ? <td className="stream-deterministic-cell">
                       {rowGrades ? <DeterministicGrades grades={rowGrades} row={assignmentRowKey(event)} labels={assignment ? criterionLabels(assignment) : undefined} /> : null}
+                      {deterministicGradesPending(event, deterministicGrades, judgeActivity)
+                        ? <span className="deterministic-grades-pending" title="Deterministic grading runs after the content judgments">Pending</span>
+                        : null}
                     </td> : null}
                     {showJudge ? <td className="stream-judge-cell">
                       {rowJudgments ? <JudgeActivity judgments={rowJudgments} /> : null}
