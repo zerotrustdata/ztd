@@ -10,7 +10,7 @@
 // and checked-in explorer fixtures. See src/contract/CONTRACT.md for the
 // ownership map and integration decisions.
 //
-// FROZEN at schema_version 1.11.0 on 2026-10-30. A change to any enum value
+// FROZEN at schema_version 1.12.0 on 2026-11-04. A change to any enum value
 // or required field is a contract revision: bump VIEW_SCHEMA_VERSION and
 // update descriptor.json and validators.
 

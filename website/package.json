@@ -9,8 +9,8 @@
     "deploy": "npm run check && npm run build && wrangler deploy"
   },
   "devDependencies": {
-    "marked": "18.1.1",
-    "wrangler": "4.152.0"
+    "marked": "18.1.2",
+    "wrangler": "4.156.0"
   },
   "engines": {
     "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
