@@ -337,12 +337,12 @@ func openEventsStore(fileSvc fs.RuntimeFileService, v *vault.Vault, auditorKey e
 	}, true
 }
 
-// openLedger opens the git-backed ledger service. Returns ok=false on failure.
-func openLedger(fileSvc fs.RuntimeFileService, v *vault.Vault) (*storage.GitLedgerService, func(), bool) {
+// openLedger opens the git-backed ledger read-only. Returns ok=false on failure.
+func openLedger(fileSvc fs.RuntimeFileService, v *vault.Vault) (*storage.GitLedgerReader, func(), bool) {
 	ledgerCfg := &storage.LedgerConfig{
 		EncryptionVault: v,
 	}
-	ledger, err := storage.NewGitLedgerService(ledgerCfg, complianceLogger(), fileSvc)
+	ledger, err := storage.OpenGitLedgerReader(ledgerCfg, complianceLogger(), fileSvc)
 	if err != nil {
 		return nil, nil, false
 	}

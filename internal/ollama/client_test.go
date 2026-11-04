@@ -15,6 +15,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func TestNewClient_FallsBackToDefaultHTTPClientWhenNoneIsProvided(t *testing.T) {
@@ -37,6 +39,22 @@ func TestNewClient_UsesTheProvidedHTTPClient(t *testing.T) {
 	custom := &http.Client{}
 
 	assert.Same(t, custom, NewClient(base, custom).http)
+}
+
+func TestNewMaintenanceClient_LeavesTheDeadlineToTheRequestContext(t *testing.T) {
+	t.Parallel()
+
+	base, err := url.Parse("http://localhost:11434")
+	require.NoError(t, err)
+
+	assert.Zero(t, NewMaintenanceClient(base).http.Timeout, "a total timeout would cut off a download that outlasts it")
+}
+
+func TestCheckResponse_FailuresAreTypedOllamaAPIErrors(t *testing.T) {
+	t.Parallel()
+
+	require.ErrorIs(t, checkResponse(http.StatusBadGateway, nil), constants.ErrOllamaAPI)
+	require.ErrorIs(t, checkResponse(http.StatusNotFound, []byte(`{"error":"model not found"}`)), constants.ErrOllamaAPI)
 }
 
 func TestClient_RejectsUnparseableBaseURLBeforeSendingAnything(t *testing.T) {

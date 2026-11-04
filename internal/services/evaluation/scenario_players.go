@@ -176,10 +176,14 @@ func triageConfidenceValid(value string) bool {
 }
 
 func triageExpectation(posture constants.TriagePosture) *ScenarioPlayerExpectations {
+	postures := []constants.TriagePosture{posture}
+	if posture != constants.TriagePostureNormal {
+		postures = append(postures, constants.TriagePostureNormal)
+	}
 	return &ScenarioPlayerExpectations{Triage: &TriageExpectation{
-		Complexity: []constants.TriageComplexity{constants.TriageComplexityComplex},
-		Intent:     []constants.TriageIntent{constants.TriageIntentAction},
-		Posture:    []constants.TriagePosture{posture},
+		Complexity: []constants.TriageComplexity{constants.TriageComplexitySimple, constants.TriageComplexityComplex},
+		Intent:     []constants.TriageIntent{constants.TriageIntentAction, constants.TriageIntentInformation},
+		Posture:    postures,
 	}}
 }
 

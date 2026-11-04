@@ -1466,6 +1466,10 @@ func (m *PublicMirrorServer) handleSnapshot(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	sourceID, summary := m.sourceView(r.URL.Query().Get("source"))
+	if datasetID := r.URL.Query().Get("dataset"); datasetID != "" {
+		m.handleSnapshotDataset(w, r, sourceID, summary, datasetID)
+		return
+	}
 	if summary == nil {
 		m.writeJSON(w, http.StatusOK, offlinePublicMirrorSnapshot(sourceID))
 		return
@@ -1495,6 +1499,29 @@ func (m *PublicMirrorServer) handleSnapshot(w http.ResponseWriter, r *http.Reque
 	}
 
 	m.writeJSON(w, http.StatusOK, m.snapshotOf(sourceID, summary))
+}
+
+// handleSnapshotDataset answers whether the current read model holds a catalog
+// snapshot of datasetID. The read model outlives replay-history retention, so
+// the answer does not depend on how much the source has published since. A
+// withdrawn or unknown dataset is not found.
+func (m *PublicMirrorServer) handleSnapshotDataset(w http.ResponseWriter, r *http.Request, sourceID string, summary *PublicMirrorSourceSummary, datasetID string) {
+	if summary == nil || summary.WithdrawnDatasetIDs[datasetID] {
+		http.Error(w, constants.ErrPublicFeedSnapshotNotFound.Error(), http.StatusNotFound)
+		return
+	}
+	present, err := m.store.snapshotDatasetPresent(r.Context(), sourceID, datasetID)
+	if err != nil {
+		m.writeStoreUnavailable(w, "mirror: read snapshot dataset", err)
+		return
+	}
+	if !present {
+		http.Error(w, constants.ErrPublicFeedSnapshotNotFound.Error(), http.StatusNotFound)
+		return
+	}
+	snapshot := m.snapshotOf(sourceID, summary)
+	snapshot.DatasetID = datasetID
+	m.writeJSON(w, http.StatusOK, snapshot)
 }
 
 // handleHistory handles GET /history — cursor-paginated page of public

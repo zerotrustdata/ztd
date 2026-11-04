@@ -1,97 +1,5 @@
 {
-  "description": "Rollout intake models pulled via `ztd eval models pull` through the governed Inference Operator (Ollama and Hugging Face pulls). Re-freeze provider inventory with `ztd eval models freeze` after pulling.",
-  "ollama_endpoint": "http://192.168.1.2:11434",
-  "pull_timeout_seconds": 86400,
-  "pull_connect_timeout_seconds": 120,
-  "hf_token_env": "HF_TOKEN",
-  "priority_order": [
-    "glm-5-3-air",
-    "glm-5-3-flash",
-    "qwen3-8-27b",
-    "qwen3-6-35b-a3b",
-    "gpt-oss-20b",
-    "qwen25-1b-rlcd",
-    "qwen3-8b",
-    "llama-xlam-2-8b-fc-r",
-    "toolace-8b",
-    "watt-tool-8b",
-    "granite-3.3-8b-instruct",
-    "qwen2.5-coder-7b-instruct",
-    "mistral-7b-instruct-v0.3",
-    "qwen3-4b",
-    "phi-4-mini-instruct",
-    "smollm3-3b",
-    "xlam-2-3b-fc-r",
-    "gemma-3-4b-it",
-    "granite-3.3-2b-instruct",
-    "qwen3-1.7b",
-    "xlam-2-1b-fc-r",
-    "smollm2-1.7b-instruct",
-    "gemma-3-1b-it",
-    "qwen3-0.6b",
-    "qwen2.5-0.5b-instruct",
-    "smollm2-360m-instruct",
-    "nemotron-nano-2-9b",
-    "nemotron-3-nano-30b-a3b",
-    "nemotron-3-nano-omni-30b-a3b",
-    "nemotron-nano-12b-v2-vl",
-    "mistral-nemotron",
-    "gemma4-12b-it",
-    "gemma4-e2b",
-    "gemma4-e4b",
-    "granite-4.2-8b",
-    "granite-4.2-3b",
-    "qwen3.5-9b",
-    "qwen3.5-4b",
-    "qwen3.5-2b",
-    "qwen3.5-0.8b",
-    "glm-4-9b-0414",
-    "glm-4.7-flash",
-    "deepseek-r1-7b",
-    "gemma2-9b",
-    "gemma2-2b-instruct",
-    "gemma3-270m",
-    "gemma3n-e2b",
-    "gemma3n-e4b",
-    "hermes3-8b",
-    "llama-3.1-8b",
-    "llama-3.2-1b",
-    "llama-3.2-3b",
-    "ministral-3-3b",
-    "ministral-3-8b",
-    "nemotron-3-nano-4b",
-    "ornith-1.5-9b",
-    "phi3.5-mini-instruct",
-    "phi4-mini-reasoning",
-    "qwen2.5-1.5b-instruct",
-    "qwen2.5-14b-instruct",
-    "qwen2.5-3b",
-    "qwen2.5-7b",
-    "lfm2-2.6b",
-    "lfm2-700m",
-    "lfm2-350m",
-    "smollm2-135m",
-    "tinyllama-1.1b",
-    "randomblock1-nemotron-nano-8b",
-    "lfm2-5-thinking-1-2b",
-    "lfm2-5-8b",
-    "rnj-1-8b",
-    "olmo-3-7b-instruct",
-    "olmo-3-7b-think",
-    "functiongemma-270m",
-    "granite4-350m",
-    "granite4-1b-h",
-    "granite4-3b-h",
-    "granite4-7b-a1b-h",
-    "qwen3-4b-instruct-2507-q4-k-m",
-    "qwen3-4b-thinking-2507-q4-k-m",
-    "deepseek-r1-1-5b",
-    "deepseek-r1-8b",
-    "hf-co-xhtoken-spark-x2-6-4b-gguf-q4-k-m",
-    "hf-co-liquidai-lfm2-5-1-2b-instruct-gguf-q4-k-m",
-    "hf-co-nvidia-nvidia-nemotron-3-5-bolt-e4b-4gb-q4-k-m",
-    "hf-co-nvidia-nvidia-nemotron-labs-dory1-0-4b-gguf-q5-k-m"
-  ],
+  "description": "Models pulled via `ztd eval models pull` through the governed Inference Operator (Ollama and Hugging Face pulls). Re-freeze provider inventory with `ztd eval models freeze` after pulling.",
   "models": [
     {
       "variant_id": "glm-5-3-air",
@@ -106,73 +14,6 @@
         "hf_repo": "zai-org/GLM-5.3-Air",
         "hf_gguf_repo": null,
         "ollama_pull": null
-      }
-    },
-    {
-      "variant_id": "glm-5-3-flash",
-      "served_model_tag": "glm-5.3-flash",
-      "model_family": "zhipu",
-      "parameter_count": "30000000000",
-      "quantization": "Q4_K_M",
-      "notes": "Agentic-coding buzz leader; Unsloth publish is sharded — use manual create until single-file quant exists.",
-      "staging": {
-        "method": "manual_create",
-        "status": "requires_local_merge",
-        "hf_repo": "unsloth/GLM-5.3-Flash-GGUF",
-        "hf_gguf_file": "UD-Q4_K_XL/GLM-5.3-Flash-UD-Q4_K_XL-00001-of-00006.gguf",
-        "ollama_pull": "huggingface.co/unsloth/GLM-5.3-Flash-GGUF:UD-Q4_K_XL",
-        "ollama_pull_error": "sharded GGUF — download shards and `ollama create` per https://github.com/ollama/ollama/issues/5245"
-      }
-    },
-    {
-      "variant_id": "qwen3-8-27b",
-      "served_model_tag": "qwen3.8:27b",
-      "model_family": "alibaba",
-      "parameter_count": "27000000000",
-      "quantization": "Q4_K_M",
-      "context_limit": 262144,
-      "notes": "Dense VLM; canonical alias over Unsloth UD-Q4_K_M pull.",
-      "staging": {
-        "method": "ollama_hf_pull",
-        "status": "ready",
-        "hf_repo": "unsloth/Qwen3.8-27B-GGUF",
-        "hf_gguf_file": "Qwen3.8-27B-UD-Q4_K_M.gguf",
-        "ollama_pull": "huggingface.co/unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M",
-        "alias": "qwen3.8:27b"
-      }
-    },
-    {
-      "variant_id": "qwen3-6-35b-a3b",
-      "served_model_tag": "qwen3.6:35b-a3b",
-      "model_family": "alibaba",
-      "parameter_count": "35000000000",
-      "quantization": "Q4_K_M",
-      "context_limit": 262144,
-      "notes": "MoE budget Flash-Next; 3B active params.",
-      "staging": {
-        "method": "ollama_hf_pull",
-        "status": "ready",
-        "hf_repo": "unsloth/Qwen3.6-35B-A3B-GGUF",
-        "hf_gguf_file": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
-        "ollama_pull": "huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_M",
-        "alias": "qwen3.6:35b-a3b"
-      }
-    },
-    {
-      "variant_id": "gpt-oss-20b",
-      "served_model_tag": "gpt-oss:20b",
-      "model_family": "openai",
-      "parameter_count": "20914757184",
-      "quantization": "MXFP4",
-      "context_limit": 131072,
-      "notes": "Apache 2.0; MXFP4 native. Prefer HF pull when Ollama library tag absent.",
-      "staging": {
-        "method": "ollama_hf_pull",
-        "status": "pulling",
-        "hf_repo": "unsloth/gpt-oss-20b-GGUF",
-        "hf_gguf_file": "gpt-oss-20b-Q4_0.gguf",
-        "ollama_pull": "huggingface.co/unsloth/gpt-oss-20b-GGUF:Q4_0",
-        "alias": "gpt-oss:20b"
       }
     },
     {
@@ -204,8 +45,8 @@
       }
     },
     {
-      "variant_id": "llama-xlam-2-8b-fc-r",
-      "served_model_tag": "xlam2:8b-fc-r",
+      "variant_id": "hf-co-salesforce-llama-xlam-2-8b-fc-r-gguf-latest",
+      "served_model_tag": "hf.co/Salesforce/Llama-xLAM-2-8b-fc-r-gguf:latest",
       "model_family": "salesforce",
       "parameter_count": "8000000000",
       "quantization": "Q4_K_M",
@@ -216,13 +57,12 @@
         "status": "ready",
         "hf_repo": "Salesforce/Llama-xLAM-2-8b-fc-r",
         "hf_gguf_repo": "Salesforce/Llama-xLAM-2-8b-fc-r-gguf",
-        "ollama_pull": "hf.co/Salesforce/Llama-xLAM-2-8b-fc-r-gguf:latest",
-        "alias": "xlam2:8b-fc-r"
+        "ollama_pull": "hf.co/Salesforce/Llama-xLAM-2-8b-fc-r-gguf:latest"
       }
     },
     {
-      "variant_id": "toolace-8b",
-      "served_model_tag": "toolace:8b",
+      "variant_id": "hf-co-nekuromento-toolace-8b-q8-0-gguf-latest",
+      "served_model_tag": "hf.co/Nekuromento/ToolACE-8B-Q8_0-GGUF:latest",
       "model_family": "toolace",
       "parameter_count": "8000000000",
       "quantization": "Q8_0",
@@ -233,13 +73,12 @@
         "status": "ready",
         "hf_repo": "Team-ACE/ToolACE-8B",
         "hf_gguf_repo": "Nekuromento/ToolACE-8B-Q8_0-GGUF",
-        "ollama_pull": "hf.co/Nekuromento/ToolACE-8B-Q8_0-GGUF:latest",
-        "alias": "toolace:8b"
+        "ollama_pull": "hf.co/Nekuromento/ToolACE-8B-Q8_0-GGUF:latest"
       }
     },
     {
-      "variant_id": "watt-tool-8b",
-      "served_model_tag": "watttool:8b",
+      "variant_id": "kitsonk-watt-tool-8b-latest",
+      "served_model_tag": "kitsonk/watt-tool-8B:latest",
       "model_family": "wattai",
       "parameter_count": "8000000000",
       "quantization": "Q4_K_M",
@@ -249,8 +88,7 @@
         "method": "ollama_library_pull",
         "status": "ready",
         "hf_repo": "watt-ai/watt-tool-8B",
-        "ollama_pull": "kitsonk/watt-tool-8B:latest",
-        "alias": "watttool:8b"
+        "ollama_pull": "kitsonk/watt-tool-8B:latest"
       }
     },
     {
@@ -329,8 +167,8 @@
       }
     },
     {
-      "variant_id": "smollm3-3b",
-      "served_model_tag": "smollm3:3b",
+      "variant_id": "impulse2000-smollm3-3b-q4-k-m",
+      "served_model_tag": "Impulse2000/smollm3:3b-q4_k_m",
       "model_family": "huggingface",
       "parameter_count": "3000000000",
       "quantization": "Q4_K_M",
@@ -340,13 +178,12 @@
         "method": "ollama_library_pull",
         "status": "ready",
         "hf_repo": "HuggingFaceTB/SmolLM3-3B",
-        "ollama_pull": "Impulse2000/smollm3:3b-q4_k_m",
-        "alias": "smollm3:3b"
+        "ollama_pull": "Impulse2000/smollm3:3b-q4_k_m"
       }
     },
     {
-      "variant_id": "xlam-2-3b-fc-r",
-      "served_model_tag": "xlam2:3b-fc-r",
+      "variant_id": "hf-co-salesforce-xlam-2-3b-fc-r-gguf-latest",
+      "served_model_tag": "hf.co/Salesforce/xLAM-2-3b-fc-r-gguf:latest",
       "model_family": "salesforce",
       "parameter_count": "3000000000",
       "quantization": "Q4_K_M",
@@ -357,8 +194,7 @@
         "status": "ready",
         "hf_repo": "Salesforce/xLAM-2-3b-fc-r",
         "hf_gguf_repo": "Salesforce/xLAM-2-3b-fc-r-gguf",
-        "ollama_pull": "hf.co/Salesforce/xLAM-2-3b-fc-r-gguf:latest",
-        "alias": "xlam2:3b-fc-r"
+        "ollama_pull": "hf.co/Salesforce/xLAM-2-3b-fc-r-gguf:latest"
       }
     },
     {
@@ -407,8 +243,8 @@
       }
     },
     {
-      "variant_id": "xlam-2-1b-fc-r",
-      "served_model_tag": "xlam2:1b-fc-r",
+      "variant_id": "hf-co-salesforce-xlam-2-1b-fc-r-gguf-latest",
+      "served_model_tag": "hf.co/Salesforce/xLAM-2-1b-fc-r-gguf:latest",
       "model_family": "salesforce",
       "parameter_count": "1000000000",
       "quantization": "Q4_K_M",
@@ -419,8 +255,7 @@
         "status": "ready",
         "hf_repo": "Salesforce/xLAM-2-1b-fc-r",
         "hf_gguf_repo": "Salesforce/xLAM-2-1b-fc-r-gguf",
-        "ollama_pull": "hf.co/Salesforce/xLAM-2-1b-fc-r-gguf:latest",
-        "alias": "xlam2:1b-fc-r"
+        "ollama_pull": "hf.co/Salesforce/xLAM-2-1b-fc-r-gguf:latest"
       }
     },
     {
@@ -511,37 +346,6 @@
         "status": "awaiting_provider_adapter",
         "hf_repo": "nvidia/NVIDIA-Nemotron-Nano-9B-v2",
         "ollama_pull": null
-      }
-    },
-    {
-      "variant_id": "nemotron-3-nano-30b-a3b",
-      "served_model_tag": "nemotron3-nano:30b-a3b",
-      "model_family": "nvidia",
-      "parameter_count": "30000000000",
-      "quantization": "unknown",
-      "notes": "31B-param hybrid Mamba2-Transformer MoE, ~3B active. Unsloth publishes a GGUF repo, but hybrid MoE/Mamba2 runtime support in Ollama and the exact quant tag both need verification before staging. NOTE: 192.168.1.2 already has nemotron-3-nano:4b (family nemotron_h, 4.0B params, Q4_K_M, ctx 262144) — a smaller dense/different-size Nemotron-3-Nano than this 30B-A3B MoE target. Confirm with the requester whether the 4B already on the box satisfies the need before staging the larger MoE variant.",
-      "staging": {
-        "method": "pending",
-        "status": "awaiting_provider_adapter",
-        "hf_repo": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
-        "hf_gguf_repo": "unsloth/Nemotron-3-Nano-30B-A3B-GGUF",
-        "ollama_pull": null
-      }
-    },
-    {
-      "variant_id": "nemotron-3-nano-omni-30b-a3b",
-      "served_model_tag": "nemotron3-nano-omni:30b-a3b",
-      "model_family": "nvidia",
-      "parameter_count": "30000000000",
-      "quantization": "unknown",
-      "notes": "Omni (multimodal reasoning) variant of Nemotron-3-Nano. Needs manual multimodal setup (mmproj/audio tower) beyond a single-file GGUF pull.",
-      "staging": {
-        "method": "manual_create",
-        "status": "requires_local_merge",
-        "hf_repo": "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16",
-        "hf_gguf_repo": "unsloth/NVIDIA-Nemotron-3-Nano-Omni-30B-A3B-Reasoning-GGUF",
-        "ollama_pull": null,
-        "ollama_pull_error": "omni multimodal model — needs mmproj/audio-tower assets beyond a single GGUF; verify Ollama multimodal support before staging"
       }
     },
     {
@@ -1156,21 +960,6 @@
       }
     },
     {
-      "variant_id": "rnj-1-8b",
-      "served_model_tag": "rnj-1:8b",
-      "model_family": "gemma3",
-      "parameter_count": "8300000000",
-      "quantization": "Q4_K_M",
-      "context_limit": 32768,
-      "notes": "Essential AI code/STEM and tool-calling instruct model. Registry reports 8.3B parameters; the 8B tag is a rounded size class. Metadata checked 2026-10-24: https://ollama.com/library/rnj-1:8b. Downloaded through the governed Inference Operator on 2026-10-24; live provider freeze confirmed the public manifest digest. Capability probes and scored evaluations have not been run.",
-      "staging": {
-        "method": "ollama_library_pull",
-        "status": "ready",
-        "ollama_pull": "rnj-1:8b",
-        "hf_repo": "EssentialAI/rnj-1-instruct"
-      }
-    },
-    {
       "variant_id": "olmo-3-7b-instruct",
       "served_model_tag": "olmo-3:7b-instruct",
       "model_family": "olmo3",
@@ -1384,22 +1173,6 @@
         "hf_gguf_repo": "nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB",
         "hf_repo": "nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-BF16",
         "hf_gguf_file": "Nemotron-3.5-Bolt-E4B-Q4_K_M.gguf"
-      }
-    },
-    {
-      "variant_id": "hf-co-nvidia-nvidia-nemotron-labs-dory1-0-4b-gguf-q5-k-m",
-      "served_model_tag": "hf.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF:Q5_K_M",
-      "model_family": "dory",
-      "parameter_count": "3975229440",
-      "quantization": "Q5_K_M",
-      "context_limit": 262144,
-      "notes": "Current Hugging Face text-generation trend candidate, checked 2026-10-24: https://huggingface.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-BF16. Looped latent-recurrent reasoning model, not the existing Nemotron-H family. Publisher GGUF exists, but inference requires the Dory-specific llama.cpp branch (ggml-org/llama.cpp#30306); stock Ollama support is unverified. Pending provider support; do not auto-pull or import as an executable model.",
-      "staging": {
-        "method": "pending",
-        "status": "awaiting_provider_adapter",
-        "hf_repo": "nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-BF16",
-        "hf_gguf_repo": "nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF",
-        "hf_gguf_file": "NVIDIA-Nemotron-Labs-Dory1.0-4B-Q5_K_M.gguf"
       }
     }
   ]

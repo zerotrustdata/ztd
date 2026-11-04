@@ -170,9 +170,10 @@ func (f *integrationEvaluatorFixture) seedEvidence(t *testing.T) {
 	}))
 
 	require.NoError(t, f.eventsStore.RecordFileMutation(&storage.FileMutationLog{
-		EventID:   eventID,
-		Filepath:  "integration-target.txt",
-		Operation: storage.FileMutationCreate,
+		EventID:      eventID,
+		Filepath:     "integration-target.txt",
+		SnapshotName: "snapshot-name",
+		Operation:    storage.FileMutationCreate,
 	}))
 
 	targetPath := filepath.Join(f.tempDir, "integration-target.txt")
@@ -180,10 +181,10 @@ func (f *integrationEvaluatorFixture) seedEvidence(t *testing.T) {
 	target, err := f.fileSvc.OpenFileEditTarget(context.Background(), targetPath, f.tempDir)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = target.Close() })
-	mirror, err := f.ledger.MirrorFileCreate("", target)
+	mirror, err := f.ledger.BeginMutation("", target)
 	require.NoError(t, err)
 	require.NotNil(t, mirror)
-	require.NoError(t, f.ledger.CompleteMirrorCreate(mirror, ""))
+	require.NoError(t, f.ledger.CompleteMutation(mirror, ""))
 
 	appendCommitment := func(txID string, committedAt time.Time, priorHash string) string {
 		attestation := &operatorv1.CommitmentAttestation{

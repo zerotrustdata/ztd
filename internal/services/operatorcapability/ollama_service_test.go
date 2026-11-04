@@ -12,7 +12,6 @@ import (
 
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -41,17 +40,6 @@ func TestValidateServedModelTag(t *testing.T) {
 			require.ErrorIs(t, err, constants.ErrInferenceModelTagInvalid)
 		})
 	}
-}
-
-func TestOllamaMaintenanceCommands_BuildExpectedOperatorPaths(t *testing.T) {
-	t.Parallel()
-	pull, err := OllamaPullCommand("qwen3:0.6b")
-	require.NoError(t, err)
-	assert.Equal(t, "ztd operator model pull qwen3:0.6b", pull)
-
-	copyCmd, err := OllamaCopyCommand("qwen3:0.6b", "qwen3.8:27b")
-	require.NoError(t, err)
-	assert.Equal(t, "ztd operator model copy qwen3:0.6b qwen3.8:27b", copyCmd)
 }
 
 func TestValidateWitnessCommand(t *testing.T) {

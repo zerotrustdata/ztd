@@ -30,7 +30,7 @@ const CLI_GROUPS = [
   ['campaigns', 'Freeze, inspect, assert release identity, and archive campaigns'],
   ['runs', 'Start, resume, inspect, verify, publish, export, repair, compare, and archive runs'],
   ['rollout', 'Manage and execute the model qualification queue'],
-  ['formations', 'List, show, add, and remove catalog formations (three-role model stacks)'],
+  ['formations', 'List, show, create, and remove catalog formations (three-role model stacks)'],
   ['gates', 'Run inference acceptance and single-probe gates'],
   ['backup', 'Snapshot evaluation evidence outside .ztd/'],
   ['restore', 'Verify and restore a snapshot into .ztd/'],

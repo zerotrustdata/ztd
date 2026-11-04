@@ -260,6 +260,7 @@ func TestReportFileMutations_WithRecords(t *testing.T) {
 	require.NoError(t, store.RecordFileMutation(&storage.FileMutationLog{
 		EventID:          eventID,
 		Filepath:         "/test/file1",
+		SnapshotName:     "snapshot-name",
 		Operation:        storage.FileMutationWrite,
 		LedgerHashBefore: "hash-before-1",
 		LedgerHashAfter:  "hash-after-1",
@@ -267,6 +268,7 @@ func TestReportFileMutations_WithRecords(t *testing.T) {
 	require.NoError(t, store.RecordFileMutation(&storage.FileMutationLog{
 		EventID:          eventID,
 		Filepath:         "/test/file2",
+		SnapshotName:     "snapshot-name",
 		Operation:        storage.FileMutationCreate,
 		LedgerHashBefore: "",
 		LedgerHashAfter:  "hash-after-2",

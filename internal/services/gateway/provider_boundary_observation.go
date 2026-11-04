@@ -349,7 +349,7 @@ func (c *ProviderBoundaryObservationCoordinator) publishCommand(ctx context.Cont
 			"operator_id", observer.OperatorID,
 			"operator_session_id", observer.OperatorSessionID,
 			"error", err)
-		return nil, err
+		return receipt, err
 	}
 	c.logger.Info("Provider-boundary observation command executed",
 		"transaction_id", receipt.GetTransactionId(),
@@ -407,8 +407,10 @@ type ObservationDispatchRequest struct {
 // the observer, and waits for the observer's verified final signed receipt.
 // Waiting puts the observer's ledger commitment ahead of anything the caller
 // does next, so a trace bracket that closes after the inference dispatch can
-// claim it. Only observation action types are accepted: this path admits no
-// L3 approval wait.
+// claim it. An observer whose handler failed returns its signed receipt with the
+// error: that receipt is the proof no window follows, and its commitment is on
+// the observer's ledger. Only observation action types are accepted: this path
+// admits no L3 approval wait.
 func (d *DispatchService) DispatchObservation(ctx context.Context, req ObservationDispatchRequest) (*operatorv1.EventReceipt, error) {
 	actionType, err := constants.ValidateGovernedRequest(constants.EventType(req.EventType))
 	if err != nil {
@@ -461,7 +463,7 @@ func (d *DispatchService) DispatchObservation(ctx context.Context, req Observati
 	}
 	// An observer whose handler failed did not observe the attempt.
 	if result.Receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
-		return nil, fmt.Errorf("dispatch: observation %s: %w: %s", result.TransactionID, constants.ErrEvaluationObservationUnavailable, result.Receipt.GetResultSummary())
+		return result.Receipt, fmt.Errorf("dispatch: observation %s: %w: %s", result.TransactionID, constants.ErrEvaluationObservationUnavailable, result.Receipt.GetResultSummary())
 	}
 	return result.Receipt, nil
 }

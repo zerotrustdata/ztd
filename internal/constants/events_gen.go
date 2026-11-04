@@ -166,9 +166,15 @@ const EventOperatorNetworkPortCheckRequested EventType = "ztd.v1.operator.networ
 const EventOperatorNetworkPortCheckStarted EventType = "ztd.v1.operator.network.port.check.started"
 const EventOperatorNotaryApprovalRequested EventType = "ztd.v1.operator.notary.approval.requested"
 const EventOperatorNotaryTransactionExpired EventType = "ztd.v1.operator.notary.transaction.expired"
+const EventOperatorOllamaModelCopyCompleted EventType = "ztd.v1.operator.ollama.model.copy.completed"
+const EventOperatorOllamaModelCopyFailed EventType = "ztd.v1.operator.ollama.model.copy.failed"
+const EventOperatorOllamaModelCopyRequested EventType = "ztd.v1.operator.ollama.model.copy.requested"
 const EventOperatorOllamaModelInventoryCompleted EventType = "ztd.v1.operator.ollama.model.inventory.completed"
 const EventOperatorOllamaModelInventoryFailed EventType = "ztd.v1.operator.ollama.model.inventory.failed"
 const EventOperatorOllamaModelInventoryRequested EventType = "ztd.v1.operator.ollama.model.inventory.requested"
+const EventOperatorOllamaModelPullCompleted EventType = "ztd.v1.operator.ollama.model.pull.completed"
+const EventOperatorOllamaModelPullFailed EventType = "ztd.v1.operator.ollama.model.pull.failed"
+const EventOperatorOllamaModelPullRequested EventType = "ztd.v1.operator.ollama.model.pull.requested"
 const EventOperatorOllamaModelReleaseCompleted EventType = "ztd.v1.operator.ollama.model.release.completed"
 const EventOperatorOllamaModelReleaseFailed EventType = "ztd.v1.operator.ollama.model.release.failed"
 const EventOperatorOllamaModelReleaseRequested EventType = "ztd.v1.operator.ollama.model.release.requested"
@@ -1491,6 +1497,33 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Persistence: "ephemeral",
 		Reserved:    true,
 	},
+	EventOperatorOllamaModelCopyCompleted: {
+		Key:         "OperatorOllamaModelCopyCompleted",
+		Kind:        EventKindOutcome,
+		Transport:   []string{"pubsub"},
+		Producers:   []string{"operator"},
+		Persistence: "ephemeral",
+		Reserved:    true,
+	},
+	EventOperatorOllamaModelCopyFailed: {
+		Key:         "OperatorOllamaModelCopyFailed",
+		Kind:        EventKindOutcome,
+		Transport:   []string{"pubsub"},
+		Producers:   []string{"operator"},
+		Persistence: "ephemeral",
+		Reserved:    true,
+	},
+	EventOperatorOllamaModelCopyRequested: {
+		Key:               "OperatorOllamaModelCopyRequested",
+		Kind:              EventKindRequest,
+		Transport:         []string{"governed"},
+		Producers:         []string{"cli", "mcp"},
+		Persistence:       "ephemeral",
+		GovernanceAction:  ActionTypeOllamaModelCopy,
+		GovernancePayload: "ztd.operator.v1.OllamaModelCopyRequested",
+		Outcomes:          []string{"OperatorOllamaModelCopyCompleted", "OperatorOllamaModelCopyFailed"},
+		Reserved:          true,
+	},
 	EventOperatorOllamaModelInventoryCompleted: {
 		Key:         "OperatorOllamaModelInventoryCompleted",
 		Kind:        EventKindOutcome,
@@ -1516,6 +1549,33 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		GovernanceAction:  ActionTypeOllamaModelInventory,
 		GovernancePayload: "ztd.operator.v1.OllamaModelInventoryRequested",
 		Outcomes:          []string{"OperatorOllamaModelInventoryCompleted", "OperatorOllamaModelInventoryFailed"},
+		Reserved:          true,
+	},
+	EventOperatorOllamaModelPullCompleted: {
+		Key:         "OperatorOllamaModelPullCompleted",
+		Kind:        EventKindOutcome,
+		Transport:   []string{"pubsub"},
+		Producers:   []string{"operator"},
+		Persistence: "ephemeral",
+		Reserved:    true,
+	},
+	EventOperatorOllamaModelPullFailed: {
+		Key:         "OperatorOllamaModelPullFailed",
+		Kind:        EventKindOutcome,
+		Transport:   []string{"pubsub"},
+		Producers:   []string{"operator"},
+		Persistence: "ephemeral",
+		Reserved:    true,
+	},
+	EventOperatorOllamaModelPullRequested: {
+		Key:               "OperatorOllamaModelPullRequested",
+		Kind:              EventKindRequest,
+		Transport:         []string{"governed"},
+		Producers:         []string{"cli", "mcp"},
+		Persistence:       "ephemeral",
+		GovernanceAction:  ActionTypeOllamaModelPull,
+		GovernancePayload: "ztd.operator.v1.OllamaModelPullRequested",
+		Outcomes:          []string{"OperatorOllamaModelPullCompleted", "OperatorOllamaModelPullFailed"},
 		Reserved:          true,
 	},
 	EventOperatorOllamaModelReleaseCompleted: {
@@ -2254,9 +2314,15 @@ var EventTransportRegistry = map[EventType][]string{
 	EventOperatorNetworkPortCheckStarted:                 []string{"pubsub"},
 	EventOperatorNotaryApprovalRequested:                 []string{"pubsub"},
 	EventOperatorNotaryTransactionExpired:                []string{"pubsub"},
+	EventOperatorOllamaModelCopyCompleted:                []string{"pubsub"},
+	EventOperatorOllamaModelCopyFailed:                   []string{"pubsub"},
+	EventOperatorOllamaModelCopyRequested:                []string{"governed"},
 	EventOperatorOllamaModelInventoryCompleted:           []string{"pubsub"},
 	EventOperatorOllamaModelInventoryFailed:              []string{"pubsub"},
 	EventOperatorOllamaModelInventoryRequested:           []string{"governed"},
+	EventOperatorOllamaModelPullCompleted:                []string{"pubsub"},
+	EventOperatorOllamaModelPullFailed:                   []string{"pubsub"},
+	EventOperatorOllamaModelPullRequested:                []string{"governed"},
 	EventOperatorOllamaModelReleaseCompleted:             []string{"pubsub"},
 	EventOperatorOllamaModelReleaseFailed:                []string{"pubsub"},
 	EventOperatorOllamaModelReleaseRequested:             []string{"governed"},
@@ -2360,7 +2426,9 @@ type _EventOperator struct {
 	ModelProvenanceObservation  _EventOperatorModelProvenanceObservation
 	NetworkPing                 _EventOperatorNetworkPing
 	Notary                      _EventOperatorNotary
+	OllamaModelCopy             _EventOperatorOllamaModelCopy
 	OllamaModelInventory        _EventOperatorOllamaModelInventory
+	OllamaModelPull             _EventOperatorOllamaModelPull
 	OllamaModelRelease          _EventOperatorOllamaModelRelease
 	OllamaModelResidency        _EventOperatorOllamaModelResidency
 	PanelListUpdated            EventType
@@ -2544,7 +2612,19 @@ type _EventOperatorNotary struct {
 	TransactionExpired EventType
 }
 
+type _EventOperatorOllamaModelCopy struct {
+	Completed EventType
+	Failed    EventType
+	Requested EventType
+}
+
 type _EventOperatorOllamaModelInventory struct {
+	Completed EventType
+	Failed    EventType
+	Requested EventType
+}
+
+type _EventOperatorOllamaModelPull struct {
 	Completed EventType
 	Failed    EventType
 	Requested EventType
@@ -2750,10 +2830,20 @@ var Event = struct {
 			ApprovalRequested:  EventOperatorNotaryApprovalRequested,
 			TransactionExpired: EventOperatorNotaryTransactionExpired,
 		},
+		OllamaModelCopy: _EventOperatorOllamaModelCopy{
+			Completed: EventOperatorOllamaModelCopyCompleted,
+			Failed:    EventOperatorOllamaModelCopyFailed,
+			Requested: EventOperatorOllamaModelCopyRequested,
+		},
 		OllamaModelInventory: _EventOperatorOllamaModelInventory{
 			Completed: EventOperatorOllamaModelInventoryCompleted,
 			Failed:    EventOperatorOllamaModelInventoryFailed,
 			Requested: EventOperatorOllamaModelInventoryRequested,
+		},
+		OllamaModelPull: _EventOperatorOllamaModelPull{
+			Completed: EventOperatorOllamaModelPullCompleted,
+			Failed:    EventOperatorOllamaModelPullFailed,
+			Requested: EventOperatorOllamaModelPullRequested,
 		},
 		OllamaModelRelease: _EventOperatorOllamaModelRelease{
 			Completed: EventOperatorOllamaModelReleaseCompleted,

@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 [![CI](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml)
-[![Version](https://img.shields.io/badge/version-v1.7.3-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.8.0-green.svg)](CHANGELOG.md)
 
 ## Verify, then execute.
 

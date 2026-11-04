@@ -10,7 +10,6 @@ package eval
 import (
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
-	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	harnessclient "github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 )
@@ -33,11 +32,4 @@ func newHarnessOllamaModelCommandDispatcher(cfg *config.Config, authContext *aut
 		UserID:       authContext.UserID,
 		CLISessionID: authContext.CLISessionID,
 	})
-}
-
-// modelCommandEnvironment names the provider endpoint for the `ztd operator
-// model` maintenance subcommands, which read ZTD_OLLAMA_ENDPOINT and fail
-// closed without it.
-func modelCommandEnvironment(endpoint string) map[string]string {
-	return map[string]string{string(constants.EnvVar.OllamaEndpoint): endpoint}
 }

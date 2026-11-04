@@ -12,7 +12,7 @@ import {
   type PublicUnavailableReason as WireUnavailableReasonName,
 } from './proto-enums.generated';
 import type { ActivityAvailability, PublicActivityFamily, PublicUnavailableReason } from './types';
-import { ValidationError } from './validators';
+import { MAX_ACTIVITY_RECORDS, ValidationError } from './validators';
 
 export const WIRE_ACTIVITY_AVAILABILITIES = PUBLIC_ACTIVITY_AVAILABILITY_VALUES;
 export type WireActivityAvailability = PublicActivityAvailability;
@@ -81,6 +81,7 @@ export function parseWireActivityFamily<T>(
   value: unknown,
   path: string,
   parseRecord: (value: unknown, recordPath: string) => T,
+  maxRecords: number = MAX_ACTIVITY_RECORDS,
 ): WireActivityFamily<T> {
   const family = assertObject(value, path);
   rejectUnknown(family, ['availability', 'unavailable_reason', 'records'], path);
@@ -97,7 +98,7 @@ export function parseWireActivityFamily<T>(
   }
   const rawRecords = family.records === undefined ? [] : family.records;
   if (!Array.isArray(rawRecords)) throw new ValidationError(`${path}.records`, 'expected array');
-  if (rawRecords.length > 128) throw new ValidationError(`${path}.records`, 'expected at most 128 entries');
+  if (rawRecords.length > maxRecords) throw new ValidationError(`${path}.records`, `expected at most ${maxRecords} entries`);
   const records = rawRecords.map((record, index) => parseRecord(record, `${path}.records[${index}]`));
   if (availability !== 'PUBLIC_ACTIVITY_AVAILABILITY_OBSERVED' && records.length > 0) {
     throw new ValidationError(`${path}.records`, 'unavailable activity cannot contain records');

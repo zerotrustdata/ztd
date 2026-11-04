@@ -26,8 +26,8 @@ func TestFormationCatalogServedTags_ReturnsSortedUniqueTags(t *testing.T) {
 	assert.Contains(t, tags, "ministral-3:8b")
 }
 
-func TestFormationCatalogIntakeModels_ReturnsOneSovereignLibraryPullPerTag(t *testing.T) {
-	models, err := FormationCatalogIntakeModels()
+func TestFormationCatalogPullEntries_ReturnsOneSovereignLibraryPullPerTag(t *testing.T) {
+	models, err := FormationCatalogPullEntries()
 	require.NoError(t, err)
 	require.Len(t, models, 63)
 	for _, model := range models {

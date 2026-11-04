@@ -249,10 +249,11 @@ func NewHTTPCampaignMirrorProbeWithOrigin(origin string) (evaluation.CampaignMir
 	}, nil
 }
 
-// DatasetPresent asks the mirror's active source for one catalog snapshot of
-// datasetID. The mirror filters server-side, so the lookup is one request no
-// matter how much history the source retains, and withdrawn datasets read as
-// absent.
+// DatasetPresent asks the mirror's current read model for datasetID. The read
+// model outlives replay-history retention, so a published dataset stays present
+// however much the source publishes afterward, and withdrawn datasets read as
+// absent. A mirror that does not echo the dataset has not answered the lookup,
+// and the dataset reads as absent, so the caller republishes rather than skips.
 func (p *httpCampaignMirrorProbe) DatasetPresent(ctx context.Context, datasetID string) (bool, error) {
 	if p == nil || datasetID == "" {
 		return false, fmt.Errorf("campaign mirror probe: dataset id: %w", constants.ErrMissingRequiredField)
@@ -261,11 +262,30 @@ func (p *httpCampaignMirrorProbe) DatasetPresent(ctx context.Context, datasetID 
 	if origin == "" {
 		origin = publicMirrorOrigin()
 	}
-	page, err := fetchPublicMirrorHistoryWithOrigin(ctx, p.client, origin, "", datasetID, "", 1)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, origin+"/snapshot", nil)
 	if err != nil {
 		return false, fmt.Errorf("campaign mirror probe: %w", err)
 	}
-	return len(page.Items) > 0, nil
+	query := req.URL.Query()
+	query.Set("dataset", datasetID)
+	req.URL.RawQuery = query.Encode()
+	resp, err := doPublicMirrorRead(ctx, p.client, req, "public mirror snapshot")
+	if err != nil {
+		return false, fmt.Errorf("campaign mirror probe: %w", err)
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusNotFound:
+		return false, nil
+	case http.StatusOK:
+	default:
+		return false, fmt.Errorf("campaign mirror probe: public mirror snapshot: status %d", resp.StatusCode)
+	}
+	var snapshot models.PublicFeedSnapshot
+	if err := json.NewDecoder(resp.Body).Decode(&snapshot); err != nil {
+		return false, fmt.Errorf("campaign mirror probe: %w: %w", constants.ErrInvalidJSONResponse, err)
+	}
+	return snapshot.DatasetID == datasetID, nil
 }
 
 // fetchPublicMirrorHistory reads one page of catalog snapshots from the

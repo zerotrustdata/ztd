@@ -99,7 +99,7 @@ func (v *Vault) Unlock(privateKey []byte) error {
 	v.dek = dek
 	v.unlocked = true
 
-	v.logger.Info("Vault unlocked",
+	v.logger.Debug("Vault unlocked",
 		"runtime_dir", v.fileSvc.Resolve(constants.VaultDirname),
 		"key_fingerprint", header.KeyFingerprint[:8]+"...")
 

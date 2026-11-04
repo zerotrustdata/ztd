@@ -34,7 +34,6 @@ type FileEditRequest struct {
 	StartLine int `json:"start_line,omitempty"`
 	EndLine   int `json:"end_line,omitempty"`
 
-	CreateBackup    bool   `json:"create_backup"`
 	CreateIfMissing bool   `json:"create_if_missing"`
 	Encoding        string `json:"encoding,omitempty"`
 
@@ -61,7 +60,6 @@ type FileEditResult struct {
 	Status          operatorv1.ExecutionStatus `json:"status"`
 
 	Content      string     `json:"content,omitempty"`
-	BackupPath   string     `json:"backup_path,omitempty"`
 	FileStats    *FileStats `json:"file_stats,omitempty"`
 	LinesChanged int        `json:"lines_changed,omitempty"`
 	BytesWritten int64      `json:"bytes_written,omitempty"`

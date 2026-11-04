@@ -156,7 +156,7 @@ func OpenDB(fileSvc fs.RuntimeFileService, cfg DBConfig, logger *slog.Logger) (*
 		return nil, fmt.Errorf("sqliteutil: ping database %s: %w", cfg.Path, err)
 	}
 
-	logger.Info("SQLite database opened", "path", cfg.Path)
+	logger.Debug("SQLite database opened", "path", cfg.Path)
 	checkpointCtx, stop := context.WithCancel(context.Background())
 	db := &DB{
 		DB:         sqlDB,

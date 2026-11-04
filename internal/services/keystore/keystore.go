@@ -140,7 +140,7 @@ func (k *Keystore) Initialize() error {
 	}
 	_, err := k.loadMasterKeyLocked()
 	if err == nil {
-		k.logger.Info("[Keystore] Master key retrieved", "keyring", k.keyring.Name())
+		k.logger.Debug("[Keystore] Master key retrieved", "keyring", k.keyring.Name())
 		return nil
 	}
 	if !errors.Is(err, constants.ErrKeyStoreKeyNotFound) {

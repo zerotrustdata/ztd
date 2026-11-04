@@ -336,20 +336,6 @@ func (es *ExecutionService) ExecuteCommand(ctx context.Context, request *models.
 	return result, nil
 }
 
-// resolveCommandBinary maps the embedded model client's self-invocation token
-// (the ztd binary image name, exact match, `operator model <verb>` shape only)
-// to this operator's running executable. Resolution happens at the executing
-// operator; the governed command and recorded evidence retain the token text.
-// It never falls back to a ztd found on PATH: that binary may be a different
-// build than the executing operator.
-func resolveCommandBinary(parts []string) (string, error) {
-	if len(parts) >= 3 && parts[0] == constants.BinaryImageName &&
-		parts[1] == "operator" && parts[2] == "model" {
-		return os.Executable()
-	}
-	return exec.LookPath(parts[0])
-}
-
 // executeCommandInternal performs the actual command execution
 func (es *ExecutionService) executeCommandInternal(ctx context.Context, execCtx *ExecutionContext) error {
 	request := execCtx.Request
@@ -423,7 +409,7 @@ func (es *ExecutionService) executeCommandInternal(ctx context.Context, execCtx 
 			return fmt.Errorf("execution: command validation: %w", constants.ErrEmptyCommand)
 		}
 
-		bin, err := resolveCommandBinary(parts)
+		bin, err := exec.LookPath(parts[0])
 		if err != nil {
 			return fmt.Errorf("execution: command lookup: %w", constants.ErrCommandLookup)
 		}

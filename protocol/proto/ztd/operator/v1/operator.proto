@@ -104,10 +104,9 @@ message FileEditRequested {
   int32 start_line = 10;
   int32 end_line = 11;
   string patch_content = 12;
-  bool create_backup = 13;
   bool create_if_missing = 14;
-  reserved 15;
-  reserved "vault_mode";
+  reserved 13, 15;
+  reserved "create_backup", "vault_mode";
 }
 
 // EvaluationWorkspaceSeedRequested writes one frozen evaluation fixture file.
@@ -1030,12 +1029,13 @@ message FileEditResult {
   float duration_seconds = 5;
   int64 bytes_written = 6;
   int32 lines_changed = 7;
-  string backup_path = 8;
   string error_message = 9;
   string error_type = 10;
   string content = 11;
   int32 stdout_size = 12;
   int32 stderr_size = 13;
+  reserved 8;
+  reserved "backup_path";
 }
 
 message ExecutionStatusUpdate {
@@ -1124,6 +1124,37 @@ message OllamaModelReleaseRequested {
 }
 
 message OllamaModelReleaseResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  string error_message = 3;
+  string error_type = 4;
+}
+
+// OllamaModelPullRequested downloads one model onto the Operator's Ollama
+// provider. timeout_seconds bounds the whole download; zero applies the
+// platform default (constants.ModelPullDefaultTimeout).
+message OllamaModelPullRequested {
+  string execution_id = 1;
+  string model_tag = 2;
+  int32 timeout_seconds = 3;
+}
+
+message OllamaModelPullResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  string error_message = 3;
+  string error_type = 4;
+}
+
+// OllamaModelCopyRequested aliases an installed model on the Operator's Ollama
+// provider.
+message OllamaModelCopyRequested {
+  string execution_id = 1;
+  string source = 2;
+  string destination = 3;
+}
+
+message OllamaModelCopyResult {
   string execution_id = 1;
   ExecutionStatus status = 2;
   string error_message = 3;

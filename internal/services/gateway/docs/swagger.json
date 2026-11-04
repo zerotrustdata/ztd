@@ -3044,7 +3044,9 @@
                 "MCP_RESOURCE_LIST",
                 "MCP_RESOURCE_READ",
                 "MODEL_PROVENANCE_OBSERVATION",
+                "OLLAMA_MODEL_COPY",
                 "OLLAMA_MODEL_INVENTORY",
+                "OLLAMA_MODEL_PULL",
                 "OLLAMA_MODEL_RELEASE",
                 "OLLAMA_MODEL_RESIDENCY",
                 "PLATFORM_ENROLLMENT_BIND_CONSENSUS",
@@ -3084,7 +3086,9 @@
                 "ActionTypeMcpResourceList",
                 "ActionTypeMcpResourceRead",
                 "ActionTypeModelProvenanceObservation",
+                "ActionTypeOllamaModelCopy",
                 "ActionTypeOllamaModelInventory",
+                "ActionTypeOllamaModelPull",
                 "ActionTypeOllamaModelRelease",
                 "ActionTypeOllamaModelResidency",
                 "ActionTypePlatformEnrollmentBindConsensus",
@@ -3256,9 +3260,15 @@
                 "ztd.v1.operator.network.port.check.started",
                 "ztd.v1.operator.notary.approval.requested",
                 "ztd.v1.operator.notary.transaction.expired",
+                "ztd.v1.operator.ollama.model.copy.completed",
+                "ztd.v1.operator.ollama.model.copy.failed",
+                "ztd.v1.operator.ollama.model.copy.requested",
                 "ztd.v1.operator.ollama.model.inventory.completed",
                 "ztd.v1.operator.ollama.model.inventory.failed",
                 "ztd.v1.operator.ollama.model.inventory.requested",
+                "ztd.v1.operator.ollama.model.pull.completed",
+                "ztd.v1.operator.ollama.model.pull.failed",
+                "ztd.v1.operator.ollama.model.pull.requested",
                 "ztd.v1.operator.ollama.model.release.completed",
                 "ztd.v1.operator.ollama.model.release.failed",
                 "ztd.v1.operator.ollama.model.release.requested",
@@ -3486,9 +3496,15 @@
                 "EventOperatorNetworkPortCheckStarted",
                 "EventOperatorNotaryApprovalRequested",
                 "EventOperatorNotaryTransactionExpired",
+                "EventOperatorOllamaModelCopyCompleted",
+                "EventOperatorOllamaModelCopyFailed",
+                "EventOperatorOllamaModelCopyRequested",
                 "EventOperatorOllamaModelInventoryCompleted",
                 "EventOperatorOllamaModelInventoryFailed",
                 "EventOperatorOllamaModelInventoryRequested",
+                "EventOperatorOllamaModelPullCompleted",
+                "EventOperatorOllamaModelPullFailed",
+                "EventOperatorOllamaModelPullRequested",
                 "EventOperatorOllamaModelReleaseCompleted",
                 "EventOperatorOllamaModelReleaseFailed",
                 "EventOperatorOllamaModelReleaseRequested",
@@ -5434,6 +5450,10 @@
             "properties": {
                 "batch_count": {
                     "type": "integer"
+                },
+                "dataset_id": {
+                    "description": "DatasetID echoes the dataset a `GET /snapshot?dataset=` lookup found in the\ncurrent read model. It is empty on every other snapshot.",
+                    "type": "string"
                 },
                 "feed_chain_hash": {
                     "type": "string"

@@ -251,8 +251,10 @@ func verifyV7EpisodeOutputs(trace *AgentTrace) error {
 // runtime commits its BEGIN and FINALIZE inside the trace bracket, so the
 // bracket must claim them; an observer on any other runtime commits to a ledger
 // the bracket does not cover, so its receipt claims nothing. A claimed receipt
-// must be a verified, executed observation: its signed action type binds it, so
-// no other execution on the Data runtime can be passed off as one.
+// must be a verified observation with a commitment, whether its handler completed
+// or failed: its signed action type binds it, so no other execution on the Data
+// runtime can be passed off as one. A rejected observation committed nothing and
+// claims nothing.
 func verifyObservationEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime, call AgentModelCall) ([]oracle.Outcome, error) {
 	var claims []oracle.Outcome
 	for _, receipt := range call.ObservationReceipts {
@@ -274,8 +276,11 @@ func verifyObservationEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime
 		if err := verifyReceiptSession(receipt.EventReceipt, data.SessionID); err != nil {
 			return nil, err
 		}
-		if outcome.Kind != oracle.OutcomeExecuted || outcome.Commitment == nil {
-			return nil, fmt.Errorf("observation receipt is not an executed commitment: %w", constants.ErrConformanceLedgerGap)
+		if outcome.Kind == oracle.OutcomeRejected {
+			continue
+		}
+		if outcome.Commitment == nil {
+			return nil, fmt.Errorf("observation receipt carries no commitment: %w", constants.ErrConformanceLedgerGap)
 		}
 		claims = append(claims, outcome)
 	}

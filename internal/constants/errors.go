@@ -126,6 +126,7 @@ var (
 
 	ErrLedgerSessionNotFound    = errors.New("ledger: no ledger exists for this operator session")
 	ErrLedgerDiffHashesRequired = errors.New("ledger: both commit hashes are required to compute a diff")
+	ErrLedgerSnapshotPreLayout  = errors.New("ledger: the commit predates the sharded snapshot layout; its snapshot cannot be read")
 
 	// CLI approval errors
 	ErrKeyReadFailed             = errors.New("failed to read CLI private key")
@@ -651,6 +652,7 @@ var (
 	ErrSQLQueryFailed            = errors.New("failed to execute SQL query")
 
 	ErrChaosTestDatabaseNotFound = errors.New("chaos test database not found")
+	ErrChaosOutcomeMismatch      = errors.New("chaos payload outcomes differ from their expected outcomes")
 	ErrUnitTestsFailed           = errors.New("unit tests failed")
 	ErrIntegrationTestsFailed    = errors.New("integration tests failed")
 	ErrE2ETestsFailed            = errors.New("e2e tests failed")
@@ -1417,6 +1419,8 @@ var (
 	ErrInferenceToolSchemaInvalid         = errors.New("inference: tool schema invalid")
 	ErrInferenceEndpointInvalid           = errors.New("inference: provider endpoint invalid")
 	ErrInferenceProviderOllamaRequired    = errors.New("inference: Ollama model pull requires an Inference Operator serving Ollama")
+	ErrOllamaAPI                          = errors.New("ollama api")
+	ErrOllamaPull                         = errors.New("ollama pull")
 	ErrInferenceProviderResponseInvalid   = errors.New("inference: provider response invalid")
 	ErrInferenceProviderStreamError       = errors.New("inference: provider ended the response stream with an error")
 	ErrInferenceGenerationOptionsInvalid  = errors.New("inference: generation options invalid")
@@ -1479,6 +1483,7 @@ var (
 	ErrEvaluationPostureUnsupported          = errors.New("evaluation: governance posture is unsupported")
 	ErrEvaluationRunGovernanceChanged        = errors.New("evaluation: Gateway posture or consensus binding differs from what the run froze at start; start a new run")
 	ErrEvaluationObservationUnavailable      = errors.New("evaluation: independent observation is unavailable")
+	ErrEvaluationObservationFailed           = errors.New("evaluation: observer signed a failed receipt")
 	ErrEvaluationReportPersistFailed         = errors.New("evaluation: report persistence failed")
 	ErrEvaluationTargetAmbiguous             = errors.New("evaluation: target operator selection is ambiguous")
 	ErrEvaluationDispatchFailed              = errors.New("evaluation: governed dispatch failed")

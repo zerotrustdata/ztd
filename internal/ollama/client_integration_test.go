@@ -26,6 +26,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
 func TestClient_Copy_Succeeds(t *testing.T) {
@@ -231,7 +233,7 @@ func TestClient_Pull_ReportsStreamedErrorAfterEarlierProgress(t *testing.T) {
 		return nil
 	})
 
-	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrOllamaPull)
 	assert.Equal(t, "ollama pull: disk full", err.Error())
 	assert.Equal(t, []string{"pulling manifest"}, seen)
 }
@@ -356,4 +358,25 @@ func TestClient_ReportsTransportFailureWhenServerIsUnreachable(t *testing.T) {
 	var opErr *net.OpError
 	require.ErrorAs(t, copyErr, &opErr)
 	require.ErrorAs(t, pullErr, &opErr)
+}
+
+func TestClient_Pull_StopsWhenTheRequestDeadlinePasses(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Cleanup(func() { close(release) })
+	base, err := url.Parse(server.URL)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	err = NewMaintenanceClient(base).Pull(ctx, "llama3", nil)
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }

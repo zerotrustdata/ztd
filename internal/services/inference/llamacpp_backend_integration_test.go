@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -397,4 +398,12 @@ func TestLlamaCppModelDigester_ComposesSplitModelDigest(t *testing.T) {
 
 	_, _, err = digester.modelDigest(testutil.Context(t), "absent")
 	require.ErrorIs(t, err, constants.ErrInferenceModelNotFound)
+}
+
+func TestLlamaCppBackend_ModelPullAndCopyFailClosed(t *testing.T) {
+	backend, err := NewLlamaCppBackend("http://127.0.0.1:1", testutil.TempDir(t), slog.Default())
+	require.NoError(t, err)
+
+	require.ErrorIs(t, backend.PullModel(t.Context(), "qwen3:0.6b"), constants.ErrInferenceProviderOllamaRequired)
+	require.ErrorIs(t, backend.CopyModel(t.Context(), "qwen3:0.6b", "alias:1b"), constants.ErrInferenceProviderOllamaRequired)
 }

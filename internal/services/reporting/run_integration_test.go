@@ -132,6 +132,7 @@ func seedReportingData(t *testing.T, store *storage.LocalFirstEventsStore, rs *s
 	require.NoError(t, store.RecordFileMutation(&storage.FileMutationLog{
 		EventID:          eventID,
 		Filepath:         "/test/run-file",
+		SnapshotName:     "snapshot-name",
 		Operation:        storage.FileMutationWrite,
 		LedgerHashBefore: "hash-before",
 		LedgerHashAfter:  "hash-after",

@@ -433,19 +433,11 @@ func TestBootstrap_MutationWorksImmediatelyAfterConstruction(t *testing.T) {
 
 	// No mutations have been performed yet. Directly do a file write.
 	testFile := filepath.Join(tempDir, "immediate_write.txt")
-	result, err := svc.MirrorFileCreate("sess-immediate", openTestTarget(t, svc.fileSvc, testFile, tempDir))
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	require.NoError(t, os.WriteFile(testFile, []byte("immediate content"), 0644))
-	require.NoError(t, svc.CompleteMirrorCreate(result, "sess-immediate"))
-
+	result := recordMutation(t, svc, "sess-immediate", testFile, tempDir, "immediate content")
 	assert.NotEmpty(t, result.LedgerHashAfter)
 
-	// Verify the file was mirrored. result.LedgerPath is a .ztd/ runtime
-	// ledger mirror path, so read it via fileSvc (rule 2) using the
-	// readLedgerSnapshot helper from ledger_test.go.
-	mirrored := readLedgerSnapshot(t, svc, result.LedgerPath)
+	// The snapshot is read back from the session ledger's git objects.
+	mirrored := readLedgerSnapshot(t, svc, "sess-immediate", result)
 	assert.Equal(t, "immediate content", string(mirrored))
 }
 
@@ -461,21 +453,13 @@ func TestBootstrap_DiffStatWorksImmediatelyAfterConstruction(t *testing.T) {
 
 	// First mutation: create a file
 	testFile := filepath.Join(tempDir, "diffstat_immediate.txt")
-	result1, err := svc.MirrorFileCreate("sess-diffstat-boot", openTestTarget(t, svc.fileSvc, testFile, tempDir))
-	require.NoError(t, err)
-
-	require.NoError(t, os.WriteFile(testFile, []byte("line one\nline two\n"), 0644))
-	require.NoError(t, svc.CompleteMirrorCreate(result1, "sess-diffstat-boot"))
+	result1 := recordMutation(t, svc, "sess-diffstat-boot", testFile, tempDir, "line one\nline two\n")
 
 	hashBefore := result1.LedgerHashAfter
 	require.NotEmpty(t, hashBefore)
 
 	// Second mutation: modify the file
-	result2, err := svc.LedgerFileWrite("sess-diffstat-boot", openTestTarget(t, svc.fileSvc, testFile, tempDir))
-	require.NoError(t, err)
-
-	require.NoError(t, os.WriteFile(testFile, []byte("line one\nline two\nline three\n"), 0644))
-	require.NoError(t, svc.CompleteMirrorWrite(result2, "sess-diffstat-boot"))
+	result2 := recordMutation(t, svc, "sess-diffstat-boot", testFile, tempDir, "line one\nline two\nline three\n")
 
 	hashAfter := result2.LedgerHashAfter
 	require.NotEmpty(t, hashAfter)
@@ -493,7 +477,7 @@ func TestBootstrap_GetFileHistoryEmptyRepo(t *testing.T) {
 	t.Parallel()
 	svc, _ := setupBootstrapLedger(t)
 
-	history, err := svc.GetFileHistory(t.Context(), "/some/nonexistent/file.txt", 10, "")
+	history, err := svc.GetFileHistory(t.Context(), "/some/nonexistent/file.txt", nil, 10, "")
 	require.NoError(t, err)
 	assert.Empty(t, history)
 }
@@ -577,4 +561,59 @@ func TestBootstrap_FilesDirWorktreeStatusClean(t *testing.T) {
 	status, err := w.Status()
 	require.NoError(t, err)
 	assert.True(t, status.IsClean(), "worktree should be clean after bootstrap")
+}
+
+// ---------------------------------------------------------------------------
+// Read-only opener tests
+// ---------------------------------------------------------------------------
+
+// TestLedgerReader_WritesNothingOverAnEmptyRuntime verifies that the read-only opener never
+// bootstraps: over a runtime with no ledger it creates nothing and its first read fails.
+func TestLedgerReader_WritesNothingOverAnEmptyRuntime(t *testing.T) {
+	t.Parallel()
+	lms, _ := setupTestLedger(t)
+	fileSvc := newTestFileSvc(t, testutil.OperatorDir(t))
+
+	reader, err := OpenGitLedgerReader(lms.config, testutil.NewTestLogger(), fileSvc)
+	require.NoError(t, err)
+	_, err = reader.ListCommits("", 0)
+	require.Error(t, err)
+	_, err = reader.ListCommits("never-created", 0)
+	require.ErrorIs(t, err, constants.ErrLedgerSessionNotFound)
+
+	// The runtime tree owns the bare directories; bootstrap would add the repository and sessions/.
+	ledgerRel := filepath.Join(constants.DataDirname, constants.LedgerDirname)
+	for _, rel := range []string{
+		filepath.Join(ledgerRel, constants.FilesDirname, constants.GitDirname),
+		filepath.Join(ledgerRel, constants.SessionsDirname),
+	} {
+		exists, err := fileSvc.FileExists(t.Context(), rel)
+		require.NoError(t, err)
+		assert.False(t, exists, "the reader bootstrapped %s", rel)
+	}
+}
+
+// TestLedgerReader_ReadsTheWritersTrailWithoutAddingToIt verifies that a reader over a live
+// ledger sees the writer's commits and snapshots and leaves the trail unchanged.
+func TestLedgerReader_ReadsTheWritersTrailWithoutAddingToIt(t *testing.T) {
+	t.Parallel()
+	lms, tempDir := setupTestLedger(t)
+	const session = "reader-session"
+	path := filepath.Join(tempDir, "read.txt")
+	result := recordMutation(t, lms, session, path, tempDir, "content")
+	want, err := lms.ListCommits(session, 0)
+	require.NoError(t, err)
+
+	reader, err := OpenGitLedgerReader(lms.config, testutil.NewTestLogger(), lms.fileSvc)
+	require.NoError(t, err)
+	got, err := reader.ListCommits(session, 0)
+	require.NoError(t, err)
+	assert.Equal(t, want, got)
+	content, err := reader.GetFileAtCommit(path, result.LedgerHashAfter, session)
+	require.NoError(t, err)
+	assert.Equal(t, "content", content)
+	_, err = reader.GetStateMerkleRoot()
+	require.NoError(t, err)
+
+	assert.Equal(t, len(want), commitCount(t, lms, session), "reads add no commits")
 }

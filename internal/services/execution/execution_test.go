@@ -27,34 +27,6 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func TestResolveCommandBinary(t *testing.T) {
-	t.Parallel()
-	executable, err := os.Executable()
-	require.NoError(t, err)
-	for _, command := range []string{
-		"ztd operator model pull qwen3:0.6b",
-		"ztd operator model copy qwen3:0.6b local/qwen3:0.6b",
-		"ztd operator model inventory",
-	} {
-		t.Run(command, func(t *testing.T) {
-			binary, err := resolveCommandBinary(strings.Fields(command))
-			require.NoError(t, err)
-			assert.Equal(t, executable, binary)
-		})
-	}
-	// The retired /ztd container path is not a self-invocation token, and
-	// non-model ztd subcommands are not widened into self-invocation.
-	for _, command := range []string{"ztd", "ztd operator start", "/ztd operator model pull qwen3:0.6b", "go version"} {
-		t.Run(command, func(t *testing.T) {
-			parts := strings.Fields(command)
-			want, wantErr := exec.LookPath(parts[0])
-			binary, err := resolveCommandBinary(parts)
-			assert.Equal(t, want, binary)
-			assert.Equal(t, wantErr, err)
-		})
-	}
-}
-
 func TestExecutionService_ExecuteCommand(t *testing.T) {
 	t.Parallel()
 	cfg := testutil.NewTestConfig(t)

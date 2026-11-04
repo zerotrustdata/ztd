@@ -136,3 +136,54 @@ func TestDispatchInference_ZeroProvenanceOperatorProceedsUnattested(t *testing.T
 		require.Equal(t, 1, dispatcher.calls)
 	})
 }
+
+// failingFinalizeProvenanceNotifier is a provenance Operator that signs FAILED
+// for FINALIZE, as it does for a served digest that differs from the frozen one.
+type failingFinalizeProvenanceNotifier struct {
+	recordingProvenanceNotifier
+}
+
+func (n *failingFinalizeProvenanceNotifier) NotifyAttemptFinalize(_ context.Context, _, _, _, _, _, _, _ string, _, _ int64, _ bool, _ uint32) (*operatorv1.EventReceipt, error) {
+	return &operatorv1.EventReceipt{TransactionId: "provenance-finalize-failed", Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED}, constants.ErrEvaluationObservationUnavailable
+}
+
+// A failed FINALIZE's signed receipt travels with the attempt, whether the
+// inference itself succeeded or failed: it is the proof that no window follows.
+func TestDispatchInference_CarriesFailedFinalizeReceipt(t *testing.T) {
+	lister := &stubOperatorLister{ops: []*operatorv1.OperatorDocument{capableOp("sess-inf")}}
+	tests := []struct {
+		name       string
+		dispatcher func(t *testing.T, req DispatchInferenceRequest) *stubCommandDispatcher
+	}{
+		{
+			name: "inference succeeded",
+			dispatcher: func(t *testing.T, req DispatchInferenceRequest) *stubCommandDispatcher {
+				t.Helper()
+				return &stubCommandDispatcher{result: successDispatchResultFor(t, req)}
+			},
+		},
+		{
+			name: "inference failed",
+			dispatcher: func(_ *testing.T, _ DispatchInferenceRequest) *stubCommandDispatcher {
+				return &stubCommandDispatcher{err: constants.ErrDispatchNoDelivery}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := baseRequest()
+			configureCampaignRequest(t, &req)
+			svc := NewDispatchService(tt.dispatcher(t, req), lister, testLogger())
+			svc.SetProvenanceObservationNotifier(&failingFinalizeProvenanceNotifier{})
+
+			_, err := svc.DispatchInference(t.Context(), req)
+
+			require.Error(t, err)
+			receipts := ObservationReceipts(err)
+			require.NotEmpty(t, receipts)
+			last := receipts[len(receipts)-1]
+			require.Equal(t, "provenance-finalize-failed", last.GetTransactionId())
+			require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, last.GetStatus())
+		})
+	}
+}

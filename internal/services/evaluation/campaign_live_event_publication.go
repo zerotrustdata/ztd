@@ -190,7 +190,14 @@ func (c *CampaignPublicationCoordinator) buildScoredModelRoleInvocationPublishRe
 	return requests, nil
 }
 
+// assignmentLiveEventProgress returns the run's settled and scheduled assignment
+// counts. A catch-up builds events for every assignment of a run it has already
+// loaded, so it answers from that state instead of reading every result again
+// for each assignment.
 func (c *CampaignPublicationCoordinator) assignmentLiveEventProgress(ctx context.Context, runID string) (completed int, total int, err error) {
+	if cached := c.activeAggregate(runID); cached != nil {
+		return int(cached.state.Terminal), int(cached.state.Scheduled), nil
+	}
 	assignments, err := c.store.ListAssignments(ctx, runID)
 	if err != nil {
 		return 0, 0, err

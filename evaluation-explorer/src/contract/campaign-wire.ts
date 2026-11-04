@@ -29,7 +29,7 @@ import {
   PUBLIC_TOOL_SCORE_DIMENSION_VALUES,
   type PublicReleaseBasis,
 } from './proto-enums.generated';
-import { assertReleaseProvenance, assertRoleTranscripts, assertString as assertVerbatimText, hasControlCharacters, utf8ByteLengthWithin, ValidationError } from './validators';
+import { MAX_TOOL_LOOP_RECORDS, assertReleaseProvenance, assertRoleTranscripts, assertString as assertVerbatimText, hasControlCharacters, utf8ByteLengthWithin, ValidationError } from './validators';
 
 export const CAMPAIGN_LIFECYCLE_SCHEMA_VERSION = '1.0.0' as const;
 export const CAMPAIGN_RESULT_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0'] as const;
@@ -556,9 +556,9 @@ function assertActivitySummary(value: unknown, path: string): void {
   rejectUnknown(value, ['model_activity', 'tool_decisions', 'tool_calls', 'policy_decisions', 'governed_actions'], path);
   parseWireActivityFamily(value.model_activity, `${path}.model_activity`, assertModelActivityRecord);
   parseWireActivityFamily(value.tool_decisions, `${path}.tool_decisions`, assertToolDecisionRecord);
-  parseWireActivityFamily(value.tool_calls, `${path}.tool_calls`, assertToolCallRecord);
-  parseWireActivityFamily(value.policy_decisions, `${path}.policy_decisions`, assertPolicyDecisionRecord);
-  parseWireActivityFamily(value.governed_actions, `${path}.governed_actions`, assertGovernedActionRecord);
+  parseWireActivityFamily(value.tool_calls, `${path}.tool_calls`, assertToolCallRecord, MAX_TOOL_LOOP_RECORDS);
+  parseWireActivityFamily(value.policy_decisions, `${path}.policy_decisions`, assertPolicyDecisionRecord, MAX_TOOL_LOOP_RECORDS);
+  parseWireActivityFamily(value.governed_actions, `${path}.governed_actions`, assertGovernedActionRecord, MAX_TOOL_LOOP_RECORDS);
 }
 
 function assertModelActivityRecord(value: unknown, path: string): void {

@@ -56,14 +56,21 @@ func (c *Client) DispatchCommand(ctx context.Context, persona Persona, request m
 
 // DispatchCommandBody posts body to the governed dispatch ingress unchanged and
 // classifies the answer. It performs no validation: conformance cases use it to
-// send malformed requests.
+// send malformed requests. The request context owns the deadline, so an action
+// that outlives the default wait (a model pull) passes a context with its own;
+// a context without a deadline waits for the approval TTL plus RequestDeadline.
 func (c *Client) DispatchCommandBody(ctx context.Context, p Persona, body []byte) (*GovernedOutcome, error) {
 	cliIdentity := c.cliHTTP != nil
 	hc := c.http
 	if cliIdentity {
 		hc = c.cliHTTP
 	}
-	httpClient := httpclient.WithTimeout(hc, mcp.ApprovalRequestTTL+dispatch.RequestDeadline)
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, mcp.ApprovalRequestTTL+dispatch.RequestDeadline)
+		defer cancel()
+	}
+	httpClient := httpclient.WithTimeout(hc, 0)
 	status, raw, err := c.doWithClient(ctx, p, http.MethodPost, c.cfg.MTLSBaseURL+constants.APIPaths.OperatorsCommands, body, httpClient, constants.HeaderValueApplicationJSON, cliIdentity)
 	if err != nil {
 		return nil, fmt.Errorf("agent harness: submit dispatch command: %w", err)

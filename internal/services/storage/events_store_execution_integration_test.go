@@ -68,6 +68,7 @@ func TestGetFileMutationByID_ResolvesSessionForDiff(t *testing.T) {
 	require.NoError(t, ass.RecordFileMutation(&FileMutationLog{
 		EventID:          eventID,
 		Filepath:         "/work/mut.txt",
+		SnapshotName:     "snapshot-name",
 		Operation:        FileMutationWrite,
 		LedgerHashBefore: "before-hash",
 		LedgerHashAfter:  "after-hash",

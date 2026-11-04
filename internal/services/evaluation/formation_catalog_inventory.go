@@ -116,15 +116,15 @@ func MaterializeFormationVariants(sourceVariants []*evalv1.ModelVariant, formati
 	return picked, nil
 }
 
-// FormationCatalogIntakeModels returns rollout-intake staging entries for every
-// sovereign served tag in the checked-in ExecutionTopologies catalog.
-func FormationCatalogIntakeModels() ([]RolloutIntakeModel, error) {
+// FormationCatalogPullEntries returns model pull entries for every sovereign
+// served tag in the checked-in ExecutionTopologies catalog.
+func FormationCatalogPullEntries() ([]ModelPullEntry, error) {
 	topologies, err := NewExecutionTopologies()
 	if err != nil {
 		return nil, err
 	}
 	seen := make(map[string]struct{})
-	models := make([]RolloutIntakeModel, 0, len(FormationCatalogServedTags()))
+	models := make([]ModelPullEntry, 0, len(FormationCatalogServedTags()))
 	for _, formation := range topologies.Formations() {
 		for _, model := range formation.Models() {
 			if model.Trust != FormationTrustSovereign {
@@ -138,12 +138,12 @@ func FormationCatalogIntakeModels() ([]RolloutIntakeModel, error) {
 				continue
 			}
 			seen[tag] = struct{}{}
-			models = append(models, RolloutIntakeModel{
+			models = append(models, ModelPullEntry{
 				VariantID:      model.VariantID,
 				ServedModelTag: tag,
 				ModelFamily:    model.Family,
 				Quantization:   model.Quantization,
-				Staging: RolloutIntakeStaging{
+				Staging: ModelPullStaging{
 					Method:     "ollama_library_pull",
 					Status:     "ready",
 					OllamaPull: tag,
@@ -155,7 +155,7 @@ func FormationCatalogIntakeModels() ([]RolloutIntakeModel, error) {
 		return models[i].ServedModelTag < models[j].ServedModelTag
 	})
 	if len(models) == 0 {
-		return nil, fmt.Errorf("evaluation: formation catalog intake models: %w", constants.ErrMissingRequiredField)
+		return nil, fmt.Errorf("evaluation: formation catalog pull entries: %w", constants.ErrMissingRequiredField)
 	}
 	return models, nil
 }

@@ -22,6 +22,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	storage "github.com/zerotrustdata/ztd/internal/services/storage"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -200,11 +201,16 @@ func publishLFEAErrorTo(
 		safeMsg = scrubbingService.ScrubText(ctx, errorMsg)
 	}
 
-	// Use CommandResult as a generic error container
-	payload := &operatorv1.CommandResult{
-		ExecutionId: executionID,
-		Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
-		Error:       safeMsg,
+	// A model maintenance failure carries its action's typed result. It reaches this path only when
+	// egress withheld that result, so the fixed text has no cause to classify.
+	// Every other failure uses CommandResult as a generic error container.
+	payload := ollamaModelFailedResult(eventType, executionID, safeMsg, logging.ErrorKindOther)
+	if payload == nil {
+		payload = &operatorv1.CommandResult{
+			ExecutionId: executionID,
+			Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED,
+			Error:       safeMsg,
+		}
 	}
 
 	originatingAction, err := constants.Registry.ActionFor(msg.EventType)

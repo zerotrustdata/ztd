@@ -45,17 +45,17 @@ func overlayFormation(t *testing.T, root, id string) evaluation.Formation {
 	return evaluation.Formation{}
 }
 
-func TestFormationsAdd_ResolvesRolesFromServedTags(t *testing.T) {
+func TestFormationsCreate_ResolvesRolesFromServedTags(t *testing.T) {
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
 
-	out, err := runFormationsCmd(t, root, "add", "tags-only",
+	out, err := runFormationsCmd(t, root, "create", "tags-only",
 		"--max-vram", "40gb",
 		"--primary-tag", "qwen3:35b",
 		"--assistant-tag", "granite4.2:8b",
 		"--lite-tag", "gemma3:1b")
 	require.NoError(t, err)
-	assert.Contains(t, out, "Added formation tags-only: qwen3:35b / granite4.2:8b / gemma3:1b")
+	assert.Contains(t, out, "Created formation tags-only: qwen3:35b / granite4.2:8b / gemma3:1b")
 
 	formation := overlayFormation(t, root, "tags-only")
 	assert.Equal(t, "tags-only", formation.DisplayName)
@@ -69,11 +69,11 @@ func TestFormationsAdd_ResolvesRolesFromServedTags(t *testing.T) {
 	assert.Equal(t, evaluation.EstimateFormationKVCacheMiB(1_000_000_000), formation.Lite.EstimatedKVCacheMiB)
 }
 
-func TestFormationsAdd_RejectsBudgetOverflowWithoutWritingOverlay(t *testing.T) {
+func TestFormationsCreate_RejectsBudgetOverflowWithoutWritingOverlay(t *testing.T) {
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
 
-	_, err := runFormationsCmd(t, root, "add", "too-big",
+	_, err := runFormationsCmd(t, root, "create", "too-big",
 		"--max-vram", "8",
 		"--primary-tag", "qwen3:35b",
 		"--assistant-tag", "granite4.2:8b",
@@ -84,11 +84,11 @@ func TestFormationsAdd_RejectsBudgetOverflowWithoutWritingOverlay(t *testing.T) 
 	assert.ErrorIs(t, statErr, os.ErrNotExist)
 }
 
-func TestFormationsAdd_RejectsUnparseableVRAMBudget(t *testing.T) {
+func TestFormationsCreate_RejectsUnparseableVRAMBudget(t *testing.T) {
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
 
-	_, err := runFormationsCmd(t, root, "add", "bad-budget",
+	_, err := runFormationsCmd(t, root, "create", "bad-budget",
 		"--max-vram", "8gbx",
 		"--primary-tag", "qwen3:35b",
 		"--assistant-tag", "granite4.2:8b",
@@ -96,10 +96,10 @@ func TestFormationsAdd_RejectsUnparseableVRAMBudget(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
 }
 
-func TestFormationsAdd_UnresolvedTagNamesMissingFieldsUntilSupplied(t *testing.T) {
+func TestFormationsCreate_UnresolvedTagNamesMissingFieldsUntilSupplied(t *testing.T) {
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
-	args := []string{"add", "custom-lite",
+	args := []string{"create", "custom-lite",
 		"--primary-tag", "granite4.2:8b",
 		"--assistant-tag", "gemma3:1b",
 		"--lite-tag", "custom:700m"}
@@ -119,11 +119,11 @@ func TestFormationsAdd_UnresolvedTagNamesMissingFieldsUntilSupplied(t *testing.T
 	assert.Equal(t, evaluation.EstimateFormationModelVRAMMiB(700_000_000, "Q4_K_M"), formation.Lite.EstimatedModelVRAMMiB)
 }
 
-func TestFormationsAdd_RequiresEveryRoleTag(t *testing.T) {
+func TestFormationsCreate_RequiresEveryRoleTag(t *testing.T) {
 	root := testutil.TempDir(t)
 	seedModelScopes(t, root)
 
-	_, err := runFormationsCmd(t, root, "add", "no-lite",
+	_, err := runFormationsCmd(t, root, "create", "no-lite",
 		"--primary-tag", "granite4.2:8b",
 		"--assistant-tag", "gemma3:1b")
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)

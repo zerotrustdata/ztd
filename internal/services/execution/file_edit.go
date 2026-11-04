@@ -11,8 +11,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -296,24 +294,11 @@ func (fes *FileEditService) executeWrite(target *fs.FileEditTarget, request *mod
 	fes.logger.Info("Writing to file", "execution_id", request.ExecutionID)
 
 	// Check if file exists
-	fileInfo, err := target.Stat()
+	_, err := target.Stat()
 	fileExists := err == nil
 
 	if !fileExists && !request.CreateIfMissing {
 		return constants.ErrPathNotFound
-	}
-
-	// Create backup if requested and file exists
-	if fileExists && request.CreateBackup {
-		if fileInfo.Size() > constants.FileEditMaxSize {
-			return fmt.Errorf("%w: %d bytes (max %d)", constants.ErrFileEditFileTooLarge, fileInfo.Size(), constants.FileEditMaxSize)
-		}
-		backupPath, err := fes.createBackup(target)
-		if err != nil {
-			return fmt.Errorf("file edit: create backup: %w", err)
-		}
-		result.BackupPath = backupPath
-		fes.logger.Info("Backup created", "execution_id", request.ExecutionID)
 	}
 
 	// Write content to file, creating missing parent directories
@@ -356,15 +341,6 @@ func (fes *FileEditService) executeReplace(target *fs.FileEditTarget, request *m
 	content, err := target.ReadFile()
 	if err != nil {
 		return fmt.Errorf("file edit: read file: %w", err)
-	}
-
-	// Create backup if requested
-	if request.CreateBackup {
-		backupPath, err := fes.createBackup(target)
-		if err != nil {
-			return fmt.Errorf("file edit: create backup: %w", err)
-		}
-		result.BackupPath = backupPath
 	}
 
 	// Perform replacement
@@ -432,15 +408,6 @@ func (fes *FileEditService) executeInsert(target *fs.FileEditTarget, request *mo
 		return fmt.Errorf("file edit: read file: %w", err)
 	}
 
-	// Create backup if requested
-	if request.CreateBackup {
-		backupPath, err := fes.createBackup(target)
-		if err != nil {
-			return fmt.Errorf("file edit: create backup: %w", err)
-		}
-		result.BackupPath = backupPath
-	}
-
 	// Split content into lines
 	lines := strings.Split(string(content), "\n")
 	insertPos := request.InsertPosition - 1 // Convert to 0-indexed
@@ -502,15 +469,6 @@ func (fes *FileEditService) executeDelete(target *fs.FileEditTarget, request *mo
 		return fmt.Errorf("file edit: read file: %w", err)
 	}
 
-	// Create backup if requested
-	if request.CreateBackup {
-		backupPath, err := fes.createBackup(target)
-		if err != nil {
-			return fmt.Errorf("file edit: create backup: %w", err)
-		}
-		result.BackupPath = backupPath
-	}
-
 	// Split content into lines
 	lines := strings.Split(string(content), "\n")
 	startLine := request.StartLine - 1 // Convert to 0-indexed
@@ -542,59 +500,6 @@ func (fes *FileEditService) executeDelete(target *fs.FileEditTarget, request *mo
 		"lines_deleted", linesDeleted)
 
 	return nil
-}
-
-// createBackup creates a backup of a file using streaming to prevent OOM
-func (fes *FileEditService) createBackup(target *fs.FileEditTarget) (backupPath string, err error) {
-	// Generate backup filename with timestamp and hash
-	timestamp := time.Now().UTC().Format("20060102-150405")
-
-	// Calculate file hash for uniqueness (streaming)
-	file, err := target.Open()
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", fmt.Errorf("%w: %s", constants.ErrPathNotFound, target.Path())
-		}
-		return "", err
-	}
-	defer file.Close()
-
-	h := sha256.New()
-	if _, err := io.Copy(h, file); err != nil {
-		return "", err
-	}
-	hashStr := hex.EncodeToString(h.Sum(nil))[:8]
-
-	// Reset file pointer to beginning
-	if _, err := file.Seek(0, 0); err != nil {
-		return "", err
-	}
-
-	// Create backup file
-	backupFile, backupPath, err := target.CreateSibling(fmt.Sprintf(constants.BackupFileSuffixPattern, timestamp, hashStr), constants.PermFilePublic)
-	if err != nil {
-		return "", err
-	}
-	defer func() {
-		if backupFile != nil {
-			if closeErr := backupFile.Close(); closeErr != nil && err == nil {
-				err = closeErr
-			}
-		}
-	}()
-
-	// Copy content streaming
-	if _, err = io.Copy(backupFile, file); err != nil {
-		return "", err
-	}
-
-	if err := backupFile.Close(); err != nil {
-		backupFile = nil
-		return "", err
-	}
-	backupFile = nil
-
-	return backupPath, nil
 }
 
 // collectFileStats collects file statistics

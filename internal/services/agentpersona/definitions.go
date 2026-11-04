@@ -14,8 +14,9 @@ import "github.com/zerotrustdata/ztd/internal/models"
 // claimed handoff without a handoff tool, and a governance denial is final.
 // Any text change bumps that persona's Version.
 
-// clarificationSignal is how Sage and Dash ask for clarification: they
+// clarificationSignal is how reasoners (Sage and Dash) ask for clarification: they
 // signal, and the loop dispatches the Interrogator, which asks the questions.
+// Neither Sage nor Dash asks clarifying questions directly.
 const clarificationSignal = `<clarification>
 When missing context prevents a safe, precise answer or action, reply with only the following, with no other text or tool calls:
 <clarification_needed>one line naming the missing context</clarification_needed>
@@ -62,6 +63,11 @@ If a request fails to produce a valid command, tighten missing details, decompos
 	}
 }
 
+// dash defines the Assistant-tier persona. Dash operates as Sage's bounded
+// tool-calling worker subagent: concise direct answers or 1 targeted tool call
+// without multi-step investigation or deep planning. Dash never asks clarifying
+// questions; when missing context prevents execution, it signals for the
+// Interrogator.
 func dash() Persona {
 	return Persona{
 		ID:          IDDash,

@@ -300,7 +300,7 @@ func (c *ModelProvenanceObservationCoordinator) publishCommand(ctx context.Conte
 			"operator_id", operator.OperatorID,
 			"operator_session_id", operator.OperatorSessionID,
 			"error", err)
-		return nil, err
+		return receipt, err
 	}
 	c.logger.Info("Model provenance observation command executed",
 		"transaction_id", receipt.GetTransactionId(),

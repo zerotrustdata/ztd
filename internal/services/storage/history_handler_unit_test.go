@@ -35,6 +35,10 @@ type mockEventsStore struct {
 	getFileMutationsCalled   int
 	lastSessionID            string
 	lastEventID              int64
+	listBySnapshotFunc       func() ([]*FileMutationLog, error)
+	listBySnapshotCalled     int
+	lastSnapshotName         string
+	lastSnapshotLimit        int
 }
 
 func (m *mockEventsStore) GetOperatorSession(sessionID string) (*OperatorSession, error) {
@@ -76,31 +80,44 @@ func (m *mockEventsStore) ListFileMutationsBySession(operatorSessionID string, l
 	return nil, nil
 }
 
-// mockLedger is a mock implementation of ledgerInterface for unit testing
-type mockLedger struct {
-	getFileHistoryFunc         func(filePath string, limit int, sessionID string) ([]FileHistoryEntry, error)
-	restoreFileFromCommitFunc  func(filePath, commitHash, sessionID string) error
-	getFileAtCommitFunc        func(filePath, commitHash, sessionID string) (string, error)
-	mirrorFileCreateFunc       func(operatorSessionID, filePath string) (*LedgerResult, error)
-	completeMirrorCreateFunc   func(result *LedgerResult, operatorSessionID string) error
-	ledgerFileWriteFunc        func(operatorSessionID, filePath string) (*LedgerResult, error)
-	completeMirrorWriteFunc    func(result *LedgerResult, operatorSessionID string) error
-	getFileHistoryCalled       int
-	restoreFileCalled          int
-	getFileAtCommitCalled      int
-	mirrorFileCreateCalled     int
-	completeMirrorCreateCalled int
-	ledgerFileWriteCalled      int
-	completeMirrorWriteCalled  int
-	lastFilePath               string
-	lastCommitHash             string
-	lastSessionID              string
-	lastOperatorSessionID      string
+func (m *mockEventsStore) ListFileMutationsBySnapshot(_ context.Context, operatorSessionID, snapshotName string, limit int) ([]*FileMutationLog, error) {
+	m.listBySnapshotCalled++
+	m.lastSessionID = operatorSessionID
+	m.lastSnapshotName = snapshotName
+	m.lastSnapshotLimit = limit
+	if m.listBySnapshotFunc != nil {
+		return m.listBySnapshotFunc()
+	}
+	return nil, nil
 }
 
-func (m *mockLedger) GetFileHistory(_ context.Context, filePath string, limit int, sessionID string) ([]FileHistoryEntry, error) {
+// mockLedger is a mock implementation of ledgerInterface for unit testing
+type mockLedger struct {
+	getFileHistoryFunc        func(filePath string, limit int, sessionID string) ([]FileHistoryEntry, error)
+	snapshotNameErr           error
+	lastCommitHashes          []string
+	restoreFileFromCommitFunc func(filePath, commitHash, sessionID string) error
+	getFileAtCommitFunc       func(filePath, commitHash, sessionID string) (string, error)
+	getFileHistoryCalled      int
+	restoreFileCalled         int
+	getFileAtCommitCalled     int
+	lastFilePath              string
+	lastCommitHash            string
+	lastSessionID             string
+	lastOperatorSessionID     string
+}
+
+func (m *mockLedger) SnapshotName(filePath string) (string, error) {
+	if m.snapshotNameErr != nil {
+		return "", m.snapshotNameErr
+	}
+	return "snapshot-of:" + filePath, nil
+}
+
+func (m *mockLedger) GetFileHistory(_ context.Context, filePath string, commitHashes []string, limit int, sessionID string) ([]FileHistoryEntry, error) {
 	m.getFileHistoryCalled++
 	m.lastFilePath = filePath
+	m.lastCommitHashes = commitHashes
 	m.lastSessionID = sessionID
 	if m.getFileHistoryFunc != nil {
 		return m.getFileHistoryFunc(filePath, limit, sessionID)
@@ -136,46 +153,6 @@ func (m *mockLedger) GetFileAtCommit(filePath, commitHash, sessionID string) (st
 		return m.getFileAtCommitFunc(filePath, commitHash, sessionID)
 	}
 	return "", nil
-}
-
-func (m *mockLedger) MirrorFileCreate(operatorSessionID string, target *fs.FileEditTarget) (*LedgerResult, error) {
-	filePath := targetPath(target)
-	m.mirrorFileCreateCalled++
-	m.lastSessionID = operatorSessionID
-	m.lastFilePath = filePath
-	if m.mirrorFileCreateFunc != nil {
-		return m.mirrorFileCreateFunc(operatorSessionID, filePath)
-	}
-	return &LedgerResult{}, nil
-}
-
-func (m *mockLedger) CompleteMirrorCreate(result *LedgerResult, operatorSessionID string) error {
-	m.completeMirrorCreateCalled++
-	m.lastSessionID = operatorSessionID
-	if m.completeMirrorCreateFunc != nil {
-		return m.completeMirrorCreateFunc(result, operatorSessionID)
-	}
-	return nil
-}
-
-func (m *mockLedger) LedgerFileWrite(operatorSessionID string, target *fs.FileEditTarget) (*LedgerResult, error) {
-	filePath := targetPath(target)
-	m.ledgerFileWriteCalled++
-	m.lastSessionID = operatorSessionID
-	m.lastFilePath = filePath
-	if m.ledgerFileWriteFunc != nil {
-		return m.ledgerFileWriteFunc(operatorSessionID, filePath)
-	}
-	return &LedgerResult{}, nil
-}
-
-func (m *mockLedger) CompleteMirrorWrite(result *LedgerResult, operatorSessionID string) error {
-	m.completeMirrorWriteCalled++
-	m.lastSessionID = operatorSessionID
-	if m.completeMirrorWriteFunc != nil {
-		return m.completeMirrorWriteFunc(result, operatorSessionID)
-	}
-	return nil
 }
 
 // mockLogger is a mock implementation of loggerInterface for unit testing
@@ -455,6 +432,7 @@ func TestHandleFetchHistory_WithFileMutations(t *testing.T) {
 					ID:               1,
 					EventID:          eventID,
 					Filepath:         "/etc/config.yml",
+					SnapshotName:     "snapshot-name",
 					Operation:        FileMutationWrite,
 					LedgerHashBefore: "hash1",
 					LedgerHashAfter:  "hash2",
@@ -644,6 +622,72 @@ func TestHandleFetchFileHistory_GetHistoryError(t *testing.T) {
 
 	assert.False(t, result.Success)
 	assert.Contains(t, result.Error, "failed to get file history")
+}
+
+// TestHandleFetchFileHistory_AsksTheLedgerOnlyAboutTheFilesMutationCommits verifies the handler
+// names the file by its snapshot, bounds the query by the limit, and passes the rows' commits
+// newest first, without the hashes a row never recorded.
+func TestHandleFetchFileHistory_AsksTheLedgerOnlyAboutTheFilesMutationCommits(t *testing.T) {
+	events := &mockEventsStore{listBySnapshotFunc: func() ([]*FileMutationLog, error) {
+		return []*FileMutationLog{
+			{LedgerHashBefore: "second-before", LedgerHashAfter: "second-after"},
+			{LedgerHashAfter: "first-after"},
+		}, nil
+	}}
+	ledger := &mockLedger{}
+	hh := newUnitHistoryHandler(t, events, ledger, &mockLogger{})
+
+	requestJSON, err := proto.Marshal(&operatorv1.FetchFileHistoryRequested{FilePath: "/test/file.txt", Limit: 7, OperatorSessionId: "test-session"})
+	require.NoError(t, err)
+	_, err = hh.HandleFetchFileHistory(t.Context(), requestJSON)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, events.listBySnapshotCalled)
+	assert.Equal(t, "snapshot-of:/test/file.txt", events.lastSnapshotName)
+	assert.Equal(t, 7, events.lastSnapshotLimit)
+	assert.Equal(t, "test-session", events.lastSessionID)
+	assert.Equal(t, []string{"second-after", "second-before", "first-after"}, ledger.lastCommitHashes)
+}
+
+// TestHandleFetchFileHistory_FailsClosedBeforeTheQuery covers the two failures ahead of the ledger
+// read: a locked vault cannot name the snapshot, and a failed query cannot name the candidates.
+// Neither may return an empty history.
+func TestHandleFetchFileHistory_FailsClosedBeforeTheQuery(t *testing.T) {
+	requestJSON, err := proto.Marshal(&operatorv1.FetchFileHistoryRequested{FilePath: "/test/file.txt", OperatorSessionId: "test-session"})
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name          string
+		events        *mockEventsStore
+		ledger        *mockLedger
+		want          error
+		queriedEvents int
+	}{
+		{
+			name:   "vault locked",
+			events: &mockEventsStore{},
+			ledger: &mockLedger{snapshotNameErr: constants.ErrLedgerVaultRequired},
+			want:   constants.ErrLedgerVaultRequired,
+		},
+		{
+			name: "mutation query failed",
+			events: &mockEventsStore{listBySnapshotFunc: func() ([]*FileMutationLog, error) {
+				return nil, constants.ErrLocalFirstEventsStoreQueryFileMutationsFailed
+			}},
+			ledger:        &mockLedger{},
+			want:          constants.ErrLocalFirstEventsStoreQueryFileMutationsFailed,
+			queriedEvents: 1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hh := newUnitHistoryHandler(t, tc.events, tc.ledger, &mockLogger{})
+			result, err := hh.HandleFetchFileHistory(t.Context(), requestJSON)
+			require.ErrorIs(t, err, tc.want)
+			assert.False(t, result.GetSuccess())
+			assert.Equal(t, tc.queriedEvents, tc.events.listBySnapshotCalled)
+			assert.Zero(t, tc.ledger.getFileHistoryCalled, "the ledger must not be read without candidates")
+		})
+	}
 }
 
 // TestHandleFetchFileHistory_Success verifies successful file history fetch

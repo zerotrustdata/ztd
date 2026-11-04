@@ -208,6 +208,78 @@ func TestLFEAResponsesUseExecutingOperatorIdentity(t *testing.T) {
 	}
 }
 
+// failedModelResult is the failure surface every typed model maintenance result shares.
+type failedModelResult interface {
+	proto.Message
+	GetStatus() operatorv1.ExecutionStatus
+	GetErrorMessage() string
+	GetErrorType() string
+}
+
+func modelMaintenanceFailureCases() map[string]struct {
+	requested constants.EventType
+	completed constants.EventType
+	failed    constants.EventType
+	result    func() failedModelResult
+} {
+	return map[string]struct {
+		requested constants.EventType
+		completed constants.EventType
+		failed    constants.EventType
+		result    func() failedModelResult
+	}{
+		"inventory": {constants.Event.Operator.OllamaModelInventory.Requested, constants.Event.Operator.OllamaModelInventory.Completed, constants.Event.Operator.OllamaModelInventory.Failed, func() failedModelResult { return &operatorv1.OllamaModelInventoryResult{} }},
+		"residency": {constants.Event.Operator.OllamaModelResidency.Requested, constants.Event.Operator.OllamaModelResidency.Completed, constants.Event.Operator.OllamaModelResidency.Failed, func() failedModelResult { return &operatorv1.OllamaModelResidencyResult{} }},
+		"release":   {constants.Event.Operator.OllamaModelRelease.Requested, constants.Event.Operator.OllamaModelRelease.Completed, constants.Event.Operator.OllamaModelRelease.Failed, func() failedModelResult { return &operatorv1.OllamaModelReleaseResult{} }},
+		"pull":      {constants.Event.Operator.OllamaModelPull.Requested, constants.Event.Operator.OllamaModelPull.Completed, constants.Event.Operator.OllamaModelPull.Failed, func() failedModelResult { return &operatorv1.OllamaModelPullResult{} }},
+		"copy":      {constants.Event.Operator.OllamaModelCopy.Requested, constants.Event.Operator.OllamaModelCopy.Completed, constants.Event.Operator.OllamaModelCopy.Failed, func() failedModelResult { return &operatorv1.OllamaModelCopyResult{} }},
+	}
+}
+
+func TestPublishLFEAErrorTo_ModelMaintenanceFailureCarriesItsActionsResult(t *testing.T) {
+	for name, tt := range modelMaintenanceFailureCases() {
+		t.Run(name, func(t *testing.T) {
+			logger := testutil.NewTestLogger()
+			client := pubsubtest.NewMockOperatorPubSubClient()
+			msg := &PubSubCommandMessage{ID: "msg-1", EventType: tt.requested, OperatorSessionID: "session-1"}
+
+			require.NoError(t, publishLFEAErrorTo(t.Context(), client, testutil.NewTestConfig(t), logger, msg, tt.failed, "provider said no", storagetest.NewTestEventsStore(t), mustNewScrubbingSvc(t, logger)))
+
+			published := client.LastPublished()
+			require.NotNil(t, published)
+			result := tt.result()
+			require.NoError(t, proto.Unmarshal(mustUnmarshalGovernanceEnvelope(t, published.Data).Payload, result))
+			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.GetStatus())
+			assert.Equal(t, "provider said no", result.GetErrorMessage())
+			assert.NotEmpty(t, result.GetErrorType())
+		})
+	}
+}
+
+func TestPublishLFEATypedResponseTo_WithheldModelResultPublishesItsTypedFailure(t *testing.T) {
+	for name, tt := range modelMaintenanceFailureCases() {
+		t.Run(name, func(t *testing.T) {
+			client := pubsubtest.NewMockOperatorPubSubClient()
+			msg := &PubSubCommandMessage{ID: "msg-1", EventType: tt.requested, OperatorSessionID: "session-1"}
+			// Egress withholds content only, so the result must carry some.
+			withheld := ollamaModelFailedResult(tt.failed, "exec-1", "raw provider text", "provider")
+			require.NotNil(t, withheld)
+
+			err := publishLFEATypedResponseTo(t.Context(), client, testutil.NewTestConfig(t), testutil.NewTestLogger(), msg, tt.completed, withheld, storagetest.NewTestEventsStore(t), newEgressScrubber(t, false))
+
+			require.ErrorIs(t, err, constants.ErrEgressScrubberUnavailable)
+			published := client.LastPublished()
+			require.NotNil(t, published)
+			envelope := mustUnmarshalGovernanceEnvelope(t, published.Data)
+			assert.Equal(t, string(tt.failed), envelope.EventType)
+			result := tt.result()
+			require.NoError(t, proto.Unmarshal(envelope.Payload, result))
+			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.GetStatus())
+			assert.Equal(t, constants.ErrEgressScrubberUnavailable.Error(), result.GetErrorMessage())
+		})
+	}
+}
+
 func TestPublishLFEAErrorTo(t *testing.T) {
 	t.Run("publishes error response successfully", func(t *testing.T) {
 		t.Parallel()

@@ -22,6 +22,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/ollama"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -65,6 +66,8 @@ const maxErrorBodyBytes int64 = 4 << 10
 type OllamaBackend struct {
 	providerHTTP
 	logger *slog.Logger
+	// models serves pull and copy; each caller's context owns the deadline.
+	models *ollama.Client
 }
 
 // NewOllamaBackend constructs an OllamaBackend for the given provider
@@ -77,7 +80,11 @@ func NewOllamaBackend(endpoint string, logger *slog.Logger) (*OllamaBackend, err
 	if err != nil {
 		return nil, err
 	}
-	return &OllamaBackend{providerHTTP: provider, logger: logger}, nil
+	return &OllamaBackend{
+		providerHTTP: provider,
+		logger:       logger,
+		models:       ollama.NewMaintenanceClient(provider.base),
+	}, nil
 }
 
 // ollamaChatRequest is the request body for Ollama's /api/chat endpoint.
@@ -212,6 +219,35 @@ func (b *OllamaBackend) ReleaseModels(ctx context.Context, models []string) erro
 	// Ollama acknowledges keep_alive 0 with done_reason unload before its
 	// scheduler stops the runner, so /api/ps is the completion signal.
 	return awaitModelsAbsent(ctx, b.component, b.ReadResidency, models)
+}
+
+// PullModel downloads one validated model tag. It returns when the provider
+// finishes the download or ctx ends.
+func (b *OllamaBackend) PullModel(ctx context.Context, model string) error {
+	if err := operatorcapability.ValidateServedModelTag(model); err != nil {
+		return fmt.Errorf("ollama_backend: pull model: %w", err)
+	}
+	if err := b.models.Pull(ctx, model, nil); err != nil {
+		return fmt.Errorf("ollama_backend: pull model: %w", err)
+	}
+	return nil
+}
+
+// CopyModel aliases an installed model. A copy only writes a manifest, so it
+// keeps the provider request deadline.
+func (b *OllamaBackend) CopyModel(ctx context.Context, source, destination string) error {
+	if err := operatorcapability.ValidateServedModelTag(source); err != nil {
+		return fmt.Errorf("ollama_backend: copy model: %w", err)
+	}
+	if err := operatorcapability.ValidateServedModelTag(destination); err != nil {
+		return fmt.Errorf("ollama_backend: copy model: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, ProviderRequestTimeout)
+	defer cancel()
+	if err := b.models.Copy(ctx, source, destination); err != nil {
+		return fmt.Errorf("ollama_backend: copy model: %w", err)
+	}
+	return nil
 }
 
 func (b *OllamaBackend) releaseModel(ctx context.Context, model string) error {

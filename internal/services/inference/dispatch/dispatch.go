@@ -500,17 +500,17 @@ func (s *DispatchService) beginAttempt(ctx context.Context, req DispatchInferenc
 	attempt.ctx = ctx
 	attempt.startedAt = time.Now().UTC().UnixMilli()
 	observationBegin, observed, err := s.notifyObservationBegin(ctx, req, attempt.startedAt)
+	attempt.receipts = appendObservationReceipt(attempt.receipts, observationBegin)
 	if err != nil {
-		return err
+		return WithObservationReceipts(attempt.receipts, err)
 	}
 	attempt.window.observed = observed
-	attempt.receipts = appendObservationReceipt(attempt.receipts, observationBegin)
 	provenanceBegin, attested, err := s.notifyProvenanceBegin(ctx, req, attempt.startedAt)
+	attempt.receipts = appendObservationReceipt(attempt.receipts, provenanceBegin)
 	if err != nil {
 		return s.finalizeFailedAttempt(ctx, req, "", attempt.startedAt, attempt.window, attempt.receipts, err)
 	}
 	attempt.window.provenance = attested
-	attempt.receipts = appendObservationReceipt(attempt.receipts, provenanceBegin)
 	return nil
 }
 
@@ -526,8 +526,9 @@ type attemptWindow struct {
 // finalizeAttempt reports the attempt outcome to each observation coordinator
 // whose BEGIN window is open and returns the FINALIZE receipts they signed.
 // Each coordinator is attempted even when the other fails, and a delivered
-// receipt is returned even when the other was not, because its commitment is
-// already on the observing runtime's ledger. Once a window is open,
+// receipt is returned even when the other was not or when it reports the
+// observer's failure, because its commitment is already on the observing
+// runtime's ledger. Once a window is open,
 // campaign-bound requests fail closed on either undelivered finalize. A
 // non-campaign request logs an undelivered provider-boundary finalize, and
 // fails closed on an undelivered provenance finalize unless the provenance
@@ -582,7 +583,7 @@ func (s *DispatchService) notifyObservationBegin(
 			"error", err)
 		return nil, false, nil
 	}
-	return nil, false, fmt.Errorf("inference dispatch: %w", err)
+	return receipt, false, fmt.Errorf("inference dispatch: %w", err)
 }
 
 func (s *DispatchService) notifyObservationFinalize(
@@ -610,7 +611,7 @@ func (s *DispatchService) notifyObservationFinalize(
 		return receipt, nil
 	}
 	if req.hasCampaignAuthority() {
-		return nil, fmt.Errorf("inference dispatch: %w", err)
+		return receipt, fmt.Errorf("inference dispatch: %w", err)
 	}
 	s.logger.Warn("inference dispatch: provider-boundary observation finalize undelivered",
 		"provider_attempt_id", req.ProviderAttemptID,
@@ -641,7 +642,7 @@ func (s *DispatchService) notifyProvenanceBegin(
 			"error", err)
 		return nil, false, nil
 	}
-	return nil, false, fmt.Errorf("inference dispatch: %w", err)
+	return receipt, false, fmt.Errorf("inference dispatch: %w", err)
 }
 
 func (s *DispatchService) notifyProvenanceFinalize(
@@ -678,7 +679,7 @@ func (s *DispatchService) notifyProvenanceFinalize(
 			"error", err)
 		return nil, nil
 	}
-	return nil, fmt.Errorf("inference dispatch: %w", err)
+	return receipt, fmt.Errorf("inference dispatch: %w", err)
 }
 
 func validateCampaignModelRegistry(req DispatchInferenceRequest) error {

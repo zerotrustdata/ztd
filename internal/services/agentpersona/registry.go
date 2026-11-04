@@ -13,10 +13,12 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-// Persona IDs. Tiers (owner direction): Lite runs Triage, the Interrogator,
-// and the Tribunal members; Assistant runs Dash and Marshal; Primary runs Sage
-// and the Auditor. Triage runs once at initial ingest; the Interrogator asks
-// clarifying questions inside the agent loop.
+// Persona IDs.
+// Role hierarchy:
+// - Primary: Sage (senior reasoning authority, investigation orchestrator) and Auditor (Tribunal syntactic review).
+// - Assistant: Dash (Sage's delegate worker: executes bounded tool tasks without deep planning) and Marshal (Tribunal risk assessment).
+// - Lite: Triage (initial ingest classifier), Interrogator (clarification specialist: generates strictly 3 binary questions when context is missing), and the five Tribunal voting members (Axiom, Concord, Variance, Pragma, Nemesis).
+// Triage runs once at initial ingest; the Interrogator asks clarifying questions inside the agent loop when missing context is signaled; Dash is dispatched for bounded tool work.
 const (
 	IDSage         = "sage"
 	IDDash         = "dash"

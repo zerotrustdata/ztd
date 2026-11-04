@@ -2078,6 +2078,54 @@
       "persistence": "ephemeral",
       "reserved": true
     },
+    "OperatorOllamaModelCopyCompleted": {
+      "_go_const": "EventOperatorOllamaModelCopyCompleted",
+      "value": "ztd.v1.operator.ollama.model.copy.completed",
+      "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorOllamaModelCopyFailed": {
+      "_go_const": "EventOperatorOllamaModelCopyFailed",
+      "value": "ztd.v1.operator.ollama.model.copy.failed",
+      "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorOllamaModelCopyRequested": {
+      "_go_const": "EventOperatorOllamaModelCopyRequested",
+      "value": "ztd.v1.operator.ollama.model.copy.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "OLLAMA_MODEL_COPY",
+        "payload": "ztd.operator.v1.OllamaModelCopyRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true,
+      "outcomes": [
+        "OperatorOllamaModelCopyCompleted",
+        "OperatorOllamaModelCopyFailed"
+      ]
+    },
     "OperatorOllamaModelInventoryCompleted": {
       "_go_const": "EventOperatorOllamaModelInventoryCompleted",
       "value": "ztd.v1.operator.ollama.model.inventory.completed",
@@ -2124,6 +2172,54 @@
       "outcomes": [
         "OperatorOllamaModelInventoryCompleted",
         "OperatorOllamaModelInventoryFailed"
+      ]
+    },
+    "OperatorOllamaModelPullCompleted": {
+      "_go_const": "EventOperatorOllamaModelPullCompleted",
+      "value": "ztd.v1.operator.ollama.model.pull.completed",
+      "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorOllamaModelPullFailed": {
+      "_go_const": "EventOperatorOllamaModelPullFailed",
+      "value": "ztd.v1.operator.ollama.model.pull.failed",
+      "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true
+    },
+    "OperatorOllamaModelPullRequested": {
+      "_go_const": "EventOperatorOllamaModelPullRequested",
+      "value": "ztd.v1.operator.ollama.model.pull.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "OLLAMA_MODEL_PULL",
+        "payload": "ztd.operator.v1.OllamaModelPullRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral",
+      "reserved": true,
+      "outcomes": [
+        "OperatorOllamaModelPullCompleted",
+        "OperatorOllamaModelPullFailed"
       ]
     },
     "OperatorOllamaModelReleaseCompleted": {

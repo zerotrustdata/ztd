@@ -33,7 +33,7 @@ func TestSelectInferenceOperator_RequiresInferenceCapableSession(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrInferenceOperatorNotCapable)
 }
 
-func TestGovernedInferenceOllamaEndpoint_UsesExactOperatorRuntimeConfig(t *testing.T) {
+func TestRequireOllamaInferenceOperator_AcceptsOllamaOperator(t *testing.T) {
 	t.Parallel()
 	operators := []*operatorv1.OperatorDocument{
 		{
@@ -47,27 +47,10 @@ func TestGovernedInferenceOllamaEndpoint_UsesExactOperatorRuntimeConfig(t *testi
 			},
 		},
 	}
-	endpoint, err := GovernedInferenceOllamaEndpoint(operators, "sess-inf-1")
-	require.NoError(t, err)
-	assert.Equal(t, "http://192.168.1.2:11434", endpoint)
+	require.NoError(t, RequireOllamaInferenceOperator(operators, "sess-inf-1"))
 }
 
-func TestGovernedInferenceOllamaEndpoint_RejectsMissingOperatorEndpoint(t *testing.T) {
-	t.Parallel()
-	operators := []*operatorv1.OperatorDocument{
-		{
-			Id:                "inf-1",
-			OperatorSessionId: "sess-inf-1",
-			Status:            string(constants.OperatorStatusActive),
-			OperatorType:      string(constants.OperatorTypeRemote),
-			RuntimeConfig:     &operatorv1.OperatorRuntimeConfig{Capabilities: []string{string(constants.OperatorCapabilityInference)}},
-		},
-	}
-	_, err := GovernedInferenceOllamaEndpoint(operators, "sess-inf-1")
-	require.ErrorIs(t, err, constants.ErrInferenceEndpointInvalid)
-}
-
-func TestGovernedInferenceOllamaEndpoint_RejectsLlamaCppOperator(t *testing.T) {
+func TestRequireOllamaInferenceOperator_RejectsLlamaCppOperator(t *testing.T) {
 	t.Parallel()
 	operators := []*operatorv1.OperatorDocument{
 		{
@@ -85,8 +68,7 @@ func TestGovernedInferenceOllamaEndpoint_RejectsLlamaCppOperator(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, constants.InferenceProviderLlamaCpp, selected.Provider)
 	assert.Equal(t, "http://192.168.1.2:8080", selected.ProviderEndpoint)
-	_, err = GovernedInferenceOllamaEndpoint(operators, "sess-inf-1")
-	require.ErrorIs(t, err, constants.ErrInferenceProviderOllamaRequired)
+	require.ErrorIs(t, RequireOllamaInferenceOperator(operators, "sess-inf-1"), constants.ErrInferenceProviderOllamaRequired)
 }
 
 func TestSelectInferenceOperator_FailsClosedOnAmbiguity(t *testing.T) {
@@ -149,9 +131,7 @@ func TestSelectInferenceOperator_BlendedDeploymentTypes(t *testing.T) {
 			selected, err := SelectInferenceOperatorForHardware(operators, op.OperatorSessionId, op.SystemFingerprint)
 			require.NoError(t, err)
 			assert.Equal(t, op.OperatorSessionId, selected.OperatorSessionID)
-			endpoint, err := GovernedInferenceOllamaEndpoint(operators, op.OperatorSessionId)
-			require.NoError(t, err)
-			assert.Equal(t, op.RuntimeConfig.InferenceOllamaEndpoint, endpoint)
+			require.NoError(t, RequireOllamaInferenceOperator(operators, op.OperatorSessionId))
 			_, err = SelectInferenceOperatorForHardware(operators, op.OperatorSessionId, "other-hardware")
 			require.ErrorIs(t, err, constants.ErrInferenceOperatorNotCapable)
 			// When only the embedded operator is present, it is selected as the default.

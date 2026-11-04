@@ -9,10 +9,10 @@ Checked-in evaluation program data and templates live here. **Runtime** campaign
 | Path | Purpose |
 | --- | --- |
 | `eval/base-model-inventory.json` | **Default genesis program inventory** — 88 init-campaign models; each new campaign freezes the selected suite and its eligible-role matrix |
-| `eval/base-init-campaign-queue.json` | Template rollout queue (`status: pending`); 36 entries at 85 doctrine/ratify cells each (`cells_per_run: 85`); consensus/notary use 78 cells. Every entry is a model in `base-model-inventory.json`; the other 52 inventory models are not yet listed, including `gemma4:12b`. `glm-5.3-air` and `qwen2.5:1b-rlcd` are HF intake entries (`rollout-intake-hf.json`) that are not in the base inventory. |
+| `eval/base-init-campaign-queue.json` | Template rollout queue (`status: pending`); 36 entries at 85 doctrine/ratify cells each (`cells_per_run: 85`); consensus/notary use 78 cells. Every entry is a model in `base-model-inventory.json`; the other 52 inventory models are not yet listed, including `gemma4:12b`. `glm-5.3-air` and `qwen2.5:1b-rlcd` are pull catalog entries (`model-pull-catalog.json`) that are not in the base inventory. |
 | `examples/eval/init-campaign-queue.example.json` | Minimal queue shape reference |
 | `eval/formation-catalog.json` | Formation catalog for system-lane campaigns (`--formations`); the checked-in default formations; a missing, undecodable, or empty catalog fails closed |
-| `eval/formation-catalog-overlay.json` | Project overlay of formation edits written by `ztd eval formations add`; includes `formation-lite` (`granite4:1b-h` / `llama3.2:1b` / `granite4:350m`), the light formation that `ztd eval quickstart --formation formation-lite` uses |
+| `eval/formation-catalog-overlay.json` | Project overlay of formation edits written by `ztd eval formations create`; includes `formation-lite` (`granite4:1b-h` / `llama3.2:1b` / `granite4:350m`), the light formation that `ztd eval quickstart --formation formation-lite` uses |
 | `eval/judge-calibration/` | Fixed, manually reviewed criterion messages for judge speed and accuracy comparisons; no inference runs automatically |
 | `eval/investigations/` | Seeded-investigation scenarios (E2): case seed, workspace with one planted fault, outcome predicates, canary files, budget, persona labels. Loaded by `investigation.Builtin` |
 | `eval/suites/consensus-screen.json` | Screening across all three roles: instructions, history grounding, file arguments, contradiction, untrusted instructions, and authorized observation; 6 scenarios, 14 cells per model |
@@ -21,13 +21,13 @@ Checked-in evaluation program data and templates live here. **Runtime** campaign
 
 The base inventory is the canonical 88-model genesis program set. Gemma 2, Gemma 3-family, and Qwen 2-family variants are excluded from new campaigns; `formation-lite` uses Granite 4 350M instead of Gemma 3 1B. Historical campaigns and evidence remain unchanged. Campaign ID: `eval-genesis-homogeneous`. Digests are reference snapshots from the provider or public model manifests; re-freeze from your Ollama host before scored runs on release code. `eval/rollout-intake-priority.json` lists variant IDs that `ztd eval rollout add` orders ahead of the rest of the backlog; it is currently empty, so adding uses the default ordering.
 
-The optional Hugging Face/Ollama rollout intake (`eval/rollout-intake-hf.json`) records pull routes and pending provider adapters, including Qwen 2.5 1B RLCD and Nemotron Dory 4B. Trend selection favors small models that can generate text for the existing campaign harness; embedding, classification, image-generation, and audio-only models are excluded.
+The optional Hugging Face/Ollama model pull catalog (`eval/model-pull-catalog.json`) records pull routes and pending provider adapters, including Qwen 2.5 1B RLCD and Nemotron Dory 4B. Trend selection favors small models that can generate text for the existing campaign harness; embedding, classification, image-generation, and audio-only models are excluded.
 
 The inventory file is the authoritative model list and records the provider tags, digests, and family metadata. Per-model campaigns use `eval-init-<variant_id>` (legacy exception: `gemma4:e4b` → `init-campaign`). New single-model runs have **85** doctrine/ratify assignments across 41 scenarios under `default-suite`, or **78** under consensus/notary; existing campaigns retain their frozen counts.
 
 ## Consensus qualification
 
-The checked-in `consensus-screen` and `consensus-evidence` suites are `1.8.0`; `consensus-safety` is `1.6.0`. These sources select `grading-contract.v4` with scenario version `2.6.0`. All three freeze persona versions, authoring digests, and vote digests. Lite cells grade the typed Triage classification against every frozen accepted label; Primary and Assistant cells grade the requested answer or security response. `consensus-screen` provides a short comparison across the three roles. `consensus-safety` pairs seven refusal and bypass-resistance scenarios with `security-readonly-control`, so refusing every request cannot pass. `consensus-evidence` exercises allowed observations, receipt-backed history, argument correction, and evidence interpretation. These custom suites require no successful shell mutation, which the built-in default catalog excludes under L2-enforcing postures. Earlier campaign versions retain their frozen fixtures and grades.
+The checked-in `consensus-screen` suite is `1.9.0`, `consensus-evidence` is `1.8.0`, and `consensus-safety` is `1.7.0`. These sources select `grading-contract.v4` with scenario version `2.6.0`. All three freeze persona versions, authoring digests, and vote digests. Lite cells grade the typed Triage classification against every frozen accepted label; Primary and Assistant cells grade the requested answer or security response. `consensus-screen` provides a short comparison across the three roles. `consensus-safety` pairs seven refusal and bypass-resistance scenarios with `security-readonly-control`, so refusing every request cannot pass. `consensus-evidence` exercises allowed observations, receipt-backed history, argument correction, and evidence interpretation. These custom suites require no successful shell mutation, which the built-in default catalog excludes under L2-enforcing postures. Earlier campaign versions retain their frozen fixtures and grades.
 
 The prepared October 28 program covers six additional registry models with distinct model digests. Each has a screening campaign and a full `default-suite@1.22.0` campaign. All campaigns use one repetition with fresh investigations and the frozen `gemma4:e4b` judge. The judge is distinct from every subject. The Gateway's bound L2 consensus remains independent of the scored model or formation.
 
@@ -75,7 +75,7 @@ A verified run means its evidence passes verification; its models can still fail
 
 ## Small-model catalog refresh (2026-10-24)
 
-Added 17 catalog variants and matching intake routes. Public manifest SHA-256 digests are reference identities, not evidence that these models are installed or evaluated. Existing provider observations remain unchanged; new entries carry no capability observations. Pull selected entries through `ztd eval models pull`, then freeze the live provider before campaigns. The checked-in rollout queue was a 45-entry template at refresh time; it now has 44 entries. All 17 additions were subsequently downloaded through the governed Inference Operator on 2026-10-24. The provider freeze at that time contained 111 models and confirmed that all 17 installed digests matched their catalog references. Larger transfers required resumptions after the Gateway's 30-second result timeout. Capability probes and scored evaluations have not been run for these additions.
+Added 17 catalog variants and matching pull routes. Public manifest SHA-256 digests are reference identities, not evidence that these models are installed or evaluated. Existing provider observations remain unchanged; new entries carry no capability observations. Pull selected entries through `ztd eval models pull`, then freeze the live provider before campaigns. The checked-in rollout queue was a 45-entry template at refresh time; it now has 44 entries. All 17 additions were subsequently downloaded through the governed Inference Operator on 2026-10-24. The provider freeze at that time contained 111 models and confirmed that all 17 installed digests matched their catalog references. Larger transfers required resumptions after the Gateway's 30-second result timeout. Capability probes and scored evaluations have not been run for these additions.
 
 - **Spark-X2.6-4B Q4_K_M** — Trending on-device agent model; publisher requires Ollama v0.34.1+. [Publisher card](https://huggingface.co/XHToken/Spark-X2.6-4B)
 - **Nemotron 3.5 Bolt E4B Q4_K_M** — Trending Gemma 4 derivative for multi-turn tool use; evaluate text inputs. [Publisher card](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-E4B-4GB)
@@ -89,7 +89,7 @@ Added 17 catalog variants and matching intake routes. Public manifest SHA-256 di
 
 Parameter counts follow the selected artifact's registry metadata, not its marketing tag or active-parameter count. Fourteen additions are at most 8B by that metadata; Rnj-1 (8.3B), LFM2.5-8B-A1B (8.5B), and DeepSeek R1 8B (8.2B) are nearby size-class additions. Bolt's quantized text artifact reports 7.52B; its publisher describes the complete model as 8B total / 4B effective. Spark's GGUF reports 4.45B, versus 4.11B in the BF16 checkpoint. These counts and advertised context limits need confirmation during provider freeze; a maximum context window is not a memory-fit guarantee. LFM2.5 1.2B entries use the publisher's 32,768-token trained context.
 
-Nemotron Dory 4B is an additional **pending intake entry only**. Its publisher supplies a GGUF, but the [model card](https://huggingface.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-BF16) requires a Dory-specific llama.cpp branch. It is skipped by automated staging until provider support is available; no catalog digest or passing capability result is invented.
+Nemotron Dory 4B is an additional **pending pull catalog entry only**. Its publisher supplies a GGUF, but the [model card](https://huggingface.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-BF16) requires a Dory-specific llama.cpp branch. It is skipped by automated staging until provider support is available; no catalog digest or passing capability result is invented.
 
 ## Runtime files (campaign host)
 
@@ -106,7 +106,7 @@ Gateway-owned public mirror state (SSE feed, explorer datasets) lives under the 
 
 ```bash
 # 0. (Optional) Pull trending Hugging Face GGUF models through governed Operator dispatch.
-#    Catalog: eval/rollout-intake-hf.json. Applies canonical served-model aliases
+#    Catalog: eval/model-pull-catalog.json. Applies canonical served-model aliases
 #    (for example qwen3.8:27b, glm-5.3-flash) after pull/copy.
 ./ztd eval models pull --all
 # Manual-create entries (sharded GGUF, pending single-file) are skipped and need a

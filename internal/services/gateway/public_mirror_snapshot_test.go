@@ -183,3 +183,45 @@ func TestPublicMirrorStore_VerifiesFeedAcrossPages(t *testing.T) {
 		require.NoError(t, err)
 	}
 }
+
+// A dataset stays present in the current read model after retention prunes its
+// history, and a dataset whose name extends it is not mistaken for it.
+func TestMirror_SnapshotDatasetLookupOutlivesHistoryRetention(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	ctx := context.Background()
+	require.NoError(t, env.mirror.SetMaxRetainedBatches(1))
+	previous := constants.PublicFeedZeroHashHex
+	for i, dataset := range []string{"dataset-old", "dataset-new", "dataset-withdrawn"} {
+		record := env.makeRecord(int64(i+1), models.NewPublicFeedObject(map[string]string{"kind": publicSnapshotCatalogKind, "dataset_id": dataset}))
+		batch := env.buildBatch([]models.PublicFeedRecord{record}, previous)
+		require.NoError(t, env.mirror.acceptBatch(ctx, batch))
+		previous = batch.ContentHash
+	}
+	retained, err := env.store.filteredRecordsAfter(ctx, env.sourceID, 0, 3, publicSnapshotCatalogKind, "dataset-old", 10)
+	require.NoError(t, err)
+	require.Empty(t, retained, "retention must have pruned the old dataset's history")
+	summary := env.mirror.currentSourceSummary(env.sourceID)
+	summary.WithdrawnDatasetIDs = map[string]bool{"dataset-withdrawn": true}
+	require.NoError(t, env.store.withdrawDataset(ctx, summary, "dataset-withdrawn"))
+	mirror := env.reopenMirror()
+
+	for datasetID, expected := range map[string]bool{
+		"dataset-old":       true,
+		"dataset-new":       true,
+		"dataset-withdrawn": false,
+		"dataset-ol":        false,
+		"dataset-old2":      false,
+		"dataset":           false,
+	} {
+		response := httptest.NewRecorder()
+		mirror.PublicHandler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/snapshot?dataset="+datasetID, nil))
+		if !expected {
+			assert.Equal(t, http.StatusNotFound, response.Code, datasetID)
+			continue
+		}
+		require.Equal(t, http.StatusOK, response.Code, datasetID)
+		var snapshot models.PublicFeedSnapshot
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &snapshot))
+		assert.Equal(t, datasetID, snapshot.DatasetID)
+	}
+}

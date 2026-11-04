@@ -10,7 +10,9 @@
 package pubsub
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -94,7 +96,7 @@ func TestOllamaMaintenanceService_HandleInventoryRequest_PublishesTypedFailure(t
 				t.Helper()
 				return ollamaWithPayload(ollamaInventoryMessage(t, ""), []byte{0xff, 0xff})
 			},
-			wantError: "invalid request payload",
+			wantError: "decode request payload",
 		},
 		{
 			name:      "inference is not enabled",
@@ -127,11 +129,12 @@ func TestOllamaMaintenanceService_HandleInventoryRequest_PublishesTypedFailure(t
 
 			env.svc.HandleInventoryRequest(t.Context(), tt.message(t))
 
-			var result operatorv1.CommandResult
+			var result operatorv1.OllamaModelInventoryResult
 			envelope := env.publishedResult(t, &result)
 			assert.Equal(t, string(constants.Event.Operator.OllamaModelInventory.Failed), envelope.EventType)
 			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
-			assert.Contains(t, result.Error, tt.wantError)
+			assert.Contains(t, result.ErrorMessage, tt.wantError)
+			assert.NotEmpty(t, result.ErrorType)
 		})
 	}
 }
@@ -220,7 +223,7 @@ func TestOllamaMaintenanceService_HandleResidencyRequest_PublishesTypedFailure(t
 				t.Helper()
 				return ollamaWithPayload(ollamaResidencyMessage(t, ""), []byte{0xff, 0xff})
 			},
-			wantError: "invalid request payload",
+			wantError: "decode request payload",
 		},
 		{
 			name:      "inference is not enabled",
@@ -253,11 +256,12 @@ func TestOllamaMaintenanceService_HandleResidencyRequest_PublishesTypedFailure(t
 
 			env.svc.HandleResidencyRequest(t.Context(), tt.message(t))
 
-			var result operatorv1.CommandResult
+			var result operatorv1.OllamaModelResidencyResult
 			envelope := env.publishedResult(t, &result)
 			assert.Equal(t, string(constants.Event.Operator.OllamaModelResidency.Failed), envelope.EventType)
 			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
-			assert.Contains(t, result.Error, tt.wantError)
+			assert.Contains(t, result.ErrorMessage, tt.wantError)
+			assert.NotEmpty(t, result.ErrorType)
 		})
 	}
 }
@@ -321,7 +325,7 @@ func TestOllamaMaintenanceService_HandleReleaseRequest_PublishesTypedFailure(t *
 				t.Helper()
 				return ollamaWithPayload(ollamaReleaseMessage(t, "", "qwen3:0.6b"), []byte{0xff, 0xff})
 			},
-			wantError: "invalid request payload",
+			wantError: "decode request payload",
 		},
 		{
 			name: "empty release set is rejected before any provider call",
@@ -357,11 +361,173 @@ func TestOllamaMaintenanceService_HandleReleaseRequest_PublishesTypedFailure(t *
 
 			env.svc.HandleReleaseRequest(t.Context(), tt.message(t))
 
-			var result operatorv1.CommandResult
+			var result operatorv1.OllamaModelReleaseResult
 			envelope := env.publishedResult(t, &result)
 			assert.Equal(t, string(constants.Event.Operator.OllamaModelRelease.Failed), envelope.EventType)
 			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
-			assert.Contains(t, result.Error, tt.wantError)
+			assert.Contains(t, result.ErrorMessage, tt.wantError)
+			assert.NotEmpty(t, result.ErrorType)
 		})
 	}
+}
+
+func TestOllamaMaintenanceService_HandlePullRequest_PublishesTypedPull(t *testing.T) {
+	bodies := make(chan string, 1)
+	env := newOllamaMaintenanceEnv(t, fakeOllama(t, map[string]http.HandlerFunc{
+		"/api/pull": func(w http.ResponseWriter, r *http.Request) {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			bodies <- string(body)
+			_, _ = w.Write([]byte(`{"status":"success"}` + "\n"))
+		},
+	}))
+
+	_, err := env.svc.HandlePullRequest(t.Context(), ollamaPullMessage(t, "exec-pull", "qwen3:0.6b", 60))
+
+	require.NoError(t, err)
+	var result operatorv1.OllamaModelPullResult
+	envelope := env.publishedResult(t, &result)
+	assert.Equal(t, string(constants.Event.Operator.OllamaModelPull.Completed), envelope.EventType)
+	assert.Equal(t, "exec-pull", result.ExecutionId)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status)
+	assert.JSONEq(t, `{"model":"qwen3:0.6b","stream":false}`, <-bodies)
+}
+
+func TestOllamaMaintenanceService_HandlePullRequest_FailureReturnsItsErrorAndTypedResult(t *testing.T) {
+	providerError := map[string]http.HandlerFunc{"/api/pull": func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"model not found"}`))
+	}}
+	streamedError := map[string]http.HandlerFunc{"/api/pull": ollamaJSON(`{"error":"disk full"}` + "\n")}
+	tests := []struct {
+		name         string
+		routes       map[string]http.HandlerFunc
+		endpointless bool
+		message      func(t *testing.T) *PubSubCommandMessage
+		wantErr      error
+		wantKind     string
+		wantMessage  string
+	}{
+		{
+			name:   "provider API error",
+			routes: providerError,
+			message: func(t *testing.T) *PubSubCommandMessage {
+				t.Helper()
+				return ollamaPullMessage(t, "", "qwen3:0.6b", 60)
+			},
+			wantErr:     constants.ErrOllamaAPI,
+			wantKind:    "provider",
+			wantMessage: "model not found",
+		},
+		{
+			name:   "error streamed during the pull",
+			routes: streamedError,
+			message: func(t *testing.T) *PubSubCommandMessage {
+				t.Helper()
+				return ollamaPullMessage(t, "", "qwen3:0.6b", 60)
+			},
+			wantErr:     constants.ErrOllamaPull,
+			wantKind:    "provider",
+			wantMessage: "disk full",
+		},
+		{
+			name:   "shell-shaped tag is rejected before any provider call",
+			routes: providerError,
+			message: func(t *testing.T) *PubSubCommandMessage {
+				t.Helper()
+				return ollamaPullMessage(t, "", "qwen3;whoami", 60)
+			},
+			wantErr:     constants.ErrInferenceModelTagInvalid,
+			wantKind:    "other",
+			wantMessage: constants.ErrInferenceModelTagInvalid.Error(),
+		},
+		{
+			name:         "inference is not enabled",
+			endpointless: true,
+			message: func(t *testing.T) *PubSubCommandMessage {
+				t.Helper()
+				return ollamaPullMessage(t, "", "qwen3:0.6b", 60)
+			},
+			wantErr:     constants.ErrInferenceBackendUnavailable,
+			wantKind:    "other",
+			wantMessage: constants.ErrInferenceBackendUnavailable.Error(),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			endpoint := ""
+			if !tt.endpointless {
+				endpoint = fakeOllama(t, tt.routes)
+			}
+			env := newOllamaMaintenanceEnv(t, endpoint)
+
+			_, err := env.svc.HandlePullRequest(t.Context(), tt.message(t))
+
+			require.ErrorIs(t, err, tt.wantErr, "the returned error is what L5 signs as a FAILED receipt")
+			var result operatorv1.OllamaModelPullResult
+			envelope := env.publishedResult(t, &result)
+			assert.Equal(t, string(constants.Event.Operator.OllamaModelPull.Failed), envelope.EventType)
+			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
+			assert.Equal(t, tt.wantKind, result.ErrorType)
+			assert.Contains(t, result.ErrorMessage, tt.wantMessage)
+		})
+	}
+}
+
+func TestOllamaMaintenanceService_HandlePullRequest_RequestTimeoutBoundsTheDownload(t *testing.T) {
+	release := make(chan struct{})
+	endpoint := fakeOllama(t, map[string]http.HandlerFunc{
+		"/api/pull": func(http.ResponseWriter, *http.Request) { <-release },
+	})
+	// Registered after fakeOllama so it runs first: server.Close waits for this
+	// handler, which only release can end.
+	t.Cleanup(func() { close(release) })
+	env := newOllamaMaintenanceEnv(t, endpoint)
+
+	_, err := env.svc.HandlePullRequest(t.Context(), ollamaPullMessage(t, "", "qwen3:0.6b", 1))
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	var result operatorv1.OllamaModelPullResult
+	env.publishedResult(t, &result)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
+	assert.Equal(t, "timeout", result.ErrorType)
+}
+
+func TestOllamaMaintenanceService_HandleCopyRequest_PublishesTypedCopy(t *testing.T) {
+	bodies := make(chan string, 1)
+	env := newOllamaMaintenanceEnv(t, fakeOllama(t, map[string]http.HandlerFunc{
+		"/api/copy": func(w http.ResponseWriter, r *http.Request) {
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			bodies <- string(body)
+		},
+	}))
+
+	_, err := env.svc.HandleCopyRequest(t.Context(), ollamaCopyMessage(t, "exec-copy", "hf.co/a/b:Q4", "b:latest"))
+
+	require.NoError(t, err)
+	var result operatorv1.OllamaModelCopyResult
+	envelope := env.publishedResult(t, &result)
+	assert.Equal(t, string(constants.Event.Operator.OllamaModelCopy.Completed), envelope.EventType)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status)
+	assert.JSONEq(t, `{"source":"hf.co/a/b:Q4","destination":"b:latest"}`, <-bodies)
+}
+
+func TestOllamaMaintenanceService_HandleCopyRequest_FailureReturnsItsErrorAndTypedResult(t *testing.T) {
+	env := newOllamaMaintenanceEnv(t, fakeOllama(t, map[string]http.HandlerFunc{"/api/copy": ollamaStatus(http.StatusNotFound)}))
+
+	_, err := env.svc.HandleCopyRequest(t.Context(), ollamaCopyMessage(t, "", "missing:1b", "alias:1b"))
+
+	require.ErrorIs(t, err, constants.ErrOllamaAPI)
+	var result operatorv1.OllamaModelCopyResult
+	envelope := env.publishedResult(t, &result)
+	assert.Equal(t, string(constants.Event.Operator.OllamaModelCopy.Failed), envelope.EventType)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
+	assert.Equal(t, "provider", result.ErrorType)
 }

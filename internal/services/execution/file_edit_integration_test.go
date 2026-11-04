@@ -88,40 +88,34 @@ func TestFileEditService_Integration(t *testing.T) {
 
 	})
 
-	t.Run("write with backup", func(t *testing.T) {
+	t.Run("overwrite existing file", func(t *testing.T) {
 		tmpDir := testutil.OperatorDir(t)
-		testFile := filepath.Join(tmpDir, "backup-test.txt")
+		testFile := filepath.Join(tmpDir, "overwrite-test.txt")
 
 		// Create initial file
-		initialContent := "Original content"
-		os.WriteFile(testFile, []byte(initialContent), 0644)
+		os.WriteFile(testFile, []byte("Original content"), 0644)
 
-		newContent := "Updated content after backup"
+		newContent := "Updated content"
 		req := &models.FileEditRequest{
-			ExecutionID:  "file-backup-1",
-			CaseID:       "test-case-backup",
-			Operation:    constants.FileOperationWrite,
-			FilePath:     testFile,
-			Content:      newContent,
-			CreateBackup: true,
-			RequestedBy:  "test-user",
+			ExecutionID: "file-overwrite-1",
+			CaseID:      "test-case-overwrite",
+			Operation:   constants.FileOperationWrite,
+			FilePath:    testFile,
+			Content:     newContent,
+			RequestedBy: "test-user",
 		}
 
 		result, err := svc.ExecuteFileEdit(context.Background(), req)
 
 		require.NoError(t, err)
 		assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status)
-		assert.NotEmpty(t, result.BackupPath)
-		assert.FileExists(t, result.BackupPath)
 
-		// Verify backup contains original
-		backupData, _ := os.ReadFile(result.BackupPath)
-		assert.Equal(t, initialContent, string(backupData))
-
-		// Verify file has new content
+		// Verify file has new content and no sibling was written
 		fileData, _ := os.ReadFile(testFile)
 		assert.Equal(t, newContent, string(fileData))
-
+		entries, err := os.ReadDir(tmpDir)
+		require.NoError(t, err)
+		assert.Len(t, entries, 1)
 	})
 
 	t.Run("replace content", func(t *testing.T) {
@@ -444,15 +438,14 @@ func TestFileEditService_AdvancedScenarios(t *testing.T) {
 	logger := testutil.NewTestLogger()
 	svc := newTestFileEditService(t, cfg, logger)
 
-	t.Run("multiple backups", func(t *testing.T) {
+	t.Run("successive writes", func(t *testing.T) {
 		tmpDir := testutil.OperatorDir(t)
-		testFile := filepath.Join(tmpDir, "multi-backup.txt")
+		testFile := filepath.Join(tmpDir, "multi-write.txt")
 
-		backupPaths := make([]string, 0)
-
-		// Create initial file and make multiple edits with backups
+		// Create initial file and make multiple edits
+		var content string
 		for i := 0; i < 3; i++ {
-			content := fmt.Sprintf("Version %d content", i)
+			content = fmt.Sprintf("Version %d content", i)
 
 			// Create file if first iteration
 			if i == 0 {
@@ -461,25 +454,24 @@ func TestFileEditService_AdvancedScenarios(t *testing.T) {
 			}
 
 			req := &models.FileEditRequest{
-				ExecutionID:  fmt.Sprintf("backup-multi-%d", i),
-				CaseID:       "test-case-multi-backup",
-				Operation:    constants.FileOperationWrite,
-				FilePath:     testFile,
-				Content:      content,
-				CreateBackup: true,
-				RequestedBy:  "test-user",
+				ExecutionID: fmt.Sprintf("write-multi-%d", i),
+				CaseID:      "test-case-multi-write",
+				Operation:   constants.FileOperationWrite,
+				FilePath:    testFile,
+				Content:     content,
+				RequestedBy: "test-user",
 			}
 
 			result, err := svc.ExecuteFileEdit(context.Background(), req)
 			require.NoError(t, err)
-			assert.NotEmpty(t, result.BackupPath)
-			backupPaths = append(backupPaths, result.BackupPath)
+			assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status)
 		}
 
-		// Verify all backups exist
-		for _, backupPath := range backupPaths {
-			assert.FileExists(t, backupPath)
-		}
+		fileData, _ := os.ReadFile(testFile)
+		assert.Equal(t, content, string(fileData))
+		entries, err := os.ReadDir(tmpDir)
+		require.NoError(t, err)
+		assert.Len(t, entries, 1)
 	})
 
 	t.Run("read with max lines limit", func(t *testing.T) {

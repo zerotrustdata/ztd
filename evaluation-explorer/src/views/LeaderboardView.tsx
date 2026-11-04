@@ -10,7 +10,7 @@ import { useSelectedRelease, useUserPref, PREF } from '../state/dataset';
 import { useStoreState } from '../state/store';
 import { RoleLeadersPanel } from '../components/RoleLeadersPanel';
 import { ReleaseSelector } from '../components/ReleaseSelector';
-import { matchesRelease } from '../content/release';
+import { DEFAULT_LEADERBOARD_RELEASE, matchesRelease, toReleaseSeries } from '../content/release';
 import { resolveModelProfile } from '../content/framework-catalog';
 import { SectionHeading } from '../components/shared';
 import {
@@ -25,7 +25,7 @@ interface LeaderboardFilterPrefs {
 
 export function LeaderboardView() {
   const [filters, setFilters] = useUserPref<LeaderboardFilterPrefs>(PREF.filters, {});
-  const release = useSelectedRelease('all');
+  const release = toReleaseSeries(useSelectedRelease(DEFAULT_LEADERBOARD_RELEASE));
 
   const models = useStoreState((state) =>
     Array.from(state.models.values()).filter((record) => matchesRelease(record, release)),
@@ -121,7 +121,7 @@ export function LeaderboardView() {
       </header>
 
       <div className="table-toolbar">
-        <ReleaseSelector defaultRelease="all" />
+        <ReleaseSelector defaultRelease={DEFAULT_LEADERBOARD_RELEASE} seriesOnly />
         <input
           type="number"
           min="0"

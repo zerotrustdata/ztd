@@ -436,6 +436,34 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsObservationReceipts(t *test
 	requireEvidenceError(t, newTrace(begin, finalize, tool), constants.ErrEvaluationEvidenceTraceMismatch)
 }
 
+// An observer whose handler failed still commits on the ledger it signs for, so
+// the bracket claims that commitment; without the claim it reads as an unclaimed
+// execution. A rejected observation committed nothing and claims nothing.
+func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsFailedObservationReceipts(t *testing.T) {
+	ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
+	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
+	begin := ledger.executed("tx-observe-begin", string(constants.ActionTypeModelProvenanceObservation))
+	model := ledger.inferenceFailed("tx-m1")
+	prior, hash := ledger.advance()
+	finalize := ledger.signer.ExecutionFailed(t, ledger.opts("tx-observe-finalize", string(constants.ActionTypeModelProvenanceObservation)), prior, hash)
+	rejected := ledger.rejected("tx-observe-rejected", string(constants.ActionTypeModelProvenanceObservation))
+	after := ledger.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
+	newTrace := func(observations ...*operatorv1.EventReceipt) *AgentTrace {
+		trace := evidenceTrace(ledger.runtime(), ledger.runtime())
+		call := failedModelCall("tx-m1", model)
+		for _, receipt := range observations {
+			call.ObservationReceipts = append(call.ObservationReceipts, AgentTraceReceipt{EventReceipt: receipt})
+		}
+		trace.ModelCalls = []AgentModelCall{call}
+		trace.Bracket = bracketOf(before, after)
+		return trace
+	}
+
+	require.NoError(t, VerifyAgentTraceEvidence(newTrace(begin, finalize)))
+	require.NoError(t, VerifyAgentTraceEvidence(newTrace(begin, finalize, rejected)))
+	requireEvidenceError(t, newTrace(begin), constants.ErrConformanceUnclaimedExecution)
+}
+
 func TestVerifyAgentTraceEvidence_AcceptsRejectedInferenceWithoutCommitment(t *testing.T) {
 	trace, ledger := sharedRuntimeTrace(t)
 	rejected := ledger.rejected("tx-m3", string(constants.ActionTypeInference))

@@ -39,8 +39,39 @@ import (
 // DispatchTimeout is the maximum time to wait for an operator result after
 // publishing a command. The round-trip includes in-process publish, WS delivery,
 // operator L4/L5 verification and execution, WS publish back, and in-process
-// handler delivery.
+// handler delivery. Commands with their own execution timeout wait that long
+// plus this margin instead (see resultDeadline).
 const DispatchTimeout = 30 * time.Second
+
+// resultDeadline is how long dispatchEnvelope waits for a terminal result when
+// the request sets no explicit Timeout. An action that carries its own execution
+// timeout (EXECUTE_BASH, OLLAMA_MODEL_PULL) waits that long plus DispatchTimeout
+// as the governed round-trip margin, so a long command or download is not
+// reported as a 504 while it is still running on the Operator.
+func resultDeadline(actionType constants.ActionType, payload []byte) time.Duration {
+	if actionType != constants.ActionTypeExecuteBash && actionType != constants.ActionTypeOllamaModelPull {
+		return DispatchTimeout
+	}
+	decoded, err := governance.DecodePayloadForAction(actionType, payload)
+	if err != nil {
+		return DispatchTimeout
+	}
+	switch request := decoded.(type) {
+	case *operatorv1.CommandRequested:
+		seconds := int64(request.GetTimeoutSeconds())
+		if seconds <= 0 {
+			seconds = constants.DefaultCommandExecutionTimeoutSeconds
+		}
+		return time.Duration(seconds)*time.Second + DispatchTimeout
+	case *operatorv1.OllamaModelPullRequested:
+		if seconds := request.GetTimeoutSeconds(); seconds > 0 {
+			return time.Duration(seconds)*time.Second + DispatchTimeout
+		}
+		return constants.ModelPullDefaultTimeout + DispatchTimeout
+	default:
+		return DispatchTimeout
+	}
+}
 
 // InferenceProgressResultBuffer is the in-process results-channel capacity
 // while streaming inference progress. Embedded publishers wait for capacity;
@@ -214,7 +245,7 @@ type DispatchRequest struct {
 	CliSessionID            string
 
 	// Timeout is the explicit request deadline for this dispatch. Zero
-	// applies DispatchTimeout. Inference dispatches set the provider-aware
+	// applies resultDeadline. Inference dispatches set the provider-aware
 	// RequestDeadline from the inference dispatch package so the wait
 	// outlives an in-flight provider call.
 	Timeout time.Duration
@@ -347,7 +378,8 @@ func NewDispatchService(logger *slog.Logger, pubsubHandler *GatewayWebSocketHand
 // The envelope is constructed with the gateway's current state root, a unique
 // nonce, and a near-future expiry. The result is correlated by transaction ID.
 // Returns an error if the operator session is invalid, envelope construction
-// fails, L2 deliberation fails, or the result does not arrive within DispatchTimeout.
+// fails, L2 deliberation fails, or the result does not arrive within the
+// request Timeout (resultDeadline when unset).
 func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (result *DispatchResult, err error) {
 	// 1. Resolve the target operator session.
 	op, err := d.auth.ValidateOperatorSession(ctx, req.TargetOperatorSessionID)
@@ -529,7 +561,7 @@ func (d *DispatchService) dispatchEnvelope(ctx context.Context, op *operatorv1.O
 	//    correlate the result by transaction ID.
 	deadline := req.Timeout
 	if deadline <= 0 {
-		deadline = DispatchTimeout
+		deadline = resultDeadline(actionType, env.GetPayload())
 	}
 	timeoutCtx, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()
@@ -679,7 +711,7 @@ func (d *DispatchService) dispatchEnvelope(ctx context.Context, op *operatorv1.O
 
 	// 8. Wait for the result with the request deadline. The caller sets
 	//    Timeout explicitly (inference sets its provider-aware deadline);
-	//    zero applies DispatchTimeout.
+	//    zero applies resultDeadline.
 	var progressEvents []*operatorv1.InferenceProgressEvent
 	// A non-inference dispatch succeeds only once it holds both the terminal
 	// result envelope and the verified final receipt, in either order. An

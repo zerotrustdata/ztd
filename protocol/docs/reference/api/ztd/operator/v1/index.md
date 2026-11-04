@@ -114,8 +114,12 @@
     - [NetworkInfo](#ztd-operator-v1-NetworkInfo)
     - [NetworkInterface](#ztd-operator-v1-NetworkInterface)
     - [OSDetails](#ztd-operator-v1-OSDetails)
+    - [OllamaModelCopyRequested](#ztd-operator-v1-OllamaModelCopyRequested)
+    - [OllamaModelCopyResult](#ztd-operator-v1-OllamaModelCopyResult)
     - [OllamaModelInventoryRequested](#ztd-operator-v1-OllamaModelInventoryRequested)
     - [OllamaModelInventoryResult](#ztd-operator-v1-OllamaModelInventoryResult)
+    - [OllamaModelPullRequested](#ztd-operator-v1-OllamaModelPullRequested)
+    - [OllamaModelPullResult](#ztd-operator-v1-OllamaModelPullResult)
     - [OllamaModelReleaseRequested](#ztd-operator-v1-OllamaModelReleaseRequested)
     - [OllamaModelReleaseResult](#ztd-operator-v1-OllamaModelReleaseResult)
     - [OllamaModelResidencyModel](#ztd-operator-v1-OllamaModelResidencyModel)
@@ -1114,7 +1118,6 @@ EventReceipt is the signed evidence for a governed request event, including read
 | start_line | [int32](#int32) |  |  |
 | end_line | [int32](#int32) |  |  |
 | patch_content | [string](#string) |  |  |
-| create_backup | [bool](#bool) |  |  |
 | create_if_missing | [bool](#bool) |  |  |
 
 
@@ -1137,7 +1140,6 @@ EventReceipt is the signed evidence for a governed request event, including read
 | duration_seconds | [float](#float) |  |  |
 | bytes_written | [int64](#int64) |  |  |
 | lines_changed | [int32](#int32) |  |  |
-| backup_path | [string](#string) |  |  |
 | error_message | [string](#string) |  |  |
 | error_type | [string](#string) |  |  |
 | content | [string](#string) |  |  |
@@ -2425,6 +2427,42 @@ Reads a specific resource from the downstream MCP server.
 
 
 
+<a name="ztd-operator-v1-OllamaModelCopyRequested"></a>
+
+### OllamaModelCopyRequested
+OllamaModelCopyRequested aliases an installed model on the Operator&#39;s Ollama
+provider.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| execution_id | [string](#string) |  |  |
+| source | [string](#string) |  |  |
+| destination | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-OllamaModelCopyResult"></a>
+
+### OllamaModelCopyResult
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| execution_id | [string](#string) |  |  |
+| status | [ExecutionStatus](#ztd-operator-v1-ExecutionStatus) |  |  |
+| error_message | [string](#string) |  |  |
+| error_type | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="ztd-operator-v1-OllamaModelInventoryRequested"></a>
 
 ### OllamaModelInventoryRequested
@@ -2451,6 +2489,43 @@ Reads a specific resource from the downstream MCP server.
 | execution_id | [string](#string) |  |  |
 | status | [ExecutionStatus](#ztd-operator-v1-ExecutionStatus) |  |  |
 | entries | [ProviderModelInventoryEntry](#ztd-operator-v1-ProviderModelInventoryEntry) | repeated |  |
+| error_message | [string](#string) |  |  |
+| error_type | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-OllamaModelPullRequested"></a>
+
+### OllamaModelPullRequested
+OllamaModelPullRequested downloads one model onto the Operator&#39;s Ollama
+provider. timeout_seconds bounds the whole download; zero applies the
+platform default (constants.ModelPullDefaultTimeout).
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| execution_id | [string](#string) |  |  |
+| model_tag | [string](#string) |  |  |
+| timeout_seconds | [int32](#int32) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-OllamaModelPullResult"></a>
+
+### OllamaModelPullResult
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| execution_id | [string](#string) |  |  |
+| status | [ExecutionStatus](#ztd-operator-v1-ExecutionStatus) |  |  |
 | error_message | [string](#string) |  |  |
 | error_type | [string](#string) |  |  |
 

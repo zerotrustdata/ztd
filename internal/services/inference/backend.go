@@ -58,6 +58,11 @@ type Provider interface {
 	ListProviderModelInventory(ctx context.Context) ([]ProviderModelInventoryEntry, error)
 	ReadResidency(ctx context.Context) (ProviderResidency, error)
 	ReleaseModels(ctx context.Context, models []string) error
+	// PullModel downloads one model onto the provider. ctx is the only deadline:
+	// a download can legitimately outlast ProviderRequestTimeout.
+	PullModel(ctx context.Context, model string) error
+	// CopyModel aliases an installed model on the provider.
+	CopyModel(ctx context.Context, source, destination string) error
 	Close() error
 }
 

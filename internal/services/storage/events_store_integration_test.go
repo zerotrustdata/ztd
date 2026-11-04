@@ -158,6 +158,7 @@ func TestLocalFirstEventsStore_IntegrationLifecycle(t *testing.T) {
 	mutation := &FileMutationLog{
 		EventID:          eventID,
 		Filepath:         "data/example.txt",
+		SnapshotName:     "snapshot-name",
 		Operation:        FileMutationWrite,
 		LedgerHashBefore: "before",
 		LedgerHashAfter:  "after",

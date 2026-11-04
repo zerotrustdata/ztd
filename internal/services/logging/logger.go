@@ -57,7 +57,7 @@ const (
 	errorKindExists        = "exists"
 	errorKindTimeout       = "timeout"
 	errorKindCanceled      = "canceled"
-	errorKindOther         = "other"
+	ErrorKindOther         = "other"
 	errorKindRefused       = "connection_refused"
 	errorKindReset         = "connection_reset"
 	errorKindBrokenPipe    = "broken_pipe"
@@ -65,6 +65,7 @@ const (
 	errorKindUnexpectedEOF = "unexpected_eof"
 	errorKindDNS           = "dns"
 	errorKindInvalidInput  = "invalid_input"
+	errorKindProvider      = "provider"
 )
 
 // ErrorKind returns a log attribute that classifies err without its text.
@@ -81,7 +82,7 @@ func ErrorKind(err error) slog.Attr {
 //
 //	logger.Warn("Failed", "execution_id", id, logging.ErrorKindKey, logging.ErrorKindValue(err))
 func ErrorKindValue(err error) string {
-	kind := errorKindOther
+	kind := ErrorKindOther
 	var dnsErr *net.DNSError
 	var netErr net.Error
 	switch {
@@ -116,6 +117,8 @@ func ErrorKindValue(err error) string {
 		errors.Is(err, constants.ErrFileEditInsertContentRequired),
 		errors.Is(err, constants.ErrFileEditLineRangeRequired):
 		kind = errorKindInvalidInput
+	case errors.Is(err, constants.ErrOllamaAPI), errors.Is(err, constants.ErrOllamaPull):
+		kind = errorKindProvider
 	}
 	return kind
 }

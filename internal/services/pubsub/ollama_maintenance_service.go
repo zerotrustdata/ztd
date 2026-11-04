@@ -12,12 +12,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	storage "github.com/zerotrustdata/ztd/internal/services/storage"
@@ -25,8 +27,9 @@ import (
 )
 
 // OllamaMaintenanceService owns typed governed provider inventory, residency,
-// and release commands on the Inference Operator, served by the Operator's
-// configured provider (Ollama or a llama.cpp router).
+// release, pull, and copy commands on the Inference Operator, served by the
+// Operator's configured provider (Ollama or a llama.cpp router; pull and copy
+// fail closed under llama.cpp).
 type OllamaMaintenanceService struct {
 	config      *config.Config
 	logger      *slog.Logger
@@ -72,10 +75,13 @@ func NewOllamaMaintenanceService(
 // HandleInventoryRequest lists installed provider models and returns a typed
 // OllamaModelInventoryResult without routing through EXECUTE_BASH stdout.
 func (s *OllamaMaintenanceService) HandleInventoryRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	fail := func(executionID string, err error) (string, error) {
+		return s.failModelOperation(ctx, msg, "list inventory", executionID, constants.Event.Operator.OllamaModelInventory.Failed, err)
+	}
+
 	var request operatorv1.OllamaModelInventoryRequested
 	if err := proto.Unmarshal(msg.Payload, &request); err != nil {
-		s.logger.Error("Failed to decode Ollama inventory payload", string(constants.ConnectionStateError), err)
-		return "", errors.Join(err, publishLFEAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelInventory.Failed, "invalid request payload", s.eventsStore, s.scrubbing))
+		return fail(executionIDFromMessage(msg), fmt.Errorf("decode request payload: %w", err))
 	}
 
 	executionID := request.GetExecutionId()
@@ -85,12 +91,12 @@ func (s *OllamaMaintenanceService) HandleInventoryRequest(ctx context.Context, m
 
 	backend, err := s.inferenceProvider()
 	if err != nil {
-		return "", errors.Join(err, publishLFEAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelInventory.Failed, err.Error(), s.eventsStore, s.scrubbing))
+		return fail(executionID, err)
 	}
 
 	entries, err := backend.ListProviderModelInventory(ctx)
 	if err != nil {
-		return "", errors.Join(err, publishLFEAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelInventory.Failed, err.Error(), s.eventsStore, s.scrubbing))
+		return fail(executionID, err)
 	}
 
 	payload := &operatorv1.OllamaModelInventoryResult{
@@ -104,10 +110,13 @@ func (s *OllamaMaintenanceService) HandleInventoryRequest(ctx context.Context, m
 // HandleResidencyRequest reads typed /api/ps residency and returns a typed
 // OllamaModelResidencyResult without routing through EXECUTE_BASH stdout.
 func (s *OllamaMaintenanceService) HandleResidencyRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	fail := func(executionID string, err error) (string, error) {
+		return s.failModelOperation(ctx, msg, "read residency", executionID, constants.Event.Operator.OllamaModelResidency.Failed, err)
+	}
+
 	var request operatorv1.OllamaModelResidencyRequested
 	if err := proto.Unmarshal(msg.Payload, &request); err != nil {
-		s.logger.Error("Failed to decode Ollama residency payload", string(constants.ConnectionStateError), err)
-		return "", errors.Join(err, publishLFEAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelResidency.Failed, "invalid request payload", s.eventsStore, s.scrubbing))
+		return fail(executionIDFromMessage(msg), fmt.Errorf("decode request payload: %w", err))
 	}
 
 	executionID := request.GetExecutionId()
@@ -117,12 +126,12 @@ func (s *OllamaMaintenanceService) HandleResidencyRequest(ctx context.Context, m
 
 	backend, err := s.inferenceProvider()
 	if err != nil {
-		return "", errors.Join(err, publishLFEAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelResidency.Failed, err.Error(), s.eventsStore, s.scrubbing))
+		return fail(executionID, err)
 	}
 
 	residency, err := backend.ReadResidency(ctx)
 	if err != nil {
-		return "", errors.Join(err, publishLFEAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelResidency.Failed, err.Error(), s.eventsStore, s.scrubbing))
+		return fail(executionID, err)
 	}
 
 	payload := inference.ProviderResidencyToProto(residency)
@@ -135,10 +144,13 @@ func (s *OllamaMaintenanceService) HandleResidencyRequest(ctx context.Context, m
 // have left provider residency, and returns a typed OllamaModelReleaseResult.
 // The full tag set is validated before any unload, and an empty set fails closed.
 func (s *OllamaMaintenanceService) HandleReleaseRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	fail := func(executionID string, err error) (string, error) {
+		return s.failModelOperation(ctx, msg, "release models", executionID, constants.Event.Operator.OllamaModelRelease.Failed, err)
+	}
+
 	var request operatorv1.OllamaModelReleaseRequested
 	if err := proto.Unmarshal(msg.Payload, &request); err != nil {
-		s.logger.Error("Failed to decode Ollama release payload", string(constants.ConnectionStateError), err)
-		return "", errors.Join(err, publishLFEAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelRelease.Failed, "invalid request payload", s.eventsStore, s.scrubbing))
+		return fail(executionIDFromMessage(msg), fmt.Errorf("decode request payload: %w", err))
 	}
 
 	executionID := request.GetExecutionId()
@@ -147,16 +159,16 @@ func (s *OllamaMaintenanceService) HandleReleaseRequest(ctx context.Context, msg
 	}
 
 	if err := validateReleaseModelTags(request.GetModelTags()); err != nil {
-		return "", errors.Join(err, publishLFEAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelRelease.Failed, err.Error(), s.eventsStore, s.scrubbing))
+		return fail(executionID, err)
 	}
 
 	backend, err := s.inferenceProvider()
 	if err != nil {
-		return "", errors.Join(err, publishLFEAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelRelease.Failed, err.Error(), s.eventsStore, s.scrubbing))
+		return fail(executionID, err)
 	}
 
 	if err := backend.ReleaseModels(ctx, request.GetModelTags()); err != nil {
-		return "", errors.Join(err, publishLFEAErrorTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelRelease.Failed, err.Error(), s.eventsStore, s.scrubbing))
+		return fail(executionID, err)
 	}
 
 	payload := &operatorv1.OllamaModelReleaseResult{
@@ -166,15 +178,128 @@ func (s *OllamaMaintenanceService) HandleReleaseRequest(ctx context.Context, msg
 	return "", publishLFEATypedResponseTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelRelease.Completed, payload, s.eventsStore, s.scrubbing)
 }
 
+// HandlePullRequest downloads one model onto the provider and returns a typed
+// OllamaModelPullResult. A failed pull returns its error, so L5 signs a FAILED
+// receipt. The request's timeout_seconds bounds the whole download.
+func (s *OllamaMaintenanceService) HandlePullRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	fail := func(executionID string, err error) (string, error) {
+		return s.failModelOperation(ctx, msg, "pull model", executionID, constants.Event.Operator.OllamaModelPull.Failed, err)
+	}
+
+	var request operatorv1.OllamaModelPullRequested
+	if err := proto.Unmarshal(msg.Payload, &request); err != nil {
+		return fail(executionIDFromMessage(msg), fmt.Errorf("decode request payload: %w", err))
+	}
+	executionID := request.GetExecutionId()
+	if executionID == "" {
+		executionID = executionIDFromMessage(msg)
+	}
+
+	backend, err := s.inferenceProvider()
+	if err != nil {
+		return fail(executionID, err)
+	}
+
+	timeout := constants.ModelPullDefaultTimeout
+	if seconds := request.GetTimeoutSeconds(); seconds > 0 {
+		timeout = time.Duration(seconds) * time.Second
+	}
+	pullCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	start := time.Now()
+	if err := backend.PullModel(pullCtx, request.GetModelTag()); err != nil {
+		return fail(executionID, err)
+	}
+	s.logger.Info("Ollama model pull completed", "execution_id", executionID, "elapsed", time.Since(start).Round(time.Second).String())
+
+	return "", publishLFEATypedResponseTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelPull.Completed, &operatorv1.OllamaModelPullResult{
+		ExecutionId: executionID,
+		Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+	}, s.eventsStore, s.scrubbing)
+}
+
+// HandleCopyRequest aliases an installed model on the provider and returns a
+// typed OllamaModelCopyResult. A failed copy returns its error, so L5 signs a
+// FAILED receipt.
+func (s *OllamaMaintenanceService) HandleCopyRequest(ctx context.Context, msg *PubSubCommandMessage) (string, error) {
+	fail := func(executionID string, err error) (string, error) {
+		return s.failModelOperation(ctx, msg, "copy model", executionID, constants.Event.Operator.OllamaModelCopy.Failed, err)
+	}
+
+	var request operatorv1.OllamaModelCopyRequested
+	if err := proto.Unmarshal(msg.Payload, &request); err != nil {
+		return fail(executionIDFromMessage(msg), fmt.Errorf("decode request payload: %w", err))
+	}
+	executionID := request.GetExecutionId()
+	if executionID == "" {
+		executionID = executionIDFromMessage(msg)
+	}
+
+	backend, err := s.inferenceProvider()
+	if err != nil {
+		return fail(executionID, err)
+	}
+	if err := backend.CopyModel(ctx, request.GetSource(), request.GetDestination()); err != nil {
+		return fail(executionID, err)
+	}
+
+	return "", publishLFEATypedResponseTo(ctx, s.client, s.config, s.logger, msg, constants.Event.Operator.OllamaModelCopy.Completed, &operatorv1.OllamaModelCopyResult{
+		ExecutionId: executionID,
+		Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+	}, s.eventsStore, s.scrubbing)
+}
+
+// failModelOperation publishes a failed operation as its action's typed result
+// and returns the error, so L5 signs a FAILED receipt. The log names the failure
+// by its classification only. Provider error text can carry model tags
+// (INV-STOR-LOG-01); it reaches the result through the egress scrubber.
+func (s *OllamaMaintenanceService) failModelOperation(
+	ctx context.Context,
+	msg *PubSubCommandMessage,
+	operation string,
+	executionID string,
+	failedEvent constants.EventType,
+	cause error,
+) (string, error) {
+	kind := logging.ErrorKindValue(cause)
+	s.logger.Warn("Ollama model maintenance failed", "operation", operation, "execution_id", executionID, logging.ErrorKindKey, kind)
+	err := fmt.Errorf("ollama maintenance: %s: %w", operation, cause)
+	result := ollamaModelFailedResult(failedEvent, executionID, err.Error(), kind)
+	return "", errors.Join(err, publishLFEATypedResponseTo(ctx, s.client, s.config, s.logger, msg, failedEvent, result, s.eventsStore, s.scrubbing))
+}
+
+// ollamaModelFailedResult returns the typed result that eventType, a model
+// maintenance failure event, carries. The dispatching caller decodes a result by
+// the action it sent, so a CommandResult in its place loses the failure: the
+// field numbers differ. It returns nil for any other event.
+func ollamaModelFailedResult(eventType constants.EventType, executionID, message, kind string) proto.Message {
+	status := operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED
+	switch eventType {
+	case constants.Event.Operator.OllamaModelInventory.Failed:
+		return &operatorv1.OllamaModelInventoryResult{ExecutionId: executionID, Status: status, ErrorMessage: message, ErrorType: kind}
+	case constants.Event.Operator.OllamaModelResidency.Failed:
+		return &operatorv1.OllamaModelResidencyResult{ExecutionId: executionID, Status: status, ErrorMessage: message, ErrorType: kind}
+	case constants.Event.Operator.OllamaModelRelease.Failed:
+		return &operatorv1.OllamaModelReleaseResult{ExecutionId: executionID, Status: status, ErrorMessage: message, ErrorType: kind}
+	case constants.Event.Operator.OllamaModelPull.Failed:
+		return &operatorv1.OllamaModelPullResult{ExecutionId: executionID, Status: status, ErrorMessage: message, ErrorType: kind}
+	case constants.Event.Operator.OllamaModelCopy.Failed:
+		return &operatorv1.OllamaModelCopyResult{ExecutionId: executionID, Status: status, ErrorMessage: message, ErrorType: kind}
+	default:
+		return nil
+	}
+}
+
 // validateReleaseModelTags fails closed on an empty release set and on any tag
 // that the served-model-tag validator rejects.
 func validateReleaseModelTags(modelTags []string) error {
 	if len(modelTags) == 0 {
-		return fmt.Errorf("ollama maintenance: release models: %w: at least one model tag is required", constants.ErrInferenceModelTagInvalid)
+		return fmt.Errorf("%w: at least one model tag is required", constants.ErrInferenceModelTagInvalid)
 	}
 	for _, modelTag := range modelTags {
 		if err := operatorcapability.ValidateServedModelTag(modelTag); err != nil {
-			return fmt.Errorf("ollama maintenance: release models: %w", err)
+			return err
 		}
 	}
 	return nil

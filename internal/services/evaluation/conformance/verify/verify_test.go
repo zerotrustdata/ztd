@@ -1157,9 +1157,12 @@ func TestVerifyClaimsInternalTribunalDeliberationExecutions(t *testing.T) {
 		observer   bool
 		unpinned   bool
 		remoteVote bool
+		// failedObserver signs the observer's receipt as a failed execution.
+		failedObserver bool
 	}{
 		{name: "valid", want: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS},
 		{name: "remote inference and observer", remoteVote: true, observer: true, want: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS},
+		{name: "remote inference and failed observer", remoteVote: true, observer: true, failedObserver: true, want: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS},
 		{name: "unknown observer", observer: true, unpinned: true, want: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE},
 		{name: "tampered observer", observer: true, corrupt: func(c *operatorv1.ConsensusVoteInference) { c.ObservationReceipts[0].Signature = "00" }, want: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE},
 		{name: "tampered receipt", corrupt: func(c *operatorv1.ConsensusVoteInference) { c.Receipt.Signature = "00" }, want: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE},
@@ -1220,6 +1223,9 @@ func TestVerifyClaimsInternalTribunalDeliberationExecutions(t *testing.T) {
 				observationOpts := receiptOpts(caseDirect, "observer", "observation", operatorv1.L2Status_L2_STATUS_NOT_REQUIRED, operatorv1.L3Status_L3_STATUS_NOT_REQUIRED)
 				observationOpts.ActionType = string(constants.ActionTypeProviderBoundaryObservation)
 				call.ObservationReceipts = []*operatorv1.EventReceipt{signer.Executed(t, observationOpts, "observer-before", "observer-after")}
+				if test.failedObserver {
+					call.ObservationReceipts = []*operatorv1.EventReceipt{signer.ExecutionFailed(t, observationOpts, "observer-before", "observer-after")}
+				}
 			}
 			if test.corrupt != nil {
 				test.corrupt(call)

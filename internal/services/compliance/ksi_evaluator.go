@@ -35,7 +35,7 @@ type AuditEvidenceReader interface {
 }
 
 // LedgerEvidenceReader provides read-only access to ledger evidence
-// for KSI evaluation. GitLedgerService satisfies this interface.
+// for KSI evaluation. GitLedgerReader satisfies this interface.
 type LedgerEvidenceReader interface {
 	GetStateMerkleRoot() (string, error)
 	ListCommits(sessionID string, limit int) ([]storage.LedgerCommit, error)

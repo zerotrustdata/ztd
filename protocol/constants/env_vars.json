@@ -11,7 +11,7 @@
       "_go_const": "EnvVar.OllamaEndpoint",
       "value": "ZTD_OLLAMA_ENDPOINT",
       "category": "user_endpoint",
-      "description": "Approved Ollama provider endpoint; default for --inference-ollama-endpoint on gw start, operator start, and operator model commands"
+      "description": "Approved Ollama provider endpoint; default for --inference-ollama-endpoint on gw start and operator start"
     },
     "E2EFleetSessions": {
       "_go_const": "EnvVar.E2EFleetSessions",

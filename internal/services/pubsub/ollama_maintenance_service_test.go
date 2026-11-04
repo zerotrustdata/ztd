@@ -110,6 +110,26 @@ func ollamaReleaseMessage(t *testing.T, executionID string, modelTags ...string)
 	}
 }
 
+func ollamaPullMessage(t *testing.T, executionID, modelTag string, timeoutSeconds int32) *PubSubCommandMessage {
+	t.Helper()
+	return &PubSubCommandMessage{
+		ID:                ollamaTestMessageID,
+		EventType:         constants.Event.Operator.OllamaModelPull.Requested,
+		OperatorSessionID: ollamaTestSessionID,
+		Payload:           mustMarshalProto(t, &operatorv1.OllamaModelPullRequested{ExecutionId: executionID, ModelTag: modelTag, TimeoutSeconds: timeoutSeconds}),
+	}
+}
+
+func ollamaCopyMessage(t *testing.T, executionID, source, destination string) *PubSubCommandMessage {
+	t.Helper()
+	return &PubSubCommandMessage{
+		ID:                ollamaTestMessageID,
+		EventType:         constants.Event.Operator.OllamaModelCopy.Requested,
+		OperatorSessionID: ollamaTestSessionID,
+		Payload:           mustMarshalProto(t, &operatorv1.OllamaModelCopyRequested{ExecutionId: executionID, Source: source, Destination: destination}),
+	}
+}
+
 // publishedResult decodes the single published result envelope and its typed
 // payload, and verifies it was routed to the originating session's results
 // channel.

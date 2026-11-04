@@ -13,9 +13,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -26,8 +28,7 @@ import (
 )
 
 // readLedgerFile reads a file from the .ztd/ runtime ledger tree via fileSvc,
-// converting the absolute ledger path to a relative path. Used in tests that
-// verify mirror content written by the ledger service.
+// converting the absolute ledger path to a relative path.
 func readLedgerFile(t *testing.T, fileSvc fs.RuntimeFileService, absPath string) []byte {
 	t.Helper()
 	relPath, err := fileSvc.Rel(absPath)
@@ -37,14 +38,32 @@ func readLedgerFile(t *testing.T, fileSvc fs.RuntimeFileService, absPath string)
 	return content
 }
 
-// readLedgerSnapshot reads the encrypted snapshot stored for absPath (logical path plus
-// ".enc") and decrypts it with the service vault. Ledger content is never plaintext on disk.
-func readLedgerSnapshot(t *testing.T, lms *GitLedgerService, absPath string) []byte {
+// readLedgerSnapshot returns the decrypted snapshot a mutation committed, read from the git
+// objects of its session ledger. Ledger content is never plaintext on disk.
+func readLedgerSnapshot(t *testing.T, lms *GitLedgerService, operatorSessionID string, result *LedgerResult) []byte {
 	t.Helper()
-	ciphertext := readLedgerFile(t, lms.fileSvc, absPath+ledgerSnapshotSuffix)
-	plaintext, err := lms.config.EncryptionVault.DecryptWithAAD(ciphertext, ledgerSnapshotAAD(ledgerSnapshotGitPath(absPath)))
+	content, err := lms.GetFileAtCommit(result.FilePath, result.LedgerHashAfter, operatorSessionID)
 	require.NoError(t, err)
-	return plaintext
+	return []byte(content)
+}
+
+// recordMutation begins a mutation of path, writes content to it, and completes the mutation.
+func recordMutation(t *testing.T, lms *GitLedgerService, operatorSessionID, path, workDir, content string) *LedgerResult {
+	t.Helper()
+	target := openTestTarget(t, lms.fileSvc, path, workDir)
+	result, err := lms.BeginMutation(operatorSessionID, target)
+	require.NoError(t, err)
+	require.NoError(t, target.WriteFile([]byte(content), constants.PermFilePrivate))
+	require.NoError(t, lms.CompleteMutation(result, operatorSessionID))
+	return result
+}
+
+// commitCount returns the number of commits in a session ledger.
+func commitCount(t *testing.T, lms *GitLedgerService, operatorSessionID string) int {
+	t.Helper()
+	commits, err := lms.ListCommits(operatorSessionID, 0)
+	require.NoError(t, err)
+	return len(commits)
 }
 
 // setupTestLedger creates a GitLedgerService backed by an unlocked test vault.
@@ -119,262 +138,214 @@ func TestLedgerService_NewServiceWithNilConfig(t *testing.T) {
 	assert.Nil(t, lms)
 }
 
-func TestLedgerService_MirrorFileWrite_NewFile(t *testing.T) {
+// TestLedgerService_BeginMutation_MissingFileIsCreate verifies that a target that does not exist
+// yet begins a creation, and that the creation's snapshot is the content written through the
+// target.
+func TestLedgerService_BeginMutation_MissingFileIsCreate(t *testing.T) {
 	t.Parallel()
 	lms, tempDir := setupTestLedger(t)
 
-	// Create a test file path (file doesn't exist yet)
 	testFilePath := filepath.Join(tempDir, "test_write.txt")
 	operatorSessionID := "test-session-write"
 
-	// Start the mirror operation
-	result, err := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
+	target := openTestTarget(t, lms.fileSvc, testFilePath, tempDir)
+	result, err := lms.BeginMutation(operatorSessionID, target)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
 	assert.Equal(t, testFilePath, result.FilePath)
-	assert.Equal(t, FileMutationWrite, result.Operation)
+	assert.Equal(t, FileMutationCreate, result.Operation)
 	assert.True(t, result.Success)
-	assert.NotEmpty(t, result.LedgerPath)
+	assert.NotEmpty(t, result.SnapshotName)
 
-	// The mirror path should be within the ledger
-	assert.Contains(t, result.LedgerPath, "files")
-
-	// Now create the actual file
-	err = os.WriteFile(testFilePath, []byte("Hello, World!"), 0644)
-	require.NoError(t, err)
-
-	// Complete the mirror operation
-	err = lms.CompleteMirrorWrite(result, operatorSessionID)
-	require.NoError(t, err)
+	require.NoError(t, target.WriteFile([]byte("Hello, World!"), constants.PermFilePrivate))
+	require.NoError(t, lms.CompleteMutation(result, operatorSessionID))
 
 	assert.NotEmpty(t, result.LedgerHashAfter)
 	assert.NotEmpty(t, result.DiffStat)
-
-	// Verify file was copied to ledger
-	mirrorContent := readLedgerSnapshot(t, lms, result.LedgerPath)
-	assert.Equal(t, "Hello, World!", string(mirrorContent))
+	assert.Equal(t, "Hello, World!", string(readLedgerSnapshot(t, lms, operatorSessionID, result)))
 }
 
-func TestLedgerService_MirrorFileWrite_ExistingFile(t *testing.T) {
+func TestLedgerService_BeginMutation_ExistingFileIsWrite(t *testing.T) {
 	t.Parallel()
 	lms, tempDir := setupTestLedger(t)
 
-	// Create an existing file
 	testFilePath := filepath.Join(tempDir, "existing_file.txt")
-	err := os.WriteFile(testFilePath, []byte("Original content"), 0644)
-	require.NoError(t, err)
-
+	require.NoError(t, os.WriteFile(testFilePath, []byte("Original content"), 0644))
 	operatorSessionID := "test-session-existing"
 
-	// Start the mirror operation (should backup existing file first)
-	result, err := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
+	result := recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Modified content")
+	assert.Equal(t, FileMutationWrite, result.Operation)
 	assert.NotEmpty(t, result.LedgerHashBefore)
 	assert.True(t, result.Success)
-
-	// Modify the file
-	err = os.WriteFile(testFilePath, []byte("Modified content"), 0644)
-	require.NoError(t, err)
-
-	// Complete the mirror operation
-	err = lms.CompleteMirrorWrite(result, operatorSessionID)
-	require.NoError(t, err)
-
-	assert.NotEmpty(t, result.LedgerHashAfter)
 	assert.NotEqual(t, result.LedgerHashBefore, result.LedgerHashAfter)
 
-	// Verify mirror reflects updated content
-	mirrorContent := readLedgerSnapshot(t, lms, result.LedgerPath)
-	assert.Equal(t, "Modified content", string(mirrorContent))
+	before, err := lms.GetFileAtCommit(testFilePath, result.LedgerHashBefore, operatorSessionID)
+	require.NoError(t, err)
+	assert.Equal(t, "Original content", before, "a pre-image the ledger has never seen is committed as a backup")
+	assert.Equal(t, "Modified content", string(readLedgerSnapshot(t, lms, operatorSessionID, result)))
 }
 
-func TestLedgerService_CompleteMirrorWrite_NilResult(t *testing.T) {
+func TestLedgerService_CompleteMutation_NilResultFailsClosed(t *testing.T) {
 	t.Parallel()
 	lms, _ := setupTestLedger(t)
 
-	err := lms.CompleteMirrorWrite(nil, "operator_session")
-	require.NoError(t, err)
+	require.ErrorIs(t, lms.CompleteMutation(nil, "operator_session"), constants.ErrInternal)
+	require.ErrorIs(t, lms.CompleteMutation(&LedgerResult{}, "operator_session"), constants.ErrInternal, "a result not begun by BeginMutation has no target")
 }
 
-func TestLedgerService_MirrorFileCreate(t *testing.T) {
+func TestLedgerService_CreateMutation(t *testing.T) {
 	t.Parallel()
 	lms, tempDir := setupTestLedger(t)
 
 	testFilePath := filepath.Join(tempDir, "new_created_file.txt")
 	operatorSessionID := "test-session-create"
 
-	// Start the create mirror operation
-	result, err := lms.MirrorFileCreate(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	require.NoError(t, err)
-	require.NotNil(t, result)
+	content := "Line 1\nLine 2\nLine 3\n"
+	result := recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, content)
 
-	assert.Equal(t, testFilePath, result.FilePath)
 	assert.Equal(t, FileMutationCreate, result.Operation)
 	assert.NotEmpty(t, result.LedgerHashBefore)
-	assert.True(t, result.Success)
-
-	// Create the actual file
-	content := "Line 1\nLine 2\nLine 3\n"
-	err = os.WriteFile(testFilePath, []byte(content), 0644)
-	require.NoError(t, err)
-
-	// Complete the create mirror operation
-	err = lms.CompleteMirrorCreate(result, operatorSessionID)
-	require.NoError(t, err)
-
 	assert.NotEmpty(t, result.LedgerHashAfter)
 	assert.Contains(t, result.DiffStat, "new file")
 	assert.Contains(t, result.DiffStat, "lines")
-
-	// Verify file was copied to ledger
-	mirrorContent := readLedgerSnapshot(t, lms, result.LedgerPath)
-	assert.Equal(t, content, string(mirrorContent))
+	assert.Equal(t, content, string(readLedgerSnapshot(t, lms, operatorSessionID, result)))
 }
 
-func TestLedgerService_GetLedgerPath(t *testing.T) {
-	t.Parallel()
-	lms, tempDir := setupTestLedger(t)
-
-	ledgerDir := filepath.Join(tempDir, "ledger")
-
-	// The mirror path is a keyed name inside the ledger and carries no part of the host path
-	ledgerPath, err := lms.getLedgerPath(ledgerDir, "/etc/nginx/nginx.conf")
-	require.NoError(t, err)
-	assert.Contains(t, ledgerPath, "files")
-	assert.NotContains(t, ledgerPath, "nginx")
-	assert.NotContains(t, ledgerPath, "etc")
-	assert.NotContains(t, ledgerPath, "//")
-
-	// The name is stable for a path and differs between paths
-	again, err := lms.getLedgerPath(ledgerDir, "/etc/nginx/nginx.conf")
-	require.NoError(t, err)
-	assert.Equal(t, ledgerPath, again)
-	other, err := lms.getLedgerPath(ledgerDir, "/etc/nginx/other.conf")
-	require.NoError(t, err)
-	assert.NotEqual(t, ledgerPath, other)
-
-	// Test relative path (should be converted to absolute)
-	ledgerPath, err = lms.getLedgerPath(ledgerDir, "relative/path/file.txt")
-	require.NoError(t, err)
-	assert.Contains(t, ledgerPath, "files")
-	assert.NotContains(t, ledgerPath, "relative")
-}
-
-func TestLedgerService_GetLedgerPath_LockedVaultFailsClosed(t *testing.T) {
-	t.Parallel()
-	lms, tempDir := setupTestLedgerLocked(t)
-
-	_, err := lms.getLedgerPath(filepath.Join(tempDir, "ledger"), "/etc/nginx/nginx.conf")
-	require.ErrorIs(t, err, constants.ErrLedgerVaultRequired)
-	_, err = lms.getGitRelativePath("/etc/nginx/nginx.conf")
-	require.ErrorIs(t, err, constants.ErrLedgerVaultRequired)
-}
-
-func TestLedgerService_CopyToLedger(t *testing.T) {
-	t.Parallel()
-	lms, tempDir := setupTestLedger(t)
-
-	// Create source file
-	srcPath := filepath.Join(tempDir, "source.txt")
-	srcContent := "Source file content with special chars: äöü\n"
-	err := os.WriteFile(srcPath, []byte(srcContent), 0644)
-	require.NoError(t, err)
-
-	// Copy to ledger — destination must be inside .ztd/ runtime dir
-	dstPath := lms.fileSvc.Resolve(filepath.Join(constants.DataDirname, constants.LedgerDirname, "files", "test", "source.txt"))
-	err = lms.copyToLedger(openTestTarget(t, lms.fileSvc, srcPath, tempDir), dstPath)
-	require.NoError(t, err)
-
-	// Verify copy
-	dstContent := readLedgerSnapshot(t, lms, dstPath)
-	assert.Equal(t, srcContent, string(dstContent))
-}
-
-func TestLedgerService_CopyToLedger_NonExistentSource(t *testing.T) {
-	t.Parallel()
-	lms, tempDir := setupTestLedger(t)
-
-	err := lms.copyToLedger(openTestTarget(t, lms.fileSvc, filepath.Join(tempDir, "nonexistent.txt"), tempDir), filepath.Join(tempDir, "dst.txt"))
-	require.Error(t, err)
-	assert.Error(t, err)
-}
-
-func TestLedgerService_SnapshotLedger(t *testing.T) {
+func TestLedgerService_SnapshotTreePath(t *testing.T) {
 	t.Parallel()
 	lms, _ := setupTestLedger(t)
 
-	ledgerRelDir := filepath.Join(constants.DataDirname, constants.LedgerDirname)
-	ledgerDir := lms.fileSvc.Resolve(ledgerRelDir)
-
-	// Initialize git repository first
-	err := lms.initGitRepo(ledgerRelDir)
-	require.NoError(t, err, "failed to initialize git repo")
-
-	// Take a snapshot
-	hash1, err := lms.snapshotLedger(ledgerDir, "Test snapshot 1")
+	// The snapshot path is a keyed name, sharded by its leading characters, and carries no part
+	// of the host path.
+	name, err := lms.SnapshotName("/etc/nginx/nginx.conf")
 	require.NoError(t, err)
-	assert.NotEmpty(t, hash1)
-	assert.Len(t, hash1, 40) // Git SHA-1 hash length
+	path := snapshotTreePath(name)
+	assert.Equal(t, fmt.Sprintf("%s/%c/%c/%c/%c/%s%s", constants.LedgerSnapshotsTreeDirname, name[0], name[1], name[2], name[3], name, ledgerSnapshotSuffix), path)
+	assert.NotContains(t, path, "nginx")
+	assert.NotContains(t, path, "etc")
+	assert.NotContains(t, path, "//")
 
-	// Make a change and take another snapshot
-	testFile := filepath.Join(ledgerDir, "files", "snapshot_test.txt")
-	testFileRel, err := lms.fileSvc.Rel(testFile)
+	// The name is stable for a path and differs between paths
+	again, err := lms.SnapshotName("/etc/nginx/nginx.conf")
 	require.NoError(t, err)
-	require.NoError(t, lms.fileSvc.WriteFile(context.Background(), testFileRel, []byte("snapshot test"), 0644))
+	assert.Equal(t, name, again)
+	other, err := lms.SnapshotName("/etc/nginx/other.conf")
+	require.NoError(t, err)
+	assert.NotEqual(t, name, other)
 
-	hash2, err := lms.snapshotLedger(ledgerDir, "Test snapshot 2")
+	// A relative path is keyed by its absolute form
+	relative, err := lms.SnapshotName("relative/path/file.txt")
 	require.NoError(t, err)
-	assert.NotEmpty(t, hash2)
-	assert.NotEqual(t, hash1, hash2)
+	absolute, err := filepath.Abs("relative/path/file.txt")
+	require.NoError(t, err)
+	keyed, err := lms.SnapshotName(absolute)
+	require.NoError(t, err)
+	assert.Equal(t, keyed, relative)
+	assert.NotContains(t, snapshotTreePath(relative), "relative")
+
+	assert.Equal(t, constants.FilesDirname+"/"+name+ledgerSnapshotSuffix, preLayoutSnapshotPath(name))
 }
 
-// writeLedgerSnapshot writes content as an encrypted ledger snapshot at ledgerRelPath (logical path).
-func writeLedgerSnapshot(t *testing.T, lms *GitLedgerService, ledgerRelPath string, content []byte) {
-	t.Helper()
-	ciphertext, err := lms.config.EncryptionVault.EncryptWithAAD(content, ledgerSnapshotAAD(ledgerSnapshotGitPath(ledgerRelPath)))
+func TestLedgerService_SnapshotName_LockedVaultFailsClosed(t *testing.T) {
+	t.Parallel()
+	lms, _ := setupTestLedgerLocked(t)
+
+	_, err := lms.SnapshotName("/etc/nginx/nginx.conf")
+	require.ErrorIs(t, err, constants.ErrLedgerVaultRequired)
+}
+
+// TestLedgerService_CommitBlob verifies the direct commit path: each commit adds the blob on top
+// of HEAD, moves the branch, keeps every entry not on its path, and refuses a path that crosses
+// an existing file.
+func TestLedgerService_CommitBlob(t *testing.T) {
+	t.Parallel()
+	lms, _ := setupTestLedger(t)
+
+	repo, head, err := openLedgerHead(lms.fileSvc.Resolve(filepath.Join(lms.baseRelPath, constants.FilesDirname)))
 	require.NoError(t, err)
-	require.NoError(t, lms.fileSvc.WriteFile(context.Background(), ledgerRelPath+ledgerSnapshotSuffix, ciphertext, 0644))
+
+	first, err := commitBlob(repo, head, "a/b/one.enc", []byte("one"), "first")
+	require.NoError(t, err)
+	head, err = repo.Head()
+	require.NoError(t, err)
+	assert.Equal(t, first, head.Hash())
+
+	second, err := commitBlob(repo, head, "a/c/two.enc", []byte("two"), "second")
+	require.NoError(t, err)
+	assert.NotEqual(t, first, second)
+
+	commit, err := repo.CommitObject(second)
+	require.NoError(t, err)
+	assert.Equal(t, []plumbing.Hash{first}, commit.ParentHashes)
+	assert.Contains(t, commit.Message, "second")
+	assert.Equal(t, ledgerAuthorName, commit.Author.Name)
+	tree, err := commit.Tree()
+	require.NoError(t, err)
+	for path, want := range map[string]string{"a/b/one.enc": "one", "a/c/two.enc": "two", constants.GitignoreFilename: "# ztd Ledger\n"} {
+		file, err := tree.File(path)
+		require.NoError(t, err, path)
+		got, err := file.Contents()
+		require.NoError(t, err)
+		assert.Equal(t, want, got, path)
+	}
+
+	head, err = repo.Head()
+	require.NoError(t, err)
+	_, err = commitBlob(repo, head, "a/b/one.enc/nested.enc", []byte("x"), "conflict")
+	require.ErrorIs(t, err, constants.ErrInternal, "a path through an existing file is refused")
+	_, err = commitBlob(repo, head, "a/b", []byte("x"), "conflict")
+	require.ErrorIs(t, err, constants.ErrInternal, "a file over an existing directory is refused")
+	after, err := repo.Head()
+	require.NoError(t, err)
+	assert.Equal(t, second, after.Hash(), "a refused commit leaves HEAD in place")
+}
+
+// TestLedgerService_CommitBlob_StaleHeadIsRefused verifies that a commit built on a HEAD another
+// writer has already moved does not land.
+func TestLedgerService_CommitBlob_StaleHeadIsRefused(t *testing.T) {
+	t.Parallel()
+	lms, _ := setupTestLedger(t)
+
+	repo, stale, err := openLedgerHead(lms.fileSvc.Resolve(filepath.Join(lms.baseRelPath, constants.FilesDirname)))
+	require.NoError(t, err)
+	moved, err := commitBlob(repo, stale, "one.enc", []byte("one"), "first")
+	require.NoError(t, err)
+
+	_, err = commitBlob(repo, stale, "two.enc", []byte("two"), "second")
+	require.Error(t, err)
+	head, err := repo.Head()
+	require.NoError(t, err)
+	assert.Equal(t, moved, head.Hash())
 }
 
 func TestLedgerService_DiffBetween_Stat(t *testing.T) {
 	t.Parallel()
 	lms, _ := setupTestLedger(t)
 
-	ledgerRelDir := filepath.Join(constants.DataDirname, constants.LedgerDirname)
-	ledgerDir := lms.fileSvc.Resolve(ledgerRelDir)
-
-	// Initialize git repo first
-	err := lms.initGitRepo(ledgerRelDir)
+	ledgerDir := lms.fileSvc.Resolve(filepath.Join(lms.baseRelPath, constants.FilesDirname))
+	repo, head, err := openLedgerHead(ledgerDir)
 	require.NoError(t, err)
+	hash1 := head.Hash().String()
 
-	// Take initial snapshot
-	hash1, err := lms.snapshotLedger(ledgerDir, "Initial state")
+	name, err := lms.SnapshotName("/host/diff_test.txt")
 	require.NoError(t, err)
-
-	// Add an encrypted snapshot under the keyed name of the host path
-	snapshotPath, err := lms.getLedgerPath(ledgerDir, "/host/diff_test.txt")
-	require.NoError(t, err)
-	snapshotRel, err := lms.fileSvc.Rel(snapshotPath)
-	require.NoError(t, err)
-	writeLedgerSnapshot(t, lms, snapshotRel, []byte("line 1\nline 2\nline 3\n"))
-
-	// Take another snapshot
-	hash2, err := lms.snapshotLedger(ledgerDir, "After adding file")
+	hash2, err := lms.commitSnapshot(repo, head, name, []byte("line 1\nline 2\nline 3\n"), "After adding file")
 	require.NoError(t, err)
 
 	diff, err := lms.diffBetween(ledgerDir, hash1, hash2, "/host/diff_test.txt")
 	require.NoError(t, err)
 	assert.Equal(t, "1 file changed, 3 insertions(+)", diff.stat)
+
+	_, err = lms.diffBetween(ledgerDir, hash2, hash1, "/host/diff_test.txt")
+	require.ErrorIs(t, err, constants.ErrPathNotFound, "an after commit with no snapshot is an error, never an empty diff")
 }
 
 func TestLedgerService_DiffBetween_EmptyHashesFailClosed(t *testing.T) {
 	t.Parallel()
 	lms, _ := setupTestLedger(t)
 
-	ledgerDir := lms.fileSvc.Resolve(filepath.Join(constants.DataDirname, constants.LedgerDirname))
+	ledgerDir := lms.fileSvc.Resolve(filepath.Join(lms.baseRelPath, constants.FilesDirname))
 
 	_, err := lms.diffBetween(ledgerDir, "", "", "/host/f.txt")
 	require.ErrorIs(t, err, constants.ErrLedgerDiffHashesRequired)
@@ -411,35 +382,36 @@ func TestLedgerService_CountLines(t *testing.T) {
 	require.Error(t, err)
 }
 
+// mutationCandidates returns the commits of ledger mutations, given oldest first, in the order the
+// history handler passes them to GetFileHistory.
+func mutationCandidates(results ...*LedgerResult) []string {
+	mutations := make([]*FileMutationLog, 0, len(results))
+	for i := len(results) - 1; i >= 0; i-- {
+		mutations = append(mutations, &FileMutationLog{LedgerHashBefore: results[i].LedgerHashBefore, LedgerHashAfter: results[i].LedgerHashAfter})
+	}
+	return mutationCommits(mutations)
+}
+
 func TestLedgerService_GetFileHistory(t *testing.T) {
 	t.Parallel()
 	lms, tempDir := setupTestLedger(t)
 
-	// Create a file and make multiple changes
 	testFilePath := filepath.Join(tempDir, "history_test.txt")
 	operatorSessionID := "test-session-history"
 
-	// First version
-	result1, _ := lms.MirrorFileCreate(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	os.WriteFile(testFilePath, []byte("Version 1"), 0644)
-	lms.CompleteMirrorCreate(result1, operatorSessionID)
+	result1 := recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Version 1")
+	result2 := recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Version 2")
+	result3 := recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Version 3")
+	assert.Equal(t, result1.LedgerHashAfter, result2.LedgerHashBefore, "an unchanged pre-image is not committed again")
+	assert.Equal(t, result2.LedgerHashAfter, result3.LedgerHashBefore)
 
-	// Second version
-	result2, _ := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	os.WriteFile(testFilePath, []byte("Version 2"), 0644)
-	lms.CompleteMirrorWrite(result2, operatorSessionID)
-
-	// Third version
-	result3, _ := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	os.WriteFile(testFilePath, []byte("Version 3"), 0644)
-	lms.CompleteMirrorWrite(result3, operatorSessionID)
-
-	// Get file history
-	history, err := lms.GetFileHistory(t.Context(), testFilePath, 10, operatorSessionID)
+	history, err := lms.GetFileHistory(t.Context(), testFilePath, mutationCandidates(result1, result2, result3), 10, operatorSessionID)
 	require.NoError(t, err)
-	assert.GreaterOrEqual(t, len(history), 2) // At least 2 commits for this file
+	require.Len(t, history, 3, "one entry per mutation: the creation commits no pre-state and no edit re-commits its pre-image")
+	assert.Equal(t, result3.LedgerHashAfter, history[0].CommitHash)
+	assert.Equal(t, result2.LedgerHashAfter, history[1].CommitHash)
+	assert.Equal(t, result1.LedgerHashAfter, history[2].CommitHash)
 
-	// Verify history entries have valid data
 	for _, entry := range history {
 		assert.NotEmpty(t, entry.CommitHash)
 		assert.NotEmpty(t, entry.Message)
@@ -452,20 +424,38 @@ func TestLedgerService_GetFileHistory_DefaultLimit(t *testing.T) {
 	t.Parallel()
 	lms, tempDir := setupTestLedger(t)
 
-	// Create a file
 	testFilePath := filepath.Join(tempDir, "limit_test.txt")
-	result, _ := lms.MirrorFileCreate("operator_session", openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	os.WriteFile(testFilePath, []byte("content"), 0644)
-	lms.CompleteMirrorCreate(result, "operator_session")
+	result := recordMutation(t, lms, "operator_session", testFilePath, tempDir, "content")
 
 	// Get history with zero limit (should default to 50)
-	history, err := lms.GetFileHistory(t.Context(), testFilePath, 0, "operator_session")
-	// History may be empty if git operations haven't completed
-	if err != nil {
-		assert.Contains(t, err.Error(), "not found")
-	} else {
-		assert.NotNil(t, history)
-	}
+	history, err := lms.GetFileHistory(t.Context(), testFilePath, mutationCandidates(result), 0, "operator_session")
+	require.NoError(t, err)
+	require.Len(t, history, 1)
+	assert.Equal(t, result.LedgerHashAfter, history[0].CommitHash)
+}
+
+// TestLedgerService_GetFileHistoryCountsEveryWriteOfIdenticalContent pins what the handler's row
+// limit relies on: each snapshot is encrypted under a fresh nonce, so a write that leaves the
+// content unchanged still changes the snapshot and yields a history entry.
+func TestLedgerService_GetFileHistoryCountsEveryWriteOfIdenticalContent(t *testing.T) {
+	t.Parallel()
+	lms, tempDir := setupTestLedger(t)
+	testFilePath := filepath.Join(tempDir, "identical.txt")
+	const session = "identical-content"
+	require.NoError(t, os.WriteFile(testFilePath, []byte("same"), constants.PermFilePrivate))
+
+	// The ledger has never seen the file, so its pre-image is committed as a backup.
+	first := recordMutation(t, lms, session, testFilePath, tempDir, "same")
+	// The pre-image now matches the latest snapshot, so only the after commit is added.
+	second := recordMutation(t, lms, session, testFilePath, tempDir, "same")
+	assert.Equal(t, first.LedgerHashAfter, second.LedgerHashBefore)
+
+	history, err := lms.GetFileHistory(t.Context(), testFilePath, mutationCandidates(first, second), 10, session)
+	require.NoError(t, err)
+	require.Len(t, history, 3)
+	assert.Equal(t, second.LedgerHashAfter, history[0].CommitHash)
+	assert.Equal(t, first.LedgerHashAfter, history[1].CommitHash)
+	assert.Equal(t, first.LedgerHashBefore, history[2].CommitHash)
 }
 
 func TestLedgerService_GetFileHistoryExcludesUnrelatedCommits(t *testing.T) {
@@ -475,23 +465,20 @@ func TestLedgerService_GetFileHistoryExcludesUnrelatedCommits(t *testing.T) {
 	other := filepath.Join(root, "other.txt")
 	write := func(path, content string) *LedgerResult {
 		t.Helper()
-		result, err := lms.LedgerFileWrite(session, openTestTarget(t, lms.fileSvc, path, root))
-		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(path, []byte(content), constants.PermFilePrivate))
-		require.NoError(t, lms.CompleteMirrorWrite(result, session))
-		return result
+		return recordMutation(t, lms, session, path, root, content)
 	}
 	first := write(wanted, "original")
-	write(other, "unrelated one")
+	unrelatedOne := write(other, "unrelated one")
 	second := write(wanted, "changed")
-	write(other, "unrelated two")
-	history, err := lms.GetFileHistory(t.Context(), wanted, 50, session)
+	unrelatedTwo := write(other, "unrelated two")
+	require.Equal(t, unrelatedOne.LedgerHashAfter, second.LedgerHashBefore, "the unchanged pre-image begins at HEAD, an unrelated commit")
+	candidates := mutationCandidates(first, unrelatedOne, second, unrelatedTwo)
+	history, err := lms.GetFileHistory(t.Context(), wanted, candidates, 50, session)
 	require.NoError(t, err)
-	require.Len(t, history, 3, "history must contain changes to the requested snapshot, not every later commit")
+	require.Len(t, history, 2, "history must contain changes to the requested snapshot, not every later commit")
 	assert.Equal(t, second.LedgerHashAfter, history[0].CommitHash)
-	assert.Equal(t, second.LedgerHashBefore, history[1].CommitHash)
-	assert.Equal(t, first.LedgerHashAfter, history[2].CommitHash)
-	history, err = lms.GetFileHistory(t.Context(), wanted, 1, session)
+	assert.Equal(t, first.LedgerHashAfter, history[1].CommitHash)
+	history, err = lms.GetFileHistory(t.Context(), wanted, candidates, 1, session)
 	require.NoError(t, err)
 	require.Len(t, history, 1)
 	assert.Equal(t, second.LedgerHashAfter, history[0].CommitHash, "the limit applies after filtering unrelated commits")
@@ -501,7 +488,7 @@ func TestLedgerService_GetFileHistoryHonorsCancellation(t *testing.T) {
 	lms, root := setupTestLedger(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	history, err := lms.GetFileHistory(ctx, filepath.Join(root, "cancelled.txt"), 50, "cancelled-session")
+	history, err := lms.GetFileHistory(ctx, filepath.Join(root, "cancelled.txt"), nil, 50, "cancelled-session")
 	require.ErrorIs(t, err, context.Canceled)
 	assert.Empty(t, history)
 }
@@ -513,23 +500,16 @@ func TestLedgerService_GetFileAtCommit(t *testing.T) {
 	testFilePath := filepath.Join(tempDir, "commit_test.txt")
 	operatorSessionID := "test-session-commit"
 
-	// Create initial version
-	result1, _ := lms.MirrorFileCreate(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	os.WriteFile(testFilePath, []byte("Initial content"), 0644)
-	lms.CompleteMirrorCreate(result1, operatorSessionID)
-	initialHash := result1.LedgerHashAfter
+	result1 := recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Initial content")
+	recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Modified content")
 
-	// Create second version
-	result2, _ := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	os.WriteFile(testFilePath, []byte("Modified content"), 0644)
-	lms.CompleteMirrorWrite(result2, operatorSessionID)
-
-	// Get content at initial commit
-	content, err := lms.GetFileAtCommit(testFilePath, initialHash, operatorSessionID)
+	content, err := lms.GetFileAtCommit(testFilePath, result1.LedgerHashAfter, operatorSessionID)
 	require.NoError(t, err)
 	assert.Equal(t, "Initial content", content)
 
-	// Current file should be different
+	_, err = lms.GetFileAtCommit(testFilePath, result1.LedgerHashBefore, operatorSessionID)
+	require.ErrorIs(t, err, constants.ErrPathNotFound, "the HEAD a creation began at holds no snapshot of the file")
+
 	currentContent, _ := os.ReadFile(testFilePath)
 	assert.Equal(t, "Modified content", string(currentContent))
 }
@@ -541,26 +521,16 @@ func TestLedgerService_RestoreFileFromCommit(t *testing.T) {
 	testFilePath := filepath.Join(tempDir, "restore_test.txt")
 	operatorSessionID := "test-session-restore"
 
-	// Create initial version
-	result1, _ := lms.MirrorFileCreate(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	os.WriteFile(testFilePath, []byte("Original content"), 0644)
-	lms.CompleteMirrorCreate(result1, operatorSessionID)
-	originalHash := result1.LedgerHashAfter
+	result1 := recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Original content")
+	recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "New content")
 
-	// Create second version
-	result2, _ := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	os.WriteFile(testFilePath, []byte("New content"), 0644)
-	lms.CompleteMirrorWrite(result2, operatorSessionID)
-
-	// Verify current content is "New content"
 	currentContent, _ := os.ReadFile(testFilePath)
 	assert.Equal(t, "New content", string(currentContent))
 
-	// Restore to original version
-	_, err := lms.RestoreFileFromCommit(openTestTarget(t, lms.fileSvc, testFilePath, tempDir), originalHash, operatorSessionID, operatorSessionID)
+	restored, err := lms.RestoreFileFromCommit(openTestTarget(t, lms.fileSvc, testFilePath, tempDir), result1.LedgerHashAfter, operatorSessionID, operatorSessionID)
 	require.NoError(t, err)
+	assert.Equal(t, FileMutationRestore, restored.Operation)
 
-	// Verify content is restored
 	restoredContent, _ := os.ReadFile(testFilePath)
 	assert.Equal(t, "Original content", string(restoredContent))
 }
@@ -576,13 +546,9 @@ func TestLedgerService_RestoreFileFromCommit_MirrorsIntoExecutingSession(t *test
 	const sourceSessionID = "test-restore-source"
 	const executingSessionID = "test-restore-executing"
 
-	create, err := lms.MirrorFileCreate(sourceSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(testFilePath, []byte("Original content\n"), 0o644))
-	require.NoError(t, lms.CompleteMirrorCreate(create, sourceSessionID))
+	create := recordMutation(t, lms, sourceSessionID, testFilePath, tempDir, "Original content\n")
 	require.NoError(t, os.WriteFile(testFilePath, []byte("Edited content\n"), 0o644))
-	sourceHistory, err := lms.GetFileHistory(t.Context(), testFilePath, 10, sourceSessionID)
-	require.NoError(t, err)
+	sourceCommits := commitCount(t, lms, sourceSessionID)
 
 	restored, err := lms.RestoreFileFromCommit(openTestTarget(t, lms.fileSvc, testFilePath, tempDir), create.LedgerHashAfter, sourceSessionID, executingSessionID)
 	require.NoError(t, err)
@@ -599,9 +565,7 @@ func TestLedgerService_RestoreFileFromCommit_MirrorsIntoExecutingSession(t *test
 	assert.Contains(t, diff, "-Edited content")
 	assert.Contains(t, diff, "+Original content")
 
-	after, err := lms.GetFileHistory(t.Context(), testFilePath, 10, sourceSessionID)
-	require.NoError(t, err)
-	assert.Len(t, after, len(sourceHistory), "the source session ledger must not record the restore")
+	assert.Equal(t, sourceCommits, commitCount(t, lms, sourceSessionID), "the source session ledger must not record the restore")
 }
 
 func TestLedgerService_RestoreFileFromCommit_DisabledVault(t *testing.T) {
@@ -630,48 +594,21 @@ func TestLedgerService_CompleteWorkflow(t *testing.T) {
 	operatorSessionID := "test-complete-workflow"
 	testFilePath := filepath.Join(tempDir, "workflow_test.txt")
 
-	// Step 1: Create file
-	createResult, err := lms.MirrorFileCreate(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	require.NoError(t, err)
+	createResult := recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Step 1: Created")
+	writeResult := recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Step 2: Modified")
+	writeResult2 := recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Step 3: Modified again")
 
-	os.WriteFile(testFilePath, []byte("Step 1: Created"), 0644)
-	err = lms.CompleteMirrorCreate(createResult, operatorSessionID)
+	history, err := lms.GetFileHistory(t.Context(), testFilePath, mutationCandidates(createResult, writeResult, writeResult2), 10, operatorSessionID)
 	require.NoError(t, err)
-	hash1 := createResult.LedgerHashAfter
+	assert.Len(t, history, 3)
 
-	// Step 2: Modify file
-	writeResult, err := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
+	_, err = lms.RestoreFileFromCommit(openTestTarget(t, lms.fileSvc, testFilePath, tempDir), createResult.LedgerHashAfter, operatorSessionID, operatorSessionID)
 	require.NoError(t, err)
-
-	os.WriteFile(testFilePath, []byte("Step 2: Modified"), 0644)
-	err = lms.CompleteMirrorWrite(writeResult, operatorSessionID)
-	require.NoError(t, err)
-	hash2 := writeResult.LedgerHashAfter
-
-	// Step 3: Modify again
-	writeResult2, err := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	require.NoError(t, err)
-
-	os.WriteFile(testFilePath, []byte("Step 3: Modified again"), 0644)
-	err = lms.CompleteMirrorWrite(writeResult2, operatorSessionID)
-	require.NoError(t, err)
-
-	// Verify history
-	history, err := lms.GetFileHistory(t.Context(), testFilePath, 10, operatorSessionID)
-	require.NoError(t, err)
-	assert.GreaterOrEqual(t, len(history), 2)
-
-	// Restore to Step 1
-	_, err = lms.RestoreFileFromCommit(openTestTarget(t, lms.fileSvc, testFilePath, tempDir), hash1, operatorSessionID, operatorSessionID)
-	require.NoError(t, err)
-
 	content, _ := os.ReadFile(testFilePath)
 	assert.Equal(t, "Step 1: Created", string(content))
 
-	// Restore to Step 2
-	_, err = lms.RestoreFileFromCommit(openTestTarget(t, lms.fileSvc, testFilePath, tempDir), hash2, operatorSessionID, operatorSessionID)
+	_, err = lms.RestoreFileFromCommit(openTestTarget(t, lms.fileSvc, testFilePath, tempDir), writeResult.LedgerHashAfter, operatorSessionID, operatorSessionID)
 	require.NoError(t, err)
-
 	content, _ = os.ReadFile(testFilePath)
 	assert.Equal(t, "Step 2: Modified", string(content))
 }
@@ -689,7 +626,6 @@ func TestLedgerService_MultiSessionConcurrency(t *testing.T) {
 			sessionID := fmt.Sprintf("parallel-session-%d", idx)
 			filePath := filepath.Join(tempDir, fmt.Sprintf("parallel_test_%d.txt", idx))
 
-			// Start multi-phase operation
 			target, err := lms.fileSvc.OpenFileEditTarget(context.Background(), filePath, tempDir)
 			if !assert.NoError(t, err) {
 				done <- true
@@ -697,12 +633,14 @@ func TestLedgerService_MultiSessionConcurrency(t *testing.T) {
 			}
 			defer func() { _ = target.Close() }()
 
-			result, err := lms.MirrorFileCreate(sessionID, target)
-			assert.NoError(t, err)
+			result, err := lms.BeginMutation(sessionID, target)
+			if !assert.NoError(t, err) {
+				done <- true
+				return
+			}
 
-			os.WriteFile(filePath, []byte(fmt.Sprintf("content from session %d", idx)), 0644)
-			err = lms.CompleteMirrorCreate(result, sessionID)
-			assert.NoError(t, err)
+			assert.NoError(t, target.WriteFile([]byte(fmt.Sprintf("content from session %d", idx)), constants.PermFilePrivate))
+			assert.NoError(t, lms.CompleteMutation(result, sessionID))
 
 			// Verify session-specific ledger directory exists
 			sessionLedgerDir := lms.fileSvc.Resolve(filepath.Join(constants.DataDirname, constants.LedgerDirname, constants.SessionsDirname, sessionID))
@@ -734,15 +672,9 @@ func TestLedgerService_LargeFile(t *testing.T) {
 		largeContent[i] = byte('A' + (i % 26))
 	}
 
-	result, err := lms.MirrorFileCreate(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	require.NoError(t, err)
+	result := recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, string(largeContent))
 
-	os.WriteFile(testFilePath, largeContent, 0644)
-	err = lms.CompleteMirrorCreate(result, operatorSessionID)
-	require.NoError(t, err)
-
-	// Verify file was mirrored correctly
-	mirrorContent := readLedgerSnapshot(t, lms, result.LedgerPath)
+	mirrorContent := readLedgerSnapshot(t, lms, operatorSessionID, result)
 	assert.Len(t, mirrorContent, len(largeContent))
 	assert.Equal(t, largeContent, mirrorContent)
 }
@@ -755,37 +687,20 @@ func TestLedgerService_SpecialCharactersInPath(t *testing.T) {
 	testFilePath := filepath.Join(tempDir, "special file-name_v1.2.txt")
 	operatorSessionID := "test-special-chars"
 
-	result, err := lms.MirrorFileCreate(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	require.NoError(t, err)
-
-	os.WriteFile(testFilePath, []byte("special content"), 0644)
-	err = lms.CompleteMirrorCreate(result, operatorSessionID)
-	require.NoError(t, err)
-
-	// Verify file was copied
-	mirrorContent := readLedgerSnapshot(t, lms, result.LedgerPath)
-	assert.Equal(t, "special content", string(mirrorContent))
+	result := recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "special content")
+	assert.Equal(t, "special content", string(readLedgerSnapshot(t, lms, operatorSessionID, result)))
 }
 
 func TestLedgerService_DeepNestedPath(t *testing.T) {
 	t.Parallel()
 	lms, tempDir := setupTestLedger(t)
 
-	// Create a deeply nested path
 	nestedPath := filepath.Join(tempDir, "level1", "level2", "level3", "level4", "deep_file.txt")
-	os.MkdirAll(filepath.Dir(nestedPath), 0755)
+	require.NoError(t, os.MkdirAll(filepath.Dir(nestedPath), 0755))
 	operatorSessionID := "test-deep-path"
 
-	result, err := lms.MirrorFileCreate(operatorSessionID, openTestTarget(t, lms.fileSvc, nestedPath, tempDir))
-	require.NoError(t, err)
-
-	os.WriteFile(nestedPath, []byte("deep content"), 0644)
-	err = lms.CompleteMirrorCreate(result, operatorSessionID)
-	require.NoError(t, err)
-
-	// Verify nested structure was created in mirror
-	mirrorContent := readLedgerSnapshot(t, lms, result.LedgerPath)
-	assert.Equal(t, "deep content", string(mirrorContent))
+	result := recordMutation(t, lms, operatorSessionID, nestedPath, tempDir, "deep content")
+	assert.Equal(t, "deep content", string(readLedgerSnapshot(t, lms, operatorSessionID, result)))
 }
 
 func TestLedgerService_ZtdBinaryFile(t *testing.T) {
@@ -795,19 +710,11 @@ func TestLedgerService_ZtdBinaryFile(t *testing.T) {
 	testFilePath := filepath.Join(tempDir, "binary_file.bin")
 	operatorSessionID := "test-binary"
 
-	// Create binary content with null bytes
+	// Binary content with null bytes
 	binaryContent := []byte{0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD}
 
-	result, err := lms.MirrorFileCreate(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	require.NoError(t, err)
-
-	os.WriteFile(testFilePath, binaryContent, 0644)
-	err = lms.CompleteMirrorCreate(result, operatorSessionID)
-	require.NoError(t, err)
-
-	// Verify binary file was copied correctly
-	mirrorContent := readLedgerSnapshot(t, lms, result.LedgerPath)
-	assert.Equal(t, binaryContent, mirrorContent)
+	result := recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, string(binaryContent))
+	assert.Equal(t, binaryContent, readLedgerSnapshot(t, lms, operatorSessionID, result))
 }
 
 func TestTruncateHash(t *testing.T) {
@@ -842,10 +749,10 @@ func TestTruncateHash(t *testing.T) {
 	})
 }
 
-// TestLedgerService_LedgerFileWrite_CompleteSnapshotsTargetContent verifies that content
-// written through the governed target is what CompleteMirrorWrite commits and what
-// GetFileAtCommit returns for the resulting commit.
-func TestLedgerService_LedgerFileWrite_CompleteSnapshotsTargetContent(t *testing.T) {
+// TestLedgerService_CompleteMutation_SnapshotsTargetContent verifies that content written through
+// the governed target is what CompleteMutation commits and what GetFileAtCommit returns for the
+// resulting commit.
+func TestLedgerService_CompleteMutation_SnapshotsTargetContent(t *testing.T) {
 	t.Parallel()
 	lms, tempDir := setupTestLedger(t)
 
@@ -853,13 +760,7 @@ func TestLedgerService_LedgerFileWrite_CompleteSnapshotsTargetContent(t *testing
 	operatorSessionID := "test-session-target-write"
 	require.NoError(t, os.WriteFile(testFilePath, []byte("before"), 0644))
 
-	target := openTestTarget(t, lms.fileSvc, testFilePath, tempDir)
-	result, err := lms.LedgerFileWrite(operatorSessionID, target)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	require.NoError(t, target.WriteFile([]byte("through target"), 0644))
-	require.NoError(t, lms.CompleteMirrorWrite(result, operatorSessionID))
+	result := recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "through target")
 	require.NotEmpty(t, result.LedgerHashAfter)
 
 	content, err := lms.GetFileAtCommit(testFilePath, result.LedgerHashAfter, operatorSessionID)
@@ -867,41 +768,25 @@ func TestLedgerService_LedgerFileWrite_CompleteSnapshotsTargetContent(t *testing
 	assert.Equal(t, "through target", content)
 }
 
-func TestLedgerService_CopyToLedger_LockedVaultFailsClosed(t *testing.T) {
+func TestLedgerService_BeginMutation_LockedVaultFailsClosed(t *testing.T) {
 	t.Parallel()
 	lms, tempDir := setupTestLedgerLocked(t)
 
-	srcPath := filepath.Join(tempDir, "locked_source.txt")
-	require.NoError(t, os.WriteFile(srcPath, []byte("secret content\n"), 0644))
-
-	dstPath := lms.fileSvc.Resolve(filepath.Join(constants.DataDirname, constants.LedgerDirname, "files", "test", "locked_source.txt"))
-	err := lms.copyToLedger(openTestTarget(t, lms.fileSvc, srcPath, tempDir), dstPath)
-	require.ErrorIs(t, err, constants.ErrLedgerVaultRequired)
-
-	// Neither a plaintext nor an encrypted snapshot is written.
-	relDst, err := lms.fileSvc.Rel(dstPath)
-	require.NoError(t, err)
-	plainExists, _ := lms.fileSvc.FileExists(context.Background(), relDst)
-	encExists, _ := lms.fileSvc.FileExists(context.Background(), relDst+ledgerSnapshotSuffix)
-	assert.False(t, plainExists, "plaintext ledger copy must not be written while locked")
-	assert.False(t, encExists, "ledger snapshot must not be written while locked")
-}
-
-func TestLedgerService_CompleteMirrorWrite_LockedVaultFailsClosed(t *testing.T) {
-	t.Parallel()
-	lms, tempDir := setupTestLedgerLocked(t)
-
-	testFilePath := filepath.Join(tempDir, "locked_write.txt")
-	require.NoError(t, os.WriteFile(testFilePath, []byte("before\n"), 0644))
+	existing := filepath.Join(tempDir, "locked_write.txt")
+	require.NoError(t, os.WriteFile(existing, []byte("before\n"), 0644))
+	missing := filepath.Join(tempDir, "locked_create.txt")
 	operatorSessionID := "test-session-locked-write"
 
-	// Begin fails closed: no pre-mutation snapshot can be taken while the vault is locked.
-	result, err := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, lms.fileSvc, testFilePath, tempDir))
-	require.ErrorIs(t, err, constants.ErrLedgerVaultRequired)
-	assert.Nil(t, result)
+	// Begin fails closed for a write and a creation: no snapshot can be taken while the vault is
+	// locked.
+	for _, path := range []string{existing, missing} {
+		result, err := lms.BeginMutation(operatorSessionID, openTestTarget(t, lms.fileSvc, path, tempDir))
+		require.ErrorIs(t, err, constants.ErrLedgerVaultRequired, path)
+		assert.Nil(t, result)
+	}
 
 	// Nothing is written, not even the session repository.
-	_, err = lms.openSessionLedger(operatorSessionID)
+	_, err := lms.openSessionLedger(operatorSessionID)
 	require.ErrorIs(t, err, constants.ErrLedgerSessionNotFound)
 }
 
@@ -909,19 +794,30 @@ func TestLedgerService_CompleteMirrorWrite_LockedVaultFailsClosed(t *testing.T) 
 // file's snapshot path fails authentication instead of decrypting as that file's content.
 func TestLedgerSnapshot_BoundToSnapshotPath(t *testing.T) {
 	t.Parallel()
-	lms, _ := setupTestLedger(t)
-	ledgerDir := lms.fileSvc.Resolve(filepath.Join(constants.DataDirname, constants.LedgerDirname))
+	lms, tempDir := setupTestLedger(t)
+	const session = "snapshot-binding"
 
-	pathA, err := lms.getLedgerPath(ledgerDir, "/host/a.txt")
+	pathA := filepath.Join(tempDir, "a.txt")
+	pathB := filepath.Join(tempDir, "b.txt")
+	resultA := recordMutation(t, lms, session, pathA, tempDir, "content of a")
+	nameB, err := lms.SnapshotName(pathB)
 	require.NoError(t, err)
-	pathB, err := lms.getLedgerPath(ledgerDir, "/host/b.txt")
-	require.NoError(t, err)
-	relA, err := lms.fileSvc.Rel(pathA)
-	require.NoError(t, err)
-	writeLedgerSnapshot(t, lms, relA, []byte("content of a"))
 
-	ciphertext := readLedgerFile(t, lms.fileSvc, pathA+ledgerSnapshotSuffix)
-	_, err = lms.config.EncryptionVault.DecryptWithAAD(ciphertext, ledgerSnapshotAAD(ledgerSnapshotGitPath(pathB)))
+	ledgerDir, err := lms.openSessionLedger(session)
+	require.NoError(t, err)
+	repo, _, err := openLedgerHead(ledgerDir)
+	require.NoError(t, err)
+	tree, err := commitTree(repo, resultA.LedgerHashAfter)
+	require.NoError(t, err)
+	fileA, err := snapshotAt(repo.Storer, tree, resultA.SnapshotName)
+	require.NoError(t, err)
+	require.NotNil(t, fileA)
+	ciphertext, err := fileA.Contents()
+	require.NoError(t, err)
+
+	_, err = lms.config.EncryptionVault.DecryptWithAAD([]byte(ciphertext), ledgerSnapshotAAD(nameB))
 	require.Error(t, err)
-	assert.Equal(t, "content of a", string(readLedgerSnapshot(t, lms, pathA)))
+	assert.NotContains(t, ciphertext, "content of a", "a snapshot is never stored as plaintext")
+	assert.True(t, strings.HasSuffix(fileA.Name, snapshotTreePath(resultA.SnapshotName)))
+	assert.Equal(t, "content of a", string(readLedgerSnapshot(t, lms, session, resultA)))
 }

@@ -68,6 +68,15 @@ func setupTestHistoryHandler(t *testing.T) (*HistoryHandler, *LocalFirstEventsSt
 	return hh, eventsStore, testVault, tempDir
 }
 
+// handlerLedger returns the git ledger behind a handler from setupTestHistoryHandler, which
+// records the mutations a test needs history for.
+func handlerLedger(t *testing.T, hh *HistoryHandler) *GitLedgerService {
+	t.Helper()
+	lms, ok := hh.ledger.(*GitLedgerService)
+	require.True(t, ok)
+	return lms
+}
+
 // TestHistoryHandler_FetchHistory verifies that the HistoryHandler correctly
 // fetches and returns operator session history events from the SQLite events store.
 func TestHistoryHandler_FetchHistory(t *testing.T) {
@@ -175,6 +184,7 @@ func TestHistoryHandler_FetchHistoryWithFileMutations(t *testing.T) {
 	mutation := &FileMutationLog{
 		EventID:          eventID,
 		Filepath:         "/etc/config.yml",
+		SnapshotName:     "snapshot-name",
 		Operation:        FileMutationWrite,
 		LedgerHashBefore: "hash1",
 		LedgerHashAfter:  "hash2",
@@ -306,22 +316,10 @@ func TestHistoryHandler_FetchFileHistory(t *testing.T) {
 	testFilePath := filepath.Join(tempDir, "test_file_history.txt")
 	operatorSessionID := "test-file-history-session"
 
-	lms := hh.ledger
-
-	// First version
-	result1, _ := lms.MirrorFileCreate(operatorSessionID, openTestTarget(t, hh.fileSvc, testFilePath, tempDir))
-	os.WriteFile(testFilePath, []byte("Version 1"), 0644)
-	lms.CompleteMirrorCreate(result1, operatorSessionID)
-
-	// Second version
-	result2, _ := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, hh.fileSvc, testFilePath, tempDir))
-	os.WriteFile(testFilePath, []byte("Version 2"), 0644)
-	lms.CompleteMirrorWrite(result2, operatorSessionID)
-
-	// Third version
-	result3, _ := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, hh.fileSvc, testFilePath, tempDir))
-	os.WriteFile(testFilePath, []byte("Version 3"), 0644)
-	lms.CompleteMirrorWrite(result3, operatorSessionID)
+	lms := handlerLedger(t, hh)
+	recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Version 1")
+	recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Version 2")
+	recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Version 3")
 
 	// Fetch file history
 	requestJSON := testutil.BuildFetchFileHistoryRequestedPayload(t, "exec-123", testFilePath, 10, operatorSessionID)
@@ -380,10 +378,7 @@ func TestHistoryHandler_FetchFileHistoryDefaultLimit(t *testing.T) {
 	testFilePath := filepath.Join(tempDir, "default_limit_file.txt")
 	operatorSessionID := "operator_session"
 
-	lms := hh.ledger
-	result, _ := lms.MirrorFileCreate(operatorSessionID, openTestTarget(t, hh.fileSvc, testFilePath, tempDir))
-	os.WriteFile(testFilePath, []byte("content"), 0644)
-	lms.CompleteMirrorCreate(result, operatorSessionID)
+	recordMutation(t, handlerLedger(t, hh), operatorSessionID, testFilePath, tempDir, "content")
 
 	// Request with limit=0 (use same session ID as mirroring)
 	requestJSON := testutil.BuildFetchFileHistoryRequestedPayload(t, "exec-123", testFilePath, 0, "operator_session")
@@ -404,18 +399,14 @@ func TestHistoryHandler_RestoreFile(t *testing.T) {
 	testFilePath := filepath.Join(tempDir, "restore_test.txt")
 	operatorSessionID := "test-restore-session"
 
-	lms := hh.ledger
+	lms := handlerLedger(t, hh)
 
 	// Create initial file
-	result1, _ := lms.MirrorFileCreate(operatorSessionID, openTestTarget(t, hh.fileSvc, testFilePath, tempDir))
-	os.WriteFile(testFilePath, []byte("Original content"), 0644)
-	lms.CompleteMirrorCreate(result1, operatorSessionID)
+	result1 := recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Original content")
 	originalHash := result1.LedgerHashAfter
 
 	// Modify file
-	result2, _ := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, hh.fileSvc, testFilePath, tempDir))
-	os.WriteFile(testFilePath, []byte("Modified content"), 0644)
-	lms.CompleteMirrorWrite(result2, operatorSessionID)
+	recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Modified content")
 
 	// Verify current content
 	content, _ := os.ReadFile(testFilePath)
@@ -508,18 +499,14 @@ func TestHistoryHandler_GetFileAtCommit(t *testing.T) {
 	testFilePath := filepath.Join(tempDir, "get_at_commit.txt")
 	operatorSessionID := "test-get-at-commit"
 
-	lms := hh.ledger
+	lms := handlerLedger(t, hh)
 
 	// Create file
-	result, _ := lms.MirrorFileCreate(operatorSessionID, openTestTarget(t, hh.fileSvc, testFilePath, tempDir))
-	os.WriteFile(testFilePath, []byte("Initial"), 0644)
-	lms.CompleteMirrorCreate(result, operatorSessionID)
+	result := recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Initial")
 	initialHash := result.LedgerHashAfter
 
 	// Modify
-	result2, _ := lms.LedgerFileWrite(operatorSessionID, openTestTarget(t, hh.fileSvc, testFilePath, tempDir))
-	os.WriteFile(testFilePath, []byte("Modified"), 0644)
-	lms.CompleteMirrorWrite(result2, operatorSessionID)
+	recordMutation(t, lms, operatorSessionID, testFilePath, tempDir, "Modified")
 
 	// Get content at initial commit
 	content, err := hh.GetFileAtCommit(testFilePath, initialHash, operatorSessionID)
@@ -609,9 +596,10 @@ func TestHistoryHandler_MultipleFileMutationsInHistory(t *testing.T) {
 	files := []string{"/etc/config1.yml", "/etc/config2.yml", "/etc/config3.yml"}
 	for _, f := range files {
 		mutation := &FileMutationLog{
-			EventID:   eventID,
-			Filepath:  f,
-			Operation: FileMutationWrite,
+			EventID:      eventID,
+			Filepath:     f,
+			SnapshotName: "snapshot-name",
+			Operation:    FileMutationWrite,
 		}
 		err = eventsStore.RecordFileMutation(mutation)
 		require.NoError(t, err)
@@ -672,15 +660,11 @@ func TestHistoryHandler_RestoreFileRejectsSymlinkIntoProtectedRuntimePath(t *tes
 	defer testVault.Close()
 
 	ctx := context.Background()
-	lms := hh.ledger
 	sessionID := "test-restore-symlink"
 	linkPath := filepath.Join(tempDir, "link.txt")
 
 	// Record a ledger version for the link path while it is still a regular file.
-	result, err := lms.MirrorFileCreate(sessionID, openTestTarget(t, hh.fileSvc, linkPath, tempDir))
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(linkPath, []byte("ledger original"), 0644))
-	require.NoError(t, lms.CompleteMirrorCreate(result, sessionID))
+	result := recordMutation(t, handlerLedger(t, hh), sessionID, linkPath, tempDir, "ledger original")
 	commitHash := result.LedgerHashAfter
 	require.NotEmpty(t, commitHash)
 

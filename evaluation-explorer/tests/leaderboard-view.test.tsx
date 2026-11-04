@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -10,6 +11,10 @@ import { MODEL_ROLE_WIRE_ORDER } from '../src/content/roles';
 import { evalStore } from '../src/state/store';
 import { PREF } from '../src/state/dataset';
 import { LeaderboardView } from '../src/views/LeaderboardView';
+
+const currentRelease = readFileSync('../VERSION', 'utf8').trim();
+const currentSeries = currentRelease.replace(/\.\d+$/, '.x');
+const currentPatches = [0, 1, 2, 3].map((patch) => currentRelease.replace(/\.\d+$/, `.${patch}`));
 
 describe('LeaderboardView', () => {
   beforeEach(() => {
@@ -370,5 +375,65 @@ describe('LeaderboardView', () => {
     expect(panel.queryByRole('link', { name: 'Unknown artifact size' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Maximum artifact size in GiB' }), { target: { value: '' } });
     expect(panel.getByRole('link', { name: 'Unknown artifact size' })).toBeInTheDocument();
+  });
+
+  it('defaults to the current release series and includes every patch release in the leaderboard', () => {
+    const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
+    const makeModel = (variant_id: string, display_name: string, release: string): ModelSummary[] =>
+      MODEL_ROLE_WIRE_ORDER.map((role) => ({
+        ...source,
+        variant_id,
+        display_name,
+        role,
+        release,
+        release_basis: 'recorded' as const,
+        quality_state: 'exploratory_verified' as const,
+        inventory_only: false,
+        evaluation_coverage: 1,
+        parameter_count: 4_000_000_000,
+        latency_p50_ms: { value: 1000 },
+        output_tokens: { value: 100 },
+        pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
+        security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 },
+      }));
+
+    evalStore.loadFixtures([
+      ...currentPatches.flatMap((release) => makeModel(`model-${release}`, `Model ${release}`, release)),
+      ...makeModel('model-090', 'Model v0.9.0', 'v0.9.0'),
+      ...makeModel('model-091', 'Model v0.9.1', 'v0.9.1'),
+    ], []);
+
+    // Render leaderboard with default route (no query param)
+    render(
+      <MemoryRouter initialEntries={['/leaderboard']}>
+        <LeaderboardView />
+      </MemoryRouter>,
+    );
+
+    const selector = screen.getByRole('combobox', { name: 'Filter by release' }) as HTMLSelectElement;
+    expect(selector.value).toBe(currentSeries);
+
+    const options = Array.from(selector.options).map((opt) => opt.value);
+    expect(options).toEqual(['all', currentSeries, 'v0.9.x']);
+    for (const release of currentPatches) {
+      expect(options).not.toContain(release);
+    }
+    expect(options).not.toContain('v0.9.0');
+
+    const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+    // Every patch release of the current series must be included in the leaderboard
+    for (const release of currentPatches) {
+      expect(panel.getByRole('link', { name: `Model ${release}` })).toBeInTheDocument();
+    }
+
+    // Models of an older series must not be included
+    expect(panel.queryByRole('link', { name: 'Model v0.9.0' })).not.toBeInTheDocument();
+    expect(panel.queryByRole('link', { name: 'Model v0.9.1' })).not.toBeInTheDocument();
+
+    // Selecting the older series switches to its models
+    fireEvent.change(selector, { target: { value: 'v0.9.x' } });
+    expect(panel.getByRole('link', { name: 'Model v0.9.0' })).toBeInTheDocument();
+    expect(panel.getByRole('link', { name: 'Model v0.9.1' })).toBeInTheDocument();
+    expect(panel.queryByRole('link', { name: `Model ${currentPatches[0]}` })).not.toBeInTheDocument();
   });
 });
