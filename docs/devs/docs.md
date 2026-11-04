@@ -324,6 +324,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.6.0 Release Notes](../release_notes/v1.6.x/v1.6.0.md): Typed agent personas, Tribunal stage tiers and Lite L2 votes, Lite Triage and Interrogator, the tool-calling probe, and no-masking evaluation prompts.
 - [v1.8.0 Release Notes](../release_notes/v1.8.x/v1.8.0.md): Typed governed Ollama model pull and copy, the single-path file ledger, failed observer receipts as evidence, the append-only publisher outbox, and renamed CLI commands and catalog files.
 - [v1.9.0 Release Notes](../release_notes/v1.9.x/v1.9.0.md): Deterministic grades in the Evaluation Explorer Live view, the `deterministic_grading_completed` live event, Explorer view schema 1.12.0, `make vhs` governed agent demo recordings, and file mutation diffs outside the ledger write lock.
+- [v1.9.1 Release Notes](../release_notes/v1.9.x/v1.9.1.md): Published frozen formation results and leaderboard, feed-derived model membership, formation-aware release selection, local persona demo scenarios, and the Explorer view schema 1.13.0 upgrade requirement.
 
 ## Procedures
 

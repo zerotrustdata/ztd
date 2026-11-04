@@ -15,6 +15,7 @@ compatible with the previous release in the same minor series. See `INV-REL-VER-
 
 | Version | Date | Description | Notes |
 |---------|------|-------------|-------|
+| 1.9.1 | 2026-11-04 | Published frozen formation results and leaderboard, feed-derived model membership, formation-aware release selection, five local persona demo scenarios, and Explorer view schema 1.13.0 requiring public-feed consumers to upgrade together. | [v1.9.1](docs/release_notes/v1.9.x/v1.9.1.md) |
 | 1.9.0 | 2026-11-04 | Deterministic grades in the Evaluation Explorer Live view with a per-criterion Deterministic column and `deterministic_grading_completed` live event, Explorer view schema 1.12.0, removal of the Live view Input column, and `make vhs` governed agent demo recordings. | [v1.9.0](docs/release_notes/v1.9.x/v1.9.0.md) |
 
 ## v1.8.x
