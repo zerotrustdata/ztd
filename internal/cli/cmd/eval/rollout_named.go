@@ -58,7 +58,7 @@ history. Repeating a campaign ID runs that campaign again at that position.
 
 Examples (campaign-1 and campaign-2 are placeholders for your campaign IDs):
   ztd eval rollout ` + verb + ` my-rollout campaign-1 campaign-2
-  ztd eval rollout ` + verb + ` my-rollout --all --suite default-suite --judge qwen3.5:4b
+  ztd eval rollout ` + verb + ` my-rollout --all --suite default-suite --judge gemma4:e4b
   ztd eval rollout ` + verb + ` my-rollout --family granite --suite smoke-suite
   ztd eval rollout ` + verb + ` my-rollout --max-params 4b`,
 		Args: cobra.MinimumNArgs(1),
