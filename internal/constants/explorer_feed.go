@@ -10,4 +10,4 @@ package constants
 // ExplorerViewSchemaVersion is the Evaluation Explorer view contract version
 // every public feed record producer stamps. The Explorer's VIEW_SCHEMA_VERSION
 // (evaluation-explorer/src/contract/types.ts) names the same version.
-const ExplorerViewSchemaVersion = "1.11.0"
+const ExplorerViewSchemaVersion = "1.12.0"

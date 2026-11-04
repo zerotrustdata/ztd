@@ -290,6 +290,71 @@ func publicJudgeActivity(activity JudgeActivity) *evalv1.PublicLiveJudgeActivity
 	return block
 }
 
+// liveEventKindDeterministicGradingCompleted is the live event of an assignment's
+// completed deterministic grading.
+const liveEventKindDeterministicGradingCompleted = "deterministic_grading_completed"
+
+// PublicDeterministicGradingSignal is one assignment's completed deterministic
+// grading, placed on the assignment's row: VariantID and Role are the graded
+// subject's.
+type PublicDeterministicGradingSignal struct {
+	Release      CampaignRelease
+	RunID        string
+	AssignmentID string
+	VariantID    string
+	Role         models.ModelRole
+	TaskID       string
+	ObservedAt   string
+	EventID      string
+	Completed    int
+	Total        int
+	Grades       []*evalv1.PublicLiveDeterministicGrade
+}
+
+// ProjectDeterministicGradingEvent maps one completed deterministic grading to
+// its deterministic_grading_completed live event.
+func ProjectDeterministicGradingEvent(signal PublicDeterministicGradingSignal) (*evalv1.PublicLiveEvent, error) {
+	if signal.RunID == "" || signal.AssignmentID == "" || signal.VariantID == "" || signal.EventID == "" || signal.ObservedAt == "" || signal.Role == "" || len(signal.Grades) == 0 {
+		return nil, fmt.Errorf("evaluation: project deterministic grading event: %w", constants.ErrMissingRequiredField)
+	}
+	if signal.Completed < 0 || signal.Total < 0 || signal.Completed > signal.Total {
+		return nil, fmt.Errorf("evaluation: project deterministic grading event: %w", constants.ErrEvaluationLiveEventProgressInvalid)
+	}
+	return &evalv1.PublicLiveEvent{
+		SchemaVersion:       constants.ExplorerViewSchemaVersion,
+		Kind:                liveEventKindDeterministicGradingCompleted,
+		DatasetId:           CampaignDatasetID(signal.RunID),
+		QualityState:        "live_in_progress",
+		ObservedAt:          signal.ObservedAt,
+		SourceRevisionLabel: campaignSourceRevision,
+		Release:             signal.Release.Release,
+		ReleaseBasis:        signal.Release.publicBasis(),
+		SourceRevision:      signal.Release.SourceRevision,
+		EventId:             signal.EventID,
+		RunId:               signal.RunID,
+		AssignmentId:        signal.AssignmentID,
+		VariantId:           signal.VariantID,
+		Role:                string(signal.Role),
+		LifecycleStatus:     "running",
+		Completed:           proto.Uint32(uint32(signal.Completed)),
+		Total:               proto.Uint32(uint32(signal.Total)),
+		TaskId:              signal.TaskID,
+		DeterministicGrades: signal.Grades,
+	}, nil
+}
+
+// publicLiveDeterministicGrades projects an assignment's deterministic grades
+// in grading order.
+func publicLiveDeterministicGrades(grades []*evalv1.DeterministicGrade) []*evalv1.PublicLiveDeterministicGrade {
+	public := make([]*evalv1.PublicLiveDeterministicGrade, 0, len(grades))
+	for _, grade := range grades {
+		if grade != nil && grade.GetCriterionId() != "" {
+			public = append(public, &evalv1.PublicLiveDeterministicGrade{CriterionId: grade.GetCriterionId(), Status: grade.GetStatus(), Detail: grade.GetDetail()})
+		}
+	}
+	return public
+}
+
 // nonNegativeUint32 and nonNegativeUint64 carry a reported provider count
 // onto the public block; an absent or negative report stays absent.
 func nonNegativeUint32(value *int32) *uint32 {

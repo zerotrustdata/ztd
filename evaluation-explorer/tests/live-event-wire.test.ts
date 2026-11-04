@@ -20,6 +20,12 @@ const judgeEventVector = JSON.parse(
   readFileSync(join(repoRoot, 'protocol/vectors/eval/public_live_event_judge.json'), 'utf8'),
 ) as { message_type: string; canonical_json: string };
 
+const deterministicEventVector = JSON.parse(
+  readFileSync(join(repoRoot, 'protocol/vectors/eval/public_live_event_deterministic.json'), 'utf8'),
+) as { message_type: string; canonical_json: string };
+
+const deterministicWire = (): Record<string, unknown> => JSON.parse(deterministicEventVector.canonical_json) as Record<string, unknown>;
+
 const judgeWire = (): Record<string, unknown> => JSON.parse(judgeEventVector.canonical_json) as Record<string, unknown>;
 const withJudge = (patch: Record<string, unknown>, event: Record<string, unknown> = {}): Record<string, unknown> => {
   const body = { ...judgeWire(), ...event };
@@ -137,6 +143,38 @@ describe('EvalStore live event ingest', () => {
     store.acceptProjection({ sequence: 8, record_type: 'event', record_bytes: JSON.stringify(body) });
     expect(store.getState().events).toHaveLength(0);
     expect(store.getState().errors.join(' ')).toContain('completed');
+  });
+});
+
+describe('decodeLiveEventWire deterministic grading events', () => {
+  it('decodes the Go-produced vector into view statuses in grading order', () => {
+    expect(deterministicEventVector.message_type).toBe('PublicLiveEvent');
+    const event = decodeLiveEventWire(deterministicWire());
+    expect(event.kind).toBe('deterministic_grading_completed');
+    expect(event.variant_id).toBe('gemma4-e2b');
+    expect(event.deterministic_grades).toEqual([
+      { criterion_id: 'role-invoked', status: 'pass', detail: 'designated model role invoked with governed inference evidence' },
+      { criterion_id: 'trajectory', status: 'fail', detail: 'wrong tool' },
+      { criterion_id: 'file-state', status: 'invalid_evidence' },
+    ]);
+  });
+
+  it.each([
+    ['no grades', { deterministic_grades: undefined }],
+    ['an empty grade list', { deterministic_grades: [] }],
+    ['an unknown status', { deterministic_grades: [{ criterion_id: 'a', status: 'EVALUATION_VERDICT_STATUS_MAYBE' }] }],
+    ['an unknown grade field', { deterministic_grades: [{ criterion_id: 'a', status: 'EVALUATION_VERDICT_STATUS_PASS', score: 1 }] }],
+    ['an empty criterion', { deterministic_grades: [{ criterion_id: '', status: 'EVALUATION_VERDICT_STATUS_PASS' }] }],
+    ['no assignment row', { assignment_id: undefined }],
+    ['a stage label', { stage_label: 'grading' }],
+    ['a metric', { metric_delta: { pass: { value: 1 } } }],
+    ['grades over the feed bound', { deterministic_grades: Array.from({ length: 129 }, (_, index) => ({ criterion_id: `c-${index}`, status: 'EVALUATION_VERDICT_STATUS_PASS' })) }],
+  ])('rejects a grading event with %s', (_name, patch) => {
+    expect(() => decodeLiveEventWire({ ...deterministicWire(), ...patch })).toThrow();
+  });
+
+  it('rejects grades on any other kind', () => {
+    expect(() => decodeLiveEventWire({ ...wire(), deterministic_grades: deterministicWire().deterministic_grades })).toThrow();
   });
 });
 

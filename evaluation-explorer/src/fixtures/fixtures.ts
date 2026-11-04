@@ -797,6 +797,28 @@ export const fixtureLiveEvents: LiveEvent[] = [
     total: 5,
     stage_label: 'inference',
   },
+  // The deterministic grades of asg-live-001, between its stage and its judge.
+  {
+    schema_version: '1.12.0',
+    kind: 'deterministic_grading_completed',
+    dataset_id: LIVE_DATASET,
+    quality_state: 'live_in_progress',
+    observed_at: '2026-09-14T08:00:08.500Z',
+    event_id: 'evt-004-deterministic-grading',
+    run_id: 'run-live-demo-20260914',
+    assignment_id: 'asg-live-001',
+    task_id: 'task-ifeval-001',
+    variant_id: 'gemma4-e4b',
+    role: 'primary',
+    lifecycle_status: 'running',
+    completed: 0,
+    total: 5,
+    deterministic_grades: [
+      { criterion_id: 'role-invoked', status: 'pass', detail: 'designated model role invoked with governed inference evidence' },
+      { criterion_id: 'governed-inference', status: 'pass', detail: 'at least one governed inference call is recorded' },
+      { criterion_id: 'trajectory', status: 'fail', detail: 'wrong tool' },
+    ],
+  },
   // The pinned judge on asg-live-001's final reply: in flight, then scored.
   {
     schema_version: '1.11.0',

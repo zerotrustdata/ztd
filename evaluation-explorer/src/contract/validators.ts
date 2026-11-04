@@ -258,11 +258,14 @@ const SUITE_FIELDS = [...ENVELOPE_FIELDS, 'suite_id', 'display_name', 'task_coun
 const EVALUATION_FIELDS = [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'run_status', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'run_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'headline_metrics', 'evidence_link', 'native_result'] as const;
 const ASSIGNMENT_FIELDS = [...ENVELOPE_FIELDS, 'assignment_id', 'run_id', 'task_id', 'scenario_id', 'variant_id', 'role', 'repetition', 'scenario_category', 'evaluation_unit', 'stack_id', 'scenario_summary', 'semantic_grade_summaries', 'activity_summary', 'evidence_bindings', 'benchmark_observations', 'terminal_status', 'metric_values', 'missingness_reason', 'stage_summary', 'resource_summary', 'verification_disposition', 'verification_metadata', 'model_response', 'failure_output', 'role_transcripts', 'trajectory_outcome', 'guided_retry_count', 'failure_reason', 'tools_declared'] as const;
 const METHODOLOGY_FIELDS = [...ENVELOPE_FIELDS, 'metric_definitions', 'suite_definitions', 'limitations'] as const;
-const LIVE_EVENT_FIELDS = [...ENVELOPE_FIELDS, 'event_id', 'run_id', 'assignment_id', 'task_id', 'variant_id', 'role', 'lifecycle_status', 'terminal_status', 'completed', 'total', 'stage_label', 'metric_delta', 'judge', 'feed_sequence'] as const;
+const LIVE_EVENT_FIELDS = [...ENVELOPE_FIELDS, 'event_id', 'run_id', 'assignment_id', 'task_id', 'variant_id', 'role', 'lifecycle_status', 'terminal_status', 'completed', 'total', 'stage_label', 'metric_delta', 'judge', 'deterministic_grades', 'feed_sequence'] as const;
 const LIVE_JUDGE_FIELDS = ['judge_variant_id', 'served_model_tag', 'model_digest', 'subject', 'criterion_id', 'index', 'count', 'rubric_version', 'state', 'score', 'rationale', 'failure', 'provider_attempt_id', 'transaction_id', 'usage_reported', 'prompt_tokens', 'completion_tokens', 'thinking_tokens', 'cache_tokens', 'load_duration_ns', 'prompt_eval_duration_ns', 'generation_duration_ns', 'total_duration_ns', 'time_to_first_token_ns', 'finish_reason', 'executed_at_unix_ms', 'dispatch_elapsed_ns'] as const;
 const LIVE_JUDGE_TOKEN_FIELDS = ['prompt_tokens', 'completion_tokens', 'thinking_tokens', 'cache_tokens'] as const;
 const LIVE_JUDGE_DURATION_FIELDS = ['load_duration_ns', 'prompt_eval_duration_ns', 'generation_duration_ns', 'total_duration_ns', 'time_to_first_token_ns', 'executed_at_unix_ms', 'dispatch_elapsed_ns'] as const;
 const LIVE_JUDGE_KINDS: readonly string[] = ['judge_started', 'judge_completed'];
+const LIVE_DETERMINISTIC_GRADE_FIELDS = ['criterion_id', 'status', 'detail'] as const;
+/** publicdisclosure.maxArrayEntries, the feed's array bound. */
+const LIVE_DETERMINISTIC_GRADES_MAX = 128;
 const ASSIGNMENT_TERMINAL_STATUSES = [...TERMINAL_STATUSES, 'running', 'queued'] as const;
 
 /** Reports whether a supported schema version is at or after a revision.
@@ -1129,6 +1132,21 @@ function assertLiveJudgeActivity(value: unknown, completed: boolean, path: strin
   assert(value.failure === undefined && value.transaction_id !== undefined && value.provider_attempt_id !== undefined, path, 'a judge verdict carries its attempt and transaction and no failure');
 }
 
+/** The grade rules publicdisclosure.validateLiveDeterministicGradingEvent enforces. */
+function assertLiveDeterministicGrades(value: unknown, path: string): void {
+  assert(Array.isArray(value), path, 'expected array');
+  assert(value.length >= 1 && value.length <= LIVE_DETERMINISTIC_GRADES_MAX, path, `must hold 1..${LIVE_DETERMINISTIC_GRADES_MAX} grades`);
+  value.forEach((grade: unknown, index) => {
+    const gradePath = `${path}[${index}]`;
+    assertObject(grade, gradePath);
+    rejectUnknown(grade, LIVE_DETERMINISTIC_GRADE_FIELDS, gradePath);
+    assertString(grade.criterion_id, `${gradePath}.criterion_id`);
+    assert(grade.criterion_id !== '', `${gradePath}.criterion_id`, 'must not be empty');
+    assertEnum(grade.status, NATIVE_RESULT_STATUSES, `${gradePath}.status`);
+    assertOptional(grade.detail, `${gradePath}.detail`, assertString);
+  });
+}
+
 export function isLiveEvent(value: unknown): asserts value is LiveEvent {
   assertObject(value, 'live_event');
   rejectUnknown(value, LIVE_EVENT_FIELDS, 'live_event');
@@ -1157,6 +1175,13 @@ export function isLiveEvent(value: unknown): asserts value is LiveEvent {
     assertLiveJudgeActivity(value.judge, value.kind === 'judge_completed', 'live_event.judge');
   } else {
     assert(value.judge === undefined, 'live_event.judge', 'judge is set only on judge events');
+  }
+  if (value.kind === 'deterministic_grading_completed') {
+    assert(value.assignment_id !== undefined && value.task_id !== undefined && value.variant_id !== undefined && value.role !== undefined, 'live_event', 'a deterministic grading event names its assignment row and graded subject');
+    assert(value.metric_delta === undefined && value.stage_label === undefined && value.lifecycle_status === 'running', 'live_event', 'a deterministic grading event carries no metric or stage label and is running');
+    assertLiveDeterministicGrades(value.deterministic_grades, 'live_event.deterministic_grades');
+  } else {
+    assert(value.deterministic_grades === undefined, 'live_event.deterministic_grades', 'deterministic_grades is set only on deterministic grading events');
   }
   assertOptional(value.feed_sequence, 'live_event.feed_sequence', assertInteger);
   if (value.feed_sequence !== undefined) assert(value.feed_sequence >= 0, 'live_event.feed_sequence', 'must be >= 0');

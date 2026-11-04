@@ -14,8 +14,8 @@
 // or required field is a contract revision: bump VIEW_SCHEMA_VERSION and
 // update descriptor.json and validators.
 
-export const VIEW_SCHEMA_VERSION = '1.11.0' as const;
-export const SUPPORTED_VIEW_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '1.10.0', '1.11.0'] as const;
+export const VIEW_SCHEMA_VERSION = '1.12.0' as const;
+export const SUPPORTED_VIEW_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '1.10.0', '1.11.0', '1.12.0'] as const;
 export type ViewSchemaVersion = (typeof SUPPORTED_VIEW_SCHEMA_VERSIONS)[number];
 
 export const ACTIVITY_AVAILABILITIES = ['observed', 'unavailable', 'not_applicable'] as const;
@@ -294,6 +294,7 @@ export const LIVE_EVENT_KINDS = [
   'evaluation_stopped',
   'judge_started',
   'judge_completed',
+  'deterministic_grading_completed',
 ] as const;
 export type LiveEventKind = (typeof LIVE_EVENT_KINDS)[number];
 
@@ -843,9 +844,19 @@ export interface LiveEvent extends ViewRecordEnvelope {
   metric_delta?: Record<string, MetricValue>;
   /** Present only on judge_started and judge_completed. */
   judge?: LiveJudgeActivity;
+  /** Present only on deterministic_grading_completed, in grading order. */
+  deterministic_grades?: LiveDeterministicGrade[];
   observed_at: string;
   /** Mirror feed sequence stamped at client ingest; not part of wire payloads. */
   feed_sequence?: number;
+}
+
+/** One deterministic grade of the assignment its event names. */
+export interface LiveDeterministicGrade {
+  criterion_id: string;
+  status: NativeResultStatus;
+  /** Grader output, published verbatim. */
+  detail?: string;
 }
 
 /** One pinned-judge inference on the assignment its event names. The event's

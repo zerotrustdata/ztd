@@ -148,7 +148,7 @@ func campaignJudgeConfig(req AssignmentExecutionRequest, newID func(string) stri
 // verdict it reports is the one the grade records.
 type judgeActivityObserver struct {
 	ctx      context.Context
-	sink     JudgeActivitySink
+	sink     GradingActivitySink
 	variant  *evalv1.ModelVariant
 	receipts judgeReceiptCheck
 }
@@ -197,10 +197,10 @@ func (c judgeReceiptCheck) verify(score judge.Score) error {
 // request observes judge activity, every dispatch reports to its sink.
 func (e *CampaignAgentExecutor) executionJudgeConfig(ctx context.Context, req AssignmentExecutionRequest, receipts judgeReceiptCheck) (judge.Config, error) {
 	cfg, err := campaignJudgeConfig(req, e.newID)
-	if err != nil || req.JudgeActivity == nil {
+	if err != nil || req.GradingActivity == nil {
 		return cfg, err
 	}
-	cfg.Observer = judgeActivityObserver{ctx: ctx, sink: req.JudgeActivity, variant: cfg.Variant, receipts: receipts}
+	cfg.Observer = judgeActivityObserver{ctx: ctx, sink: req.GradingActivity, variant: cfg.Variant, receipts: receipts}
 	cfg.Clock = e.now
 	return cfg, nil
 }

@@ -10,6 +10,9 @@ import type { FeedConnectionState, StreamConnectionState } from '../utils/feed-s
 import { recordKey, resolveModelSummary, useStoreState } from '../state/store';
 import {
   assignmentRowKey,
+  criterionLabels,
+  deterministicGradesByAssignment,
+  isDeterministicGradingEvent,
   isJudgeEvent,
   isTribunalVoteEvent,
   judgeActivityByAssignment,
@@ -17,6 +20,7 @@ import {
   TRIBUNAL_VOTE_PREFIX,
   visibleStreamEvents,
 } from '../views/derived';
+import { DeterministicGrades } from './DeterministicGrades';
 import { JudgeActivity } from './JudgeActivity';
 import { EmptyState, ReconcilePlaceholder, StreamStatusIndicator } from './shared';
 import { SCENARIO_TASK_BY_ID } from '../content/scenario-task';
@@ -139,7 +143,6 @@ function applyAssignmentResourceSummary(
   const resources = assignment?.resource_summary;
   if (!resources) return values;
   if (resources.latency_ms) values.latency_ms = resources.latency_ms;
-  if (resources.input_tokens) values.input_tokens = resources.input_tokens;
   if (resources.output_tokens) values.output_tokens = resources.output_tokens;
   if (resources.thinking_tokens) values.thinking_tokens = resources.thinking_tokens;
   if (resources.cache_tokens) values.cache_tokens = resources.cache_tokens;
@@ -249,13 +252,12 @@ function eventParts(event: LiveEvent, assignment: AssignmentResult | undefined):
   };
 }
 
-type AssignmentMetricColumn = 'latency_ms' | 'input_tokens' | 'output_tokens' | 'tokens_per_second';
+type AssignmentMetricColumn = 'latency_ms' | 'output_tokens' | 'tokens_per_second';
 type StreamSortField = 'time' | 'result' | 'task' | 'model' | AssignmentMetricColumn;
 type StreamSortDirection = 'asc' | 'desc';
 
 const ASSIGNMENT_METRIC_COLUMNS: Array<{ key: AssignmentMetricColumn; label: string; format: (value: number) => string }> = [
   { key: 'latency_ms', label: 'Latency (ms)', format: (ms) => formatNumber(ms) },
-  { key: 'input_tokens', label: 'Input (tok)', format: (value) => formatNumber(value) },
   { key: 'output_tokens', label: 'Output (tok)', format: (value) => formatNumber(value) },
   { key: 'tokens_per_second', label: 'Tokens/s', format: (value) => formatNumber(value, 1) },
 ];
@@ -423,10 +425,12 @@ export function LiveEventStream({
   const scrollRef = useRef<HTMLDivElement>(null);
   const models = useStoreState((state) => state.models);
   const assignments = useStoreState((state) => state.assignments);
-  // Tribunal votes and judge activity are cells of their assignment's row,
-  // never rows of their own and never its status, model, or metrics.
-  const activityEvents = useMemo(() => events.filter((event) => !isTribunalVoteEvent(event) && !isJudgeEvent(event)), [events]);
+  // Tribunal votes, deterministic grades, and judge activity are cells of their
+  // assignment's row, never rows of their own and never its status, model, or
+  // metrics.
+  const activityEvents = useMemo(() => events.filter((event) => !isTribunalVoteEvent(event) && !isDeterministicGradingEvent(event) && !isJudgeEvent(event)), [events]);
   const tribunalVotes = useMemo(() => tribunalVotesByAssignment(events), [events]);
+  const deterministicGrades = useMemo(() => deterministicGradesByAssignment(events), [events]);
   const judgeActivity = useMemo(() => judgeActivityByAssignment(events), [events]);
 
   const latestEvent = useMemo(() => activityEvents.reduce<LiveEvent | undefined>(
@@ -477,6 +481,7 @@ export function LiveEventStream({
   const safePage = Math.min(page, Math.max(0, pageCount - 1));
   const pageEvents = sortedVisible.slice(safePage * STREAM_PAGE_SIZE, (safePage + 1) * STREAM_PAGE_SIZE);
   const showTribunal = pageEvents.some((event) => event.assignment_id && tribunalVotes.has(assignmentRowKey(event)));
+  const showDeterministic = pageEvents.some((event) => event.assignment_id && deterministicGrades.has(assignmentRowKey(event)));
   const showJudge = pageEvents.some((event) => event.assignment_id && judgeActivity.has(assignmentRowKey(event)));
 
   function handleSort(field: StreamSortField): void {
@@ -536,12 +541,13 @@ export function LiveEventStream({
           : <EmptyState hasRecords={events.length > 0} hasFilters={hasFilters} connection={connection} />
       ) : (
         <div className="stream-scroll" ref={scrollRef} role="region" aria-label="Live activity results" tabIndex={0}>
-          <table className="stream-table">
+          <table className="stream-table" data-grading={showTribunal || showDeterministic || showJudge ? '' : undefined}>
             <thead><tr>
               <SortHeader label="Result" field="result" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <SortHeader label="Task" field="task" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <SortHeader label="Model" field="model" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               {showTribunal ? <th scope="col" className="stream-tribunal-header">Consensus</th> : null}
+              {showDeterministic ? <th scope="col" className="stream-deterministic-header">Deterministic</th> : null}
               {showJudge ? <th scope="col" className="stream-judge-header">Judge</th> : null}
               {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label }) => <SortHeader key={key} className="stream-metric-header" label={label} field={key} sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />)}
               <SortHeader className="stream-time-header" label="Time" field="time" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
@@ -555,6 +561,7 @@ export function LiveEventStream({
                 const model = event.variant_id ? resolveModelSummary(models, event.dataset_id, event.variant_id) : undefined;
                 const parts = eventParts(event, assignment);
                 const rowVotes = event.assignment_id ? tribunalVotes.get(assignmentRowKey(event)) : undefined;
+                const rowGrades = event.assignment_id ? deterministicGrades.get(assignmentRowKey(event)) : undefined;
                 const rowJudgments = event.assignment_id ? judgeActivity.get(assignmentRowKey(event)) : undefined;
                 const result = streamResult(event, assignment);
                 const eventHref = event.assignment_id
@@ -599,6 +606,9 @@ export function LiveEventStream({
                         {rowVotes && !isVote ? <TribunalVotes votes={rowVotes} /> : null}
                       </td>
                     ) : null}
+                    {showDeterministic ? <td className="stream-deterministic-cell">
+                      {rowGrades ? <DeterministicGrades grades={rowGrades} row={assignmentRowKey(event)} labels={assignment ? criterionLabels(assignment) : undefined} /> : null}
+                    </td> : null}
                     {showJudge ? <td className="stream-judge-cell">
                       {rowJudgments ? <JudgeActivity judgments={rowJudgments} /> : null}
                     </td> : null}

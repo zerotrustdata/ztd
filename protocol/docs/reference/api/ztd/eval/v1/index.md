@@ -80,6 +80,7 @@
     - [PublicEvidenceBinding](#ztd-eval-v1-PublicEvidenceBinding)
     - [PublicGovernedActionActivity](#ztd-eval-v1-PublicGovernedActionActivity)
     - [PublicGovernedActionActivityRecord](#ztd-eval-v1-PublicGovernedActionActivityRecord)
+    - [PublicLiveDeterministicGrade](#ztd-eval-v1-PublicLiveDeterministicGrade)
     - [PublicLiveEvent](#ztd-eval-v1-PublicLiveEvent)
     - [PublicLiveEvent.MetricDeltaEntry](#ztd-eval-v1-PublicLiveEvent-MetricDeltaEntry)
     - [PublicLiveJudgeActivity](#ztd-eval-v1-PublicLiveJudgeActivity)
@@ -1887,6 +1888,24 @@ to one governed inference provider attempt.
 
 
 
+<a name="ztd-eval-v1-PublicLiveDeterministicGrade"></a>
+
+### PublicLiveDeterministicGrade
+One deterministic grade of the assignment the event names, carrying what the
+assignment&#39;s public grade summary publishes.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| criterion_id | [string](#string) |  |  |
+| status | [EvaluationVerdictStatus](#ztd-eval-v1-EvaluationVerdictStatus) |  |  |
+| detail | [string](#string) |  | Grader output published verbatim under the public model-text bound. |
+
+
+
+
+
+
 <a name="ztd-eval-v1-PublicLiveEvent"></a>
 
 ### PublicLiveEvent
@@ -1920,6 +1939,7 @@ producer that leaves either unset is rejected at validation.
 | task_id | [string](#string) |  |  |
 | metric_delta | [PublicLiveEvent.MetricDeltaEntry](#ztd-eval-v1-PublicLiveEvent-MetricDeltaEntry) | repeated |  |
 | judge | [PublicLiveJudgeActivity](#ztd-eval-v1-PublicLiveJudgeActivity) |  | judge is set only on judge_started and judge_completed events. |
+| deterministic_grades | [PublicLiveDeterministicGrade](#ztd-eval-v1-PublicLiveDeterministicGrade) | repeated | deterministic_grades is set only on deterministic_grading_completed events: every deterministic grade of the assignment, in grading order. |
 
 
 

@@ -242,7 +242,7 @@ func TestCampaignPublication_RebuildsJudgeEventsUnderTheLiveKeys(t *testing.T) {
 	met.Met, met.Rationale = true, "refuses"
 	quality := signedJudgeScore(t, judge.SubjectFinalReply, "", "judge-final_reply-1", `{"score": 4, "rationale": "clear"}`, judge.Position{Index: 1, Count: 1})
 
-	live, err := coordinator.NewJudgeActivityPublisher(ctx, assignment, func() time.Time { return time.Unix(1_700_000_004, 0) })
+	live, err := coordinator.NewGradingActivityPublisher(ctx, assignment, func() time.Time { return time.Unix(1_700_000_004, 0) })
 	require.NoError(t, err)
 	live.JudgeActivity(ctx, JudgeActivity{Judge: judgeActivityJudge(), Score: met, Completed: true, Elapsed: time.Second})
 	require.NoError(t, live.Err())
@@ -352,12 +352,12 @@ type judgingCampaignExecutor struct {
 }
 
 func (e *judgingCampaignExecutor) ExecuteAssignment(ctx context.Context, req AssignmentExecutionRequest) (*evalv1.EvaluationAssignmentResult, error) {
-	if req.JudgeActivity != nil {
+	if req.GradingActivity != nil {
 		e.sinkSeen = true
 		score := judge.Score{Subject: judge.SubjectFinalReply, Position: judge.Position{Index: 1, Count: 1}, RubricVersion: judge.RubricVersion, ProviderAttemptID: "judge-final_reply-1"}
-		req.JudgeActivity.JudgeActivity(ctx, JudgeActivity{Judge: judgeActivityJudge(), Score: score})
+		req.GradingActivity.JudgeActivity(ctx, JudgeActivity{Judge: judgeActivityJudge(), Score: score})
 		score.Status, score.Failure = judge.StatusFailed, evalv1.JudgeFailure_JUDGE_FAILURE_DISPATCH_FAILED
-		req.JudgeActivity.JudgeActivity(ctx, JudgeActivity{Judge: judgeActivityJudge(), Score: score, Completed: true, Elapsed: time.Second})
+		req.GradingActivity.JudgeActivity(ctx, JudgeActivity{Judge: judgeActivityJudge(), Score: score, Completed: true, Elapsed: time.Second})
 	}
 	return nil, assignmentExecutionError("evaluation: execute assignment", fmt.Errorf("injected executor failure"))
 }
@@ -448,7 +448,7 @@ func (r *countingRejectingCampaignFeedExporter) ExportBatch(context.Context, []C
 	return constants.ErrEvidenceArtifactTooLarge
 }
 
-func TestJudgeActivityPublisher_StopsAfterTheFirstFailure(t *testing.T) {
+func TestGradingActivityPublisher_StopsAfterTheFirstFailure(t *testing.T) {
 	ctx := context.Background()
 	files := newCampaignRuntimeFileService(t)
 	store := NewStore(files)
@@ -457,7 +457,7 @@ func TestJudgeActivityPublisher_StopsAfterTheFirstFailure(t *testing.T) {
 	require.NoError(t, store.SaveAssignment(ctx, assignment))
 	exporter := &countingRejectingCampaignFeedExporter{}
 	publisher, err := NewCampaignPublicationCoordinator(store, files, NewMemoryCampaignPublicationStateStore(), exporter).
-		NewJudgeActivityPublisher(ctx, assignment, func() time.Time { return time.Unix(1_700_000_004, 0) })
+		NewGradingActivityPublisher(ctx, assignment, func() time.Time { return time.Unix(1_700_000_004, 0) })
 	require.NoError(t, err)
 	started := judge.Score{Subject: judge.SubjectFinalReply, Position: judge.Position{Index: 1, Count: 1}, RubricVersion: judge.RubricVersion, ProviderAttemptID: "judge-final_reply-1"}
 

@@ -688,27 +688,27 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 
 	if gateErr != nil {
 		// The failed probe is this assignment's executor failure. Nothing was
-		// dispatched for the cell, so there is no held context or judge activity.
+		// dispatched for the cell, so there is no held context or grading activity.
 		err = gateErr
 	} else if result == nil {
 		execReq.HeldContext, err = c.heldAssignmentContext(ctx, run.GetCampaignBinding().GetCampaignId(), assignment)
 	}
-	var judgeActivity *JudgeActivityPublisher
+	var gradingActivity *GradingActivityPublisher
 	if err == nil && result == nil && c.publication != nil {
-		// Live judge events are best effort, like the start events: a publisher
+		// Live grading events are best effort, like the start events: a publisher
 		// that cannot be prepared is reported with the terminal result.
 		var prepareErr error
-		if judgeActivity, prepareErr = c.publication.NewJudgeActivityPublisher(ctx, assignment, c.now); prepareErr != nil {
-			startPublishErr = errors.Join(startPublishErr, fmt.Errorf("%w: assignment %s judge activity: %w", constants.ErrEvaluationPublicationFailed, assignment.GetAssignmentId(), prepareErr))
+		if gradingActivity, prepareErr = c.publication.NewGradingActivityPublisher(ctx, assignment, c.now); prepareErr != nil {
+			startPublishErr = errors.Join(startPublishErr, fmt.Errorf("%w: assignment %s grading activity: %w", constants.ErrEvaluationPublicationFailed, assignment.GetAssignmentId(), prepareErr))
 		} else {
-			execReq.JudgeActivity = judgeActivity
+			execReq.GradingActivity = gradingActivity
 		}
 	}
 	if err == nil && result == nil {
 		result, err = c.executor.ExecuteAssignment(ctx, execReq)
 	}
-	if judgeActivity != nil {
-		startPublishErr = errors.Join(startPublishErr, judgeActivity.Err())
+	if gradingActivity != nil {
+		startPublishErr = errors.Join(startPublishErr, gradingActivity.Err())
 	}
 	if err != nil {
 		if !isRecoverableAssignmentExecutionError(err) {

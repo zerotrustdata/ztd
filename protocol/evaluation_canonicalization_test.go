@@ -52,6 +52,9 @@ var publicLiveEventVectorJSON []byte
 //go:embed vectors/eval/public_live_event_judge.json
 var publicLiveJudgeEventVectorJSON []byte
 
+//go:embed vectors/eval/public_live_event_deterministic.json
+var publicLiveDeterministicEventVectorJSON []byte
+
 //go:embed vectors/eval/model_assignment_result_enriched.json
 var enrichedModelAssignmentResultVectorJSON []byte
 
@@ -426,6 +429,34 @@ func TestEvaluationValuePreservesTypedArtifactReference(t *testing.T) {
 	require.NoError(t, evalv1.UnmarshalCanonical(encoded, reparsed))
 	assert.True(t, proto.Equal(value, reparsed))
 	assert.Equal(t, reference.GetArtifactId(), reparsed.GetArtifactReference().GetArtifactId())
+}
+
+// TestPublicLiveDeterministicEventCanonicalizationMatchesCrossLanguageVector pins
+// the deterministic grades' wire form, which the Explorer decodes from the same
+// vector: verdict enum names in grading order.
+func TestPublicLiveDeterministicEventCanonicalizationMatchesCrossLanguageVector(t *testing.T) {
+	var vector evaluationCanonicalizationVector
+	require.NoError(t, json.Unmarshal(publicLiveDeterministicEventVectorJSON, &vector))
+	require.Equal(t, "PublicLiveEvent", vector.MessageType)
+	event := &evalv1.PublicLiveEvent{
+		SchemaVersion: "1.12.0", Kind: "deterministic_grading_completed", DatasetId: "ds-live-run-1", QualityState: "live_in_progress",
+		ObservedAt: "2026-10-30T12:00:04.000Z", SourceRevisionLabel: "ztd-eval-campaign", Release: "v1.6.1",
+		ReleaseBasis: evalv1.PublicReleaseBasis_PUBLIC_RELEASE_BASIS_RECORDED, SourceRevision: "abc123",
+		EventId: "run-1:assign-1:deterministic-grading:digest:event", RunId: "run-1", AssignmentId: "assign-1",
+		VariantId: "gemma4-e2b", Role: "primary", LifecycleStatus: "running", Completed: proto.Uint32(0), Total: proto.Uint32(5),
+		TaskId: "tool-select-constraints",
+		DeterministicGrades: []*evalv1.PublicLiveDeterministicGrade{
+			{CriterionId: "role-invoked", Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, Detail: "designated model role invoked with governed inference evidence"},
+			{CriterionId: "trajectory", Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, Detail: "wrong tool"},
+			{CriterionId: "file-state", Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_INVALID_EVIDENCE},
+		},
+	}
+	canonical, err := evalv1.MarshalCanonical(event)
+	require.NoError(t, err)
+	assert.Equal(t, vector.CanonicalJSON, string(canonical))
+	reparsed := &evalv1.PublicLiveEvent{}
+	require.NoError(t, evalv1.UnmarshalCanonical(canonical, reparsed))
+	assert.True(t, proto.Equal(event, reparsed))
 }
 
 // TestPublicLiveJudgeEventCanonicalizationMatchesCrossLanguageVector pins the

@@ -8,7 +8,7 @@ import type { AssignmentResult, PublicScenarioCriterion } from '../contract/type
 import { DetailRow } from './shared';
 import { assignmentGradeChips } from '../views/derived';
 
-function statusTone(status: string): string {
+export function statusTone(status: string): string {
   if (status === 'pass') return 'ok';
   if (status === 'fail') return 'critical';
   if (status === 'unavailable') return 'info';
@@ -16,7 +16,7 @@ function statusTone(status: string): string {
   return 'neutral';
 }
 
-function statusLabel(status: string): string {
+export function statusLabel(status: string): string {
   return status.replace(/_/g, ' ').replace(/^./, (letter) => letter.toUpperCase());
 }
 

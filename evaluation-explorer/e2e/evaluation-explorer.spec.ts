@@ -354,6 +354,77 @@ for (const viewport of [
 }
 
 
+for (const viewport of [
+  { width: 1920, height: 1080 },
+  { width: 1440, height: 1000 },
+  { width: 900, height: 1000 },
+  { width: 390, height: 844 },
+]) {
+  test(`Live activity shows the grading path left to right at ${viewport.width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    const row = {
+      dataset_id: 'ds-live-grading', run_id: 'live-grading-run', assignment_id: 'graded-assignment', task_id: 'tool-arg-shell-command',
+      variant_id: 'qwen3:8b', role: 'primary', quality_state: 'live_in_progress', lifecycle_status: 'running', completed: 0, total: 75,
+      ...FIXTURE_RELEASE, release_basis: 'PUBLIC_RELEASE_BASIS_RECORDED',
+    };
+    const criteria = ['role-invoked', 'governed-inference', 'scenario-content', 'trajectory', 'tool-allowlist', 'file-state', 'required-evidence:final_response', 'pipeline:primary', 'governed-probe', 'required-evidence:tool_output', 'primary:root-cause', 'primary:remediation'];
+    const events = [
+      { ...row, schema_version: '1.12.0', kind: 'assignment_started', event_id: 'graded-started', observed_at: '2026-10-16T14:58:00.000Z' },
+      {
+        ...row, schema_version: '1.12.0', kind: 'stage_updated', event_id: 'graded-vote', observed_at: '2026-10-16T14:58:02.000Z',
+        stage_label: `tribunal vote\n${JSON.stringify({ member_app_id: 'tribunal-axiom', outcome: 'approve', transaction_id: 'tx-1' })}`,
+      },
+      {
+        ...row, schema_version: '1.12.0', kind: 'deterministic_grading_completed', event_id: 'graded-deterministic', observed_at: '2026-10-16T14:58:04.000Z',
+        deterministic_grades: criteria.map((criterion_id, index) => ({
+          criterion_id, status: index === 3 ? 'EVALUATION_VERDICT_STATUS_FAIL' : index === 5 ? 'EVALUATION_VERDICT_STATUS_UNAVAILABLE' : 'EVALUATION_VERDICT_STATUS_PASS',
+          detail: index === 3 ? 'WRONG_TOOL: The model called file_read_on_operator instead of the required run_shell_command.' : 'criterion satisfied',
+        })),
+      },
+      {
+        ...row, schema_version: '1.12.0', kind: 'judge_started', event_id: 'graded-judge', observed_at: '2026-10-16T14:58:05.000Z',
+        judge: {
+          judge_variant_id: 'qwen3-5-4b', served_model_tag: 'qwen3.5:4b', model_digest: 'abc123', subject: 'JUDGE_SUBJECT_FINAL_REPLY',
+          index: 1, count: 1, rubric_version: 'diagnosis-quality-v3', state: 'JUDGE_ACTIVITY_STATE_JUDGING', provider_attempt_id: 'judge-final_reply-1',
+        },
+      },
+    ];
+    const run = { ...fixtureEvaluationSummaries[0]!, dataset_id: 'ds-live-grading', run_id: 'live-grading-run', model_role_mapping: { primary: 'qwen3:8b' } };
+    await installMirror(page, [run, ...events]);
+    await page.goto('/?release=all');
+    if (viewport.width <= 768) await page.getByRole('banner').getByRole('button', { name: 'Close navigation drawer' }).click();
+
+    const live = page.getByRole('region', { name: 'Live activity', exact: true });
+    await expect(live.locator('tbody tr')).toHaveCount(1);
+    const grades = live.getByRole('group', { name: 'Deterministic grades' });
+    await expect(grades.locator('summary')).toHaveCount(criteria.length);
+    if (viewport.width > 1000) {
+      const headers = (await live.getByRole('columnheader').allTextContents()).map((header) => header.replace(/[▲▼↕]/g, '').trim());
+      expect(headers.indexOf('Deterministic')).toBe(headers.indexOf('Consensus') + 1);
+      expect(headers.indexOf('Judge')).toBe(headers.indexOf('Deterministic') + 1);
+      const taskWidth = await live.locator('tbody .stream-task-cell').evaluate((cell) => cell.getBoundingClientRect().width);
+      const modelWidth = await live.locator('tbody .stream-model-cell').evaluate((cell) => cell.getBoundingClientRect().width);
+      expect(taskWidth).toBeGreaterThan(90);
+      expect(modelWidth).toBeGreaterThan(90);
+      await expect(live.locator('tbody .stream-time')).toBeVisible();
+    }
+    expect(await live.locator('.stream-scroll').evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    const failed = grades.getByLabel('trajectory: Fail');
+    const circle = (await failed.boundingBox())!;
+    expect(circle.width).toBe(18);
+    expect(circle.height).toBe(18);
+    await page.screenshot({ path: testInfo.outputPath(`live-grading-${viewport.width}.png`) });
+    await failed.click();
+    await expect(grades.getByText(/WRONG_TOOL/)).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`live-grading-${viewport.width}-open.png`) });
+    await grades.getByLabel('role invoked: Pass').click();
+    await expect(grades.getByText(/WRONG_TOOL/)).not.toBeVisible();
+    await expect(grades.locator('details[open]').getByText('criterion satisfied')).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+}
+
 test('Evals tables keep sortable detail columns at desktop and mobile widths', async ({ page }) => {
   const records = [
     { ...fixtureEvaluationSummaries[0]!, run_id: 'alpha-run', campaign_id: 'Alpha campaign' },
