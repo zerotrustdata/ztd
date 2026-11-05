@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { beforeEach, describe, expect, it } from 'vitest';
-import { act, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { AssignmentResult, EvaluationSummary, LiveEvent } from '../src/contract/types';
@@ -11,6 +11,8 @@ import { evalStore, recordKey } from '../src/state/store';
 import { adaptCampaignProjectionEnvelope, createCampaignAdaptContext } from '../src/state/campaign-adapter';
 import { EvaluationDetailView } from '../src/views/EvaluationDetailView';
 import { judgeTone } from '../src/components/JudgeActivity';
+import { resetRunBundleCache } from '../src/state/run-bundles';
+import { buildRunBundle, loadBundleFixtures, settledRunRecord, stubBundleFetch } from './run-bundle-fixture';
 
 function liveEvent(partial: Partial<LiveEvent> = {}): LiveEvent {
   return {
@@ -828,5 +830,72 @@ describe('LiveEventStream judge activity', () => {
     expect(judgeTone(done({ state: 'scored', score: 3 }))).toBe('warn');
     expect(judgeTone(done({ state: 'scored', score: 2 }))).toBe('critical');
     expect(judgeTone(done({ state: 'scored', score: 1 }))).toBe('critical');
+  });
+});
+
+describe('LiveEventStream run bundles', () => {
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+    resetRunBundleCache();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('fills a historical row from its run bundle once the bundle loads', async () => {
+    const bundle = buildRunBundle('run-a', ['assignment-1']);
+    loadBundleFixtures([settledRunRecord('run-a', bundle.sha256)]);
+    stubBundleFetch([bundle]);
+    const historical = liveEvent({ event_id: 'hist-1', kind: 'assignment_completed', dataset_id: 'ds-live-run-a', assignment_id: 'assignment-1', task_id: undefined, metric_delta: undefined, terminal_status: undefined });
+
+    render(stream([historical]));
+    expect(screen.queryByRole('link', { name: /instruction-exact-format — View details/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('780')).not.toBeInTheDocument();
+
+    expect(await screen.findByRole('link', { name: /instruction-exact-format — View details/ })).toBeInTheDocument();
+    expect(screen.getByText('780')).toBeInTheDocument();
+    expect(screen.getByText('180')).toBeInTheDocument();
+  });
+
+  it('requests exactly one bundle per distinct run on the page', async () => {
+    const runA = buildRunBundle('run-a', ['assignment-1', 'assignment-2']);
+    const runB = buildRunBundle('run-b', ['assignment-3']);
+    loadBundleFixtures([settledRunRecord('run-a', runA.sha256), settledRunRecord('run-b', runB.sha256)]);
+    const fetchMock = stubBundleFetch([runA, runB]);
+    const events = [
+      liveEvent({ event_id: 'a1', assignment_id: 'assignment-1', run_id: 'run-a', dataset_id: 'ds-live-run-a' }),
+      liveEvent({ event_id: 'a2', assignment_id: 'assignment-2', run_id: 'run-a', dataset_id: 'ds-live-run-a' }),
+      liveEvent({ event_id: 'b3', assignment_id: 'assignment-3', run_id: 'run-b', dataset_id: 'ds-live-run-b' }),
+    ];
+
+    render(stream(events));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('requests no bundle when the page has no assignment events', async () => {
+    const bundle = buildRunBundle('run-a', ['assignment-1']);
+    loadBundleFixtures([settledRunRecord('run-a', bundle.sha256)]);
+    const fetchMock = stubBundleFetch([bundle]);
+
+    render(stream([liveEvent({ event_id: 'run-done', kind: 'evaluation_completed', assignment_id: undefined, task_id: undefined, variant_id: undefined, role: undefined })]));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('requests no bundle for a run whose summary publishes none', async () => {
+    const unpublished = { ...settledRunRecord('run-a', 'a'.repeat(64)), assignment_bundle_sha256: undefined };
+    loadBundleFixtures([unpublished]);
+    const fetchMock = stubBundleFetch([]);
+
+    render(stream([liveEvent({ event_id: 'hist-1', dataset_id: 'ds-live-run-a', assignment_id: 'assignment-1' })]));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(rows()).toHaveLength(1);
   });
 });

@@ -4,7 +4,7 @@
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { vi } from 'vitest';
-import { fixtureCampaignResultEnvelope } from '../src/fixtures/fixtures';
+import { fixtureCampaignResultEnvelope, fixtureEvaluationSummaries } from '../src/fixtures/fixtures';
 import type { SnapshotRecord } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
 
@@ -56,4 +56,17 @@ export function stubBundleFetch(bundles: BundleFixture[]) {
 export function loadBundleFixtures(records: SnapshotRecord[]): void {
   evalStore.loadFixtures(records, []);
   evalStore.setMirrorOrigin(BUNDLE_ORIGIN);
+}
+
+/** A settled run's summary record that names its bundle. */
+export function settledRunRecord(runId: string, sha256: string, datasetId = `ds-live-${runId}`): SnapshotRecord {
+  const { native_result: _native, ...summary } = fixtureEvaluationSummaries[0]!;
+  void _native;
+  return {
+    ...summary,
+    dataset_id: datasetId,
+    run_id: runId,
+    lifecycle_state: 'completed',
+    assignment_bundle_sha256: sha256,
+  } as SnapshotRecord;
 }

@@ -35,7 +35,9 @@ import {
   type ModelRole,
 } from '../contract/types';
 import { formatNumber } from '../utils/format';
-import { LIVE_EVENT_RETENTION_LIMIT } from '../constants';
+import { LIVE_EVENT_RETENTION_LIMIT, RUN_BUNDLE_CONCURRENCY, RUN_BUNDLE_LRU_LIMIT } from '../constants';
+import { useRunBundles } from '../state/use-run-bundles';
+import type { RunRef } from '../state/load-runs-bounded';
 const STREAM_PAGE_SIZE = 25;
 const STREAM_EMPTY_METRIC = '--';
 
@@ -119,6 +121,16 @@ function TribunalVotes({ votes }: { votes: SeatVotes }) {
       })}
     </div>
   );
+}
+
+/** Distinct runs of the rows that name an assignment, in row order, capped at the bundle limit. */
+function assignmentRuns(events: LiveEvent[]): RunRef[] {
+  const runs = new Map<string, RunRef>();
+  for (const event of events) {
+    if (!event.assignment_id) continue;
+    runs.set(JSON.stringify([event.dataset_id, event.run_id]), { datasetId: event.dataset_id, runId: event.run_id });
+  }
+  return Array.from(runs.values()).slice(0, RUN_BUNDLE_LRU_LIMIT);
 }
 
 function eventTime(iso: string): string {
@@ -498,6 +510,8 @@ export function LiveEventStream({
   const pageCount = Math.ceil(sortedVisible.length / STREAM_PAGE_SIZE);
   const safePage = Math.min(page, Math.max(0, pageCount - 1));
   const pageEvents = sortedVisible.slice(safePage * STREAM_PAGE_SIZE, (safePage + 1) * STREAM_PAGE_SIZE);
+  // Quiet background load: the page's assignment rows fill in through the store as bundles arrive.
+  useRunBundles(assignmentRuns(pageEvents), RUN_BUNDLE_CONCURRENCY);
   const showTribunal = pageEvents.some((event) => event.assignment_id && tribunalVotes.has(assignmentRowKey(event)));
   const showDeterministic = pageEvents.some((event) => (event.assignment_id && deterministicGrades.has(assignmentRowKey(event))) ||
     deterministicGradesPending(event, deterministicGrades, judgeActivity));

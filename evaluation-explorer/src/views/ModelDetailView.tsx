@@ -7,13 +7,14 @@
 // Evaluation Runs & Campaigns involving this model, overall performance
 // metrics, terminal outcomes, suite results, catalog formations, and assignments.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { formationGroups } from './formations';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useActiveDatasetId, useSelectedRelease } from '../state/dataset';
 import { modelRecordKey, useStoreState } from '../state/store';
-import { loadRunAssignments, retainRuns, RunBundleError } from '../state/run-bundles';
-import { loadRunsBounded, type RunLoader, type RunRef } from '../state/load-runs-bounded';
+import { useRunBundles } from '../state/use-run-bundles';
+import type { RunRef } from '../state/load-runs-bounded';
+import { RUN_BUNDLE_CONCURRENCY } from '../constants';
 import {
   resolveModelProfile,
   type CapabilityProbeStatus,
@@ -57,8 +58,6 @@ import {
 } from '../components/evidence';
 import type { EvaluationSummary, ModelRole } from '../contract/types';
 
-const RUN_BUNDLE_CONCURRENCY = 3;
-
 function runUsesVariant(run: EvaluationSummary, variantId: string): boolean {
   return (
     Object.values(run.model_role_mapping ?? {}).includes(variantId) ||
@@ -68,39 +67,13 @@ function runUsesVariant(run: EvaluationSummary, variantId: string): boolean {
 
 /** Loads the given runs' assignment bundles, a few at a time, and reports how many loaded and which failed. */
 function RunBundleProgress({ runs }: { runs: RunRef[] }) {
-  const [state, setState] = useState<{ runs: RunRef[]; loaded: number; failures: string[] } | null>(null);
-  useEffect(() => {
-    // Every run of the variant stays loaded while this section shows them.
-    const releaseRuns = retainRuns(runs);
-    let active = true;
-    let loaded = 0;
-    const countLoaded: RunLoader = (datasetId, runId) =>
-      loadRunAssignments(datasetId, runId).then((result) => {
-        loaded++;
-        if (active) setState({ runs, loaded, failures: [] });
-        return result;
-      });
-    loadRunsBounded(runs, RUN_BUNDLE_CONCURRENCY, countLoaded).then((outcomes) => {
-      if (!active) return;
-      const failures = outcomes.flatMap(({ runId, outcome }) =>
-        outcome instanceof RunBundleError ? [`Run ${runId}: ${outcome.message}`] : [],
-      );
-      setState({ runs, loaded: runs.length - failures.length, failures });
-    });
-    return () => {
-      active = false;
-      releaseRuns();
-    };
-  }, [runs]);
-
-  if (runs.length === 0) return null;
-  const current = state?.runs === runs ? state : null;
-  const loaded = current?.loaded ?? 0;
+  const { loaded, total, failures } = useRunBundles(runs, RUN_BUNDLE_CONCURRENCY);
+  if (total === 0) return null;
   return (
     <>
-      <p className="panel-note">{loaded} of {runs.length} runs loaded</p>
-      <ProgressBar completed={loaded} total={runs.length} label="Run bundles" />
-      {current?.failures.map((failure) => <ErrorState key={failure} message={failure} />)}
+      <p className="panel-note">{loaded} of {total} runs loaded</p>
+      <ProgressBar completed={loaded} total={total} label="Run bundles" />
+      {failures.map((failure) => <ErrorState key={failure} message={failure} />)}
     </>
   );
 }

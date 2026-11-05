@@ -12,3 +12,6 @@ export const LIVE_EVENT_STORE_LIMIT = 500;
  * exceed it.
  */
 export const RUN_BUNDLE_LRU_LIMIT = 8;
+
+/** Run bundles fetched at once when several runs load together. */
+export const RUN_BUNDLE_CONCURRENCY = 3;
