@@ -215,6 +215,8 @@ func (runtime *PublicSpectatorRuntime) Start(ctx context.Context) error {
 	// The publisher's own signed batches land in this store, so assignment
 	// audit databases are built from the rows it holds.
 	publisher.SetAssignmentEventSource(store)
+	// Run bundles are built from the same accepted rows.
+	publisher.SetRunBundleSource(store)
 
 	runtime.privateServer = newPublicMirrorHTTPServer(runtime.cfg.PrivateListenAddress, mirror.IngestHandler(), runtime.logger.With("server", "mirror-private"))
 	mirrorOrigin := resolveEvalExplorerMirrorOrigin(runtime.cfg.PublicBaseURL, runtime.cfg.PublicListenAddress)

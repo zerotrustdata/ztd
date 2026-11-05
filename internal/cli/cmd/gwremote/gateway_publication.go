@@ -526,6 +526,28 @@ func (p *remoteGatewayCampaignProofPublisher) PruneRunProofCatalog(ctx context.C
 	return nil
 }
 
+func (p *remoteGatewayCampaignProofPublisher) PublishRunBundle(ctx context.Context, input evaluation.RunBundleInput) (string, error) {
+	if p == nil || p.client == nil {
+		return "", fmt.Errorf("campaign publication: publish run bundle: %w", constants.ErrMissingRequiredField)
+	}
+	responseBody, err := p.client.Post(constants.APIPaths.PublicFeedProofsRunBundle, models.PublicRunBundleRequest{
+		CampaignID:       input.CampaignID,
+		CampaignRevision: input.CampaignRevision,
+		RunID:            input.RunID,
+	})
+	if err != nil {
+		return "", fmt.Errorf("campaign publication: publish run bundle: %w", err)
+	}
+	var response models.PublicRunBundleResponse
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return "", fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
+	}
+	if !response.Accepted || response.RunID != input.RunID || response.BundleSHA256 == "" {
+		return "", constants.ErrPublicFeedProofIngestRejected
+	}
+	return response.BundleSHA256, nil
+}
+
 func (p *remoteGatewayCampaignProofPublisher) FlushProofCatalog(ctx context.Context) error {
 	if p == nil || p.client == nil {
 		return fmt.Errorf("campaign publication: flush proof catalog: %w", constants.ErrMissingRequiredField)

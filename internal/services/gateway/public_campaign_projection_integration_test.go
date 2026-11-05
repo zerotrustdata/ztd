@@ -218,9 +218,9 @@ func TestCampaignEvaluationSummaryPublishesThroughSignedMirrorReconstruction(t *
 	completionRecords, err := evaluation.BuildRunCompletionViewRecords(run, []*evalv1.EvaluationAssignment{assignment, assignmentWithoutMetrics}, map[string]*evalv1.EvaluationAssignmentResult{
 		assignment.GetAssignmentId():               result,
 		assignmentWithoutMetrics.GetAssignmentId(): resultWithoutMetrics,
-	}, aggregate, nil, time.Unix(1_700_000_100, 0).UTC())
+	}, aggregate, nil, time.Unix(1_700_000_100, 0).UTC(), "")
 	require.NoError(t, err)
-	verificationRecords, err := evaluation.BuildRunVerificationViewRecords(run, aggregate, report, time.Unix(1_700_000_200, 0).UTC())
+	verificationRecords, err := evaluation.BuildRunVerificationViewRecords(run, aggregate, report, time.Unix(1_700_000_200, 0).UTC(), "")
 	require.NoError(t, err)
 	viewRecords := append(completionRecords, verificationRecords...)
 	feedRecords := make([]models.PublicFeedRecord, len(viewRecords))

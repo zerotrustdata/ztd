@@ -1359,6 +1359,7 @@ var (
 	ErrPublicFeedProofIngestRejected          = errors.New("public-feed: mirror rejected proof package")
 	ErrPublicFeedProofArtifactsMissing        = errors.New("public-feed: proof manifest lists artifacts the mirror does not hold")
 	ErrPublicAssignmentAuditEventsMissing     = errors.New("public-feed: no retained event records for the assignment")
+	ErrPublicRunBundleEmpty                   = errors.New("public-feed: run has no assignment result records to bundle")
 	ErrPublicFeedProofIDRequired              = errors.New("public-feed: proof_id is required")
 	ErrPublicAssignmentAuditNotInProof        = errors.New("public-feed: assignment audit database is not an active proof artifact")
 	ErrPublicFeedRecordTypeInvalid            = errors.New("public-feed: invalid record type")

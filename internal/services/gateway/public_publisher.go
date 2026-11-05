@@ -95,6 +95,8 @@ type PublicPublisherService struct {
 	// assignmentEvents supplies the signed event records assignment audit
 	// databases are built from. It is the gateway's own mirror store.
 	assignmentEvents PublicAssignmentEventSource
+	// runBundleSource supplies the accepted rows run bundles are built from.
+	runBundleSource PublicRunBundleSource
 
 	// highWaterSeq is the last acknowledged sequence number.
 	highWaterSeq  int64
@@ -1711,25 +1713,56 @@ func (s *PublicPublisherService) PruneProofCatalogForRun(ctx context.Context, ru
 		if !slices.ContainsFunc(legacy.Entries, func(entry models.PublicProofCatalogEntry) bool { return entry.SourceRunID == runID }) {
 			return 0, nil
 		}
-		manifest, err := s.loadLegacyProofManifest(ctx)
-		if err != nil {
-			return 0, err
-		}
-		if manifest == nil {
-			return 0, constants.ErrPublicFeedProofManifestInvalid
-		}
-		if !manifest.VerificationOK {
-			return 0, constants.ErrPublicFeedProofNotVerified
-		}
-		if _, err := s.appendPublicationLocked(ctx, manifest.CampaignID, manifest.CampaignRevision, manifest.VerifiedIndexGenerationHash, nil); err != nil {
+		if err := s.cutOverLegacyProofLogLocked(ctx); err != nil {
 			return 0, err
 		}
 	}
-	index := s.proofIndex
-	removedIDs := index.activeRunArtifactIDs(runID)
+	removedIDs := s.proofIndex.activeRunArtifactIDs(runID)
 	if len(removedIDs) == 0 {
 		return 0, nil
 	}
+	if err := s.withdrawProofArtifactsLocked(ctx, removedIDs); err != nil {
+		return 0, err
+	}
+	s.logger.Info("public-feed: pruned proof catalog for run", "run_id", runID, "removed_count", len(removedIDs), "remaining_count", len(s.proofIndex.active))
+	return len(removedIDs), nil
+}
+
+// cutOverLegacyProofLogLocked writes the genesis segment of a legacy package
+// from its manifest. Callers hold proofMu and the proof log lock, and have
+// synced the index.
+func (s *PublicPublisherService) cutOverLegacyProofLogLocked(ctx context.Context) error {
+	manifest, err := s.loadLegacyProofManifest(ctx)
+	if err != nil {
+		return err
+	}
+	if manifest == nil {
+		return constants.ErrPublicFeedProofManifestInvalid
+	}
+	if !manifest.VerificationOK {
+		return constants.ErrPublicFeedProofNotVerified
+	}
+	_, err = s.appendPublicationLocked(ctx, manifest.CampaignID, manifest.CampaignRevision, manifest.VerifiedIndexGenerationHash, nil)
+	return err
+}
+
+// withdrawProofArtifactLocked withdraws one active artifact through the signed
+// withdrawal path. Callers hold proofMu and the proof log lock, and have synced
+// the index.
+func (s *PublicPublisherService) withdrawProofArtifactLocked(ctx context.Context, artifactID string) error {
+	if _, active := s.proofIndex.active[artifactID]; !active {
+		return constants.ErrPublicFeedProofNotFound
+	}
+	return s.withdrawProofArtifactsLocked(ctx, []string{artifactID})
+}
+
+// withdrawProofArtifactsLocked appends one signed segment withdrawing removedIDs,
+// which must all be active, then clears the derived catalog files and the
+// mirror sync checkpoint. Immutable artifact bytes stay on disk: signed
+// withdrawals control visibility, not physical deletion. Callers hold proofMu
+// and the proof log lock, and have synced the index.
+func (s *PublicPublisherService) withdrawProofArtifactsLocked(ctx context.Context, removedIDs []string) error {
+	index := s.proofIndex
 	withdrawal, err := s.signProofSegment(models.PublicProofManifestSegment{
 		SchemaVersion:               constants.PublicProofSegmentSchemaVersion,
 		SourceID:                    s.cfg.SourceID,
@@ -1743,20 +1776,14 @@ func (s *PublicPublisherService) PruneProofCatalogForRun(ctx context.Context, ru
 		GeneratedAt:                 time.Now().UTC(),
 	})
 	if err != nil {
-		return 0, err
+		return err
 	}
 	if err := s.appendProofSegmentLocked(ctx, withdrawal); err != nil {
-		return 0, err
+		return err
 	}
-	// Keep immutable bytes so an unsent prefix can be replayed to a fresh
-	// mirror. Signed withdrawals control visibility, not physical deletion.
 	_ = s.fileSvc.Remove(ctx, constants.PublicProofCatalogFilename)
 	_ = s.fileSvc.Remove(ctx, constants.PublicProofManifestFilename)
-	if err := s.resetProofMirrorSyncState(ctx); err != nil {
-		return 0, err
-	}
-	s.logger.Info("public-feed: pruned proof catalog for run", "run_id", runID, "removed_count", len(removedIDs), "remaining_count", len(index.active))
-	return len(removedIDs), nil
+	return s.resetProofMirrorSyncState(ctx)
 }
 
 // resetProofMirrorSyncState removes the delivery checkpoint after a withdrawal.

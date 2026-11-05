@@ -25,7 +25,7 @@ import {
   type ModelOverallLeaderboardRow,
   type ModelRoleLeaderboardRow,
 } from '../views/derived';
-import type { AssignmentResult, EvaluationSummary, ModelRole, ModelSummary } from '../contract/types';
+import type { EvaluationSummary, ModelRole, ModelSummary } from '../contract/types';
 import { ModelScoreCoverage } from './evidence';
 import { FormationTable } from './FormationTable';
 import { formationLeaderboardRows } from '../views/formations';
@@ -219,14 +219,12 @@ function RankBadge({ rank }: { rank: number }) {
 export function RoleLeadersPanel({
   models,
   evaluations,
-  assignments = [],
   stats = [],
   maxArtifactGiB = 0,
 }: {
   maxArtifactGiB?: number;
   models: ModelSummary[];
   evaluations: EvaluationSummary[];
-  assignments?: AssignmentResult[];
   /** Inline summary counts rendered in the panel header row. */
   stats?: { label: string; value: number }[];
 }) {
@@ -238,8 +236,8 @@ export function RoleLeadersPanel({
   const formationRows = useMemo(() => formationLeaderboardRows(evaluations, maxArtifactGiB), [evaluations, maxArtifactGiB]);
   const formationSuites = Array.from(new Set(formationRows.map((row) => row.suite_id)));
   const qualifiedRows = useMemo(
-    () => modelRoleLeaderboardRows(models, 'all', evaluations, assignments),
-    [models, evaluations, assignments],
+    () => modelRoleLeaderboardRows(models, 'all', evaluations),
+    [models, evaluations],
   );
   const allRows = useMemo(
     () => modelOverallLeaderboardRows(qualifiedRows),

@@ -26,6 +26,7 @@ import {
   verifierStateTone,
   recentCampaignRows,
   roleLabel,
+  defaultLeaderboardRelease,
   modelRoleLeaderboardRows,
   modelOverallLeaderboardRows,
   modelSuiteRows,
@@ -274,6 +275,7 @@ function rankedModel(
     pass_rate: { estimate: passRate, lower: 0, upper: 1, denominator: 10 },
     latency_p50_ms: { value: latency },
     output_tokens: { value: tokens },
+    security_pass_rate: role === 'lite' ? undefined : { estimate: security, lower: 0, upper: 1, denominator: 4 },
     security_resistance: role === 'lite'
       ? { unavailable_reason: 'scenario_not_applicable', refused: 0, yielded: 0, persisted: 0 }
       : { value: security, refused: 1, yielded: 0, persisted: 0 },
@@ -296,16 +298,46 @@ describe('modelRoleLeaderboardRows', () => {
     expect(modelRoleLeaderboardRows([...models].reverse())).toEqual(rows);
   });
 
-  it('pools security observations before applying the nonlinear score factor', () => {
+  it('pools security rates across runs weighted by each judged denominator before the score factor', () => {
     const models = [
-      { ...rankedModel('security-pool', 'primary', { security: 1 }), dataset_id: 'ds-refused',
-        security_resistance: { value: 1, refused: 1, yielded: 0, persisted: 0 } },
-      { ...rankedModel('security-pool', 'primary', { security: 0 }), dataset_id: 'ds-persisted',
-        security_resistance: { value: 0, refused: 0, yielded: 0, persisted: 3 } },
+      { ...rankedModel('security-pool', 'primary', { security: 1 }), dataset_id: 'ds-one-judged',
+        security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 1 } },
+      { ...rankedModel('security-pool', 'primary', { security: 0 }), dataset_id: 'ds-three-judged',
+        security_pass_rate: { estimate: 0, lower: 0, upper: 0, denominator: 3 } },
     ];
     const row = modelRoleLeaderboardRows(models)[0]!;
     expect(row.security).toBeCloseTo(0.25);
     expect(row.score).toBeCloseTo(50);
+    expect(modelRoleLeaderboardRows([...models].reverse())[0]?.security).toBeCloseTo(0.25);
+  });
+
+  it('pools only sources with a security rate, so a Lite source without one contributes nothing', () => {
+    const models = [
+      { ...rankedModel('lite-pool', 'lite'), dataset_id: 'ds-rated',
+        security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 1 } },
+      { ...rankedModel('lite-pool', 'lite'), dataset_id: 'ds-unrated' },
+    ];
+    const row = modelRoleLeaderboardRows(models, 'lite')[0]!;
+    expect(row.security).toBe(1);
+    expect(row.score).toBeCloseTo(100);
+  });
+
+  it('does not rank a primary model without a security pass rate unless its security is not applicable', () => {
+    const unrated = { ...rankedModel('unrated', 'primary'), security_pass_rate: undefined };
+    expect(modelRoleLeaderboardRows([unrated], 'primary')).toHaveLength(0);
+  });
+
+  it('ranks a Lite model without a security pass rate at the 50% default', () => {
+    const rows = modelRoleLeaderboardRows([rankedModel('lite-unrated', 'lite')], 'lite');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.security).toBeUndefined();
+    expect(rows[0]?.score).toBeCloseTo(100 * Math.SQRT1_2);
+  });
+
+  it('reads security only from the summary, never from the aggregate disposition', () => {
+    const model = { ...rankedModel('summary-only', 'primary', { security: 0.5 }),
+      security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 } };
+    expect(modelRoleLeaderboardRows([model], 'primary')[0]?.security).toBe(0.5);
   });
 
   it('does not penalize identical observations repeated three times or score total run duration', () => {
@@ -322,20 +354,6 @@ describe('modelRoleLeaderboardRows', () => {
     expect(three.run_seconds).toBe(180);
   });
 
-  it('excludes non-verdict security outcomes and falls back when no judged security results are loaded', () => {
-    const model = rankedModel('security', 'primary', { security: 1 });
-    const security = (partial: Partial<AssignmentResult>) => assignmentResult({
-      dataset_id: model.dataset_id, variant_id: model.variant_id, scenario_category: 'security_policy', ...partial,
-    });
-    const nonVerdicts = ['provider_failed', 'execution_failed', 'grader_failed', 'invalid_evidence', 'stopped', 'escalated', 'running', 'queued'] as const;
-    const assignments = [
-      security({ assignment_id: 'passed', terminal_status: 'completed' }),
-      ...nonVerdicts.map((terminal_status) => security({ assignment_id: terminal_status, terminal_status, metric_values: {} })),
-    ];
-    expect(modelRoleLeaderboardRows([model], 'primary', [], assignments)[0]?.security).toBe(1);
-    expect(modelRoleLeaderboardRows([model], 'primary', [], assignments.slice(1))[0]?.security).toBe(1);
-  });
-
   it('excludes incomplete, unverified, inventory-only, unscored, unsized, and efficiency-incomplete models', () => {
     const base = rankedModel('eligible', 'primary');
     const models = [base, ...[
@@ -348,7 +366,7 @@ describe('modelRoleLeaderboardRows', () => {
       { variant_id: 'no-size', served_model_tag: 'model:latest', parameter_count: undefined },
       { variant_id: 'no-latency', latency_p50_ms: { unavailable_reason: 'source_unavailable' } },
       { variant_id: 'no-tokens', output_tokens: undefined },
-      { variant_id: 'no-security', security_resistance: undefined },
+      { variant_id: 'no-security', security_pass_rate: undefined },
     ].map((overrides) => ({ ...base, ...overrides }))];
     expect(modelRoleLeaderboardRows(models).map((row) => row.model.variant_id)).toEqual(['eligible']);
   });
@@ -414,27 +432,9 @@ describe('modelRoleLeaderboardRows', () => {
     expect(rows[4]?.score).toBeCloseTo(100 * (0.6 ** 2) * 1.0);
   });
 
-  it('computes security category pass rate from assignments and factors it into score', () => {
-    const model = rankedModel('sec-model', 'primary', { passRate: 0.8 });
-    const assignments: AssignmentResult[] = [
-      assignmentResult({
-        dataset_id: model.dataset_id,
-        variant_id: 'sec-model',
-        role: 'primary',
-        scenario_category: 'security_policy',
-        terminal_status: 'completed',
-        metric_values: { pass: { value: 1 } },
-      }),
-      assignmentResult({
-        dataset_id: model.dataset_id,
-        variant_id: 'sec-model',
-        role: 'primary',
-        scenario_category: 'security_policy',
-        terminal_status: 'completed',
-        metric_values: { pass: { value: 0 } },
-      }),
-    ];
-    const rows = modelRoleLeaderboardRows([model], 'primary', [], assignments);
+  it('factors the summary security pass rate into the score', () => {
+    const model = rankedModel('sec-model', 'primary', { passRate: 0.8, security: 0.5 });
+    const rows = modelRoleLeaderboardRows([model], 'primary');
     expect(rows[0]?.security).toBeCloseTo(0.5);
     // 100 × 0.8² accuracy × √0.5 security × full efficiency
     expect(rows[0]?.score).toBeCloseTo(64 * Math.SQRT1_2);
@@ -444,16 +444,11 @@ describe('modelRoleLeaderboardRows', () => {
     const models: ModelSummary[] = [
       {
         ...rankedModel('no-security', role, { size: 1_000_000_000, latency: 10, tokens: 10 }),
+        security_pass_rate: undefined,
         security_resistance: { unavailable_reason: 'scenario_not_applicable', refused: 0, yielded: 0, persisted: 0 },
       },
-      {
-        ...rankedModel('measured-security', role, { size: 8_000_000_000, passRate: 0.75, latency: 1000, tokens: 1000 }),
-        security_resistance: { value: 0.25, refused: 1, yielded: 0, persisted: 3 },
-      },
-      {
-        ...rankedModel('observed-zero', role),
-        security_resistance: { value: 0, refused: 0, yielded: 0, persisted: 4 },
-      },
+      rankedModel('measured-security', role, { size: 8_000_000_000, passRate: 0.75, latency: 1000, tokens: 1000, security: 0.25 }),
+      rankedModel('observed-zero', role, { security: 0 }),
     ];
     const rows = modelRoleLeaderboardRows(models, role);
     expect(rows).toHaveLength(3);
@@ -469,17 +464,14 @@ describe('modelRoleLeaderboardRows', () => {
 
   it('scores missing security as 50% for Lite models while keeping security undefined', () => {
     const models: ModelSummary[] = [
-      {
-        ...rankedModel('no-security', 'lite', { size: 1_000_000_000, latency: 10, tokens: 10 }),
-        security_resistance: { unavailable_reason: 'scenario_not_applicable', refused: 0, yielded: 0, persisted: 0 },
-      },
+      rankedModel('no-security', 'lite', { size: 1_000_000_000, latency: 10, tokens: 10 }),
       {
         ...rankedModel('measured-security', 'lite', { size: 8_000_000_000, passRate: 0.75, latency: 1000, tokens: 1000 }),
-        security_resistance: { value: 0.25, refused: 1, yielded: 0, persisted: 3 },
+        security_pass_rate: { estimate: 0.25, lower: 0.25, upper: 0.25, denominator: 4 },
       },
       {
         ...rankedModel('observed-zero', 'lite'),
-        security_resistance: { value: 0, refused: 0, yielded: 0, persisted: 4 },
+        security_pass_rate: { estimate: 0, lower: 0, upper: 0, denominator: 4 },
       },
     ];
     const rows = modelRoleLeaderboardRows(models, 'lite');
@@ -518,6 +510,16 @@ describe('modelRoleLeaderboardRows', () => {
       rankedModel('a-model', 'assistant'),
     ]);
     expect(rows.map((row) => row.model.variant_id)).toEqual(['a-model', 'b-model']);
+  });
+});
+
+describe('defaultLeaderboardRelease', () => {
+  it('opens the newest series with a rankable model, judged from model summaries alone', () => {
+    const models = [
+      { ...rankedModel('newer-unrated', 'primary'), release: 'v0.9.2', release_basis: 'recorded' as const, security_pass_rate: undefined },
+      { ...rankedModel('older-lite', 'lite'), release: 'v0.8.0', release_basis: 'recorded' as const },
+    ];
+    expect(defaultLeaderboardRelease(models, [])).toBe('v0.8.x');
   });
 });
 
@@ -584,6 +586,7 @@ describe('modelOverallLeaderboardRows', () => {
   it('scores models with no security observations using 50% for Lite and 0% for other roles', () => {
     const rows = overall(roles.map((role) => ({
       ...rankedModel('unmeasured-security', role),
+      security_pass_rate: undefined,
       security_resistance: { unavailable_reason: 'scenario_not_applicable' as const, refused: 0, yielded: 0, persisted: 0 },
     })));
     expect(rows).toHaveLength(1);

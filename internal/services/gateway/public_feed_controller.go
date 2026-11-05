@@ -297,6 +297,49 @@ func (c *PublicFeedController) handlePublicFeedProofsPrune(w http.ResponseWriter
 	})
 }
 
+// @Summary		Publish assignment run bundle
+// @Description	Publishes one settled run's assignment result records, read from the gateway's accepted public mirror rows, as one gzip JSONL proof artifact (mTLS owner CLI only). Unchanged records reuse the active bundle; changed records replace it.
+// @Tags			public-feed
+// @Accept			json
+// @Produce		json
+// @Param			request	body	models.PublicRunBundleRequest	true	"Run bundle request"
+// @Success		200	{object}	models.PublicRunBundleResponse
+// @Failure		400	{string}	string	"Bad Request"
+// @Failure		405	{string}	string	"Method Not Allowed"
+// @Failure		503	{string}	string	"Public spectator unavailable"
+// @Router			/api/v1/public-feed/proofs/run-bundle [post]
+func (c *PublicFeedController) handlePublicFeedProofsRunBundle(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+
+	publisher, err := c.publisher()
+	if err != nil {
+		c.responder.Error(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, constants.PublicFeedKeyRegistrationMaxBytes))
+	if err != nil {
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("%w: %v", constants.ErrInvalidJSONBody, err).Error())
+		return
+	}
+	var request models.PublicRunBundleRequest
+	if err := json.Unmarshal(body, &request); err != nil {
+		c.responder.Error(w, http.StatusBadRequest, fmt.Errorf("%w: %v", constants.ErrInvalidJSONBody, err).Error())
+		return
+	}
+	response, err := publisher.PublishRunBundle(r.Context(), request)
+	if err != nil {
+		status, message := publicFeedProofPublishErrorStatus(err)
+		c.responder.Error(w, status, message)
+		return
+	}
+
+	c.responder.JSON(w, http.StatusOK, response)
+}
+
 func publicFeedProofPublishErrorStatus(err error) (int, string) {
 	switch {
 	case errors.Is(err, constants.ErrPublicFeedDisabled):
@@ -304,6 +347,7 @@ func publicFeedProofPublishErrorStatus(err error) (int, string) {
 	case errors.Is(err, constants.ErrMissingRequiredField),
 		errors.Is(err, constants.ErrPublicFeedProofNotVerified),
 		errors.Is(err, constants.ErrPublicAssignmentAuditEventsMissing),
+		errors.Is(err, constants.ErrPublicRunBundleEmpty),
 		errors.Is(err, constants.ErrPublicFeedBatchEmpty),
 		errors.Is(err, constants.ErrPublicFeedProofOversized),
 		errors.Is(err, constants.ErrPublicFeedProofPathTraversal):

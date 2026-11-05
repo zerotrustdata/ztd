@@ -33,6 +33,7 @@ import {
   type QualityState,
   type ScenarioCategory,
   type SnapshotRecord,
+  type FeedTaskResult,
   type TerminalStatus,
   type ToolScoreDimension,
   type VerifierState,
@@ -43,6 +44,10 @@ import {
   type WireActivityFamily,
   type WireUnavailableReason,
 } from '../contract/activity-family';
+import {
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_VALUES,
+  EVALUATION_VERDICT_STATUS_VALUES,
+} from '../contract/proto-enums.generated';
 import type {
   EvaluationAssignmentLifecycleStatus,
   EvaluationGradingMethod,
@@ -63,6 +68,7 @@ import type {
   PublicToolScoreDimension,
 } from '../contract/proto-enums.generated';
 import {
+  assertEnum,
   decodeCampaignProjectionEnvelope,
   type CampaignProjectionEnvelope,
   mapCampaignRelease,
@@ -282,6 +288,28 @@ export function liveEventProgressCounts(
 
 export function campaignDatasetId(runId: string): string {
   return `ds-live-${runId}`;
+}
+
+/**
+ * Maps one task-index result to the view the task list renders. The wire enums are
+ * checked first so an unknown value throws a ValidationError naming its field.
+ */
+export function taskResultView(result: FeedTaskResult): {
+  dataset_id: string;
+  run_id: string;
+  assignment_id: string;
+  terminal_status: TerminalStatus;
+  verification_disposition: VerifierState;
+} {
+  assertEnum(result.lifecycle_status, EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_VALUES, 'lifecycle_status');
+  assertEnum(result.summary_status, EVALUATION_VERDICT_STATUS_VALUES, 'summary_status');
+  return {
+    dataset_id: campaignDatasetId(result.run_id),
+    run_id: result.run_id,
+    assignment_id: result.assignment_id,
+    terminal_status: mapTerminalStatus(result.lifecycle_status, result.summary_status),
+    verification_disposition: mapVerificationDisposition(result.verification_status),
+  };
 }
 
 export function adaptCampaignProjectionEnvelope(

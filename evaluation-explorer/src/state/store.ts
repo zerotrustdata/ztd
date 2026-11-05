@@ -18,6 +18,8 @@ import type {
   CatalogSnapshot,
   EvaluationSummary,
   FeedSnapshot,
+  FeedTaskIndexEntry,
+  FeedTaskResult,
   FreshnessState,
   LiveEvent,
   MethodologySnapshot,
@@ -41,6 +43,7 @@ import {
   adaptDecodedCampaignProjectionEnvelope,
   beginCampaignAdaptContextTransaction,
   campaignProgressCounts,
+  cloneCampaignAdaptContext,
   campaignRunIdFromDatasetId,
   createCampaignAdaptContext,
   recordCampaignMatrixTotal,
@@ -72,6 +75,12 @@ function parseProjectionPayload(recordBytes: string): Record<string, unknown> {
   delete payload.sequence;
   delete payload.record_type;
   return payload;
+}
+
+/** The run a bundle must belong to. Every adapted record is checked against it. */
+export interface RunBundleScope {
+  datasetId: string;
+  runId: string;
 }
 
 function isCampaignProjectionPayload(payload: Record<string, unknown>): boolean {
@@ -125,6 +134,8 @@ export interface StoreState {
   assignmentSources: Map<string, ProjectionRecord>;
   /** Complete ingested assignment history, independent of the live feed tail. */
   assignmentEvents: Map<string, LiveEvent[]>;
+  /** The bootstrap's bounded recent results per task, keyed by task ID without its @version suffix. */
+  taskIndex: Map<string, FeedTaskResult[]>;
   methodology: MethodologySnapshot | null;
   events: LiveEvent[];
   eventIds: Set<string>;
@@ -176,6 +187,7 @@ function emptyState(): StoreState {
     assignments: new Map(),
     assignmentSources: new Map(),
     assignmentEvents: new Map(),
+    taskIndex: new Map(),
     methodology: null,
     events: [],
     eventIds: new Set(),
@@ -373,6 +385,68 @@ export class EvalStore {
     this.emitIfNotBatching();
   }
 
+  /** Ingests one run's assignment results from its bundle. Only assignment
+   *  results enter the store: no live events, and the feed cursor does not move.
+   *  Every record is adapted and checked against the scope before anything is
+   *  committed, so a rejected bundle leaves the store unchanged. Re-ingesting a
+   *  result already known from the live stream overwrites it with the same value. */
+  acceptRunBundle(records: ProjectionRecord[], scope: RunBundleScope): void {
+    // Adaptation advances campaign progress, so it runs on copies of this run's
+    // contexts; the copies replace the live contexts only after every record passes.
+    const contexts = new Map<string, CampaignAdaptContext>();
+    const staged: Array<{ assignment: AssignmentResult; source: ProjectionRecord }> = [];
+    for (const record of records) {
+      const payload = getParsedProjectionPayload(record) ?? parseProjectionPayload(record.record_bytes);
+      if (!isCampaignProjectionPayload(payload) || payload.message_type !== 'PublicAssignmentResultProjection') {
+        throw new ValidationError('bundle record is not an assignment result', 'run_bundle');
+      }
+      const envelope = decodeCampaignProjectionEnvelope(payload);
+      const runId = envelope.record.run_id;
+      let context = contexts.get(runId);
+      if (!context) {
+        context = cloneCampaignAdaptContext(this.campaignContexts.get(runId) ?? createCampaignAdaptContext());
+        contexts.set(runId, context);
+      }
+      for (const adapted of adaptDecodedCampaignProjectionEnvelope(envelope, context)) {
+        if (adapted.kind !== 'assignment_result') continue;
+        const assignment = decodeViewRecord(adapted.kind, adapted);
+        if (assignment.kind !== 'assignment_result') continue;
+        if (assignment.run_id !== scope.runId || assignment.dataset_id !== scope.datasetId) {
+          throw new ValidationError('bundle record belongs to another run', 'run_bundle');
+        }
+        staged.push({ assignment, source: record });
+      }
+    }
+    const state: StoreState = {
+      ...this.state,
+      assignments: new Map(this.state.assignments),
+      assignmentSources: new Map(this.state.assignmentSources),
+    };
+    for (const { assignment, source } of staged) {
+      const key = recordKey(assignment.dataset_id, assignment.assignment_id);
+      state.assignments.set(key, assignment);
+      state.assignmentSources.set(key, source);
+    }
+    for (const [runId, context] of contexts) this.campaignContexts.set(runId, context);
+    this.state = state;
+    this.emitIfNotBatching();
+  }
+
+  /** Drops one run's assignment results and their sources. Lifecycle events
+   *  stay: they come from the bootstrap and cannot be reloaded from a bundle. */
+  removeRunAssignments(datasetId: string, runId: string): void {
+    this.setState((state) => {
+      const assignments = new Map(state.assignments);
+      const assignmentSources = new Map(state.assignmentSources);
+      for (const [key, assignment] of state.assignments) {
+        if (assignment.dataset_id !== datasetId || assignment.run_id !== runId) continue;
+        assignments.delete(key);
+        assignmentSources.delete(key);
+      }
+      return { ...state, assignments, assignmentSources };
+    });
+  }
+
   private ingestProjection(state: StoreState, record: ProjectionRecord): void {
     try {
       isProjectionRecord(record);
@@ -554,6 +628,19 @@ export class EvalStore {
     }
     this.state = state;
     this.emitIfNotBatching();
+  }
+
+  /** Replaces the task index with the bootstrap's. */
+  acceptTaskIndex(entries: FeedTaskIndexEntry[]): void {
+    this.setState((state) => ({
+      ...state,
+      taskIndex: new Map(entries.map((entry) => [entry.task_id, entry.results])),
+    }));
+  }
+
+  /** The most recent results the feed holds for one task, newest first. */
+  getTaskResults(taskId: string): FeedTaskResult[] {
+    return this.state.taskIndex.get(taskId) ?? [];
   }
 
   getCatalogs(): CatalogSnapshot[] {

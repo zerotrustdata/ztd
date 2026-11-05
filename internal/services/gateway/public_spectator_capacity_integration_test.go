@@ -186,12 +186,7 @@ func (env *capacityMirrorEnv) coldLifecycle(ctx context.Context, clientIP string
 	if source == "" {
 		source = env.sourceID
 	}
-	cursor := int64(0)
-	for _, record := range bootstrap.RecentProjections {
-		if record.Sequence > cursor {
-			cursor = record.Sequence
-		}
-	}
+	cursor := bootstrap.Snapshot.HighWaterSequence
 	for range 10 {
 		for range 100 {
 			history, status, err := capacityGetJSON[historyCapacityResponse](ctx, env.client, capacityEndpoint(origin, "/history", url.Values{
@@ -274,8 +269,7 @@ func (env *capacityMirrorEnv) openStream(ctx context.Context, source string, cur
 }
 
 type bootstrapCapacityResponse struct {
-	Snapshot          snapshotCapacityResponse   `json:"snapshot"`
-	RecentProjections []projectionCapacityCursor `json:"recent_projections"`
+	Snapshot snapshotCapacityResponse `json:"snapshot"`
 }
 
 type historyCapacityResponse struct {

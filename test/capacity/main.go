@@ -45,8 +45,7 @@ type options struct {
 }
 
 type bootstrapResponse struct {
-	Snapshot          snapshotResponse   `json:"snapshot"`
-	RecentProjections []projectionCursor `json:"recent_projections"`
+	Snapshot snapshotResponse `json:"snapshot"`
 }
 
 type projectionCursor struct {
@@ -202,11 +201,6 @@ func run(ctx context.Context, opts options) (summary, error) {
 		}
 		source = bootstrap.Snapshot.SourceID
 		cursor = bootstrap.Snapshot.HighWaterSequence
-		for _, record := range bootstrap.RecentProjections {
-			if record.Sequence > cursor {
-				cursor = record.Sequence
-			}
-		}
 	}
 
 	started := time.Now()
@@ -246,12 +240,7 @@ func runColdClient(ctx context.Context, opts options, origin, clientIP string) c
 		return result
 	}
 	source := bootstrap.Snapshot.SourceID
-	cursor := int64(0)
-	for _, record := range bootstrap.RecentProjections {
-		if record.Sequence > cursor {
-			cursor = record.Sequence
-		}
-	}
+	cursor := bootstrap.Snapshot.HighWaterSequence
 	for range maxHistoryRounds {
 		for range maxHistoryPages {
 			page, requestInfo, pageErr := fetchHistory(ctx, client, origin, source, cursor, clientIP)

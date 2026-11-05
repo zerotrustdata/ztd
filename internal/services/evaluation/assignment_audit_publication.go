@@ -66,6 +66,18 @@ type CampaignProofPublisher interface {
 	IngestAssignmentAuditSlices(ctx context.Context, inputs []AssignmentAuditProofInput, deferMirrorPush bool) ([]models.PublicAssignmentAuditProofPublishResponse, error)
 	PruneRunProofCatalog(ctx context.Context, runID string) error
 	FlushProofCatalog(ctx context.Context) error
+	// PublishRunBundle has the Gateway build the run's assignment bundle from the
+	// result records it accepted, publish it as a proof artifact, and return its
+	// SHA-256. A run with no accepted results has no bundle and yields an error.
+	PublishRunBundle(ctx context.Context, input RunBundleInput) (string, error)
+}
+
+// RunBundleInput names the run whose assignment bundle the Gateway publishes and
+// the campaign identity it is published under. All three fields are required.
+type RunBundleInput struct {
+	CampaignID       string
+	CampaignRevision string
+	RunID            string
 }
 
 // AssignmentAuditProofIdempotencyKey returns the publication idempotency key for
@@ -84,6 +96,19 @@ func (i AssignmentAuditProofInput) validate() error {
 		return fmt.Errorf("evaluation: assignment audit proof %s: campaign revision: %w", i.AssignmentID, constants.ErrMissingRequiredField)
 	case i.IndexDigest == "":
 		return fmt.Errorf("evaluation: assignment audit proof %s: index digest: %w", i.AssignmentID, constants.ErrMissingRequiredField)
+	}
+	return nil
+}
+
+// validate rejects a bundle input the Gateway would refuse.
+func (i RunBundleInput) validate() error {
+	switch {
+	case i.RunID == "":
+		return fmt.Errorf("evaluation: run bundle: run id: %w", constants.ErrMissingRequiredField)
+	case i.CampaignID == "":
+		return fmt.Errorf("evaluation: run bundle %s: campaign id: %w", i.RunID, constants.ErrMissingRequiredField)
+	case i.CampaignRevision == "":
+		return fmt.Errorf("evaluation: run bundle %s: campaign revision: %w", i.RunID, constants.ErrMissingRequiredField)
 	}
 	return nil
 }

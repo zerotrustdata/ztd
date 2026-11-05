@@ -26,6 +26,8 @@ import { TaskExpectationSection, TaskPromptSection, TaskProvidedSection } from '
 import { DetailLayout, NON_VERDICT_NOTE, PageHero, PanelSection, TonePill } from '../components/evidence';
 import { assignmentVerdictTone, isNonVerdictOutcome, roleLabel } from './derived';
 import { useStoreState } from '../state/store';
+import { taskResultView } from '../state/campaign-adapter';
+import { ValidationError } from '../contract/validators';
 import { scrollToAnchor, scrollToAnchorOnClick } from '../utils/scroll';
 
 function categoryAnchor(category: ScenarioCategory): string {
@@ -46,9 +48,15 @@ function TaskFlagNotes({ task }: { task: ScenarioTaskDefinition }) {
 
 function TaskDetailPanel({ task }: { task: ScenarioTaskDefinition }) {
   const meta = SCENARIO_CATEGORY_META[task.category];
-  const recent = useStoreState((state) => Array.from(state.assignments.values())
-    .filter((assignment) => assignment.task_id.split('@')[0] === task.id)
-    .sort((a, b) => b.observed_at.localeCompare(a.observed_at)).slice(0, 10));
+  const taskResults = useStoreState((state) => state.taskIndex.get(task.id));
+  const recent = (taskResults ?? []).slice(0, 10).flatMap((result) => {
+    try {
+      return [taskResultView(result)];
+    } catch (error) {
+      if (error instanceof ValidationError) return [];
+      throw error;
+    }
+  });
 
   return (
     <article className="task-detail" aria-label={task.id}>

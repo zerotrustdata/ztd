@@ -4,16 +4,14 @@
 // One current snapshot, followed by SSE deltas through the same store decoder.
 // History and proof artifacts are evidence queries, not initialization inputs.
 import { evalStore } from './store';
-import type { FeedBootstrap } from '../contract/types';
 import {
   fetchBootstrap,
-  fetchSnapshot,
   loadRuntimeConfig,
   normalizeRecentProjection,
   openStream,
   type StreamHandle,
 } from './feed';
-import { clearCachedBootstrap, loadCachedBootstrap, saveCachedBootstrap } from './cache';
+import { purgeLegacyBootstrapCaches } from './legacy-cache';
 
 let activeStream: StreamHandle | null = null;
 let generation = 0;
@@ -21,13 +19,13 @@ let generation = 0;
 export interface StartOptions {
   fetchImpl?: typeof fetch;
   streamFactory?: typeof openStream;
-  skipCache?: boolean;
 }
 
 export async function startFeed(opts: StartOptions = {}): Promise<void> {
   const gen = ++generation;
   activeStream?.close();
   activeStream = null;
+  purgeLegacyBootstrapCaches();
   const fetchImpl = opts.fetchImpl ?? fetch.bind(globalThis);
   const streamFactory = opts.streamFactory ?? openStream;
   try {
@@ -36,63 +34,19 @@ export async function startFeed(opts: StartOptions = {}): Promise<void> {
     if (gen !== generation) return;
     evalStore.setMirrorOrigin(runtime.mirror_origin);
 
-    const loadedCache = !opts.skipCache ? await loadCachedBootstrap() : null;
+    const bootstrap = await fetchBootstrap(runtime.mirror_origin, fetchImpl);
     if (gen !== generation) return;
-    const cachedRecord = loadedCache?.mirror_origin === runtime.mirror_origin ? loadedCache : null;
-    if (loadedCache && !cachedRecord) void clearCachedBootstrap();
-    if (cachedRecord) {
-      evalStore.initBootstrap(
-        cachedRecord.bootstrap.snapshot,
-        cachedRecord.bootstrap.recent_projections.map(normalizeRecentProjection),
-        cachedRecord.bootstrap.proof_catalog_summary.artifact_count,
-      );
-      evalStore.setConnection('connecting', 'Connecting to the public mirror.');
-    }
 
-    let needsFullBootstrap = true;
-    let bootstrapToCache: FeedBootstrap | null = null;
-    let targetSourceId = cachedRecord?.bootstrap.snapshot.source_id ?? '';
-    let targetHighWater = cachedRecord?.bootstrap.snapshot.high_water_sequence ?? 0;
+    const current = evalStore.getState().currentSnapshot;
+    const isSameSnapshot =
+      current !== null &&
+      current.source_id === bootstrap.snapshot.source_id &&
+      current.high_water_sequence === bootstrap.snapshot.high_water_sequence &&
+      current.feed_chain_hash === bootstrap.snapshot.feed_chain_hash &&
+      current.withdrawal_digest === bootstrap.snapshot.withdrawal_digest;
 
-    if (cachedRecord && cachedRecord.mirror_origin === runtime.mirror_origin) {
-      try {
-        const remoteSnapshot = await fetchSnapshot(
-          runtime.mirror_origin,
-          '',
-          fetchImpl,
-        );
-        if (gen !== generation) return;
-        const sameSource = remoteSnapshot.source_id === cachedRecord.bootstrap.snapshot.source_id;
-        const sameWithdrawal = remoteSnapshot.withdrawal_digest === cachedRecord.bootstrap.snapshot.withdrawal_digest;
-        const cachedHighWater = cachedRecord.bootstrap.snapshot.high_water_sequence;
-        const sequenceDelta = remoteSnapshot.high_water_sequence - cachedHighWater;
-        // The SSE stream replays up to 100 records directly without a multi-megabyte full bootstrap download.
-        const canCatchUp = sameSource && sameWithdrawal && sequenceDelta >= 0 && sequenceDelta <= 100;
-
-        if (canCatchUp) {
-          needsFullBootstrap = false;
-          evalStore.acceptSnapshot(remoteSnapshot);
-          targetSourceId = remoteSnapshot.source_id;
-          targetHighWater = cachedHighWater;
-        }
-      } catch {
-        needsFullBootstrap = true;
-      }
-    }
-
-    if (needsFullBootstrap) {
-      const bootstrap = await fetchBootstrap(runtime.mirror_origin, fetchImpl);
-      if (gen !== generation) return;
-      bootstrapToCache = bootstrap;
-
-      const current = evalStore.getState().currentSnapshot;
-      const isSameSnapshot =
-        current !== null &&
-        current.source_id === bootstrap.snapshot.source_id &&
-        current.high_water_sequence === bootstrap.snapshot.high_water_sequence &&
-        current.feed_chain_hash === bootstrap.snapshot.feed_chain_hash &&
-        current.withdrawal_digest === bootstrap.snapshot.withdrawal_digest;
-
+    evalStore.beginBatch();
+    try {
       if (!isSameSnapshot) {
         evalStore.initBootstrap(
           bootstrap.snapshot,
@@ -100,48 +54,46 @@ export async function startFeed(opts: StartOptions = {}): Promise<void> {
           bootstrap.proof_catalog_summary.artifact_count,
         );
       }
-      targetSourceId = bootstrap.snapshot.source_id;
-      targetHighWater = bootstrap.snapshot.high_water_sequence;
+      evalStore.acceptTaskIndex(bootstrap.task_index);
+    } finally {
+      evalStore.endBatch();
     }
 
-    if (targetSourceId) {
-      const stream = streamFactory(runtime.mirror_origin, targetSourceId, targetHighWater, {
-        onSnapshot: (snapshot) => {
-          if (gen !== generation) return;
-          const reference = evalStore.getState().currentSnapshot;
-          if (
-            reference &&
-            (reference.source_id !== snapshot.source_id ||
-              reference.withdrawal_digest !== snapshot.withdrawal_digest)
-          ) {
-            void startFeed(opts);
-            return;
-          }
-          evalStore.acceptSnapshot(snapshot);
-        },
-        onProjection: (record) => {
-          if (gen === generation) evalStore.acceptProjection(record);
-        },
-        onTruncated: () => {
-          if (gen === generation) void startFeed({ ...opts, skipCache: true });
-        },
-        onError: () => {
-          if (gen === generation)
-            evalStore.setOffline('The mirror stream is unreachable. Last accepted data remains visible.');
-        },
-        onStateChange: (streamState) => {
-          if (gen !== generation) return;
-          evalStore.setStreamConnection(streamState);
-          if (streamState === 'connected') evalStore.setConnection('live', 'Streaming live updates via SSE.');
-        },
-      });
-      if (gen !== generation) {
-        stream.close();
-        return;
-      }
-      activeStream = stream;
-      if (bootstrapToCache) void saveCachedBootstrap(runtime.mirror_origin, bootstrapToCache).catch(() => {});
+    const stream = streamFactory(runtime.mirror_origin, bootstrap.snapshot.source_id, bootstrap.snapshot.high_water_sequence, {
+      onSnapshot: (snapshot) => {
+        if (gen !== generation) return;
+        const reference = evalStore.getState().currentSnapshot;
+        if (
+          reference &&
+          (reference.source_id !== snapshot.source_id ||
+            reference.withdrawal_digest !== snapshot.withdrawal_digest)
+        ) {
+          void startFeed(opts);
+          return;
+        }
+        evalStore.acceptSnapshot(snapshot);
+      },
+      onProjection: (record) => {
+        if (gen === generation) evalStore.acceptProjection(record);
+      },
+      onTruncated: () => {
+        if (gen === generation) void startFeed(opts);
+      },
+      onError: () => {
+        if (gen === generation)
+          evalStore.setOffline('The mirror stream is unreachable. Last accepted data remains visible.');
+      },
+      onStateChange: (streamState) => {
+        if (gen !== generation) return;
+        evalStore.setStreamConnection(streamState);
+        if (streamState === 'connected') evalStore.setConnection('live', 'Streaming live updates via SSE.');
+      },
+    });
+    if (gen !== generation) {
+      stream.close();
+      return;
     }
+    activeStream = stream;
   } catch (error) {
     if (gen !== generation) return;
     const message = error instanceof Error ? error.message : 'public mirror is unreachable';

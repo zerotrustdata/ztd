@@ -313,6 +313,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | Path constants | `internal/constants/paths.go` | Reusable system, repository, and runtime path strings. |
 | `CanonicalDBService` | `internal/services/gateway/gateway_db.go` | Primary SQLite connection, schema lifecycle, encrypted vault, secret manager, maintenance, and store lifetimes. Constructor: `OpenCanonicalDBService`, called by the Gateway builder and by Operator startup in `internal/cli/serve/operator_runtime.go`. `ZtdoService` receives the opened instance. |
 | `PublicMirrorStore` | `internal/services/gateway/public_mirror_store.go` | Public spectator mirror store: `public-mirror/mirror.db` plus content-addressed `public-mirror/proofs/`. Constructor: `OpenPublicMirrorStore`, which verifies the chain and proofs on every open. |
+| Run bundles | `internal/services/gateway/public_run_bundle.go`, `internal/services/gateway/public_mirror_run_bundle_store.go` | `PublicPublisherService.PublishRunBundle` builds a settled run's assignment result bundle from the mirror's accepted `snapshot_records` through `PublicMirrorStore.RunBundleRecords` and publishes it as a proof catalog artifact. The Gateway route is `POST /api/v1/public-feed/proofs/run-bundle`; `remoteGatewayCampaignProofPublisher.PublishRunBundle` calls it. |
 
 `CanonicalDBService` accessors:
 

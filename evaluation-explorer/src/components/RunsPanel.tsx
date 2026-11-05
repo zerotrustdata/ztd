@@ -21,7 +21,6 @@ export function RunsPanel() {
   const catalogs = useStoreState((state) => Array.from(state.catalogs.values()));
   const evaluations = useStoreState((state) => Array.from(state.evaluations.values()));
   const models = useStoreState((state) => Array.from(state.models.values()));
-  const assignments = useStoreState((state) => Array.from(state.assignments.values()));
   const recent = useMemo(
     () => recentCampaignRows(catalogs, evaluations, models),
     [catalogs, evaluations, models],
@@ -111,40 +110,17 @@ export function RunsPanel() {
                 {isFormation ? (
                   <ul className="campaign-evidence-roles campaign-evidence-roles-formation" aria-label="Models by role">
                     {campaign.models.map((model) => {
-                      const roleAssignments = campaign.runId
-                        ? assignments.filter((a) => a.run_id === campaign.runId && a.role === model.role)
-                        : [];
-
-                      let mPassed = 0;
-                      let mFailed = 0;
-                      let mNoVerdict = 0;
-                      let mTerminal: number;
-                      let rolePassRate: string | undefined;
-
-                      if (roleAssignments.length > 0) {
-                        mTerminal = roleAssignments.length;
-                        for (const a of roleAssignments) {
-                          if (a.terminal_status === 'completed' && a.metric_values?.pass?.value === 1) mPassed++;
-                          else if (a.terminal_status === 'model_failed' || a.metric_values?.pass?.value === 0) mFailed++;
-                          else mNoVerdict++;
-                        }
-                        const roleJudged = mPassed + mFailed;
-                        if (roleJudged > 0) {
-                          rolePassRate = `${Math.round((mPassed / roleJudged) * 100)}%`;
-                        }
-                      } else {
-                        const mBreakdown = terminalOutcomeBreakdown(model.terminalOutcomes);
-                        mPassed = mBreakdown?.verdicts.find((entry) => entry.status === 'completed')?.count ?? 0;
-                        mFailed = mBreakdown?.verdicts.find((entry) => entry.status === 'model_failed')?.count ?? 0;
-                        mNoVerdict = mBreakdown?.nonVerdictCount ?? 0;
-                        mTerminal = mBreakdown?.total ?? 0;
-                        const roleJudged = mPassed + mFailed;
-                        if (model.passRate?.estimate !== undefined) {
-                          rolePassRate = `${Math.round(model.passRate.estimate * 100)}%`;
-                        } else if (roleJudged > 0) {
-                          rolePassRate = `${Math.round((mPassed / roleJudged) * 100)}%`;
-                        }
-                      }
+                      const breakdown = terminalOutcomeBreakdown(model.terminalOutcomes);
+                      const mPassed = breakdown?.verdicts.find((entry) => entry.status === 'completed')?.count ?? 0;
+                      const mFailed = breakdown?.verdicts.find((entry) => entry.status === 'model_failed')?.count ?? 0;
+                      const mNoVerdict = breakdown?.nonVerdictCount ?? 0;
+                      const mTerminal = breakdown?.total ?? 0;
+                      const roleJudged = mPassed + mFailed;
+                      const rolePassRate = model.passRate?.estimate !== undefined
+                        ? `${Math.round(model.passRate.estimate * 100)}%`
+                        : roleJudged > 0
+                          ? `${Math.round((mPassed / roleJudged) * 100)}%`
+                          : undefined;
 
                       const isRunSettled =
                         status === 'completed' ||
@@ -153,7 +129,6 @@ export function RunsPanel() {
                         status === 'cancelled' ||
                         (campaign.assignmentTotal > 0 && terminal >= campaign.assignmentTotal);
 
-                      const roleJudged = mPassed + mFailed;
                       const roleScheduled = isRunSettled
                         ? mTerminal
                         : model.evaluationCoverage && model.evaluationCoverage > 0

@@ -339,6 +339,7 @@ func TestPublicFeedVocabularyAcceptsKnownValues(t *testing.T) {
 	assert.True(t, publicFeedViewSchemaVersion("1.9.0"))
 	assert.True(t, publicFeedViewSchemaVersion("1.10.0"))
 	assert.True(t, publicFeedViewSchemaVersion("1.11.0"))
+	assert.True(t, publicFeedViewSchemaVersion("1.13.0"))
 	assert.True(t, publicFeedViewSchemaVersion(constants.ExplorerViewSchemaVersion))
 	assert.True(t, publicFeedEventKind("judge_started"))
 	assert.True(t, publicFeedEventKind("judge_completed"))

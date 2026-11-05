@@ -385,7 +385,7 @@ function assertOptionalString(value: unknown, path: string, maxBytes = 128): voi
   if (value !== undefined) assertString(value, path, maxBytes);
 }
 
-function assertEnum<T extends string>(value: unknown, values: readonly T[], path: string): asserts value is T {
+export function assertEnum<T extends string>(value: unknown, values: readonly T[], path: string): asserts value is T {
   assert(typeof value === 'string' && (values as readonly string[]).includes(value), path, 'unknown enum value');
 }
 

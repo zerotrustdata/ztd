@@ -74,7 +74,7 @@ function nativeEvaluation(runId: string) {
   };
 }
 
-async function installMirror(page: Page, records: object[] = runIds.map(nativeEvaluation)): Promise<void> {
+async function installMirror(page: Page, records: object[] = runIds.map(nativeEvaluation), taskIndex: object[] = []): Promise<void> {
   await page.route(`${mirrorOrigin}/**`, async (route: Route) => {
     const url = new URL(route.request().url());
     if (url.pathname === '/bootstrap') {
@@ -94,6 +94,7 @@ async function installMirror(page: Page, records: object[] = runIds.map(nativeEv
           },
           source_freshness: 'active',
           recent_projections: records.map((record, index) => ({ ...record, sequence: index + 1 })).reverse(),
+          task_index: taskIndex,
           proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 },
           generated_at: '2026-09-20T00:00:00Z',
         }),
@@ -195,7 +196,17 @@ test('follows the evidence from a campaign through its assignment, model and tas
   const assignment = { ...fixtureEnrichedAssignmentResult, task_id: 'instruction-review-vote-deny', scenario_id: 'instruction-review-vote-deny', dataset_id: 'ds-live-navigation', run_id: 'navigation-run', assignment_id: 'navigation-assignment', variant_id: 'navigation-model' };
   const model = { ...fixtureModelSummaries[0]!, dataset_id: assignment.dataset_id, variant_id: assignment.variant_id, role: assignment.role, display_name: 'Navigation model' };
   const run = { ...fixtureEvaluationSummaries[0]!, dataset_id: assignment.dataset_id, run_id: assignment.run_id, model_role_mapping: { [assignment.role]: assignment.variant_id } };
-  await installMirror(page, [run, model, assignment]);
+  await installMirror(page, [run, model, assignment], [{
+    task_id: assignment.task_id,
+    results: [{
+      run_id: assignment.run_id,
+      assignment_id: assignment.assignment_id,
+      lifecycle_status: 'EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED',
+      summary_status: 'EVALUATION_VERDICT_STATUS_PASS',
+      verification_status: 'verified',
+      completed_at: assignment.observed_at,
+    }],
+  }]);
   await page.goto('/evaluations?release=all');
   await page.getByRole('main').getByRole('link', { name: run.run_id, exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: run.run_id })).toBeVisible();

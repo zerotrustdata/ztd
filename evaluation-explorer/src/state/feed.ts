@@ -95,16 +95,6 @@ export async function fetchBootstrap(
   return bootstrap;
 }
 
-export async function fetchSnapshot(
-  mirrorOrigin: string,
-  sourceId: string = '',
-  fetchImpl: typeof fetch = fetch.bind(globalThis),
-): Promise<FeedSnapshot> {
-  const snapshot = await client(mirrorOrigin, fetchImpl).snapshot(sourceId || undefined);
-  isFeedSnapshot(snapshot);
-  return snapshot;
-}
-
 export async function fetchSnapshotAt(
   mirrorOrigin: string,
   sourceId: string,

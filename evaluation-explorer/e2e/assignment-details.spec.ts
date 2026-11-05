@@ -77,6 +77,7 @@ async function installMirror(page: Page, records: unknown[], options: { malforme
             ...(record as object), sequence: index + 1,
             ...(options.malformed && index === 0 ? { private_prompt: 'must never render' } : {}),
           })).reverse(),
+          task_index: [],
           proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 },
           generated_at: snapshot.generated_at,
         }),

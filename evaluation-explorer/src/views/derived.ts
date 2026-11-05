@@ -977,22 +977,6 @@ export function resourceObservationMissing(assignment: AssignmentResult): boolea
   );
 }
 
-/** The runs that produced at least one assignment for a variant. This is
- *  the faithful model-to-run join (see module comment). */
-export function runsForVariant(
-  variantId: string,
-  assignments: AssignmentResult[],
-  evaluations: EvaluationSummary[],
-): EvaluationSummary[] {
-  const runIds = new Set(
-    assignments.filter((a) => a.variant_id === variantId).map((a) => `${a.dataset_id}:${a.run_id}`),
-  );
-  return evaluations
-    .filter((e) => runIds.has(`${e.dataset_id}:${e.run_id}`) || Object.values(e.model_role_mapping ?? {}).includes(variantId) ||
-      e.formations?.some((formation) => Object.values(formation.model_role_mapping).includes(variantId)))
-    .sort((a, b) => a.started_at?.localeCompare(b.started_at ?? '') ?? 0);
-}
-
 export interface ModelSuiteRow {
   suite_id: string;
   display_name: string;
@@ -1390,6 +1374,10 @@ export function modelSummaryGroups(models: ModelSummary[]): Array<{ model: Model
     const outcomes = Object.fromEntries(TERMINAL_STATUSES.map((status) => [status,
       sources.reduce((sum, model) => sum + (model.terminal_outcomes?.[status] ?? 0), 0),
     ])) as Record<TerminalStatus, number>;
+    const rated = sources.filter((model) => model.security_pass_rate && model.security_pass_rate.denominator > 0);
+    const securityDenominator = rated.reduce((sum, model) => sum + model.security_pass_rate!.denominator, 0);
+    const pooledSecurity = (field: 'estimate' | 'lower' | 'upper'): number =>
+      rated.reduce((sum, model) => sum + model.security_pass_rate![field] * model.security_pass_rate!.denominator, 0) / securityDenominator;
     const dispositions = contributors.map((model) => model.security_resistance);
     const securityCount = dispositions.reduce((sum, value) => sum + (value ? value.refused + value.yielded + value.persisted : 0), 0);
     const security = securityCount > 0 && dispositions.every((value) => value !== undefined)
@@ -1414,6 +1402,12 @@ export function modelSummaryGroups(models: ModelSummary[]): Array<{ model: Model
           lower: weighted((model) => model.pass_rate?.lower)!,
           upper: weighted((model) => model.pass_rate?.upper)!,
           denominator,
+        } : undefined,
+        security_pass_rate: securityDenominator > 0 ? {
+          estimate: pooledSecurity('estimate'),
+          lower: pooledSecurity('lower'),
+          upper: pooledSecurity('upper'),
+          denominator: securityDenominator,
         } : undefined,
         terminal_outcomes: sources.some((model) => model.terminal_outcomes) ? outcomes : undefined,
         repeatability: contributors.every((model) => model.repeatability) ? {
@@ -1442,7 +1436,7 @@ export interface ModelLeaderboardRow {
   run_durations: Record<string, number | undefined>;
   score: number;
   pass_rate: number;
-  /** Security resistance or security category pass rate; undefined when the role has no security scenarios. */
+  /** Pass rate on judged security-policy tasks; undefined when the role has none. */
   security?: number;
   latency_p50_ms: number;
   output_tokens: number;
@@ -1482,60 +1476,29 @@ function positive(value: number | undefined): number | undefined {
   return value !== undefined && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
-function modelSecurityAssignments(model: ModelSummary, assignments: AssignmentResult[]): AssignmentResult[] {
-  return assignments.filter((a) => a.variant_id === model.variant_id && a.role === model.role &&
-    a.dataset_id === model.dataset_id && (a.terminal_status === 'completed' || a.terminal_status === 'model_failed') &&
-    (a.scenario_category === 'security_policy' || a.scenario_id?.startsWith('security-') || a.task_id?.startsWith('security-')));
-}
-
-/** Resolves the pass rate on security category tasks for a model in a designated role.
- *  Uses exact task results from assignments when available, otherwise falls back to
- *  the aggregate security disposition. Roles without security scenarios (e.g. Lite)
- *  return undefined. */
-export function resolveModelSecurity(
-  model: ModelSummary,
-  assignments: AssignmentResult[] = [],
-): number | undefined {
-  const securityTasks = modelSecurityAssignments(model, assignments);
-  if (securityTasks.length > 0) {
-    const passed = securityTasks.filter((a) => a.terminal_status === 'completed' && assignmentPass(a) === 1).length;
-    return passed / securityTasks.length;
-  }
-
-  const resistance = model.security_resistance;
-  if (resistance?.value !== undefined) {
-    return resistance.value;
-  }
-  if (
-    resistance?.refused !== undefined &&
-    resistance.refused + resistance.yielded + resistance.persisted > 0
-  ) {
-    return (
-      (resistance.refused + 0.5 * resistance.yielded) /
-      (resistance.refused + resistance.yielded + resistance.persisted)
-    );
-  }
-
-  return undefined;
+/** The model's pass rate on security-policy tasks in its designated role, from its summary. Roles
+ *  without judged security tasks have no rate and return undefined. */
+export function resolveModelSecurity(model: ModelSummary): number | undefined {
+  return model.security_pass_rate?.estimate;
 }
 
 /** Whether the Leaderboard can rank a model: full coverage, verified scored evidence, a
  *  parameter count, latency and token observations, and security evidence or an allowed N/A. */
-function isLeaderboardQualified(model: ModelSummary, assignments: AssignmentResult[]): boolean {
+function isLeaderboardQualified(model: ModelSummary): boolean {
   if (model.inventory_only || !model.pass_rate || model.pass_rate.denominator <= 0) return false;
   if (model.evaluation_coverage !== 1 || model.quality_state !== 'exploratory_verified') return false;
   if (positive(model.latency_p50_ms?.value) === undefined || positive(model.output_tokens?.value) === undefined ||
     positive(resolveModelProfile(model).parameter_count) === undefined) return false;
-  const security = resolveModelSecurity(model, assignments);
+  const security = resolveModelSecurity(model);
   return security !== undefined || model.role === 'lite' || model.security_resistance?.unavailable_reason === 'scenario_not_applicable';
 }
 
 /** The series the Leaderboard opens on: the newest with a model it can rank, so neither a
  *  platform upgrade nor a run still in progress blanks the page. The build series is the
  *  fallback before the feed holds a rankable model. */
-export function defaultLeaderboardRelease(models: ModelSummary[], assignments: AssignmentResult[], qualifiedFormationRuns: EvaluationSummary[] = []): string {
+export function defaultLeaderboardRelease(models: ModelSummary[], qualifiedFormationRuns: EvaluationSummary[] = []): string {
   const release = newestAdmittedRelease([
-    ...models.filter((model) => isLeaderboardQualified(model, assignments)), ...qualifiedFormationRuns,
+    ...models.filter((model) => isLeaderboardQualified(model)), ...qualifiedFormationRuns,
   ], () => true);
   return toReleaseSeries(release ?? CURRENT_PLATFORM_RELEASE);
 }
@@ -1545,8 +1508,8 @@ export function defaultLeaderboardRelease(models: ModelSummary[], assignments: A
  *  where smallest is the role's smallest scored parameter count, and speed and tokens are the
  *  role's best (lowest) p50 latency and output tokens per task divided by the model's.
  *  Squaring accuracy gives accuracy dominant weight; √security gives security secondary pull while
- *  a zero still zeroes the score. Lite models without security metrics are scored as 50% security;
- *  other roles without security metrics score zero. Each doubling of parameters costs 10%,
+ *  a zero still zeroes the score. Security is the summary's security pass rate. Lite models without
+ *  it are scored as 50% security; other roles without it score zero. Each doubling of parameters costs 10%,
  *  so a larger model must be clearly more accurate to outrank a smaller one. Efficiency can cost
  *  at most 15%, so it only separates models of similar quality. Leaders require full coverage,
  *  verified scored evidence, a parameter count, latency and token observations, and security
@@ -1555,27 +1518,15 @@ export function modelRoleLeaderboardRows(
   models: ModelSummary[],
   role: ModelRole | 'all' = 'all',
   evaluations: EvaluationSummary[] = [],
-  assignments: AssignmentResult[] = [],
 ): ModelRoleLeaderboardRow[] {
   const formationDatasets = new Set(evaluations.filter((run) => run.evaluation_unit === 'system').map((run) => run.dataset_id));
   const qualified = models.filter((model) => !formationDatasets.has(model.dataset_id) &&
-    (role === 'all' || model.role === role) && isLeaderboardQualified(model, assignments));
-  const measured = modelSummaryGroups(qualified).map(({ model, sources }) => {
-    const securityObservations = sources.flatMap((source) => {
-      const security = resolveModelSecurity(source, assignments);
-      if (security === undefined) return [];
-      const judged = modelSecurityAssignments(source, assignments);
-      const disposition = source.security_resistance;
-      const count = judged.length || (disposition ? disposition.refused + disposition.yielded + disposition.persisted : 0) || 1;
-      return [{ security, count }];
-    });
-    const securityCount = securityObservations.reduce((sum, observation) => sum + observation.count, 0);
-    return {
-      model, sources,
-      latency: model.latency_p50_ms!.value!, tokens: model.output_tokens!.value!, size: model.parameter_count!,
-      security: securityCount > 0 ? securityObservations.reduce((sum, observation) => sum + observation.security * observation.count, 0) / securityCount : undefined,
-    };
-  });
+    (role === 'all' || model.role === role) && isLeaderboardQualified(model));
+  const measured = modelSummaryGroups(qualified).map(({ model, sources }) => ({
+    model, sources,
+    latency: model.latency_p50_ms!.value!, tokens: model.output_tokens!.value!, size: model.parameter_count!,
+    security: resolveModelSecurity(model),
+  }));
 
   const best = new Map<ModelRole, { latency: number; tokens: number; size: number }>();
   for (const { model, latency, tokens, size } of measured) {

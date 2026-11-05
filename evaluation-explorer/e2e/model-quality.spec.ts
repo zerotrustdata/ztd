@@ -66,6 +66,7 @@ async function installMirror(page: Page, records: unknown[]): Promise<string[]> 
           snapshot,
           source_freshness: 'active',
           recent_projections: records.map((record, index) => ({ ...(record as object), sequence: index + 1 })).reverse(),
+          task_index: [],
           proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 },
           generated_at: snapshot.generated_at,
         }),
@@ -201,11 +202,12 @@ test('shows frozen deployment specifications and filters installed artifact budg
 
 test('combines repeated campaigns into one model row and keeps repetition costs per assignment', async ({ page }) => {
   const records = ['ds-reps-one', 'ds-reps-three'].flatMap((dataset, index) => (['primary', 'assistant', 'lite'] as const).map((role) => ({
-    ...model(dataset, 'exploratory_verified', role), display_name: 'Aggregate model',
+    ...model(dataset, 'exploratory_verified', role), display_name: 'Aggregate model', schema_version: '1.14.0',
     model_digest: index === 0 ? undefined : 'a'.repeat(64), evaluation_coverage: 1,
     parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
     pass_rate: { estimate: index === 0 ? 0.5 : 1, lower: 0, upper: 1, denominator: index === 0 ? 10 : 30 },
     security_resistance: { value: 1, refused: index === 0 ? 1 : 3, yielded: 0, persisted: 0 },
+    security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: index === 0 ? 1 : 3 },
   })));
   const requests = await installMirror(page, [...records, ...['ds-reps-one', 'ds-reps-three'].map((dataset_id) => ({ ...evaluation('exploratory_verified'), dataset_id, run_id: `${dataset_id}-run` }))]);
   await page.goto('/leaderboard');

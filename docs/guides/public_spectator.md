@@ -93,6 +93,17 @@ curl -fsS "http://127.0.0.1:8082/proof-segments?source=${SOURCE_ID}"
 
 Public clients omit credentials. `/proof-head` returns only the latest signing header; `/proof-catalog` lists active artifacts, and `/proof-segments` supplies their signed history. The Evaluation Explorer footer links to all three for the selected source. See the [offline verification procedure](../architecture/public_spectator.md#offline-proof-verification) for verifying downloaded evidence.
 
+`/bootstrap` carries no assignment results. Each settled run's results are one run bundle in the proof catalog, named `<run-id>.assignments.jsonl.gz`. Set `RUN_ID` to a run's ID to download its bundle, check its digest, and read its lines. Each line holds a record's `sequence`, `record_hash`, and `record_bytes`:
+
+```bash
+BUNDLE=$(curl -fsS http://127.0.0.1:8082/proof-catalog | jq -r --arg name "${RUN_ID}.assignments.jsonl.gz" '.entries[] | select(.filename == $name) | .sha256')
+curl -fsS -o run-bundle.jsonl.gz "http://127.0.0.1:8082/proofs/${BUNDLE}"
+echo "${BUNDLE}  run-bundle.jsonl.gz" | sha256sum --check
+gzip -dc run-bundle.jsonl.gz | jq -c '{sequence, record_hash}'
+```
+
+The same digest is the run's `evaluation_summary.assignment_bundle_sha256`. After upgrading, run `ztd eval runs publish --all` so every settled run publishes a bundle and its model summaries carry `security_pass_rate`.
+
 ## Create the Cloudflare tunnel
 
 The tunnel origin is the read-only public listener (`8082`), never the private listener (`8081`) and never the Gateway console (`8443`):

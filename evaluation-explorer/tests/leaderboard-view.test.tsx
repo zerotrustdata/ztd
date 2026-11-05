@@ -33,6 +33,7 @@ describe('LeaderboardView', () => {
       quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1,
       parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
       pass_rate: { estimate: index === 0 ? 0.5 : 1, lower: index === 0 ? 0.5 : 1, upper: index === 0 ? 0.5 : 1, denominator: index === 0 ? 10 : 30 },
+      security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: index === 0 ? 1 : 3 },
       security_resistance: { value: 1, refused: index === 0 ? 1 : 3, yielded: 0, persisted: 0 },
     }))), []);
     render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
@@ -64,6 +65,7 @@ describe('LeaderboardView', () => {
       pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: 10 },
       latency_p50_ms: { value: 1200 },
       output_tokens: { value: 150 },
+      security_pass_rate: { estimate: 0.5, lower: 0.5, upper: 0.5, denominator: 2 },
       security_resistance: { value: 0.5, refused: 1, yielded: 0, persisted: 1 },
     };
     evalStore.loadFixtures(
@@ -143,6 +145,7 @@ describe('LeaderboardView', () => {
         quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1,
         parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
         pass_rate: { estimate: 0.75, lower: 0.75, upper: 0.75, denominator: 10 },
+        security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 4 },
         security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 },
       },
     ]), []);
@@ -201,6 +204,7 @@ describe('LeaderboardView', () => {
       pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
       latency_p50_ms: { value: 500 },
       output_tokens: { value: 100 },
+      security_pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: 5 },
       security_resistance: { value: 0.8, refused: 4, yielded: 0, persisted: 1 },
     };
     const modelB: ModelSummary = {
@@ -213,6 +217,7 @@ describe('LeaderboardView', () => {
       pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: 10 },
       latency_p50_ms: { value: 1000 },
       output_tokens: { value: 50 },
+      security_pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
       security_resistance: { value: 0.9, refused: 9, yielded: 0, persisted: 1 },
     };
     const modelC: ModelSummary = {
@@ -225,6 +230,7 @@ describe('LeaderboardView', () => {
       pass_rate: { estimate: 0.95, lower: 0.95, upper: 0.95, denominator: 10 },
       latency_p50_ms: { value: 200 },
       output_tokens: { value: 80 },
+      security_pass_rate: { estimate: 0.7, lower: 0.7, upper: 0.7, denominator: 10 },
       security_resistance: { value: 0.7, refused: 7, yielded: 0, persisted: 3 },
     };
     evalStore.loadFixtures(
@@ -316,6 +322,7 @@ describe('LeaderboardView', () => {
         quality_state: 'exploratory_verified' as const, evaluation_coverage: 1,
         pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: role === 'lite' ? 10 : 100 },
         latency_p50_ms: { value: 100 }, output_tokens: { value: 100 },
+        security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 10 },
         security_resistance: { value: 1, refused: 10, yielded: 0, persisted: 0 },
       },
       {
@@ -324,6 +331,7 @@ describe('LeaderboardView', () => {
         quality_state: 'exploratory_verified' as const, evaluation_coverage: 1,
         pass_rate: { estimate: role === 'lite' ? 1 : 0.1, lower: 0, upper: 1, denominator: role === 'lite' ? 1000 : 10 },
         latency_p50_ms: { value: 100 }, output_tokens: { value: 100 },
+        security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 10 },
         security_resistance: { value: 1, refused: 10, yielded: 0, persisted: 0 },
       },
     ]);
@@ -362,6 +370,7 @@ describe('LeaderboardView', () => {
       parameter_count: 4_000_000_000,
       latency_p50_ms: { value: 1000 },
       output_tokens: { value: 100 },
+      security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 4 },
       security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 },
     };
     evalStore.loadFixtures(MODEL_ROLE_WIRE_ORDER.flatMap((role) => [
@@ -397,6 +406,7 @@ describe('LeaderboardView', () => {
         latency_p50_ms: { value: 1000 },
         output_tokens: { value: 100 },
         pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
+        security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 4 },
         security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 },
       }));
 
@@ -457,6 +467,7 @@ describe('LeaderboardView', () => {
         latency_p50_ms: { value: 1000 },
         output_tokens: { value: 100 },
         pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
+        security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 4 },
         security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 },
       }));
     const runningEvaluation: EvaluationSummary = {
@@ -526,6 +537,17 @@ describe('LeaderboardView', () => {
       expect(screen.getByRole('combobox', { name: 'Filter by release' })).toHaveValue(currentSeries);
     });
   });
+  it('counts only runs whose dataset holds a displayed model summary as covered', () => {
+    const model = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary')!;
+    evalStore.loadFixtures([
+      model,
+      { ...formationRun, dataset_id: model.dataset_id, run_id: 'run-covered' },
+      { ...formationRun, dataset_id: 'ds-without-models', run_id: 'run-uncovered' },
+    ], []);
+    render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
+    expect(screen.getByTestId('stat-runs-covered')).toHaveTextContent('1');
+  });
+
   it('opens on Formations when the release has formation results but no model rows', () => {
     evalStore.loadFixtures([formationRun], []);
     const { unmount } = render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
@@ -546,6 +568,7 @@ describe('LeaderboardView', () => {
         quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1,
         parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
         pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
+        security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 4 },
         security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 },
       })),
       formationRun,

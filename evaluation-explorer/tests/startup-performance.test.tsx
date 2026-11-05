@@ -6,9 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useMirrorOrigin } from '../src/state/mirror';
 import { evalStore } from '../src/state/store';
 import { startFeed, stopFeed } from '../src/state/startup';
-import { BOOTSTRAP_DATABASE_NAME, BOOTSTRAP_STORAGE_KEY, saveCachedBootstrap, type CachedBootstrapRecord } from '../src/state/cache';
+import { LEGACY_BOOTSTRAP_STORAGE_KEY } from '../src/state/legacy-cache';
 import { fixtureCatalogExploratory } from '../src/fixtures/fixtures';
-import type { FeedSnapshot } from '../src/contract/types';
+import type { FeedSnapshot, FeedTaskIndexEntry } from '../src/contract/types';
 import type { StreamHandlers } from '../src/state/feed';
 
 const origin = 'https://mirror.example';
@@ -18,19 +18,25 @@ const snapshot: FeedSnapshot = {
   generated_at: '2026-10-23T00:00:00Z', freshness: 'active',
 };
 function json(value: unknown) { return new Response(JSON.stringify(value), { status: 200 }); }
-function fetchMirror(currentSnapshot: FeedSnapshot = snapshot) {
+function requestedPaths(fetchImpl: ReturnType<typeof vi.fn>): string[] {
+  return fetchImpl.mock.calls.map(([req]) => new URL(String(req), origin).pathname);
+}
+function fetchMirror(currentSnapshot: FeedSnapshot = snapshot, taskIndex: FeedTaskIndexEntry[] = []) {
   return vi.fn(async (input: Parameters<typeof fetch>[0]) => {
     const path = new URL(String(input), origin).pathname;
     if (path === '/runtime.json') return json({ schema_version: '1.0.0', mirror_origin: origin });
     if (path === '/snapshot') return json(currentSnapshot);
     if (path === '/bootstrap') return json({ protocol_version: '1.0.0', snapshot: currentSnapshot, source_freshness: 'active',
-      recent_projections: [{ ...fixtureCatalogExploratory, sequence: 50 }],
+      recent_projections: [{ ...fixtureCatalogExploratory, sequence: 50 }], task_index: taskIndex,
       proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 }, generated_at: currentSnapshot.generated_at });
     throw new Error(`Unexpected startup request: ${path}`);
   });
 }
 function Origin() { return <span>{useMirrorOrigin()}</span>; }
-beforeEach(() => evalStore.loadFixtures([], []));
+beforeEach(() => {
+  localStorage.clear();
+  evalStore.loadFixtures([], []);
+});
 afterEach(() => { stopFeed(); vi.unstubAllGlobals(); });
 
 describe('current snapshot startup', () => {
@@ -63,106 +69,30 @@ describe('current snapshot startup', () => {
     } finally { unsubscribe(); }
   });
 
-  it('opens the stream before persisting a fetched bootstrap', async () => {
-    let cacheAtStreamOpen: string | null | undefined;
-    const streamFactory = vi.fn(() => {
-      cacheAtStreamOpen = localStorage.getItem(BOOTSTRAP_STORAGE_KEY);
-      return { close() {} };
+  it('installs the bootstrap task index into the store', async () => {
+    const results = [{
+      run_id: 'run-1', assignment_id: 'assignment-1', lifecycle_status: 'completed',
+      summary_status: 'passed', completed_at: '2026-10-23T00:00:00Z',
+    }];
+    await startFeed({
+      fetchImpl: fetchMirror(snapshot, [{ task_id: 'task-a', results }]),
+      streamFactory: () => ({ close() {} }),
     });
-
-    await startFeed({ fetchImpl: fetchMirror(), streamFactory });
-
-    expect(cacheAtStreamOpen).toBeNull();
-    expect(localStorage.getItem(BOOTSTRAP_STORAGE_KEY)).not.toBeNull();
+    expect(evalStore.getTaskResults('task-a')).toEqual(results);
   });
 
-  it('does not hydrate a cache for a different configured mirror origin', async () => {
-    const oldSnapshot: FeedSnapshot = { ...snapshot, source_id: 'old-origin' };
-    await saveCachedBootstrap('https://old.example', {
-      protocol_version: '1.0.0', snapshot: oldSnapshot, source_freshness: 'active',
-      recent_projections: [{ ...fixtureCatalogExploratory, sequence: 50 }],
-      proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 }, generated_at: oldSnapshot.generated_at,
-    });
-
-    let releaseBootstrap!: (response: Response) => void;
-    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
-      const path = new URL(String(input), origin).pathname;
-      if (path === '/runtime.json') return json({ schema_version: '1.0.0', mirror_origin: 'https://new.example' });
-      if (path === '/bootstrap') return new Promise<Response>((resolve) => { releaseBootstrap = resolve; });
-      throw new Error(`Unexpected startup request: ${path}`);
-    });
-    const starting = startFeed({ fetchImpl, streamFactory: () => ({ close() {} }) });
-    try {
-      await vi.waitFor(() => expect(releaseBootstrap).toBeTypeOf('function'));
-      expect(evalStore.getState().mirrorOrigin).toBe('https://new.example');
-      expect(evalStore.getState().currentSnapshot).toBeNull();
-    } finally {
-      releaseBootstrap(json({ protocol_version: '1.0.0', snapshot, source_freshness: 'active', recent_projections: [],
-        proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 }, generated_at: snapshot.generated_at }));
-      await starting;
-    }
+  it('fetches the bootstrap again on every start because nothing is cached', async () => {
+    await startFeed({ fetchImpl: fetchMirror(), streamFactory: () => ({ close() {} }) });
+    const second = fetchMirror();
+    await startFeed({ fetchImpl: second, streamFactory: () => ({ close() {} }) });
+    expect(requestedPaths(second)).toEqual(['/runtime.json', '/bootstrap']);
+    expect(evalStore.getState().observedSequence).toBe(100);
   });
 
-  it('does not hydrate an IndexedDB cache after a newer startup wins during the async read', async () => {
-    const records = new Map<string, unknown>();
-    let hasStore = false;
-    const database = {
-      objectStoreNames: { contains: (name: string) => name === 'feed' && hasStore },
-      createObjectStore: () => { hasStore = true; return {}; },
-      close: () => {},
-      transaction: () => {
-        const transaction: { oncomplete?: () => void; onerror?: () => void; onabort?: () => void } = {};
-        Object.assign(transaction, { objectStore: () => ({
-          get: (key: string) => {
-            const request: { result?: unknown; onsuccess?: () => void } = {};
-            queueMicrotask(() => { request.result = records.get(key); request.onsuccess?.(); transaction.oncomplete?.(); });
-            return request;
-          },
-          put: (value: unknown, key: string) => { records.set(key, structuredClone(value)); return {}; },
-          delete: (key: string) => { records.delete(key); return {}; },
-        }) });
-        return transaction;
-      },
-    };
-    let releaseOpen!: () => void;
-    const indexedDB = {
-      open: vi.fn((name: string, version: number) => {
-        expect(name).toBe(BOOTSTRAP_DATABASE_NAME);
-        expect(version).toBe(1);
-        const request: { result: typeof database; onsuccess?: () => void; onupgradeneeded?: () => void } = { result: database };
-        releaseOpen = () => { request.onupgradeneeded?.(); request.onsuccess?.(); };
-        return request;
-      }),
-    };
-    vi.stubGlobal('indexedDB', indexedDB as unknown as IDBFactory);
-    const staleBootstrap = {
-      protocol_version: '1.0.0' as const, snapshot: { ...snapshot, source_id: 'stale-cache' }, source_freshness: 'active' as const,
-      recent_projections: [{ ...fixtureCatalogExploratory, sequence: 50 }],
-      proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 }, generated_at: snapshot.generated_at,
-    };
-    const staleRecord: CachedBootstrapRecord = {
-      schema_version: '1.0.0', mirror_origin: origin, bootstrap: staleBootstrap, cached_at: new Date().toISOString(),
-    };
-    records.set('current', staleRecord);
-
-    const firstFetch = fetchMirror();
-    const first = startFeed({ fetchImpl: firstFetch, streamFactory: () => ({ close() {} }) });
-    await vi.waitFor(() => expect(indexedDB.open).toHaveBeenCalledOnce());
-
-    const secondFetch = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
-      const path = new URL(String(input), origin).pathname;
-      if (path === '/runtime.json') return json({ schema_version: '1.0.0', mirror_origin: origin });
-      if (path === '/bootstrap') throw new Error('newer startup is offline');
-      throw new Error(`Unexpected startup request: ${path}`);
-    });
-    await startFeed({ fetchImpl: secondFetch, streamFactory: () => ({ close() {} }), skipCache: true });
-    expect(evalStore.getState().currentSnapshot).toBeNull();
-
-    releaseOpen();
-    await first;
-    expect(evalStore.getState().currentSnapshot).toBeNull();
-    expect(evalStore.getCatalog(fixtureCatalogExploratory.dataset_id)).toBeUndefined();
-    expect(firstFetch.mock.calls.map(([input]) => new URL(String(input), origin).pathname)).toEqual(['/runtime.json']);
+  it('removes the legacy bootstrap cache key when startup begins', async () => {
+    localStorage.setItem(LEGACY_BOOTSTRAP_STORAGE_KEY, 'stale');
+    await startFeed({ fetchImpl: fetchMirror(), streamFactory: () => ({ close() {} }) });
+    expect(localStorage.getItem(LEGACY_BOOTSTRAP_STORAGE_KEY)).toBeNull();
   });
 
   it('closes the previous stream before waiting for a replacement snapshot', async () => {
@@ -181,45 +111,6 @@ describe('current snapshot startup', () => {
     handlers.onTruncated();
     await vi.waitFor(() => expect(streamFactory).toHaveBeenCalledTimes(2));
     expect(fetchImpl).toHaveBeenCalledTimes(4);
-  });
-
-  it('reuses the cached bootstrap on reload and verifies cursor freshness via snapshot without re-downloading bootstrap', async () => {
-    const fetchImpl = fetchMirror();
-    const streamFactory = vi.fn(() => ({ close() {} }));
-    await startFeed({ fetchImpl, streamFactory });
-    expect(fetchImpl).toHaveBeenCalledTimes(2); // /runtime.json and /bootstrap
-    expect(evalStore.getState().observedSequence).toBe(100);
-
-    // Second startup simulates page refresh / reload with cached bootstrap
-    const reloadFetch = fetchMirror();
-    const reloadStreamFactory = vi.fn(() => ({ close() {} }));
-    await startFeed({ fetchImpl: reloadFetch, streamFactory: reloadStreamFactory });
-
-    // Should only query /runtime.json and /snapshot — NOT /bootstrap!
-    expect(reloadFetch).toHaveBeenCalledTimes(2);
-    const requestedPaths = reloadFetch.mock.calls.map(([req]) => new URL(String(req), origin).pathname);
-    expect(requestedPaths).toEqual(['/runtime.json', '/snapshot']);
-    expect(reloadStreamFactory).toHaveBeenCalledWith(origin, snapshot.source_id, 100, expect.any(Object));
-    expect(evalStore.getState().observedSequence).toBe(100);
-    expect(evalStore.getState().connection).toBe('live');
-
-    // Minor cursor advance (within SSE replay bound of 100): stream catches up without re-downloading bootstrap
-    const advancedSnapshot: FeedSnapshot = { ...snapshot, high_water_sequence: 105 };
-    const catchUpFetch = fetchMirror(advancedSnapshot);
-    const catchUpStreamFactory = vi.fn(() => ({ close() {} }));
-    await startFeed({ fetchImpl: catchUpFetch, streamFactory: catchUpStreamFactory });
-    expect(catchUpFetch).toHaveBeenCalledTimes(2);
-    expect(catchUpStreamFactory).toHaveBeenCalledWith(origin, snapshot.source_id, 100, expect.any(Object));
-
-    // Large cursor advance (>100): falls back to downloading bootstrap
-    const distantSnapshot: FeedSnapshot = { ...snapshot, high_water_sequence: 300 };
-    const distantFetch = fetchMirror(distantSnapshot);
-    const distantStreamFactory = vi.fn(() => ({ close() {} }));
-    await startFeed({ fetchImpl: distantFetch, streamFactory: distantStreamFactory });
-    expect(distantFetch).toHaveBeenCalledTimes(3);
-    const distantPaths = distantFetch.mock.calls.map(([req]) => new URL(String(req), origin).pathname);
-    expect(distantPaths).toEqual(['/runtime.json', '/snapshot', '/bootstrap']);
-    expect(evalStore.getState().observedSequence).toBe(300);
   });
 
   it('keeps accepted state visible when a new snapshot is unreachable', async () => {

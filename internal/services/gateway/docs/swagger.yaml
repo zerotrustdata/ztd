@@ -2114,6 +2114,30 @@ definitions:
       proof_root_sha256:
         type: string
     type: object
+  models.PublicRunBundleRequest:
+    properties:
+      campaign_id:
+        type: string
+      campaign_revision:
+        description: CampaignRevision is the campaign spec digest the bundle is published
+          under.
+        type: string
+      run_id:
+        type: string
+    type: object
+  models.PublicRunBundleResponse:
+    properties:
+      accepted:
+        type: boolean
+      bundle_sha256:
+        type: string
+      byte_size:
+        type: integer
+      record_count:
+        type: integer
+      run_id:
+        type: string
+    type: object
   models.ReputationSignRequest:
     properties:
       merkle_root:
@@ -5684,6 +5708,43 @@ paths:
           schema:
             type: string
       summary: Push proof catalog to mirror
+      tags:
+      - public-feed
+  /api/v1/public-feed/proofs/run-bundle:
+    post:
+      consumes:
+      - application/json
+      description: Publishes one settled run's assignment result records, read from
+        the gateway's accepted public mirror rows, as one gzip JSONL proof artifact
+        (mTLS owner CLI only). Unchanged records reuse the active bundle; changed
+        records replace it.
+      parameters:
+      - description: Run bundle request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.PublicRunBundleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PublicRunBundleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "503":
+          description: Public spectator unavailable
+          schema:
+            type: string
+      summary: Publish assignment run bundle
       tags:
       - public-feed
   /api/v1/public-feed/snapshot:

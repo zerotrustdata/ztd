@@ -38,6 +38,10 @@ type publicSnapshotIdentity struct {
 // published in the current read model.
 const publicSnapshotCatalogKind = "catalog_snapshot"
 
+// publicSnapshotAssignmentResultKind is the identity kind of a versioned
+// assignment result projection. Those rows are served per run, not in bootstrap.
+const publicSnapshotAssignmentResultKind = "PublicAssignmentResultProjection"
+
 func parseSnapshotRecordIdentity(record models.PublicFeedRecord) (key string, identity publicSnapshotIdentity, event bool, err error) {
 	if record.RecordType != models.PublicFeedRecordTypeProjection && record.RecordType != models.PublicFeedRecordTypeEvent {
 		return "", publicSnapshotIdentity{}, false, nil
@@ -68,7 +72,7 @@ func parseSnapshotRecordIdentity(record models.PublicFeedRecord) (key string, id
 }
 
 func snapshotLifecycleCompanionKey(identity publicSnapshotIdentity) string {
-	if identity.Kind == "PublicAssignmentResultProjection" {
+	if identity.Kind == publicSnapshotAssignmentResultKind {
 		parts := []string{"PublicAssignmentLifecycleRecord", identity.DatasetID, identity.RunID, identity.AssignmentID, identity.VariantID, identity.Role, identity.SuiteID}
 		encoded, _ := json.Marshal(parts)
 		return string(encoded)
@@ -78,7 +82,7 @@ func snapshotLifecycleCompanionKey(identity publicSnapshotIdentity) string {
 
 func snapshotResultCompanionKey(identity publicSnapshotIdentity) string {
 	if identity.Kind == "PublicAssignmentLifecycleRecord" {
-		parts := []string{"PublicAssignmentResultProjection", identity.DatasetID, identity.RunID, identity.AssignmentID, identity.VariantID, identity.Role, identity.SuiteID}
+		parts := []string{publicSnapshotAssignmentResultKind, identity.DatasetID, identity.RunID, identity.AssignmentID, identity.VariantID, identity.Role, identity.SuiteID}
 		encoded, _ := json.Marshal(parts)
 		return string(encoded)
 	}

@@ -28,12 +28,11 @@ interface LeaderboardFilterPrefs {
 export function LeaderboardView() {
   const [filters, setFilters] = useUserPref<LeaderboardFilterPrefs>(PREF.filters, {});
   const allModels = useStoreState((state) => Array.from(state.models.values()));
-  const assignments = useStoreState((state) => Array.from(state.assignments.values()));
   const allEvaluations = useStoreState((state) => Array.from(state.evaluations.values()));
   const defaultRelease = useMemo(() => {
     const formationDatasets = new Set(allEvaluations.filter((run) => run.evaluation_unit === 'system').map((run) => run.dataset_id));
-    return defaultLeaderboardRelease(allModels.filter((model) => !formationDatasets.has(model.dataset_id)), assignments, qualifiedFormationRuns(allEvaluations));
-  }, [allModels, assignments, allEvaluations]);
+    return defaultLeaderboardRelease(allModels.filter((model) => !formationDatasets.has(model.dataset_id)), qualifiedFormationRuns(allEvaluations));
+  }, [allModels, allEvaluations]);
   const release = toReleaseSeries(useSelectedRelease(defaultRelease));
 
   const models = useMemo(() => allModels.filter((record) => matchesRelease(record, release)), [allModels, release]);
@@ -71,12 +70,7 @@ export function LeaderboardView() {
         }
       }
     }
-    const modelKeys = new Set(models.map((model) => `${model.dataset_id}:${model.variant_id}:${model.role}`));
-    const coveredRuns = new Set(
-      assignments
-        .filter((assignment) => modelKeys.has(`${assignment.dataset_id}:${assignment.variant_id}:${assignment.role}`))
-        .map((assignment) => `${assignment.dataset_id}:${assignment.run_id}`),
-    );
+    const modelDatasets = new Set(models.map((model) => model.dataset_id));
     return [
       { label: 'Measured models', value: measuredVariants.size },
       { label: 'Inventory-only models', value: inventoryVariants.size },
@@ -84,10 +78,10 @@ export function LeaderboardView() {
       { label: 'Tool-capable variants', value: toolCapable },
       {
         label: 'Runs covered',
-        value: evaluations.filter((run) => coveredRuns.has(`${run.dataset_id}:${run.run_id}`)).length,
+        value: evaluations.filter((run) => modelDatasets.has(run.dataset_id)).length,
       },
     ];
-  }, [models, evaluations, assignments]);
+  }, [models, evaluations]);
 
   return (
     <div className="leaderboard-view">
@@ -142,7 +136,6 @@ export function LeaderboardView() {
       <RoleLeadersPanel
         models={modelsWithinBudget}
         evaluations={evaluations}
-        assignments={assignments}
         stats={summaryStats}
         maxArtifactGiB={artifactBudgetGiB}
       />

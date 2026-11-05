@@ -9,6 +9,7 @@ package gwremote
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -20,6 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/api"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 )
 
@@ -69,6 +71,34 @@ func TestRemoteGatewayCampaignProofPublisher_PruneRunProofCatalog(t *testing.T) 
 		require.NoError(t, (&remoteGatewayCampaignProofPublisher{client: client}).PruneRunProofCatalog(context.Background(), ""))
 		assert.Empty(t, client.PostCalls)
 	})
+}
+
+func TestRemoteGatewayCampaignProofPublisher_PublishRunBundlePostsCampaignIdentity(t *testing.T) {
+	const digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	responseBody, err := json.Marshal(models.PublicRunBundleResponse{Accepted: true, RunID: "run-1", BundleSHA256: digest})
+	require.NoError(t, err)
+	client := &cmdtest.MockAPIClient{PostResp: responseBody}
+	publisher := &remoteGatewayCampaignProofPublisher{client: client}
+
+	got, err := publisher.PublishRunBundle(context.Background(), evaluation.RunBundleInput{
+		CampaignID:       "campaign-1",
+		CampaignRevision: "rev-1",
+		RunID:            "run-1",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, digest, got)
+
+	require.Len(t, client.PostCalls, 1)
+	assert.Equal(t, constants.APIPaths.PublicFeedProofsRunBundle, client.PostCalls[0].Path)
+	posted, err := json.Marshal(client.PostCalls[0].Body)
+	require.NoError(t, err)
+	var fields map[string]string
+	require.NoError(t, json.Unmarshal(posted, &fields))
+	assert.Equal(t, map[string]string{
+		"campaign_id":       "campaign-1",
+		"campaign_revision": "rev-1",
+		"run_id":            "run-1",
+	}, fields)
 }
 
 func TestRemoteGatewayCampaignProofPublisher_FlushProofCatalog(t *testing.T) {

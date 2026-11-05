@@ -253,9 +253,9 @@ const ENVELOPE_FIELDS = [
   'source_revision',
 ] as const;
 const CATALOG_FIELDS = [...ENVELOPE_FIELDS, 'dataset_kind', 'title', 'description', 'limitations', 'model_count', 'evaluated_count', 'suite_count', 'run_count', 'assignment_count', 'provider_request_count', 'provider_token_count', 'retry_count', 'verifier_passed_count', 'verifier_failed_count', 'generated_at', 'provider_environment'] as const;
-const MODEL_FIELDS = [...ENVELOPE_FIELDS, 'variant_id', 'display_name', 'served_model_tag', 'parameter_count', 'parameter_count_source', 'model_digest', 'model_family', 'model_format', 'artifact_size_bytes', 'context_limit', 'role', 'backend_provider_class', 'quantization_weight_class', 'inventory_only', 'evaluation_coverage', 'pass_rate', 'agreement_pairwise', 'agreement_all_five', 'repeatability', 'latency_p50_ms', 'latency_p95_ms', 'output_throughput_p50', 'output_throughput_p95', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'security_resistance', 'terminal_outcomes', 'unavailable_reasons'] as const;
+const MODEL_FIELDS = [...ENVELOPE_FIELDS, 'variant_id', 'display_name', 'served_model_tag', 'parameter_count', 'parameter_count_source', 'model_digest', 'model_family', 'model_format', 'artifact_size_bytes', 'context_limit', 'role', 'backend_provider_class', 'quantization_weight_class', 'inventory_only', 'evaluation_coverage', 'pass_rate', 'security_pass_rate', 'agreement_pairwise', 'agreement_all_five', 'repeatability', 'latency_p50_ms', 'latency_p95_ms', 'output_throughput_p50', 'output_throughput_p95', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'security_resistance', 'terminal_outcomes', 'unavailable_reasons'] as const;
 const SUITE_FIELDS = [...ENVELOPE_FIELDS, 'suite_id', 'display_name', 'task_count', 'assignment_count', 'status', 'verifier_state', 'verifier_failure_summary', 'model_coverage', 'metric_summaries', 'limitations'] as const;
-const EVALUATION_FIELDS = [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'formations', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'run_status', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'run_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'headline_metrics', 'evidence_link', 'native_result'] as const;
+const EVALUATION_FIELDS = [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'formations', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'run_status', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'run_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'assignment_bundle_sha256', 'headline_metrics', 'evidence_link', 'native_result'] as const;
 const ASSIGNMENT_FIELDS = [...ENVELOPE_FIELDS, 'assignment_id', 'run_id', 'task_id', 'scenario_id', 'variant_id', 'role', 'repetition', 'scenario_category', 'evaluation_unit', 'stack_id', 'scenario_summary', 'semantic_grade_summaries', 'activity_summary', 'evidence_bindings', 'benchmark_observations', 'terminal_status', 'metric_values', 'missingness_reason', 'stage_summary', 'resource_summary', 'verification_disposition', 'verification_metadata', 'model_response', 'failure_output', 'role_transcripts', 'trajectory_outcome', 'guided_retry_count', 'failure_reason', 'tools_declared'] as const;
 const METHODOLOGY_FIELDS = [...ENVELOPE_FIELDS, 'metric_definitions', 'suite_definitions', 'limitations'] as const;
 const LIVE_EVENT_FIELDS = [...ENVELOPE_FIELDS, 'event_id', 'run_id', 'assignment_id', 'task_id', 'variant_id', 'role', 'lifecycle_status', 'terminal_status', 'completed', 'total', 'stage_label', 'metric_delta', 'judge', 'deterministic_grades', 'feed_sequence'] as const;
@@ -266,6 +266,8 @@ const LIVE_JUDGE_KINDS: readonly string[] = ['judge_started', 'judge_completed']
 const LIVE_DETERMINISTIC_GRADE_FIELDS = ['criterion_id', 'status', 'detail'] as const;
 /** publicdisclosure.maxArrayEntries, the feed's array bound. */
 const LIVE_DETERMINISTIC_GRADES_MAX = 128;
+/** The most recent results the bootstrap task index keeps per task; the Go mirror's PublicTaskIndexResultLimit names the same bound. */
+const TASK_INDEX_RESULT_LIMIT = 10;
 const ASSIGNMENT_TERMINAL_STATUSES = [...TERMINAL_STATUSES, 'running', 'queued'] as const;
 
 /** Reports whether a supported schema version is at or after a revision.
@@ -471,6 +473,10 @@ export function isModelSummary(value: unknown): asserts value is ModelSummary {
   assertNumber(value.evaluation_coverage, 'model_summary.evaluation_coverage');
   assert(value.evaluation_coverage >= 0 && value.evaluation_coverage <= 1, 'model_summary.evaluation_coverage', 'must be between zero and one');
   assertOptionalConfidenceInterval(value.pass_rate, 'model_summary.pass_rate');
+  if (value.security_pass_rate !== undefined) {
+    assert(schemaAtLeast(value.schema_version, '1.14.0'), 'model_summary.security_pass_rate', 'requires schema 1.14.0');
+    assertConfidenceInterval(value.security_pass_rate, 'model_summary.security_pass_rate');
+  }
   assertOptionalMetricValue(value.agreement_pairwise, 'model_summary.agreement_pairwise');
   assertOptionalMetricValue(value.agreement_all_five, 'model_summary.agreement_all_five');
   if (value.repeatability !== undefined) {
@@ -735,6 +741,10 @@ export function isEvaluationSummary(value: unknown): asserts value is Evaluation
   assert(value.run_seconds === undefined || value.run_seconds >= 0, 'evaluation_summary.run_seconds', 'must be >= 0');
   assertEnum(value.verifier_state, VERIFIER_STATES, 'evaluation_summary.verifier_state');
   assertOptional(value.verifier_failure_summary, 'evaluation_summary.verifier_failure_summary', assertString);
+  if (value.assignment_bundle_sha256 !== undefined) {
+    assert(schemaAtLeast(value.schema_version, '1.14.0'), 'evaluation_summary.assignment_bundle_sha256', 'requires schema 1.14.0');
+    assertOptionalHash(value.assignment_bundle_sha256, 'evaluation_summary.assignment_bundle_sha256');
+  }
   if (schemaAtLeast(value.schema_version, '1.5.0')) {
     assertCurrentHeadlineMetrics(value.headline_metrics, 'evaluation_summary.headline_metrics');
     if (value.verifier_state === 'passed' || value.verifier_state === 'failed') {
@@ -1329,7 +1339,7 @@ export function isFeedSnapshot(value: unknown): asserts value is FeedSnapshot {
 
 export function isFeedBootstrap(value: unknown): asserts value is FeedBootstrap {
   assertObject(value, 'feed_bootstrap');
-  rejectUnknown(value, ['protocol_version', 'snapshot', 'source_freshness', 'recent_projections', 'proof_catalog_summary', 'generated_at'], 'feed_bootstrap');
+  rejectUnknown(value, ['protocol_version', 'snapshot', 'source_freshness', 'recent_projections', 'task_index', 'proof_catalog_summary', 'generated_at'], 'feed_bootstrap');
   assertString(value.protocol_version, 'feed_bootstrap.protocol_version');
   assert(value.protocol_version === '1.0.0', 'feed_bootstrap.protocol_version', 'expected 1.0.0');
   isFeedSnapshot(value.snapshot);
@@ -1341,6 +1351,23 @@ export function isFeedBootstrap(value: unknown): asserts value is FeedBootstrap 
     assertObject(item, `feed_bootstrap.recent_projections[${index}]`);
     assertInteger(item.sequence, `feed_bootstrap.recent_projections[${index}].sequence`);
     assert(item.sequence >= 1, `feed_bootstrap.recent_projections[${index}].sequence`, 'must be >= 1');
+  }
+  assert(Array.isArray(value.task_index), 'feed_bootstrap.task_index', 'expected array');
+  for (let index = 0; index < value.task_index.length; index++) {
+    const entry: unknown = value.task_index[index];
+    const path = `feed_bootstrap.task_index[${index}]`;
+    assertObject(entry, path);
+    rejectUnknown(entry, ['task_id', 'results'], path);
+    assertString(entry.task_id, `${path}.task_id`);
+    assert(Array.isArray(entry.results) && entry.results.length <= TASK_INDEX_RESULT_LIMIT, `${path}.results`, `expected at most ${TASK_INDEX_RESULT_LIMIT} results`);
+    for (let r = 0; r < entry.results.length; r++) {
+      const result: unknown = entry.results[r];
+      const resultPath = `${path}.results[${r}]`;
+      assertObject(result, resultPath);
+      rejectUnknown(result, ['run_id', 'assignment_id', 'lifecycle_status', 'summary_status', 'verification_status', 'completed_at'], resultPath);
+      for (const key of ['run_id', 'assignment_id', 'lifecycle_status', 'summary_status', 'completed_at'] as const) assertString(result[key], `${resultPath}.${key}`);
+      assertOptional(result.verification_status, `${resultPath}.verification_status`, assertString);
+    }
   }
   assertObject(value.proof_catalog_summary, 'feed_bootstrap.proof_catalog_summary');
   rejectUnknown(value.proof_catalog_summary, ['artifact_count', 'total_byte_size', 'last_generated_at'], 'feed_bootstrap.proof_catalog_summary');

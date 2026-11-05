@@ -44,6 +44,7 @@ describe('proof catalog bootstrap', () => {
           snapshot: snapshot(),
           source_freshness: 'active',
           recent_projections: [],
+          task_index: [],
           proof_catalog_summary: { artifact_count: 1, total_byte_size: 512 },
           generated_at: '2026-09-20T00:00:00Z',
         }), { status: 200 });

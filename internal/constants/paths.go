@@ -780,6 +780,7 @@ const (
 	MediaTypeMarkdown                             = "text/markdown; charset=utf-8"
 	MediaTypeHTML                                 = "text/html; charset=utf-8"
 	MediaTypeCSV                                  = "text/csv; charset=utf-8"
+	MediaTypeGzip                                 = "application/gzip"
 	MediaTypeText                                 = "text/plain; charset=utf-8"
 	ObserveEventPayloadSchemaVersion              = "1.0.0"
 	ObserveMeasurementSchemaVersion               = "1.0.0"
@@ -930,6 +931,9 @@ const (
 	PublicProofCatalogFilename      = "proof-catalog.json"
 	PublicProofManifestFilename     = "proof-manifest.json"
 	PublicProofMirrorSyncFilename   = "proof-mirror-sync.json"
+	// PublicRunBundleFilenameSuffix names one run's assignment bundle artifact: the
+	// run ID followed by this suffix.
+	PublicRunBundleFilenameSuffix = ".assignments.jsonl.gz"
 )
 
 // Public feed schema and protocol version constants.

@@ -7,11 +7,13 @@
 // Evaluation Runs & Campaigns involving this model, overall performance
 // metrics, terminal outcomes, suite results, catalog formations, and assignments.
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { formationGroups } from './formations';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useActiveDatasetId, useSelectedRelease } from '../state/dataset';
 import { modelRecordKey, useStoreState } from '../state/store';
+import { loadRunAssignments, retainRuns, RunBundleError } from '../state/run-bundles';
+import { loadRunsBounded, type RunLoader, type RunRef } from '../state/load-runs-bounded';
 import {
   resolveModelProfile,
   type CapabilityProbeStatus,
@@ -42,7 +44,6 @@ import {
   modelSuiteRows,
   qualityStateTone,
   roleLabel,
-  runsForVariant,
   verifierStateTone,
 } from './derived';
 import {
@@ -54,7 +55,55 @@ import {
   PanelSection,
   TonePill,
 } from '../components/evidence';
-import type { ModelRole } from '../contract/types';
+import type { EvaluationSummary, ModelRole } from '../contract/types';
+
+const RUN_BUNDLE_CONCURRENCY = 3;
+
+function runUsesVariant(run: EvaluationSummary, variantId: string): boolean {
+  return (
+    Object.values(run.model_role_mapping ?? {}).includes(variantId) ||
+    (run.formations ?? []).some((formation) => Object.values(formation.model_role_mapping).includes(variantId))
+  );
+}
+
+/** Loads the given runs' assignment bundles, a few at a time, and reports how many loaded and which failed. */
+function RunBundleProgress({ runs }: { runs: RunRef[] }) {
+  const [state, setState] = useState<{ runs: RunRef[]; loaded: number; failures: string[] } | null>(null);
+  useEffect(() => {
+    // Every run of the variant stays loaded while this section shows them.
+    const releaseRuns = retainRuns(runs);
+    let active = true;
+    let loaded = 0;
+    const countLoaded: RunLoader = (datasetId, runId) =>
+      loadRunAssignments(datasetId, runId).then((result) => {
+        loaded++;
+        if (active) setState({ runs, loaded, failures: [] });
+        return result;
+      });
+    loadRunsBounded(runs, RUN_BUNDLE_CONCURRENCY, countLoaded).then((outcomes) => {
+      if (!active) return;
+      const failures = outcomes.flatMap(({ runId, outcome }) =>
+        outcome instanceof RunBundleError ? [`Run ${runId}: ${outcome.message}`] : [],
+      );
+      setState({ runs, loaded: runs.length - failures.length, failures });
+    });
+    return () => {
+      active = false;
+      releaseRuns();
+    };
+  }, [runs]);
+
+  if (runs.length === 0) return null;
+  const current = state?.runs === runs ? state : null;
+  const loaded = current?.loaded ?? 0;
+  return (
+    <>
+      <p className="panel-note">{loaded} of {runs.length} runs loaded</p>
+      <ProgressBar completed={loaded} total={runs.length} label="Run bundles" />
+      {current?.failures.map((failure) => <ErrorState key={failure} message={failure} />)}
+    </>
+  );
+}
 
 function capabilityTone(status: CapabilityProbeStatus): 'ok' | 'critical' | 'warn' | 'neutral' {
   switch (status) {
@@ -116,10 +165,17 @@ export function ModelDetailView() {
         )
       : [],
   );
-  const allVariantAssignments = useStoreState((state) =>
-    variantId ? Array.from(state.assignments.values()).filter((a) => a.variant_id === variantId) : [],
-  );
   const versionSources = useStoreState((state) => Array.from(state.models.values()).filter((candidate) => candidate.variant_id === variantId));
+  // The variant's runs: evaluations in the datasets that carry a model summary for it, bound to it by role.
+  const variantRuns = useMemo(() => {
+    if (!variantId) return [];
+    const datasetIds = new Set(versionSources.map((source) => source.dataset_id));
+    return allEvaluations.filter((run) => datasetIds.has(run.dataset_id) && runUsesVariant(run, variantId));
+  }, [allEvaluations, versionSources, variantId]);
+  const variantRunRefs = useMemo(
+    () => variantRuns.map((run) => ({ datasetId: run.dataset_id, runId: run.run_id })),
+    [variantRuns],
+  );
   const recordedVersions = useMemo(() => {
     const versions = new Map<string, { digest?: string; dataset: string; role: ModelRole; datasets: Set<string> }>();
     for (const source of [...versionSources].sort((a, b) => b.observed_at.localeCompare(a.observed_at) || a.dataset_id.localeCompare(b.dataset_id))) {
@@ -141,22 +197,6 @@ export function ModelDetailView() {
 
   const profile = resolveModelProfile(model);
   const suiteRows = modelSuiteRows(model.variant_id, assignments, evaluations, suites);
-  const activeDatasetRuns = runsForVariant(model.variant_id, assignments, evaluations);
-  const crossDatasetRuns = useMemo(() => {
-    const map = new Map<string, (typeof allEvaluations)[number]>();
-    for (const run of activeDatasetRuns) {
-      map.set(`${run.dataset_id}:${run.run_id}`, run);
-    }
-    for (const run of runsForVariant(model.variant_id, allVariantAssignments, allEvaluations)) {
-      map.set(`${run.dataset_id}:${run.run_id}`, run);
-    }
-    for (const run of allEvaluations) {
-      if (Object.values(run.model_role_mapping ?? {}).includes(model.variant_id)) {
-        map.set(`${run.dataset_id}:${run.run_id}`, run);
-      }
-    }
-    return Array.from(map.values());
-  }, [activeDatasetRuns, model.variant_id, allVariantAssignments, allEvaluations]);
 
   const modelFormations = useMemo(() => formationGroups(allEvaluations).flatMap((formation) =>
     (['primary', 'assistant', 'lite'] as const).filter((role) => formation.summary.model_role_mapping[role] === model.variant_id)
@@ -334,12 +374,12 @@ export function ModelDetailView() {
 
         <div id="model-evaluations">
           <PanelSection title="Evaluation runs involving this model">
-            {crossDatasetRuns.length === 0 ? (
+            {variantRuns.length === 0 ? (
               <p>No runs involve this model in the selected dataset.</p>
             ) : (
               <div className="model-evaluations-grid">
                 <ul className="run-card-list model-eval-run-list">
-                  {crossDatasetRuns.map((run) => {
+                  {variantRuns.map((run) => {
                     const progress = campaignTerminalProgress(run);
                     const passRateVal = run.headline_metrics.pass_rate?.value;
                     const latencyVal = run.headline_metrics.latency_p50_ms?.value;
@@ -440,6 +480,7 @@ export function ModelDetailView() {
           <p className="disclosure">
             Rows include only assignments produced by this model. Failures and missing measurements remain visible beside the eligible pass-rate denominator.
           </p>
+          <RunBundleProgress runs={variantRunRefs} />
           {suiteRows.length === 0 ? (
             <p>No suite results for this model in the selected dataset.</p>
           ) : (

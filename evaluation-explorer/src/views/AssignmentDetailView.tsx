@@ -26,10 +26,12 @@ import { DetailLayout, EvidenceChain, NON_VERDICT_NOTE, PageHero, PanelSection, 
 import { SCENARIO_CATEGORY_COPY, SCENARIO_TASK_BY_ID } from '../content/scenario-task';
 import { useActiveDatasetId, useSelectedRelease } from '../state/dataset';
 import { recordKey, useStoreState } from '../state/store';
+import { useRunAssignments } from '../state/use-run-assignments';
 import {
   CopyButton,
   EmptyState,
   ErrorState,
+  ReconcilePlaceholder,
   StatTile,
   Timeline,
   UnavailableValue,
@@ -405,9 +407,10 @@ export function AssignmentDetailView() {
   const [params] = useSearchParams();
   const activeDatasetId = useActiveDatasetId(routeDataset ?? params.get('dataset') ?? undefined, useSelectedRelease());
 
-  const assignment = useStoreState((state) =>
-    assignmentId ? state.assignments.get(recordKey(activeDatasetId, assignmentId)) : undefined,
-  );
+  const runAssignments = useRunAssignments(activeDatasetId, runId);
+  const assignment = assignmentId
+    ? runAssignments.assignments.find((candidate) => candidate.assignment_id === assignmentId)
+    : undefined;
   const lifecycleEvents = useStoreState((state) =>
     assignmentId
       ? assignmentLifecycleEvents(
@@ -419,9 +422,7 @@ export function AssignmentDetailView() {
   const sourceRecord = useStoreState((state) =>
     assignmentId ? state.assignmentSources.get(recordKey(activeDatasetId, assignmentId)) : undefined,
   );
-  const siblingAssignments = useStoreState((state) =>
-    assignment ? siblingRepetitions(assignment, Array.from(state.assignments.values())) : [],
-  );
+  const siblingAssignments = assignment ? siblingRepetitions(assignment, runAssignments.assignments) : [];
   const connection = useStoreState((state) => state.connection);
   const { hash } = useLocation();
   const loadedAssignmentId = assignment?.assignment_id;
@@ -431,7 +432,10 @@ export function AssignmentDetailView() {
 
 
   if (!assignmentId || !runId) return <ErrorState message="No assignment selected." />;
-  if (!assignment) return <EmptyState hasRecords={false} hasFilters={false} connection={connection} />;
+  if (!assignment) {
+    if (runAssignments.status === 'loading') return <ReconcilePlaceholder label="Loading assignment results…" />;
+    return <EmptyState hasRecords={false} hasFilters={false} connection={connection} />;
+  }
 
   const task =
     lookupTask(assignment.task_id) ??

@@ -1330,6 +1330,7 @@ func (m *PublicMirrorServer) currentBootstrapCached(ctx context.Context, request
 			Snapshot:            offlinePublicMirrorSnapshot(sourceID),
 			SourceFreshness:     models.CampaignFreshnessSourceOffline,
 			RecentProjections:   []models.PublicFeedObject{},
+			TaskIndex:           []models.PublicTaskIndexEntry{},
 			ProofCatalogSummary: models.PublicProofCatalogSummary{ArtifactCount: 0, TotalByteSize: 0},
 			GeneratedAt:         time.Now().UTC(),
 		}
@@ -1374,8 +1375,17 @@ func (m *PublicMirrorServer) currentBootstrapCached(ctx context.Context, request
 
 	// Preserve the transport's newest-first ordering. Unlike a history tail,
 	// these are the latest records for every current entity plus recent activity.
+	// Assignment result projections are omitted here; the task index carries a
+	// bounded set of recent results per task instead. Snapshot rows are unchanged.
 	recent := make([]models.PublicFeedObject, 0, len(records))
 	for i := len(records) - 1; i >= 0; i-- {
+		isResult, err := isPublicAssignmentResultRecord(records[i])
+		if err != nil {
+			return cachedBootstrapSnapshot{}, fmt.Errorf("mirror: decode snapshot record: %w", err)
+		}
+		if isResult {
+			continue
+		}
 		var item models.PublicFeedObject
 		if err := json.Unmarshal([]byte(records[i].RecordBytes), &item); err != nil {
 			return cachedBootstrapSnapshot{}, fmt.Errorf("mirror: decode snapshot record: %w", err)
@@ -1384,11 +1394,17 @@ func (m *PublicMirrorServer) currentBootstrapCached(ctx context.Context, request
 		recent = append(recent, item)
 	}
 
+	taskIndex, err := buildPublicTaskIndex(records)
+	if err != nil {
+		return cachedBootstrapSnapshot{}, err
+	}
+
 	result := models.PublicFeedBootstrap{
 		ProtocolVersion:     constants.PublicFeedProtocolVersion,
 		Snapshot:            m.snapshotOf(sourceID, &summaryCopy),
 		SourceFreshness:     freshness,
 		RecentProjections:   recent,
+		TaskIndex:           taskIndex,
 		ProofCatalogSummary: catalogSummary,
 		GeneratedAt:         time.Now().UTC(),
 	}

@@ -430,7 +430,7 @@ describe('Live workspace', () => {
     expect(recent.getByText(/Formation: 5 passed · 1 failed · 0 no verdict/)).toBeInTheDocument();
   });
 
-  it('renders unique progress and pass rates per role from role assignments in a formation run', () => {
+  it('renders unique progress and pass rates per role from role summaries in a formation run', () => {
     const formationEval: EvaluationSummary = {
       ...evaluation,
       run_id: 'run-formation-live',
@@ -442,8 +442,12 @@ describe('Live workspace', () => {
         lite: 'model-lite',
       },
     };
-    // Even if model_summary records carry identical stale aggregate snapshot numbers (e.g. 68% for all)
-    const staleSnapshotModel = (role: 'primary' | 'assistant' | 'lite', variantId: string): ModelSummary => ({
+    const roleModel = (
+      role: 'primary' | 'assistant' | 'lite',
+      variantId: string,
+      outcomes: { completed: number; model_failed: number },
+      passRate: number,
+    ): ModelSummary => ({
       schema_version: '1.4.0',
       kind: 'model_summary',
       dataset_id: datasetId,
@@ -454,49 +458,16 @@ describe('Live workspace', () => {
       role,
       inventory_only: false,
       evaluation_coverage: 1,
-      terminal_outcomes: { completed: 26, model_failed: 12, grader_failed: 0, invalid_evidence: 14, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0 },
-      pass_rate: { estimate: 0.68, lower: 0.5, upper: 0.8, denominator: 38 },
+      terminal_outcomes: { grader_failed: 0, invalid_evidence: 0, stopped: 0, provider_failed: 0, execution_failed: 0, escalated: 0, ...outcomes },
+      pass_rate: { estimate: passRate, lower: 0, upper: 1, denominator: outcomes.completed + outcomes.model_failed },
     });
 
-    const mPrimary = staleSnapshotModel('primary', 'model-primary');
-    const mAssistant = staleSnapshotModel('assistant', 'model-assistant');
-    const mLite = staleSnapshotModel('lite', 'model-lite');
-
-    // Live assignments have distinct results per role
-    const makeAssignment = (id: string, role: 'primary' | 'assistant' | 'lite', variantId: string, status: 'completed' | 'model_failed' | 'invalid_evidence', pass: number): SnapshotRecord => ({
-      schema_version: '1.4.0',
-      kind: 'assignment_result',
-      dataset_id: datasetId,
-      quality_state: 'live_in_progress',
-      observed_at: '2026-09-22T12:05:00Z',
-      assignment_id: id,
-      run_id: 'run-formation-live',
-      task_id: 'task-1',
-      variant_id: variantId,
-      role,
-      repetition: 1,
-      terminal_status: status,
-      metric_values: { pass: { value: pass } },
-    } as unknown as SnapshotRecord);
-
-    const distinctAssignments: SnapshotRecord[] = [
-      // Primary: 3 passed, 1 failed (75%)
-      makeAssignment('asg-p1', 'primary', 'model-primary', 'completed', 1),
-      makeAssignment('asg-p2', 'primary', 'model-primary', 'completed', 1),
-      makeAssignment('asg-p3', 'primary', 'model-primary', 'completed', 1),
-      makeAssignment('asg-p4', 'primary', 'model-primary', 'model_failed', 0),
-      // Assistant: 1 passed, 3 failed (25%)
-      makeAssignment('asg-a1', 'assistant', 'model-assistant', 'completed', 1),
-      makeAssignment('asg-a2', 'assistant', 'model-assistant', 'model_failed', 0),
-      makeAssignment('asg-a3', 'assistant', 'model-assistant', 'model_failed', 0),
-      makeAssignment('asg-a4', 'assistant', 'model-assistant', 'model_failed', 0),
-      // Lite: 2 passed, 0 failed (100%)
-      makeAssignment('asg-l1', 'lite', 'model-lite', 'completed', 1),
-      makeAssignment('asg-l2', 'lite', 'model-lite', 'completed', 1),
-    ];
+    const mPrimary = roleModel('primary', 'model-primary', { completed: 3, model_failed: 1 }, 0.75);
+    const mAssistant = roleModel('assistant', 'model-assistant', { completed: 1, model_failed: 3 }, 0.25);
+    const mLite = roleModel('lite', 'model-lite', { completed: 2, model_failed: 0 }, 1);
 
     evalStore.loadFixtures([
-      catalog, mPrimary, mAssistant, mLite, formationEval, ...distinctAssignments,
+      catalog, mPrimary, mAssistant, mLite, formationEval,
     ], []);
 
     render(
@@ -506,22 +477,19 @@ describe('Live workspace', () => {
     );
 
     const recent = within(screen.getByRole('region', { name: 'Runs' }));
-    // Primary has 75%, not stale 68%
+    // Primary has 75%
     expect(recent.getByText('75%')).toBeInTheDocument();
     const primaryBar = recent.getByRole('progressbar', { name: 'Primary outcomes' });
     expect(primaryBar).toHaveAttribute('aria-valuenow', '4');
 
-    // Assistant has 25%, not stale 68%
+    // Assistant has 25%
     expect(recent.getByText('25%')).toBeInTheDocument();
     const assistantBar = recent.getByRole('progressbar', { name: 'Assistant outcomes' });
     expect(assistantBar).toHaveAttribute('aria-valuenow', '4');
 
-    // Lite has 100%, not stale 68%
+    // Lite has 100%
     expect(recent.getByText('100%')).toBeInTheDocument();
     const liteBar = recent.getByRole('progressbar', { name: 'Lite outcomes' });
     expect(liteBar).toHaveAttribute('aria-valuenow', '2');
-
-    // Verify 68% does NOT appear
-    expect(screen.queryByText('68%')).not.toBeInTheDocument();
   });
 });

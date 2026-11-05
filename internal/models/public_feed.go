@@ -199,8 +199,28 @@ type PublicFeedBootstrap struct {
 	Snapshot            PublicFeedSnapshot        `json:"snapshot"`
 	SourceFreshness     CampaignFreshness         `json:"source_freshness"`
 	RecentProjections   []PublicFeedObject        `json:"recent_projections"`
+	TaskIndex           []PublicTaskIndexEntry    `json:"task_index"`
 	ProofCatalogSummary PublicProofCatalogSummary `json:"proof_catalog_summary"`
 	GeneratedAt         time.Time                 `json:"generated_at"`
+}
+
+// PublicTaskIndexEntry lists the most recent assignment results of one task,
+// newest first and bounded by constants.PublicTaskIndexResultLimit. TaskID is
+// the scenario ID without its @version suffix.
+type PublicTaskIndexEntry struct {
+	TaskID  string             `json:"task_id"`
+	Results []PublicTaskResult `json:"results"`
+}
+
+// PublicTaskResult is the subset of an assignment result envelope the Explorer's
+// task view renders, under the envelope's own field names.
+type PublicTaskResult struct {
+	RunID              string `json:"run_id"`
+	AssignmentID       string `json:"assignment_id"`
+	LifecycleStatus    string `json:"lifecycle_status"`
+	SummaryStatus      string `json:"summary_status"`
+	VerificationStatus string `json:"verification_status,omitempty"`
+	CompletedAt        string `json:"completed_at"`
 }
 
 // PublicFeedCursorPage is a cursor-paginated page of public records.
@@ -346,6 +366,35 @@ type PublicProofCatalogPushResponse struct {
 
 type PublicProofCatalogPruneRequest struct {
 	RunID string `json:"run_id"`
+}
+
+// PublicRunBundleLine is one line of a run's assignment bundle: the accepted
+// snapshot row of one assignment result record. RecordBytes is the row's bytes
+// unchanged and RecordHash is the lowercase hex SHA-256 of those bytes.
+type PublicRunBundleLine struct {
+	Sequence    int64  `json:"sequence"`
+	RecordHash  string `json:"record_hash"`
+	RecordBytes string `json:"record_bytes"`
+}
+
+// PublicRunBundleRequest asks the Gateway to publish one run's assignment bundle.
+// CampaignID, CampaignRevision, and RunID are required. The campaign identity
+// labels the bundle's catalog entry and proof segment.
+type PublicRunBundleRequest struct {
+	CampaignID string `json:"campaign_id"`
+	// CampaignRevision is the campaign spec digest the bundle is published under.
+	CampaignRevision string `json:"campaign_revision"`
+	RunID            string `json:"run_id"`
+}
+
+// PublicRunBundleResponse names the published bundle. BundleSHA256 is the
+// digest of the gzip bytes served at /proofs/<sha256>.
+type PublicRunBundleResponse struct {
+	Accepted     bool   `json:"accepted"`
+	RunID        string `json:"run_id"`
+	BundleSHA256 string `json:"bundle_sha256"`
+	RecordCount  int    `json:"record_count"`
+	ByteSize     int64  `json:"byte_size"`
 }
 
 type PublicProofCatalogPruneResponse struct {

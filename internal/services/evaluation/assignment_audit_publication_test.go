@@ -36,6 +36,16 @@ func fakeGatewayDatabaseDigest(assignmentID string) string {
 // inputs it receives.
 type recordingCampaignProofPublisher struct {
 	inputs []AssignmentAuditProofInput
+	// bundleInputs lists the inputs PublishRunBundle was called with, in call
+	// order.
+	bundleInputs []RunBundleInput
+	// bundleDigest is the digest PublishRunBundle answers with.
+	bundleDigest string
+	// bundleErr, when set, is returned by PublishRunBundle instead of a digest.
+	bundleErr error
+	// onPublishRunBundle, when set, runs on every PublishRunBundle call so a test
+	// can order the bundle among other exports.
+	onPublishRunBundle func(input RunBundleInput)
 }
 
 func (r *recordingCampaignProofPublisher) IngestAssignmentAuditSlices(_ context.Context, inputs []AssignmentAuditProofInput, _ bool) ([]models.PublicAssignmentAuditProofPublishResponse, error) {
@@ -45,6 +55,17 @@ func (r *recordingCampaignProofPublisher) IngestAssignmentAuditSlices(_ context.
 		answers = append(answers, models.PublicAssignmentAuditProofPublishResponse{Accepted: true, AssignmentID: input.AssignmentID, DatabaseSHA256: fakeGatewayDatabaseDigest(input.AssignmentID)})
 	}
 	return answers, nil
+}
+
+func (r *recordingCampaignProofPublisher) PublishRunBundle(_ context.Context, input RunBundleInput) (string, error) {
+	r.bundleInputs = append(r.bundleInputs, input)
+	if r.onPublishRunBundle != nil {
+		r.onPublishRunBundle(input)
+	}
+	if r.bundleErr != nil {
+		return "", r.bundleErr
+	}
+	return r.bundleDigest, nil
 }
 
 func (r *recordingCampaignProofPublisher) PruneRunProofCatalog(context.Context, string) error {

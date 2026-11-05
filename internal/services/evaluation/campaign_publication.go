@@ -231,13 +231,32 @@ func (c *CampaignPublicationCoordinator) PublishAssignmentResult(ctx context.Con
 	if completed := result.GetCompletedAt(); completed != nil {
 		observedAt = completed.AsTime()
 	}
-	aggregates, err := c.buildRunAggregatePublishRequests(ctx, assignment.GetRunId(), observedAt)
+	runID := assignment.GetRunId()
+	_, _, results, state, err := c.loadRunAggregateState(ctx, runID)
 	if err != nil {
 		return err
 	}
-	// The mirror commits the result and its derived summaries together. A
-	// browser never has to infer a run's totals from assignment activity.
-	_, err = c.exportFeedRecords(ctx, assignment.GetRunId(), append([]campaignFeedPublishRequest{request}, aggregates...))
+	if !c.assignmentBundleRequired(state, results) {
+		aggregates, err := c.buildRunAggregatePublishRequests(ctx, runID, observedAt)
+		if err != nil {
+			return err
+		}
+		// The mirror commits the result and its derived summaries together. A
+		// browser never has to infer a run's totals from assignment activity.
+		_, err = c.exportFeedRecords(ctx, runID, append([]campaignFeedPublishRequest{request}, aggregates...))
+		return err
+	}
+	// A settled run's summary names its assignment bundle, which the Gateway
+	// builds from exported results, so this result is exported before the
+	// aggregates are built.
+	if _, err := c.exportFeedRecords(ctx, runID, []campaignFeedPublishRequest{request}); err != nil {
+		return err
+	}
+	aggregates, err := c.buildRunAggregatePublishRequests(ctx, runID, observedAt)
+	if err != nil {
+		return err
+	}
+	_, err = c.exportFeedRecords(ctx, runID, aggregates)
 	return err
 }
 
@@ -377,7 +396,15 @@ func (c *CampaignPublicationCoordinator) buildRunAggregatePublishRequests(ctx co
 	if err != nil {
 		return nil, err
 	}
-	records, err := BuildRunAggregateViewRecords(run, state, report, observedAt)
+	spec, err := c.store.LoadCampaignSpec(ctx, run.GetCampaignBinding().GetCampaignId())
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: publish run aggregates: load campaign spec: %w", err)
+	}
+	bundleSHA256, err := c.publishRunBundle(ctx, runID, run.GetCampaignBinding().GetCampaignId(), spec.GetCampaignDigest(), results, state)
+	if err != nil {
+		return nil, err
+	}
+	records, err := BuildRunAggregateViewRecords(run, state, report, observedAt, bundleSHA256)
 	if err != nil {
 		return nil, err
 	}
@@ -434,7 +461,11 @@ func (c *CampaignPublicationCoordinator) PublishRunVerification(ctx context.Cont
 	if revisionErr != nil && verified {
 		return published, revisionErr
 	}
-	records, err := BuildRunVerificationViewRecords(run, state, report, observedAt)
+	bundleSHA256, bundleErr := c.publishRunBundle(ctx, runID, run.GetCampaignBinding().GetCampaignId(), spec.GetCampaignDigest(), results, state)
+	if bundleErr != nil {
+		return published, errors.Join(revisionErr, bundleErr)
+	}
+	records, err := BuildRunVerificationViewRecords(run, state, report, observedAt, bundleSHA256)
 	if err != nil {
 		return published, errors.Join(revisionErr, err)
 	}
@@ -633,7 +664,15 @@ func (c *CampaignPublicationCoordinator) PublishRunCompletion(ctx context.Contex
 	if err != nil {
 		return 0, err
 	}
-	records, err := BuildRunCompletionViewRecords(run, assignments, results, state, report, observedAt)
+	spec, err := c.store.LoadCampaignSpec(ctx, run.GetCampaignBinding().GetCampaignId())
+	if err != nil {
+		return 0, fmt.Errorf("evaluation: publish run completion: load campaign spec: %w", err)
+	}
+	bundleSHA256, err := c.publishRunBundle(ctx, runID, run.GetCampaignBinding().GetCampaignId(), spec.GetCampaignDigest(), results, state)
+	if err != nil {
+		return 0, err
+	}
+	records, err := BuildRunCompletionViewRecords(run, assignments, results, state, report, observedAt, bundleSHA256)
 	if err != nil {
 		return 0, err
 	}
@@ -828,6 +867,42 @@ func bindRunVerification(
 		return nil, nil
 	}
 	return nil, fmt.Errorf("persisted report does not apply to run evidence: %w", constants.ErrEvidenceScopeMismatch)
+}
+
+// assignmentBundleRequired reports whether a summary for this run state names an
+// assignment bundle: a proof publisher is attached, the run is settled, and at
+// least one result record exists.
+func (c *CampaignPublicationCoordinator) assignmentBundleRequired(state *runAggregateState, results map[string]*evalv1.EvaluationAssignmentResult) bool {
+	if c == nil || c.proofPublisher == nil || !runAggregateSettled(state) {
+		return false
+	}
+	for _, result := range results {
+		if result != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// publishRunBundle has the Gateway build the run's assignment bundle from the
+// result records it has accepted and returns the bundle digest for the summary.
+// The campaign identity names the run's campaign and the revision is its spec
+// digest, which the caller already holds. A run that does not require a bundle
+// yields an empty digest without a Gateway call. The Gateway answers
+// idempotently, so every settled-run summary export fetches the current digest.
+func (c *CampaignPublicationCoordinator) publishRunBundle(ctx context.Context, runID, campaignID, campaignRevision string, results map[string]*evalv1.EvaluationAssignmentResult, state *runAggregateState) (string, error) {
+	if !c.assignmentBundleRequired(state, results) {
+		return "", nil
+	}
+	input := RunBundleInput{CampaignID: campaignID, CampaignRevision: campaignRevision, RunID: runID}
+	if err := input.validate(); err != nil {
+		return "", err
+	}
+	digest, err := c.proofPublisher.PublishRunBundle(ctx, input)
+	if err != nil {
+		return "", fmt.Errorf("evaluation: publish run assignment bundle: %w", err)
+	}
+	return digest, nil
 }
 
 func (c *CampaignPublicationCoordinator) PruneRunProofCatalog(ctx context.Context, runID string) error {

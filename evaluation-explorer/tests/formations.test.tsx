@@ -59,6 +59,7 @@ describe('published formations', () => {
       quality_state: 'exploratory_verified' as const, inventory_only: false, evaluation_coverage: 1,
       parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
       pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 4 },
+      security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 4 },
       security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 },
     };
     expect(modelRoleLeaderboardRows([model], 'all', [])).toHaveLength(1);

@@ -2289,6 +2289,58 @@
                 }
             }
         },
+        "/api/v1/public-feed/proofs/run-bundle": {
+            "post": {
+                "description": "Publishes one settled run's assignment result records, read from the gateway's accepted public mirror rows, as one gzip JSONL proof artifact (mTLS owner CLI only). Unchanged records reuse the active bundle; changed records replace it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "public-feed"
+                ],
+                "summary": "Publish assignment run bundle",
+                "parameters": [
+                    {
+                        "description": "Run bundle request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.PublicRunBundleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.PublicRunBundleResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "Public spectator unavailable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/public-feed/snapshot": {
             "get": {
                 "description": "Accepts campaign projection records and signs/publishes them through the gateway-owned public spectator stack (mTLS owner CLI only).\nReturns the gateway publisher high-water sequence and feed-chain hash (mTLS owner CLI only).",
@@ -5488,6 +5540,41 @@
                     "type": "integer"
                 },
                 "proof_root_sha256": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.PublicRunBundleRequest": {
+            "type": "object",
+            "properties": {
+                "campaign_id": {
+                    "type": "string"
+                },
+                "campaign_revision": {
+                    "description": "CampaignRevision is the campaign spec digest the bundle is published under.",
+                    "type": "string"
+                },
+                "run_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.PublicRunBundleResponse": {
+            "type": "object",
+            "properties": {
+                "accepted": {
+                    "type": "boolean"
+                },
+                "bundle_sha256": {
+                    "type": "string"
+                },
+                "byte_size": {
+                    "type": "integer"
+                },
+                "record_count": {
+                    "type": "integer"
+                },
+                "run_id": {
                     "type": "string"
                 }
             }
