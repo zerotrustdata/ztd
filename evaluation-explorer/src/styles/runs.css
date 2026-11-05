@@ -50,10 +50,6 @@
   min-width: 0;
 }
 
-.campaign-evidence-head {
-  margin-bottom: 8px;
-}
-
 .campaign-legend {
   display: flex;
   flex-wrap: wrap;

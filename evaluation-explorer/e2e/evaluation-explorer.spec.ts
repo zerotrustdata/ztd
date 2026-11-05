@@ -266,6 +266,8 @@ for (const viewport of [
     await page.evaluate((theme) => document.documentElement.setAttribute('data-theme', theme), viewport.theme);
     const live = page.getByRole('region', { name: 'Live activity', exact: true });
     await expect(live.locator('tbody tr')).toHaveCount(6);
+    // A phone lands on the content; the drawer opens on request.
+    if (viewport.width <= 768) await page.getByRole('banner').getByRole('button', { name: 'Open navigation drawer' }).click();
     const runs = page.getByRole('region', { name: 'Runs', exact: true });
     await expect(runs.getByRole('heading', { name: 'Runs', exact: true })).toBeVisible();
     const runsBox = (await runs.boundingBox())!;
@@ -339,7 +341,6 @@ for (const viewport of [
     const run = { ...fixtureEvaluationSummaries[0]!, dataset_id: 'ds-live-grading', run_id: 'live-grading-run', model_role_mapping: { primary: 'qwen3:8b' } };
     await installMirror(page, [run, ...events]);
     await page.goto('/?release=all');
-    if (viewport.width <= 768) await page.getByRole('banner').getByRole('button', { name: 'Close navigation drawer' }).click();
 
     const live = page.getByRole('region', { name: 'Live activity', exact: true });
     await expect(live.locator('tbody tr')).toHaveCount(1);
@@ -391,7 +392,6 @@ for (const viewport of [
       },
     ]);
     await page.goto('/?release=all');
-    if (viewport.width <= 768) await page.getByRole('banner').getByRole('button', { name: 'Close navigation drawer' }).click();
 
     const live = page.getByRole('region', { name: 'Live activity', exact: true });
     await expect(live.locator('tbody tr')).toHaveCount(1);
@@ -599,4 +599,53 @@ test('assignment analysis offers sortable grading and performance without wide I
   await table.getByRole('link', { name: 'Fail', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: tasks[0]! })).toBeVisible();
   await expect.poll(() => page.locator('#assignment-grades').evaluate((element) => element.getBoundingClientRect().top)).toBeLessThan(200);
+});
+
+test('a phone lands on the content, and opening a page from the drawer closes it', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installMirror(page);
+  await page.goto('/?release=all');
+  const main = page.getByRole('main');
+  const open = page.getByRole('banner').getByRole('button', { name: 'Open navigation drawer' });
+  await expect(open).toHaveAttribute('aria-expanded', 'false');
+  await expect(main.getByRole('region', { name: 'Live activity', exact: true })).toBeVisible();
+
+  await open.click();
+  const nav = page.getByRole('navigation', { name: 'Primary navigation' });
+  await expect(nav).toBeInViewport();
+  await nav.getByRole('link', { name: 'Models' }).click();
+  await expect(page).toHaveURL(/\/models/);
+  await expect(page.getByRole('banner').getByRole('button', { name: 'Open navigation drawer' })).toBeFocused();
+  await expect(nav).toHaveCount(0);
+});
+
+test('the footer stays one row below desktop, shows the feed position, and keeps its links', async ({ page }) => {
+  for (const width of [390, 900]) {
+    await page.setViewportSize({ width, height: 844 });
+    await installMirror(page);
+    await page.goto('/?release=all');
+    const footer = page.getByRole('contentinfo');
+    await expect(footer.getByTestId('footer-telemetry')).toHaveText(/^Seq \d/);
+    await expect(footer.getByTestId('footer-telemetry')).toBeInViewport();
+    expect((await footer.boundingBox())!.height).toBeLessThan(36);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    for (const name of ['Methodology', /Source/]) {
+      const link = footer.getByRole('link', { name });
+      await link.scrollIntoViewIfNeeded();
+      await expect(link).toBeInViewport();
+    }
+  }
+});
+
+test('section links land just below the top of the scrolling pane', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await installMirror(page);
+  await page.goto('/methodology');
+  const link = page.locator('.docs-sidebar-nav a').nth(5);
+  const id = (await link.getAttribute('href'))!.slice(1);
+  await link.click();
+  await expect.poll(() => page.evaluate((target) => {
+    const pane = document.querySelector('.app-main')!.getBoundingClientRect().top;
+    return Math.round(document.getElementById(target)!.getBoundingClientRect().top - pane);
+  }, id)).toBeLessThan(20);
 });

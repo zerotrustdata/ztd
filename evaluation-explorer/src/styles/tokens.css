@@ -33,9 +33,7 @@
 /* Hierarchy comes from hairlines, surface contrast, and type. Corners stay square,
    nothing floats on a shadow, and color carries status rather than decoration. */
 :root {
-  --radius: 0;
   --radius-control: 2px;
-  --gap: 16px;
   --font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --text-2xs: 11px;
@@ -51,7 +49,8 @@
   --tracking-label: 0.04em;
 }
 
-/* Carbon. Every text tone holds 4.5:1 on every surface. */
+/* Carbon. Every text tone holds 4.5:1 and --border-strong holds 3:1 on every surface.
+   --border is a decorative hairline; anything that bounds a control uses --border-strong. */
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
@@ -66,9 +65,7 @@
   --accent-dim: #a6dce5;
   --on-accent: #0c0c0b;
   --border: #2a2926;
-  --border-strong: #5a5851;
-  --accent-surface: #181817;
-  --accent-surface-border: #5a5851;
+  --border-strong: #6e6c65;
   --tone-ok: #4cb782;
   --tone-info: #7cc5d2;
   --tone-warn: #d9a441;
@@ -90,9 +87,7 @@
   --accent-dim: #084e5b;
   --on-accent: #ffffff;
   --border: #dcd9d0;
-  --border-strong: #8f8c82;
-  --accent-surface: #f0eee8;
-  --accent-surface-border: #8f8c82;
+  --border-strong: #807d75;
   --tone-ok: #17703f;
   --tone-info: #0a6272;
   --tone-warn: #8a5300;

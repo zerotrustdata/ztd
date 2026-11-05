@@ -38,7 +38,6 @@
 
 /* Header bar */
 .app-header {
-  --header-sticky-offset: 44px;
   position: sticky;
   top: 0;
   z-index: 10;
@@ -64,20 +63,27 @@
   align-items: center;
   flex-shrink: 0;
 }
+/* One-color marks: the art is an alpha mask over the text tone, so it follows the theme. */
+.header-brand-wordmark,
+.header-brand-logo {
+  height: 20px;
+  background: var(--fg);
+  mask: var(--brand-mask) center / contain no-repeat;
+  -webkit-mask: var(--brand-mask) center / contain no-repeat;
+}
 .header-brand-wordmark {
+  --brand-mask: url('../assets/brand/opendevops-wordmark-mask.png');
   display: block;
-  height: 24px;
-  width: auto;
+  width: 139px;
 }
 .header-brand-logo {
+  --brand-mask: url('../assets/brand/opendevops-mark-mask.png');
   display: none;
-  height: 24px;
-  width: auto;
+  width: 20px;
 }
-/* The artwork's wordmark is near-white, so paper needs a carbon nameplate. */
-[data-theme="light"] .header-brand {
-  background: #0c0c0b;
-  padding: 3px 8px;
+@media (forced-colors: active) {
+  .header-brand-wordmark,
+  .header-brand-logo { background: CanvasText; forced-color-adjust: none; }
 }
 .header-campaign-slot {
   display: flex;
@@ -194,6 +200,15 @@
   padding: 0 12px;
   border-right: 1px solid var(--border);
   overflow: hidden;
+}
+.header-campaign-role-name {
+  flex: none;
+  margin-right: 6px;
+  color: var(--fg-dim);
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
 }
 .header-campaign-role-model {
   width: 100%;
@@ -387,6 +402,8 @@
   text-transform: uppercase;
 }
 .app-footer-label { color: var(--fg-muted); }
+.app-footer-telemetry { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.app-footer-telemetry time { color: var(--fg-muted); }
 .app-footer-links {
   display: flex;
   flex-wrap: wrap;
@@ -415,7 +432,6 @@
   .header-campaign-task-label { display: none; }
 }
 @media (max-width: 1000px) {
-  .app-header { --header-sticky-offset: 86px; }
   .header-primary {
     grid-template-columns: auto 1fr;
     grid-template-areas:
@@ -434,10 +450,8 @@
   .header-campaign-tail { flex: 0 0 130px; }
 }
 @media (max-width: 768px) {
-  .app-header { --header-sticky-offset: 96px; }
   .header-brand-wordmark { display: none; }
   .header-brand-logo { display: block; }
-  [data-theme="light"] .header-brand { padding: 3px; }
   .app-main { padding: 14px; }
   .app-workspace,
   .is-drawer-closed .app-workspace { grid-template-columns: minmax(0, 1fr); }
@@ -446,7 +460,6 @@
     inset: 0 auto 0 0;
     z-index: 20;
     width: min(var(--drawer-width), calc(100% - 44px));
-    gap: 1px;
   }
   .header-campaign-tail { flex: 0 0 100px; }
   .header-campaign-role-model { font-size: var(--text-xs); }
@@ -465,6 +478,23 @@
 /* The header button already toggles the drawer; only the overlay needs its own close row. */
 @media (min-width: 769px) {
   .nav-drawer-header { display: none; }
+}
+
+/* One row below desktop, scrolling sideways: it stays clear of the page and keeps every link. */
+@media (max-width: 1100px) {
+  .app-footer {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+  .app-footer > * { flex: none; }
+  .app-footer-links { flex-wrap: nowrap; }
+  .app-footer-links:first-of-type { margin-right: 0; }
+}
+/* What a phone can see before scrolling is the feed position. */
+@media (max-width: 768px) {
+  .app-footer-telemetry { order: -1; }
 }
 
 @media (max-width: 768px) {

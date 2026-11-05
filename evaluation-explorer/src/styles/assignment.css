@@ -7,7 +7,7 @@
 .evidence-main .task-detail-section,
 .assignment-proof,
 #assignment-grades {
-  scroll-margin-top: calc(var(--header-sticky-offset, 58px) + 16px);
+  scroll-margin-top: 12px;
 }
 .assignment-id {
   display: inline-flex;

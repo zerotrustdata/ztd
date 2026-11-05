@@ -93,7 +93,7 @@
 }
 
 .docs-section {
-  scroll-margin-top: calc(var(--header-sticky-offset, 92px) + 8px);
+  scroll-margin-top: 12px;
 }
 
 .docs-section-title {
@@ -380,8 +380,8 @@
 }
 
 .docs-operator-grid article.docs-operator-pdp {
-  border-color: var(--accent-surface-border);
-  background: var(--accent-surface);
+  border-color: var(--border-strong);
+  background: var(--bg-elev2);
 }
 
 .docs-operator-grid article > div {
@@ -569,10 +569,8 @@
   }
   .docs-sidebar {
     position: static;
-    padding: 0;
     border-bottom: 1px solid var(--border);
     margin-bottom: 8px;
-    top: 0;
   }
   .docs-sidebar-nav {
     flex-direction: row;
@@ -590,12 +588,6 @@
   .docs-program-grid,
   .task-tool-grid {
     grid-template-columns: 1fr;
-  }
-  .docs-hero {
-    padding: 0 0 16px;
-  }
-  .docs-hero-title {
-    font-size: 24px;
   }
 }
 

@@ -226,7 +226,8 @@ describe('failed start', () => {
   });
 
   it('restores freshness when a retried start finds the same snapshot', async () => {
-    const base = serveLayout(makeMirror());
+    // Freshness is derived from the snapshot's age, so it has to be current for the wall clock.
+    const base = serveLayout(makeMirror({ snapshot: makeSnapshot({ generated_at: new Date().toISOString() }) }));
     await startFeed({ fetchImpl: base });
     const freshness = evalStore.getState().feedStatus?.freshness;
     expect(freshness).not.toBe('source_offline');

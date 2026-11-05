@@ -3,6 +3,7 @@
 
 import { NavLink } from 'react-router-dom';
 import { RunsPanel } from './RunsPanel';
+import { isOverlayDrawerViewport } from '../utils/viewport';
 
 interface NavItemConfig {
   to: string;
@@ -33,6 +34,10 @@ export function NavDrawer({ isOpen, onClose }: NavDrawerProps) {
       className="nav-drawer"
       aria-label="Navigation and runs"
       inert={!isOpen}
+      onClick={(event) => {
+        // An overlay would otherwise keep covering the page the visitor just opened.
+        if (isOverlayDrawerViewport() && (event.target as Element).closest('a')) onClose();
+      }}
     >
       <div className="nav-drawer-header">
         <span className="nav-drawer-kicker">Navigation</span>

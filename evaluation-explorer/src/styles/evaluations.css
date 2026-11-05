@@ -164,15 +164,6 @@
   min-width: 0;
 }
 
-.evaluation-detail .breadcrumb {
-  flex-wrap: wrap;
-  overflow-wrap: anywhere;
-}
-
-.evaluation-detail .breadcrumb > span:last-child {
-  min-width: 0;
-}
-
 .evaluation-detail .evidence-meta > * {
   min-width: 0;
 }
@@ -217,9 +208,6 @@
   .evaluation-detail .evidence-panel {
     padding: 14px;
   }
-  .evaluation-detail .evidence-hero {
-    padding: 18px;
-  }
   .evaluation-assignment-filters > select {
     flex: 1 1 100%;
   }
@@ -227,6 +215,11 @@
 
 .assignment-table {
   min-width: 0;
+}
+
+/* Run IDs run past 100 characters. A wider column keeps them to the height of the row's outcomes. */
+.data-table [data-column="run"] {
+  min-width: 240px;
 }
 
 .assignment-table-controls {
@@ -248,7 +241,7 @@
 
 .assignment-table-views button,
 .assignment-reset {
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   padding: 4px 10px;
   color: var(--fg-muted);
   background: transparent;
@@ -267,7 +260,6 @@
 .assignment-table-views button[aria-pressed="true"] {
   background: var(--bg-elev3);
   color: var(--fg);
-  border-color: var(--border);
   font-weight: 500;
 }
 
@@ -465,7 +457,7 @@
   width: 18px;
   height: 18px;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--fg-muted);
 }
@@ -479,7 +471,7 @@
 
 .row-peek.is-open {
   color: var(--fg);
-  border-color: var(--border-strong);
+  border-color: var(--fg-dim);
 }
 
 .row-peek.is-open::before {

@@ -21,11 +21,11 @@ import { TasksView } from './views/TasksView';
 import { ThemeToggle } from './components/ThemeToggle';
 import { NavDrawer } from './components/NavDrawer';
 import { AppFooter } from './components/AppFooter';
-import brandWordmarkUrl from './assets/brand/opendevops-logo-plus-title-text.png';
-import brandLogoUrl from './assets/brand/opendevops-logo-only.png';
+import { isOverlayDrawerViewport } from './utils/viewport';
 
 function Shell() {
-  const [drawerOpen, setDrawerOpen] = useState(true);
+  // The drawer overlays the content on a phone, so a phone starts on the content.
+  const [drawerOpen, setDrawerOpen] = useState(() => !isOverlayDrawerViewport());
   const drawerButtonRef = useRef<HTMLButtonElement>(null);
   const closeDrawer = useCallback(() => {
     setDrawerOpen(false);
@@ -84,8 +84,8 @@ function Shell() {
               </span>
             </button>
             <Link className="header-brand" to="/" aria-label="OpenDevOps.ai home">
-              <img className="header-brand-wordmark" src={brandWordmarkUrl} alt="" />
-              <img className="header-brand-logo" src={brandLogoUrl} alt="" />
+              <span className="header-brand-wordmark" aria-hidden="true" />
+              <span className="header-brand-logo" aria-hidden="true" />
             </Link>
           </div>
           <div className="header-campaign-slot">

@@ -120,10 +120,7 @@ export function SponsorsView({
         </div>
       </PageHero>
 
-      <PanelSection
-        title={SPONSORS_URGENCY_HEADING}
-        className="sponsors-urgency-panel"
-      >
+      <PanelSection title={SPONSORS_URGENCY_HEADING}>
         {SPONSORS_URGENCY_PARAGRAPHS.map((paragraph, index) => (
           <p key={index} className="sys-platform-lede">
             {paragraph}

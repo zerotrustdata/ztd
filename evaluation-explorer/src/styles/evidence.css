@@ -504,14 +504,12 @@ a.evidence-step-body:focus-visible {
 @media (max-width: 1100px) {
   .evidence-layout {
     grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
   }
 }
 
 @media (max-width: 900px) {
   .evidence-chain ol {
     grid-template-columns: minmax(0, 1fr);
-    padding: 0 1px 1px 0;
   }
   .evidence-step-body {
     grid-template-columns: minmax(120px, auto) minmax(0, 1fr);
@@ -525,34 +523,23 @@ a.evidence-step-body:focus-visible {
 }
 
 @media (max-width: 640px) {
-  .evidence-hero {
-    padding: 0;
-    gap: 14px;
-    margin-bottom: 16px;
-    border: 0;
-    background: transparent;
-  }
   .evidence-verdict {
     justify-items: start;
     max-width: none;
-    gap: 4px;
   }
   .evidence-verdict-note {
     text-align: left;
   }
-  .evidence-panel,
-  .evidence-main .task-detail-section,
-  .assignment-activity,
-  .assignment-evidence {
-    padding: 14px 16px;
-    background: transparent;
-  }
+}
+
+.evidence-panel li {
+  overflow-wrap: anywhere;
 }
 
 .copy-button {
   flex: none;
   padding: 1px 6px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--fg-dim);
   font-size: var(--fs-label);

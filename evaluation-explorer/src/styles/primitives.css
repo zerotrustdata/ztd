@@ -188,21 +188,23 @@
   max-width: 100%;
 }
 .dataset-selector select,
+.card-sort select,
 .table-toolbar input,
 .table-toolbar select,
 .eval-toolbar select {
   min-height: 30px;
   padding: 4px 8px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--fg);
   font-size: 13px;
   transition: border-color 100ms;
 }
 .dataset-selector select:hover,
+.card-sort select:hover,
 .table-toolbar input:hover,
 .table-toolbar select:hover,
-.eval-toolbar select:hover { border-color: var(--border-strong); }
+.eval-toolbar select:hover { border-color: var(--fg-dim); }
 select option { background: var(--bg-elev); color: var(--fg); }
 .table-toolbar,
 .eval-toolbar {
@@ -224,13 +226,13 @@ select option { background: var(--bg-elev); color: var(--fg); }
 .column-visibility-toggle {
   min-height: 30px;
   padding: 4px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--fg-muted);
   font-size: 13px;
   transition: border-color 100ms, color 100ms;
 }
-.column-visibility-toggle:hover { border-color: var(--border-strong); color: var(--fg); }
+.column-visibility-toggle:hover { border-color: var(--fg-dim); color: var(--fg); }
 .column-visibility-panel {
   position: absolute;
   top: 100%;
@@ -317,13 +319,13 @@ select option { background: var(--bg-elev); color: var(--fg); }
 }
 .table-pagination button {
   padding: 4px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--fg);
   font-size: 12px;
   transition: border-color 100ms;
 }
-.table-pagination button:hover:not(:disabled) { border-color: var(--border-strong); }
+.table-pagination button:hover:not(:disabled) { border-color: var(--fg-dim); }
 .table-pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* Intervals and missing values */
@@ -486,8 +488,10 @@ select option { background: var(--bg-elev); color: var(--fg); }
 
 .breadcrumb {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 8px;
+  overflow-wrap: anywhere;
   margin-bottom: 14px;
   color: var(--fg-dim);
   font-family: var(--mono);

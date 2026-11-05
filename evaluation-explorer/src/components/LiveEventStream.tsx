@@ -578,7 +578,7 @@ export function LiveEventStream({
             <thead><tr>
               <SortHeader label="Result" field="result" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <SortHeader label="Task" field="task" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-              <SortHeader label="Model" field="model" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <SortHeader className="stream-model-header" label="Model" field="model" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               {showTribunal ? <th scope="col" className="stream-tribunal-header">Consensus</th> : null}
               {showDeterministic ? <th scope="col" className="stream-deterministic-header">Deterministic</th> : null}
               {showJudge ? <th scope="col" className="stream-judge-header">Judge</th> : null}

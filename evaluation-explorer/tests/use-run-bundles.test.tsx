@@ -178,7 +178,7 @@ describe('useRunBundles', () => {
     const LIVE_URL = `${BUNDLE_ORIGIN}/live/runs/run-live.jsonl.gz`;
 
     function liveRecord(runId: string) {
-      const { assignment_bundle_sha256: _sha, ...summary } = settledRunRecord(runId, '0'.repeat(64)) as Record<string, unknown>;
+      const { assignment_bundle_sha256: _sha, ...summary } = settledRunRecord(runId, '0'.repeat(64)) as unknown as Record<string, unknown>;
       void _sha;
       return { ...summary, lifecycle_state: 'running' } as ReturnType<typeof settledRunRecord>;
     }

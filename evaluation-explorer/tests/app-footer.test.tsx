@@ -3,9 +3,18 @@
 
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppFooter } from '../src/components/AppFooter';
 import { evalStore } from '../src/state/store';
+import type { FeedStatus } from '../src/utils/feed-state';
+
+/** Replaces the feed status a test renders with. Undefined leaves the store's own. */
+let statusOverride: FeedStatus | null | undefined;
+
+vi.mock('../src/state/store', async (original) => {
+  const actual = await original<typeof import('../src/state/store')>();
+  return { ...actual, useFeedStatus: () => (statusOverride === undefined ? actual.useFeedStatus() : statusOverride) };
+});
 
 describe('AppFooter', () => {
   beforeEach(() => {
@@ -37,5 +46,53 @@ describe('AppFooter', () => {
     expect(screen.queryByRole('link', { name: /Proof catalog/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Proof segments/ })).not.toBeInTheDocument();
     evalStore.loadFixtures([], []);
+  });
+});
+
+describe('AppFooter feed telemetry', () => {
+  const status = (lastAcceptedAt: string | undefined): FeedStatus => ({
+    connection: 'live',
+    freshness: 'active',
+    highWaterSequence: 451843,
+    lastAcceptedAt,
+    message: 'ok',
+  });
+  const renderFooter = () => render(<MemoryRouter><AppFooter /></MemoryRouter>);
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 5, 12, 0));
+  });
+  afterEach(() => {
+    statusOverride = undefined;
+    vi.useRealTimers();
+  });
+
+  it('renders nothing before the feed reports', () => {
+    statusOverride = null;
+    renderFooter();
+    expect(screen.queryByTestId('footer-telemetry')).not.toBeInTheDocument();
+  });
+
+  it('shows the sequence alone until a record is accepted', () => {
+    statusOverride = status(undefined);
+    renderFooter();
+    expect(screen.getByTestId('footer-telemetry')).toHaveTextContent(/^Seq 451,843$/);
+  });
+
+  it("shows only the time for today's data, with the full timestamp on hover", () => {
+    const accepted = new Date(2026, 10, 5, 7, 58).toISOString();
+    statusOverride = status(accepted);
+    renderFooter();
+    expect(screen.getByTestId('footer-telemetry')).toHaveTextContent('Seq 451,843 · Accepted 07:58');
+    const time = screen.getByText('07:58');
+    expect(time).toHaveAttribute('datetime', accepted);
+    expect(time.getAttribute('title')).toContain('2026');
+  });
+
+  it('adds the date once the data is older, so a stale feed cannot read as current', () => {
+    statusOverride = status(new Date(2026, 10, 4, 7, 58).toISOString());
+    renderFooter();
+    expect(screen.getByTestId('footer-telemetry')).toHaveTextContent('Accepted Nov 4 07:58');
   });
 });

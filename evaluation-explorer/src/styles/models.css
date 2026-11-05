@@ -187,7 +187,7 @@
   align-items: center;
   gap: 7px;
   padding: 5px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--fg-muted);
   font: inherit;
@@ -200,13 +200,11 @@
 }
 
 .capability-filter-chip:hover {
-  border-color: var(--border);
   color: var(--fg);
   background: var(--bg-elev2);
 }
 
 .capability-filter-chip.active {
-  border-color: var(--border);
   background: var(--bg-elev3);
   color: var(--fg);
 }
@@ -232,21 +230,6 @@
   white-space: nowrap;
   font-family: var(--mono);
   text-transform: uppercase;
-}
-
-.role-badge-primary {
-  color: var(--fg);
-  background: transparent;
-}
-
-.role-badge-assistant {
-  color: var(--fg-muted);
-  background: transparent;
-}
-
-.role-badge-lite {
-  color: var(--fg-muted);
-  background: transparent;
 }
 
 .model-evals-link {

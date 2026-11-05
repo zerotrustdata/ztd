@@ -47,7 +47,9 @@
 
 .leaderboard-categories {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
+  max-width: 100%;
   gap: 0;
   background: transparent;
   border: 0;
