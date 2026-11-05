@@ -174,7 +174,10 @@ func (p *PublicBucketPublisher) tick(ctx context.Context) error {
 		lastWithdrawal = p.journal.withdrawal
 	}
 	withdrew := (p.synced || p.journal.revision != 0) && lastWithdrawal != head.WithdrawalDigest
-	force := !p.synced || settled || withdrew
+	// A run starting is written at once too, because browsers poll the live status
+	// only after the pointer says a run is active.
+	started := p.synced && !p.lastPointer.Active && len(head.ActiveRuns) > 0
+	force := !p.synced || settled || started || withdrew
 	if err := p.publishLive(ctx, head.ActiveRuns, withdrew); err != nil {
 		errs = append(errs, err)
 	}
@@ -296,8 +299,13 @@ func (p *PublicBucketPublisher) syncLayout(ctx context.Context, state PublicLayo
 	for _, key := range historyPages.deleted {
 		entries = append(entries, p.deleteEntries(key)...)
 	}
-	if withdrew {
+	// Deleting a run withdraws its dataset and prunes its proofs as two steps, which
+	// can land on separate ticks, so either one counts as a withdrawal.
+	if withdrew || len(withdrawn) > 0 {
 		entries = append(entries, p.purgeEntry(constants.PublicLayoutPointerKey), p.purgeEntry(constants.PublicLayoutProofHeadKey))
+		p.withdrawalSweep = true
+	}
+	if withdrew {
 		for _, key := range historyPages.written {
 			entries = append(entries, p.purgeEntry(key))
 		}
@@ -317,7 +325,6 @@ func (p *PublicBucketPublisher) syncLayout(ctx context.Context, state PublicLayo
 	if historyPages.high > 0 {
 		p.historyHigh = historyPages.high
 	}
-	p.withdrawalSweep = p.withdrawalSweep || withdrew
 	p.lastPointer = signed
 	p.lastSync = p.now()
 	p.synced = true

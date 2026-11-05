@@ -59,10 +59,10 @@ func TestMirror_SnapshotRetainsCurrentEntitiesInsteadOfRevisions(t *testing.T) {
 	}
 	bootstrap, err := env.mirror.currentBootstrap(ctx, env.sourceID)
 	require.NoError(t, err)
-	assert.Len(t, bootstrap.RecentProjections, constants.PublicFeedSSEReplayMaxRecords+1)
+	assert.Len(t, bootstrap.RecentProjections, constants.PublicFeedEventRetentionMaxRecords+1)
 	var count int
 	require.NoError(t, env.store.db.QueryRowWithRetry(ctx, `SELECT COUNT(*) FROM snapshot_batches`).Scan(&count))
-	assert.Equal(t, constants.PublicFeedSSEReplayMaxRecords, count, "superseded batches have no snapshot references")
+	assert.Equal(t, constants.PublicFeedEventRetentionMaxRecords, count, "superseded batches have no snapshot references")
 	require.NoError(t, env.mirror.WithdrawCampaignDataset(ctx, "a"))
 	bootstrap, err = env.mirror.currentBootstrap(ctx, env.sourceID)
 	require.NoError(t, err)
@@ -148,7 +148,7 @@ func TestMirror_SnapshotVerificationAcrossPages(t *testing.T) {
 	mirror := env.reopenMirror()
 	bootstrap, err := mirror.currentBootstrap(ctx, env.sourceID)
 	require.NoError(t, err)
-	assert.Len(t, bootstrap.RecentProjections, publicMirrorReadPageRecords+2+constants.PublicFeedSSEReplayMaxRecords)
+	assert.Len(t, bootstrap.RecentProjections, publicMirrorReadPageRecords+2+constants.PublicFeedEventRetentionMaxRecords)
 	// Even a row with a self-consistent hash must match the signed record.
 	raw := `{"kind":"catalog_snapshot","dataset_id":"ds-0256","title":"forged"}`
 	digest := sha256.Sum256([]byte(raw))

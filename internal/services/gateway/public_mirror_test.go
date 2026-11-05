@@ -10,7 +10,6 @@
 package gateway
 
 import (
-	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -275,7 +274,7 @@ func (e *mirrorTestEnv) getJSON(path string, target any) int {
 func TestPublicMirror_IngestHandlerRejectsReadRoutes(t *testing.T) {
 	env := newMirrorTestEnv(t)
 
-	for _, path := range []string{"/bootstrap", "/snapshot", "/history", "/stream", "/proof-catalog", "/proof-head", "/proof-segments", "/proofs/unknown-artifact-id"} {
+	for _, path := range []string{"/bootstrap", "/snapshot", "/history", "/proof-catalog", "/proof-head", "/proof-segments", "/proofs/unknown-artifact-id"} {
 		t.Run(path, func(t *testing.T) {
 			request, requestErr := http.NewRequest(http.MethodGet, env.server.URL+path, nil)
 			require.NoError(t, requestErr)
@@ -1293,174 +1292,20 @@ func TestMirror_CORS_IngestHasNoCORS(t *testing.T) {
 	assert.Empty(t, resp.Header.Get("Access-Control-Allow-Origin"))
 }
 
-// ---------------------------------------------------------------------------
-// SSE replay tests
-// ---------------------------------------------------------------------------
-
-// TestMirror_SSE_ReplaysExistingRecords verifies that the SSE stream sends
-// existing records on connect.
-func TestMirror_SSE_ReplaysExistingRecords(t *testing.T) {
+// TestPublicMirror_StreamRouteRemoved verifies that the retired anonymous
+// /stream route is not mounted on the public listener, with or without a
+// source query.
+func TestPublicMirror_StreamRouteRemoved(t *testing.T) {
 	env := newMirrorTestEnv(t)
 
-	records := []models.PublicFeedRecord{
-		env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"v": "1"})),
-		env.makeRecord(2, models.NewPublicFeedObject(map[string]string{"v": "2"})),
+	for _, path := range []string{"/stream", "/stream?source=" + env.sourceID + "&since_id=0"} {
+		t.Run(path, func(t *testing.T) {
+			response, err := env.client.Get(env.publicServer.URL + path)
+			require.NoError(t, err)
+			require.NoError(t, response.Body.Close())
+			assert.Equal(t, http.StatusNotFound, response.StatusCode)
+		})
 	}
-	batch := env.buildBatch(records, constants.PublicFeedZeroHashHex)
-	_, resp := env.sendIngest(batch)
-	require.True(t, resp.Accepted)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, env.publicServer.URL+"/stream?source="+env.sourceID, nil)
-	require.NoError(t, err)
-	resp2, err := env.client.Do(req)
-	require.NoError(t, err)
-	defer resp2.Body.Close()
-
-	scanner := bufio.NewScanner(resp2.Body)
-	eventCount := 0
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "event: ") {
-			eventCount++
-		}
-		// We expect at least a snapshot event + 2 record events.
-		if eventCount >= 3 {
-			break
-		}
-	}
-	assert.GreaterOrEqual(t, eventCount, 3)
-}
-
-func TestMirror_SSE_DeliversFirstBatchToExplicitSourceSubscriber(t *testing.T) {
-	env := newMirrorTestEnv(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, env.publicServer.URL+"/stream?source="+env.sourceID+"&since_id=0", nil)
-	require.NoError(t, err)
-	streamResponse, err := env.client.Do(req)
-	require.NoError(t, err)
-	defer streamResponse.Body.Close()
-
-	batch := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"v": "1"}))}, constants.PublicFeedZeroHashHex)
-	require.NoError(t, env.mirror.acceptBatch(ctx, batch))
-
-	scanner := bufio.NewScanner(streamResponse.Body)
-	receivedRecord := false
-	for scanner.Scan() {
-		if scanner.Text() == "event: projection" {
-			receivedRecord = true
-			break
-		}
-	}
-	assert.True(t, receivedRecord)
-}
-
-// TestMirror_SSEAllowsConcurrentConnectionsBehindOneProxyUntilGlobalLimit verifies
-// that tunnel topology does not collapse independent streams into one client.
-func TestMirror_SSEAllowsConcurrentConnectionsBehindOneProxyUntilGlobalLimit(t *testing.T) {
-	env := newMirrorTestEnv(t)
-	env.mirror.maxSSESubscribers = 2
-	first, accepted := env.mirror.addSSESubscriber(env.sourceID)
-	require.True(t, accepted)
-	t.Cleanup(func() { env.mirror.removeSSESubscriber(first) })
-
-	second, accepted := env.mirror.addSSESubscriber(env.sourceID)
-	require.True(t, accepted)
-	t.Cleanup(func() { env.mirror.removeSSESubscriber(second) })
-
-	_, accepted = env.mirror.addSSESubscriber(env.sourceID)
-	assert.False(t, accepted)
-}
-
-func TestMirrorSSESubscriber_DropsOldestAndSignalsTruncation(t *testing.T) {
-	subscriber := &mirrorSSESubscriber{ch: make(chan models.PublicFeedRecord, 2)}
-	subscriber.send(models.PublicFeedRecord{Sequence: 1})
-	subscriber.send(models.PublicFeedRecord{Sequence: 2})
-	subscriber.send(models.PublicFeedRecord{Sequence: 3})
-
-	assert.Equal(t, int64(2), (<-subscriber.ch).Sequence)
-	assert.Equal(t, int64(3), (<-subscriber.ch).Sequence)
-	assert.True(t, subscriber.consumeTruncated())
-	assert.False(t, subscriber.consumeTruncated())
-}
-
-func TestMirror_SSE_ResumesFromSinceID(t *testing.T) {
-	env := newMirrorTestEnv(t)
-
-	records := []models.PublicFeedRecord{
-		env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"v": "1"})),
-		env.makeRecord(2, models.NewPublicFeedObject(map[string]string{"v": "2"})),
-		env.makeRecord(3, models.NewPublicFeedObject(map[string]string{"v": "3"})),
-	}
-	batch := env.buildBatch(records, constants.PublicFeedZeroHashHex)
-	_, resp := env.sendIngest(batch)
-	require.True(t, resp.Accepted)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	// Resume from sequence 1 (should get records 2 and 3).
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, env.publicServer.URL+"/stream?source="+env.sourceID+"&since_id=1", nil)
-	require.NoError(t, err)
-	resp2, err := env.client.Do(req)
-	require.NoError(t, err)
-	defer resp2.Body.Close()
-
-	scanner := bufio.NewScanner(resp2.Body)
-	dataLines := 0
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "data: ") {
-			dataLines++
-		}
-		if dataLines >= 3 {
-			break
-		}
-	}
-	// Expect at least: snapshot event + 2 record events = 3 data lines.
-	assert.GreaterOrEqual(t, dataLines, 3)
-}
-
-func TestMirror_SSE_ReplayTruncatesAtLimit(t *testing.T) {
-	env := newMirrorTestEnv(t)
-	env.mirror.SetMaxSSEReplayRecords(2)
-
-	records := make([]models.PublicFeedRecord, 4)
-	for i := range records {
-		records[i] = env.makeRecord(int64(i+1), projectionWithInt64Field("v", int64(i+1)))
-	}
-	batch := env.buildBatch(records, constants.PublicFeedZeroHashHex)
-	_, resp := env.sendIngest(batch)
-	require.True(t, resp.Accepted)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, env.publicServer.URL+"/stream?source="+env.sourceID, nil)
-	require.NoError(t, err)
-	resp2, err := env.client.Do(req)
-	require.NoError(t, err)
-	defer resp2.Body.Close()
-
-	scanner := bufio.NewScanner(resp2.Body)
-	recordEvents := 0
-	truncated := false
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "event: projection") {
-			recordEvents++
-		}
-		if line == "event: truncated" {
-			truncated = true
-			break
-		}
-	}
-	assert.Equal(t, 2, recordEvents)
-	assert.True(t, truncated)
 }
 
 // ---------------------------------------------------------------------------

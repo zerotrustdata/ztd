@@ -18,7 +18,7 @@ async function mirrorReachable(fetchImpl: typeof fetch): Promise<boolean> {
     const runtime = JSON.parse(readFileSync(join(publicDir, 'runtime.json'), 'utf8')) as {
       mirror_origin: string;
     };
-    const response = await fetchImpl(`${runtime.mirror_origin}/bootstrap?source=opendevops-local`);
+    const response = await fetchImpl(`${runtime.mirror_origin}/pointer.json`);
     return response.ok;
   } catch {
     return false;

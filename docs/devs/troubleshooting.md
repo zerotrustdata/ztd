@@ -257,6 +257,21 @@ A `verify_failed` run holding stored `INVALID_EVIDENCE` results from before v1.9
 
 `feed_drift_checked: false` means the comparison did not run. `feed_drift_error` gives the cause: a mirror that is not reachable at the origin in use, for which pass `--mirror-origin`, or a locked vault, which the [vault procedure](#vault-validation-and-key-recovery) covers.
 
+### Bucket Publication
+
+The bucket publisher logs each incomplete tick as `Public bucket publish incomplete`, with the error and the counts of pending deletes and purges. Each tick retries the sync and the journal. `./ztd public status` prints the `Bucket:` line, which gives the pointer revision, the sequence it names, how many sequences the bucket is behind the mirror, and the pending deletes and purges.
+
+| Symptom | Cause | Action |
+| --- | --- | --- |
+| Log line `Public bucket publish incomplete` with `public-feed: bucket` errors | A bucket request or a listing failed, or a sync step failed. The pointer is not written, so the bucket keeps the last pointer. | Confirm the endpoint, the bucket name, and the API token scope. The tick retries on its own. Restart the Gateway after correcting the configuration. |
+| `Bucket:` line shows a large sequence lag | The sync is blocked, or the head has not moved. A sync is due at once after a settle or withdrawal, and otherwise at most once a minute. | Read the log for the error. The lag clears when the next sync writes the pointer. |
+| Pending purges stay above zero | A cache purge request failed, usually because the purge token lacks cache-purge rights for the zone. `ErrPublicBucketPurgeFailed` wraps the error. | Check the purge token and `--bucket-zone-id`. The journal keeps each URL until a purge succeeds. Do not delete the journal to clear the count. |
+| Pending deletes stay above zero | A bucket delete failed. | Check the write token and the bucket name. The delete is retried each tick. |
+| Feed drift on the bucket: `pointer.json` disagrees with the mirror | The bucket pointer lags the mirror, or a cached copy of `pointer.json` is serving an older revision. | Compare `revision` and `high_water_sequence` in `pointer.json` with the `Bucket:` line. Wait for one cache period (30 seconds for the pointer) before treating a difference as drift. |
+| Log line `Public bucket publishing disabled` with a credentials error | The sealed bucket credentials are missing or cannot be read. `ErrPublicBucketCredentialsRequired` wraps the cause. The Gateway starts, and the mirror keeps serving. | Set the credentials again with `./ztd public config set --bucket-credentials-file <path or ->`, then restart the Gateway. Nothing else on the mirror changes. |
+
+The bucket journal lives at `public-feed/bucket-journal.jsonl` under the runtime root. A journal that fails to parse fails closed with `ErrPublicBucketJournalCorrupt`. Preserve it while the cause is investigated, because it records the pending deletes and purges.
+
 ### Model Not Found in a Rollout
 
 A run that stops with `the provider does not have the requested model` and a queue note of `provider_failure (model_not_found)` asked the provider for a served tag it does not hold. The results it already recorded cannot verify under strict provenance, so start a new run instead of resuming. Compare the registry and provider with `./ztd eval models diff`, then pull the model with `./ztd eval models pull` or correct the registry entry. A bare tag such as `llama3.2` resolves to `:latest`, so it is missing when only `llama3.2:3b` is installed.

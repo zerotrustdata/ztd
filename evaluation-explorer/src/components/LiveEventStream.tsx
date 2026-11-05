@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-// Live SSE event feed for the overview page. Newest events at the top inside a
+// Live event feed for the overview page. Newest events at the top inside a
 // bounded scroll region. Detailed diagnostics live on the assignment page.
 
 import { useEffect, useMemo, useRef, useState } from 'react';

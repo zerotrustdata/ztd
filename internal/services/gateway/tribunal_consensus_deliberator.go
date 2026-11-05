@@ -58,8 +58,8 @@ type consensusVoteRecorder interface {
 }
 
 // consensusVoteFeed publishes one live event onto the public mirror feed.
-// *PublicPublisherService satisfies it. The mirror's /stream SSE is the
-// delivery path the Evaluation Explorer already consumes.
+// *PublicPublisherService satisfies it. Public readers receive the record
+// through the mirror feed.
 type consensusVoteFeed interface {
 	PublishLiveEvent(ctx context.Context, body []byte) error
 }

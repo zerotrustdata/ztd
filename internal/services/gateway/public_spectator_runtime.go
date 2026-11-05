@@ -342,10 +342,6 @@ func (runtime *PublicSpectatorRuntime) Stop(ctx context.Context) error {
 		<-runtime.bucketDone
 		runtime.bucketCancel, runtime.bucketDone = nil, nil
 	}
-	// Ending open SSE streams lets Shutdown drain instead of waiting them out.
-	if runtime.mirror != nil {
-		runtime.mirror.CloseAllSubscribers()
-	}
 	var errs []error
 	for _, server := range []*http.Server{runtime.privateServer, runtime.publicServer, runtime.explorerServer} {
 		if server == nil {

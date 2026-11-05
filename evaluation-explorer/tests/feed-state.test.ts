@@ -180,15 +180,15 @@ describe('effectiveFeedFreshness', () => {
 });
 
 describe('classifyStreamConnection', () => {
-  it('shows Live when SSE is connected', () => {
+  it('shows Live when the feed is connected', () => {
     expect(classifyStreamConnection('connected', 'live').label).toBe('Live');
   });
 
-  it('shows Connecting while the feed is live but SSE is opening', () => {
+  it('shows Connecting while the feed is live but the first check is pending', () => {
     expect(classifyStreamConnection('disconnected', 'live').label).toBe('Connecting');
   });
 
-  it('shows Reconnecting during SSE reconnect', () => {
+  it('shows Reconnecting during a feed retry', () => {
     expect(classifyStreamConnection('reconnecting', 'live').label).toBe('Reconnecting');
   });
 });

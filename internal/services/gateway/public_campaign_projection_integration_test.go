@@ -10,7 +10,6 @@
 package gateway_test
 
 import (
-	"bufio"
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
@@ -286,22 +285,11 @@ func TestCampaignEvaluationSummaryPublishesThroughSignedMirrorReconstruction(t *
 	assert.Equal(t, int64(len(viewRecords)), snapshot.HighWaterSequence)
 	assert.NotEqual(t, constants.PublicFeedZeroHashHex, snapshot.FeedChainHash)
 
-	streamContext, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	streamRequest, err := http.NewRequestWithContext(streamContext, http.MethodGet, publicServer.URL+"/stream?source="+exportConfig.SourceID+"&since_id=0", nil)
+	var pointer models.PublicFeedPointer
+	response, err = publicServer.Client().Get(publicServer.URL + "/pointer.json?source=" + exportConfig.SourceID)
 	require.NoError(t, err)
-	streamResponse, err := publicServer.Client().Do(streamRequest)
-	require.NoError(t, err)
-	defer streamResponse.Body.Close()
-	scanner := bufio.NewScanner(streamResponse.Body)
-	eventCount := 0
-	for scanner.Scan() {
-		if strings.HasPrefix(scanner.Text(), "event: ") {
-			eventCount++
-		}
-		if eventCount >= len(viewRecords)+1 {
-			break
-		}
-	}
-	assert.GreaterOrEqual(t, eventCount, len(viewRecords)+1)
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	require.NoError(t, json.NewDecoder(response.Body).Decode(&pointer))
+	require.NoError(t, response.Body.Close())
+	assert.Equal(t, int64(len(viewRecords)), pointer.HighWaterSequence)
 }

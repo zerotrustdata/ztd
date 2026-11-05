@@ -69,7 +69,7 @@ async function loadCurrent(origin: string, fetchImpl: typeof fetch, pointer?: Pu
   }
 }
 
-/** Installs a read model. The store is rebuilt only when the snapshot changed. */
+/** Installs a read model at startup. The store is rebuilt only when the snapshot changed. */
 function applyReadModel(bootstrap: FeedBootstrap): void {
   const current = evalStore.getState().currentSnapshot;
   const next = bootstrap.snapshot;
@@ -94,6 +94,25 @@ function applyReadModel(bootstrap: FeedBootstrap): void {
     evalStore.endBatch();
   }
   appliedSequence = next.high_water_sequence;
+}
+
+/** Installs a newer read model of the same source. It always applies: a sealed
+ *  live snapshot can sit at the same sequence while holding only the status tail,
+ *  and it keeps what mounted views loaded on demand. */
+function refreshReadModel(bootstrap: FeedBootstrap): void {
+  evalStore.beginBatch();
+  try {
+    evalStore.initBootstrap(
+      bootstrap.snapshot,
+      bootstrap.recent_projections.map(normalizeRecentProjection),
+      bootstrap.proof_catalog_summary.artifact_count,
+      { refresh: true },
+    );
+    evalStore.acceptTaskIndex(bootstrap.task_index);
+  } finally {
+    evalStore.endBatch();
+  }
+  appliedSequence = bootstrap.snapshot.high_water_sequence;
 }
 
 /** Records a successful poll. Restores the live state after an offline period. */
@@ -122,7 +141,7 @@ async function pollPointer(session: Session): Promise<void> {
     if (latest.read_model_sha256 !== loadedReadModelSha) {
       const current = await loadCurrent(session.origin, session.fetchImpl, latest);
       if (session.gen !== generation) return;
-      applyReadModel(current.bootstrap);
+      refreshReadModel(current.bootstrap);
       pointer = current.pointer;
       loadedReadModelSha = pointer.read_model_sha256;
     }
@@ -144,6 +163,12 @@ async function pollLiveStatus(session: Session): Promise<void> {
       void startFeed(session.opts);
       return;
     }
+    // The status is cached separately from the read model and can be the older of
+    // the two, which is not a regression of the feed.
+    if (snapshot.high_water_sequence < evalStore.getState().observedSequence) {
+      markReachable();
+      return;
+    }
     evalStore.beginBatch();
     try {
       evalStore.acceptSnapshot(snapshot);
@@ -153,6 +178,8 @@ async function pollLiveStatus(session: Session): Promise<void> {
         evalStore.acceptProjection(normalizeStreamRecord(record.record_type, String(record.sequence), record.record_bytes));
         appliedSequence = record.sequence;
       }
+      evalStore.sealLiveSnapshot(snapshot);
+      appliedSequence = Math.max(appliedSequence, snapshot.high_water_sequence);
     } finally {
       evalStore.endBatch();
     }

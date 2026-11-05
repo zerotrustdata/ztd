@@ -26,8 +26,11 @@ export interface LayoutMirror {
   /** pointer.active, and whether live/status.json lists a running run. */
   active: boolean;
   tail: LayoutTailRecord[];
+  /** The snapshot live/status.json reports when it differs from the read model's, as a cached status can. */
+  liveSnapshot?: FeedSnapshot;
   /** Live run bundle bytes by run id. A run absent here is a 404. */
   liveBundles: Map<string, Uint8Array>;
+  proofArtifactCount?: number;
 }
 
 export function sha256(bytes: string | Uint8Array): string {
@@ -67,7 +70,7 @@ export function readModelBody(mirror: LayoutMirror): string {
     source_freshness: mirror.snapshot.freshness,
     recent_projections: mirror.recent,
     task_index: mirror.taskIndex,
-    proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 },
+    proof_catalog_summary: { artifact_count: mirror.proofArtifactCount ?? 0, total_byte_size: 0 },
     generated_at: mirror.snapshot.generated_at,
   });
 }
@@ -91,7 +94,7 @@ export function pointerOf(mirror: LayoutMirror) {
 function liveStatus(mirror: LayoutMirror) {
   return {
     schema_version: '1.0.0',
-    snapshot: mirror.snapshot,
+    snapshot: mirror.liveSnapshot ?? mirror.snapshot,
     active_runs: mirror.active ? [{ dataset_id: 'ds-live', run_id: 'run-live', lifecycle_state: 'running' }] : [],
     tail: mirror.tail,
   };

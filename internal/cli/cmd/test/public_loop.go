@@ -8,8 +8,8 @@
 package testcmd
 
 import (
-	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -361,22 +361,88 @@ func verifyPublicLoopReads(ctx context.Context, server *httptest.Server, sourceI
 			return fmt.Errorf("public read %s failed with status %d", path, response.StatusCode)
 		}
 	}
-	streamCtx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-	request, err := http.NewRequestWithContext(streamCtx, http.MethodGet, server.URL+"/stream?source="+sourceID+"&since_id=0", nil)
+	return verifyPublicLoopLayout(ctx, server, sourceID)
+}
+
+// verifyPublicLoopLayout qualifies the layout a browser polls: pointer.json
+// names a read model whose decoded bytes must hash to its digest, and
+// live/status.json must carry the current schema version.
+func verifyPublicLoopLayout(ctx context.Context, server *httptest.Server, sourceID string) error {
+	var pointer models.PublicFeedPointer
+	if err := getPublicLoopJSON(ctx, server, "/"+constants.PublicLayoutPointerKey+"?source="+sourceID, &pointer); err != nil {
+		return err
+	}
+	if !version.IsHex64(pointer.ReadModelSHA256) || pointer.SourceID != sourceID {
+		return fmt.Errorf("public pointer does not name a read model for source %s", sourceID)
+	}
+	readModelPath := "/" + constants.PublicLayoutReadModelPrefix + pointer.ReadModelSHA256 + constants.PublicLayoutJSONGzipSuffix
+	decoded, err := getPublicLoopReadModel(ctx, server, readModelPath)
 	if err != nil {
 		return err
+	}
+	digest := sha256.Sum256(decoded)
+	if hex.EncodeToString(digest[:]) != pointer.ReadModelSHA256 {
+		return fmt.Errorf("public read model %s does not hash to its digest", readModelPath)
+	}
+	var status models.PublicLiveStatus
+	if err := getPublicLoopJSON(ctx, server, "/"+constants.PublicLayoutLiveStatusKey+"?source="+sourceID, &status); err != nil {
+		return err
+	}
+	if status.SchemaVersion != constants.PublicLiveStatusSchemaVersion {
+		return fmt.Errorf("public live status schema %q, want %q", status.SchemaVersion, constants.PublicLiveStatusSchemaVersion)
+	}
+	return nil
+}
+
+func getPublicLoopJSON(ctx context.Context, server *httptest.Server, path string, target any) error {
+	body, err := getPublicLoopBody(ctx, server, path, "")
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(body, target); err != nil {
+		return fmt.Errorf("public read %s returned invalid JSON: %w", path, err)
+	}
+	return nil
+}
+
+// getPublicLoopReadModel fetches a gzip read model and returns its decoded
+// bytes. The request asks for gzip explicitly, so the transport leaves the
+// body encoded and the digest is checked against the decompressed JSON.
+func getPublicLoopReadModel(ctx context.Context, server *httptest.Server, path string) ([]byte, error) {
+	body, err := getPublicLoopBody(ctx, server, path, "gzip")
+	if err != nil {
+		return nil, err
+	}
+	reader, err := gzip.NewReader(bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("public read model %s is not gzip: %w", path, err)
+	}
+	defer reader.Close()
+	decoded, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("decode public read model %s: %w", path, err)
+	}
+	return decoded, nil
+}
+
+func getPublicLoopBody(ctx context.Context, server *httptest.Server, path, acceptEncoding string) ([]byte, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+path, nil)
+	if err != nil {
+		return nil, err
+	}
+	if acceptEncoding != "" {
+		request.Header.Set("Accept-Encoding", acceptEncoding)
 	}
 	response, err := server.Client().Do(request)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer response.Body.Close()
-	line, err := bufio.NewReader(response.Body).ReadString('\n')
-	if err != nil || line == "" || response.StatusCode != http.StatusOK {
-		return fmt.Errorf("public SSE replay failed")
+	body, readErr := io.ReadAll(response.Body)
+	closeErr := response.Body.Close()
+	if readErr != nil || closeErr != nil || response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("public read %s failed with status %d", path, response.StatusCode)
 	}
-	return nil
+	return body, nil
 }
 
 func verifyPublicLoopMutationRoutesAbsent(ctx context.Context, server *httptest.Server) error {

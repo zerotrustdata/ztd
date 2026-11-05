@@ -51,7 +51,7 @@ function operatorDiagramDetail(role: string): string {
 function ArchitectureDiagram() {
   const edgeNodes = [
     { id: 'publish', label: 'Publication', sub: 'public-safe projection' },
-    { id: 'mirror', label: 'Mirror', sub: 'JSONL feed + SSE' },
+    { id: 'mirror', label: 'Mirror', sub: 'JSONL feed + polling' },
     { id: 'cloudflare', label: 'Cloudflare', sub: 'tunnel to opendevops.ai' },
     { id: 'explorer', label: 'Explorer', sub: 'this browser' },
   ];

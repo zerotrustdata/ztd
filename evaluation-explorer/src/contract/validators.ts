@@ -15,7 +15,6 @@ import {
   ESCALATION_DISPOSITIONS,
   EVALUATION_UNITS,
   type FeedBootstrap,
-  type FeedHistoryPage,
   FEED_RECORD_TYPES,
   type FeedSnapshot,
   FRESHNESS_STATES,
@@ -1377,25 +1376,6 @@ export function isFeedBootstrap(value: unknown): asserts value is FeedBootstrap 
   assert(value.proof_catalog_summary.total_byte_size >= 0, 'feed_bootstrap.proof_catalog_summary.total_byte_size', 'must be >= 0');
   assertOptional(value.proof_catalog_summary.last_generated_at, 'feed_bootstrap.proof_catalog_summary.last_generated_at', assertString);
   assertString(value.generated_at, 'feed_bootstrap.generated_at');
-}
-
-export function isFeedHistoryPage(value: unknown): asserts value is FeedHistoryPage {
-  assertObject(value, 'feed_history');
-  rejectUnknown(value, ['protocol_version', 'items', 'cursor', 'has_more', 'limit'], 'feed_history');
-  assertString(value.protocol_version, 'feed_history.protocol_version');
-  assert(value.protocol_version === '1.0.0', 'feed_history.protocol_version', 'expected 1.0.0');
-  assert(Array.isArray(value.items), 'feed_history.items', 'expected array');
-  for (let index = 0; index < value.items.length; index++) {
-    const item: unknown = value.items[index];
-    assertObject(item, `feed_history.items[${index}]`);
-    assertInteger(item.sequence, `feed_history.items[${index}].sequence`);
-    assert(item.sequence >= 1, `feed_history.items[${index}].sequence`, 'must be >= 1');
-    assertEnum(item.record_type, FEED_RECORD_TYPES, `feed_history.items[${index}].record_type`);
-  }
-  assertBoolean(value.has_more, 'feed_history.has_more');
-  assertInteger(value.limit, 'feed_history.limit');
-  assert(value.limit >= 0, 'feed_history.limit', 'must be >= 0');
-  if (value.cursor !== undefined) assertString(value.cursor, 'feed_history.cursor');
 }
 
 export function isProofCatalogEntry(value: unknown): asserts value is ProofCatalogEntry {

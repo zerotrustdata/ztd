@@ -49,7 +49,7 @@ describe('AssignmentAuditProofRow', () => {
     render(<><AssignmentAuditProofRow bindings={auditBindings} /><AssignmentAuditProofRow bindings={auditBindings} /></>);
     expect(await screen.findAllByRole('link', { name: 'Download SQLite' })).toHaveLength(2);
     expect(fetchProofCatalogEntry).toHaveBeenCalledTimes(1);
-    expect(fetchProofCatalogEntry).toHaveBeenCalledWith('http://127.0.0.1:8082', undefined, sliceHash);
+    expect(fetchProofCatalogEntry).toHaveBeenCalledWith('http://127.0.0.1:8082', sliceHash);
   });
 
   it('does not fetch an entry the store already holds', async () => {

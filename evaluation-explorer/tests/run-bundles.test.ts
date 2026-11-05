@@ -192,8 +192,10 @@ describe('loadRunAssignments', () => {
     expect((error as RunBundleError).reason).toBe('fetch_failed');
   });
 
-  it('a run without assignment_bundle_sha256 returns no_bundle and fetches nothing', async () => {
-    seedRuns([{ runId: 'run-one', sha256: undefined }]);
+  it('a settled run without assignment_bundle_sha256 returns no_bundle and fetches nothing', async () => {
+    const summary = { ...summaryFor('run-one', undefined), lifecycle_state: 'completed' as const };
+    evalStore.setMirrorOrigin(ORIGIN);
+    evalStore.initBootstrap(snapshot('a'.repeat(64), 1), [normalizeRecentProjection({ sequence: 1, ...summary })], 0);
     const fetchImpl = servingFetch([]);
 
     const result = await loadRunAssignments(DATASET, 'run-one', { fetchImpl: fetchOf(fetchImpl) });
@@ -395,5 +397,71 @@ describe('retainRuns', () => {
 
     expect(resultCount(runIds[0]!)).toBe(1);
     expect(resultCount(runIds[1]!)).toBe(0);
+  });
+});
+
+/** Installs one run whose summary is still executing, so it names no bundle digest. */
+function seedLiveRun(runId: string): void {
+  evalStore.setMirrorOrigin(ORIGIN);
+  const summary = { ...summaryFor(runId, undefined), lifecycle_state: 'running' as const };
+  evalStore.initBootstrap(snapshot('a'.repeat(64), 1), [normalizeRecentProjection({ sequence: 1, ...summary })], 0);
+}
+
+/** Serves the given bytes by full URL; any other URL is a 404. */
+function liveFetch(bytesByUrl: Map<string, Uint8Array>) {
+  return vi.fn(async (url: string) => {
+    const bytes = bytesByUrl.get(url);
+    return {
+      ok: bytes !== undefined,
+      status: bytes === undefined ? 404 : 200,
+      arrayBuffer: async () => (bytes ?? new Uint8Array()).slice().buffer,
+    };
+  });
+}
+
+describe('loadRunAssignments for queued or running runs', () => {
+  beforeEach(() => {
+    resetRunBundleCache();
+  });
+
+  it('loads the live object of an active run and does not keep the result as settled', async () => {
+    const bundle = buildBundle('run-live', ['assign-1', 'assign-2']);
+    seedLiveRun('run-live');
+    const fetchImpl = liveFetch(new Map([[`${ORIGIN}/live/runs/run-live.jsonl.gz`, bundle.bytes]]));
+
+    const first = await loadRunAssignments('ds-live-run-live', 'run-live', { fetchImpl: fetchOf(fetchImpl) });
+    expect(first.status).toBe('ready');
+    expect(evalStore.getAssignments('run-live', 'ds-live-run-live')).toHaveLength(2);
+
+    await loadRunAssignments('ds-live-run-live', 'run-live', { fetchImpl: fetchOf(fetchImpl) });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a live record whose hash does not match its bytes', async () => {
+    const line = JSON.stringify({ sequence: 1, record_hash: '0'.repeat(64), record_bytes: resultRecordBytes('run-bad', 'assign-1') });
+    const bytes = new Uint8Array(gzipSync(`${line}\n`));
+    seedLiveRun('run-bad');
+    const fetchImpl = liveFetch(new Map([[`${ORIGIN}/live/runs/run-bad.jsonl.gz`, bytes]]));
+
+    await expect(loadRunAssignments('ds-live-run-bad', 'run-bad', { fetchImpl: fetchOf(fetchImpl) }))
+      .rejects.toMatchObject({ reason: 'record_hash_mismatch' });
+    expect(evalStore.getAssignments('run-bad', 'ds-live-run-bad')).toEqual([]);
+  });
+
+  it('reports no_bundle when the live object is absent', async () => {
+    seedLiveRun('run-none');
+    const fetchImpl = liveFetch(new Map());
+    expect(await loadRunAssignments('ds-live-run-none', 'run-none', { fetchImpl: fetchOf(fetchImpl) })).toEqual({ status: 'no_bundle' });
+  });
+
+  it('never requests the live object for a settled run that names a digest', async () => {
+    const bundle = buildBundle('run-settled', ['assign-1']);
+    seedRuns([{ runId: 'run-settled', sha256: bundle.sha256 }]);
+    const fetchImpl = servingFetch([bundle]);
+
+    const result = await loadRunAssignments('ds-live-run-settled', 'run-settled', { fetchImpl: fetchOf(fetchImpl) });
+    expect(result.status).toBe('ready');
+    const urls = fetchImpl.mock.calls.map(([url]) => String(url));
+    expect(urls.some((url) => url.includes('/live/runs/'))).toBe(false);
   });
 });

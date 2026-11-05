@@ -953,6 +953,10 @@ func publicStatusCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory p
 					return err
 				}
 				warnFeedDrift(cmd, status)
+				// Without a readable local config, this root has no bucket to report.
+				if exportConfig, configErr := gateway.ReadPublicExportConfig(ctx, fileSvc); configErr == nil {
+					applyBucketStatus(ctx, cmd, fileSvc, exportConfig, &status)
+				}
 				body, err := json.Marshal(status)
 				if err != nil {
 					return fmt.Errorf("public-feed: encode status: %w", err)
@@ -991,6 +995,7 @@ func publicStatusCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory p
 			}
 			status.ApplyFeedDrift(gwremote.PublicMirrorFeedDrift(ctx, fileSvc, cfg, mirrorOrigin))
 			warnFeedDrift(cmd, status)
+			applyBucketStatus(ctx, cmd, fileSvc, exportConfig, &status)
 			body, err := json.Marshal(status)
 			if err != nil {
 				return fmt.Errorf("public-feed: encode status: %w", err)
@@ -1001,6 +1006,36 @@ func publicStatusCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory p
 	}
 	cmd.Flags().StringVar(&mirrorOrigin, "mirror-origin", "", "Override the public mirror read origin (default: derived from --endpoint or http://127.0.0.1:8082)")
 	return cmd
+}
+
+// writeBucketStatusLine prints the bucket publisher's state as one text line.
+// Stdout carries the JSON status, so the line goes to stderr with the drift
+// warnings. Lag is the mirror's high-water sequence minus the pointer's, floored
+// at zero.
+// applyBucketStatus reports the bucket publisher on status. It only reads the
+// journal, and a failed read does not fail the command.
+func applyBucketStatus(ctx context.Context, cmd *cobra.Command, fileSvc fs.RuntimeFileService, exportConfig models.PublicExportConfig, status *models.PublicPublisherStatus) {
+	if exportConfig.Bucket == nil {
+		return
+	}
+	bucket, err := gateway.ReadPublicBucketStatus(ctx, fileSvc, exportConfig)
+	if err != nil {
+		status.BucketError = err.Error()
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: bucket status not read: %s\n", err)
+		return
+	}
+	status.Bucket = bucket
+	writeBucketStatusLine(cmd, *status)
+}
+
+func writeBucketStatusLine(cmd *cobra.Command, status models.PublicPublisherStatus) {
+	bucket := status.Bucket
+	if bucket == nil {
+		return
+	}
+	behind := max(status.HighWaterSequence-bucket.PointerSequence, 0)
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Bucket: %s pointer revision %d at sequence %d, %d behind, %d deletes and %d purges pending\n",
+		bucket.Name, bucket.PointerRevision, bucket.PointerSequence, behind, bucket.PendingDeletes, bucket.PendingPurges)
 }
 
 func warnFeedDrift(cmd *cobra.Command, status models.PublicPublisherStatus) {

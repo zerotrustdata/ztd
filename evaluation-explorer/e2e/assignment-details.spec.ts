@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { installMirrorLayout } from './mirror-layout';
 import { FIXTURE_RELEASE, fixtureEnrichedAssignmentResult, fixtureLiveEvents } from '../src/fixtures/fixtures';
 import type { AssignmentResult, EvaluationSummary } from '../src/contract/types';
 
@@ -43,98 +44,18 @@ function evaluation(): EvaluationSummary {
   };
 }
 
-function feedRecords(records: unknown[]) {
-  return records.map((record, index) => ({
-    sequence: index + 1,
-    record_type: (record as Record<string, unknown>).kind === 'stage_updated' ? 'event' : 'projection',
-    ...(record as Record<string, unknown>),
-  }));
-}
-
 async function installMirror(page: Page, records: unknown[], options: { malformed?: boolean } = {}): Promise<string[]> {
-  const requests: string[] = [];
-  await page.route(`${mirrorOrigin}/**`, async (route: Route) => {
-    const url = new URL(route.request().url());
-    requests.push(url.origin + url.pathname + url.search);
-    if (url.pathname === '/bootstrap') {
-      const snapshot = {
-        protocol_version: '1.0.0',
-        source_id: sourceId,
-        high_water_sequence: records.length,
-        feed_chain_hash: 'a'.repeat(64),
-        withdrawal_digest: '0'.repeat(64),
-        batch_count: 1,
-        generated_at: '2026-09-20T00:00:00Z',
-        freshness: 'active',
-      };
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          protocol_version: '1.0.0',
-          snapshot,
-          source_freshness: 'active',
-          recent_projections: records.map((record, index) => ({
-            ...(record as object), sequence: index + 1,
-            ...(options.malformed && index === 0 ? { private_prompt: 'must never render' } : {}),
-          })).reverse(),
-          task_index: [],
-          proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 },
-          generated_at: snapshot.generated_at,
-        }),
-      });
-      return;
-    }
-    if (url.pathname === '/history') {
-      const items = feedRecords(records).map(({ sequence, record_type, ...record }) => ({
-        sequence,
-        record_type,
-        ...(options.malformed && sequence === 1 ? { ...record, private_prompt: 'must never render' } : record),
-      }));
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({ protocol_version: '1.0.0', items, has_more: false, limit: 100 }),
-      });
-      return;
-    }
-    if (url.pathname === '/snapshot') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          protocol_version: '1.0.0',
-          source_id: sourceId,
-          high_water_sequence: records.length,
-          feed_chain_hash: 'a'.repeat(64),
-          withdrawal_digest: '0'.repeat(64),
-          batch_count: 1,
-          generated_at: '2026-09-20T00:00:00Z',
-          freshness: 'active',
-        }),
-      });
-      return;
-    }
-    if (url.pathname === '/stream') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'text/event-stream',
-        body: ': connected\n\n',
-      });
-      return;
-    }
-    await route.abort();
-  });
-  await page.route('**/runtime.json', async (route) => {
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ schema_version: '1.0.0', mirror_origin: mirrorOrigin }),
-    });
-  });
-  return requests;
+  const feed = options.malformed
+    ? records.map((record, index) => (index === 0 ? { ...(record as object), private_prompt: 'must never render' } : record))
+    : records;
+  return installMirrorLayout(page, { mirrorOrigin, sourceId, records: feed });
 }
 
 function expectPublicOnly(requests: string[]): void {
   expect(requests.every((request) => {
     const url = new URL(request);
-    return url.origin === mirrorOrigin && ['/bootstrap', '/history', '/snapshot', '/stream', '/proof-catalog'].some((path) => url.pathname === path);
+    const { pathname } = url;
+    return url.origin === mirrorOrigin && (pathname === '/pointer.json' || pathname === '/live/status.json' || pathname.startsWith('/read-model/') || pathname.startsWith('/proof-meta/'));
   })).toBe(true);
   expect(requests.some((request) => /api|gateway|operator|ensemble|audit|receipt|tool/i.test(request))).toBe(false);
 }

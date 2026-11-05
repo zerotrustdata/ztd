@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { installMirrorLayout } from './mirror-layout';
 import { buildRunBundle, campaignDatasetFor, campaignEvaluationSummary, type RunBundle } from './run-bundle';
 
 const mirrorOrigin = process.env.ZTD_PUBLIC_MIRROR_ORIGIN ?? 'http://127.0.0.1:8082';
@@ -11,75 +12,20 @@ const assignmentIds = ['bundle-assign-1', 'bundle-assign-2'];
 
 /** Serves the public feed with the given records, and each proof path from its bytes; unknown paths abort. */
 async function installMirror(page: Page, records: object[], proofs: Map<string, Buffer>): Promise<void> {
-  await page.route(`${mirrorOrigin}/**`, async (route: Route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname.startsWith('/proofs/')) {
+  await installMirrorLayout(page, {
+    mirrorOrigin,
+    sourceId,
+    records,
+    extra: async (url, route) => {
+      if (!url.pathname.startsWith('/proofs/')) return false;
       const body = proofs.get(url.pathname.slice('/proofs/'.length));
       if (body === undefined) {
         await route.fulfill({ status: 404, body: 'not found' });
-        return;
+        return true;
       }
       await route.fulfill({ body, contentType: 'application/gzip' });
-      return;
-    }
-    if (url.pathname === '/bootstrap') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          protocol_version: '1.0.0',
-          snapshot: {
-            protocol_version: '1.0.0',
-            source_id: sourceId,
-            high_water_sequence: records.length,
-            feed_chain_hash: 'c'.repeat(64),
-            withdrawal_digest: '0'.repeat(64),
-            batch_count: 1,
-            generated_at: '2026-09-20T00:00:00Z',
-            freshness: 'active',
-          },
-          source_freshness: 'active',
-          recent_projections: records.map((record, index) => ({ ...record, sequence: index + 1 })).reverse(),
-          task_index: [],
-          proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 },
-          generated_at: '2026-09-20T00:00:00Z',
-        }),
-      });
-      return;
-    }
-    if (url.pathname === '/history') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({ protocol_version: '1.0.0', items: [], has_more: false, limit: 100 }),
-      });
-      return;
-    }
-    if (url.pathname === '/snapshot') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          protocol_version: '1.0.0',
-          source_id: sourceId,
-          high_water_sequence: records.length,
-          feed_chain_hash: 'c'.repeat(64),
-          withdrawal_digest: '0'.repeat(64),
-          batch_count: 1,
-          generated_at: '2026-09-20T00:00:00Z',
-          freshness: 'active',
-        }),
-      });
-      return;
-    }
-    if (url.pathname === '/stream') {
-      await route.fulfill({ status: 200, contentType: 'text/event-stream', body: ': connected\n\n' });
-      return;
-    }
-    await route.abort();
-  });
-  await page.route('**/runtime.json', async (route) => {
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ schema_version: '1.0.0', mirror_origin: mirrorOrigin }),
-    });
+      return true;
+    },
   });
 }
 
@@ -113,9 +59,9 @@ test('a cold leaderboard load requests no run bundle', async ({ page }) => {
   const proofRequests = observeProofRequests(page);
   await installRunMirror(page, bundle);
 
-  const bootstrapResponse = page.waitForResponse((response) => new URL(response.url()).pathname === '/bootstrap');
+  const readModelResponse = page.waitForResponse((response) => new URL(response.url()).pathname.startsWith('/read-model/'));
   await page.goto('/leaderboard');
-  await bootstrapResponse;
+  await readModelResponse;
   await expect(page.getByRole('region', { name: 'Leaderboard' }).getByRole('table')).toBeVisible();
 
   expect(proofRequests.filter((path) => path.startsWith('/proofs/'))).toEqual([]);

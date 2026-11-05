@@ -927,7 +927,7 @@ export type SnapshotRecord =
   | MethodologySnapshot;
 
 /** A decoded projection record from the mirror transport. The public read
- *  surface (/bootstrap, /history, /stream) never emits per-record hashes —
+ *  surface (the pointer's read model and live/status.json) never emits per-record hashes —
  *  record integrity is enforced by the snapshot feed-chain seal, so
  *  record_hash is optional here. record_bytes is the serialized view-record
  *  payload; feed.ts normalizes decoded wire items into this shape. */

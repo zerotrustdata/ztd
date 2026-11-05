@@ -16,7 +16,7 @@ export function liveStatusIntervalFor(mirrorOrigin: string): number {
   return LOOPBACK_HOSTS.has(new URL(mirrorOrigin).hostname) ? LIVE_STATUS_POLL_LOOPBACK_MS : LIVE_STATUS_POLL_MS;
 }
 
-export interface FeedPollerOptions {
+interface FeedPollerOptions {
   pollPointer: () => Promise<void>;
   pollLiveStatus: () => Promise<void>;
   liveIntervalMs: number;

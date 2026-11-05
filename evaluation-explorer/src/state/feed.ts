@@ -23,8 +23,6 @@ import {
   createLazyProjectionRecord,
 } from '../contract/validators';
 
-export type RuntimeConfig = PublicRuntimeConfig;
-
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -52,7 +50,7 @@ export function normalizeStreamRecord(recordType: string, lastEventId: string, d
   return record;
 }
 
-export async function loadRuntimeConfig(fetchImpl: typeof fetch = fetch.bind(globalThis)): Promise<RuntimeConfig> {
+export async function loadRuntimeConfig(fetchImpl: typeof fetch = fetch.bind(globalThis)): Promise<PublicRuntimeConfig> {
   const response = await fetchImpl('/runtime.json', {
     method: 'GET',
     credentials: 'omit',

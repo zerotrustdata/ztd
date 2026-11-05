@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { expect, test, type Page, type Route } from '@playwright/test';
-import { LIVE_EVENT_KINDS } from '../src/contract/types';
+import { expect, test, type Page } from '@playwright/test';
 import { FIXTURE_RELEASE, fixtureEnrichedAssignmentResult, fixtureModelSummaries, fixtureEvaluationSummaries } from '../src/fixtures/fixtures';
 import { formationRun } from '../tests/formation-fixture';
+import { installMirrorLayout } from './mirror-layout';
 
 // Keep geometry checks stable while the drawer itself supports animated transitions.
 test.use({ reducedMotion: 'reduce' });
@@ -74,73 +74,8 @@ function nativeEvaluation(runId: string) {
   };
 }
 
-async function installMirror(page: Page, records: object[] = runIds.map(nativeEvaluation), taskIndex: object[] = []): Promise<void> {
-  await page.route(`${mirrorOrigin}/**`, async (route: Route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname === '/bootstrap') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          protocol_version: '1.0.0',
-          snapshot: {
-            protocol_version: '1.0.0',
-            source_id: sourceId,
-            high_water_sequence: records.length,
-            feed_chain_hash: 'b'.repeat(64),
-            withdrawal_digest: '0'.repeat(64),
-            batch_count: 1,
-            generated_at: '2026-09-20T00:00:00Z',
-            freshness: 'active',
-          },
-          source_freshness: 'active',
-          recent_projections: records.map((record, index) => ({ ...record, sequence: index + 1 })).reverse(),
-          task_index: taskIndex,
-          proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 },
-          generated_at: '2026-09-20T00:00:00Z',
-        }),
-      });
-      return;
-    }
-    if (url.pathname === '/history') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          protocol_version: '1.0.0',
-          items: records.map((record, index) => ({ sequence: index + 1, record_type: LIVE_EVENT_KINDS.includes((record as { kind: typeof LIVE_EVENT_KINDS[number] }).kind) ? 'event' : 'projection', ...record })),
-          has_more: false,
-          limit: 100,
-        }),
-      });
-      return;
-    }
-    if (url.pathname === '/snapshot') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          protocol_version: '1.0.0',
-          source_id: sourceId,
-          high_water_sequence: records.length,
-          feed_chain_hash: 'b'.repeat(64),
-          withdrawal_digest: '0'.repeat(64),
-          batch_count: 1,
-          generated_at: '2026-09-20T00:00:00Z',
-          freshness: 'active',
-        }),
-      });
-      return;
-    }
-    if (url.pathname === '/stream') {
-      await route.fulfill({ status: 200, contentType: 'text/event-stream', body: ': connected\n\n' });
-      return;
-    }
-    await route.abort();
-  });
-  await page.route('**/runtime.json', async (route) => {
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ schema_version: '1.0.0', mirror_origin: mirrorOrigin }),
-    });
-  });
+async function installMirror(page: Page, records: object[] = runIds.map(nativeEvaluation), taskIndex: object[] = []): Promise<string[]> {
+  return installMirrorLayout(page, { mirrorOrigin, sourceId, records, taskIndex });
 }
 
 async function expectNativeRun(page: Page, runId: string) {
@@ -175,8 +110,8 @@ test('loads native evaluations directly from the public mirror snapshot', async 
   await page.goto('/evaluations');
   await expect(page.getByRole('heading', { name: 'Evaluations', exact: true })).toBeVisible();
   for (const runId of runIds) await expect(page.getByRole('main').getByRole('link', { name: runId })).toBeVisible();
-  await expect.poll(() => mirrorResponses.some((url) => url.endsWith('/bootstrap'))).toBe(true);
-  expect(mirrorResponses.some((url) => url.includes('/history?'))).toBe(false);
+  await expect.poll(() => mirrorResponses.some((url) => url.includes('/read-model/'))).toBe(true);
+  expect(mirrorResponses.some((url) => url.includes('/history'))).toBe(false);
 
   for (const runId of runIds) await expectNativeRun(page, runId);
 
@@ -189,7 +124,7 @@ test('loads native evaluations directly from the public mirror snapshot', async 
   for (const runId of runIds) await expect(page.getByRole('main').getByRole('link', { name: runId })).toBeVisible();
 
   expect(consoleErrors).toEqual([]);
-  expect(failedRequests.filter((url) => !url.includes('/stream?'))).toEqual([]);
+  expect(failedRequests).toEqual([]);
 });
 
 test('follows the evidence from a campaign through its assignment, model and task', async ({ page }) => {

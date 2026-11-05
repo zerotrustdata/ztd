@@ -18,6 +18,7 @@ const RUN = 'hook-run';
 interface SeededRun {
   runId: string;
   sha256?: string;
+  lifecycle?: EvaluationSummary['lifecycle_state'];
 }
 
 /** Installs one bootstrap whose evaluation summaries cover the given runs. */
@@ -31,6 +32,7 @@ function seed(runs: SeededRun[]): void {
       schema_version: '1.14.0',
       dataset_id: `ds-live-${run.runId}`,
       run_id: run.runId,
+      lifecycle_state: run.lifecycle ?? modelUnit.lifecycle_state,
       quality_state: 'live_in_progress',
       headline_metrics: {
         pass_rate: { value: 0.5, unit: 'ratio', observed_count: 2, eligible_count: 2, unavailable_count: 0 },
@@ -107,8 +109,8 @@ describe('useRunAssignments', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('reports no_bundle for a run without a bundle digest and fetches nothing', async () => {
-    seed([{ runId: RUN }]);
+  it('reports no_bundle for a settled run without a bundle digest and fetches nothing', async () => {
+    seed([{ runId: RUN, lifecycle: 'completed' }]);
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 

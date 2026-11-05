@@ -691,6 +691,8 @@ type PublicPublisherStatus struct {
 	FeedDrift []PublicFeedVerificationDrift `json:"feed_drift,omitempty"`
 	// Bucket reports the bucket publisher. It is absent when publishing is off.
 	Bucket *PublicBucketStatus `json:"bucket,omitempty"`
+	// BucketError is why the bucket publisher's state could not be read.
+	BucketError string `json:"bucket_error,omitempty"`
 }
 
 // ApplyFeedDrift records a drift comparison's outcome. Status stays available when

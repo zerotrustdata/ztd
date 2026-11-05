@@ -40,16 +40,32 @@ type publicBucketJournal struct {
 	purges     []string
 }
 
-// loadPublicBucketJournal replays the journal. A final line with no newline is an
-// append that never finished, and it is dropped. Any other bad line fails closed.
+// loadPublicBucketJournal replays the journal for the one publisher that owns it.
+// An append that never finished is discarded, so the next one starts a clean line.
 func loadPublicBucketJournal(ctx context.Context, fileSvc fs.RuntimeFileService) (*publicBucketJournal, error) {
+	journal, torn, err := readPublicBucketJournal(ctx, fileSvc)
+	if err != nil {
+		return nil, err
+	}
+	if torn {
+		if err := fileSvc.Truncate(ctx, constants.PublicFeedBucketJournalPath, journal.size); err != nil {
+			return nil, fmt.Errorf("public-feed: bucket journal discard incomplete tail: %w", err)
+		}
+	}
+	return journal, nil
+}
+
+// readPublicBucketJournal replays the journal without changing it, because another
+// process may be appending. A final line with no newline is not applied, and torn
+// reports it. Any other bad line fails closed.
+func readPublicBucketJournal(ctx context.Context, fileSvc fs.RuntimeFileService) (*publicBucketJournal, bool, error) {
 	journal := &publicBucketJournal{fileSvc: fileSvc}
 	data, err := fileSvc.ReadFile(ctx, constants.PublicFeedBucketJournalPath)
 	if errors.Is(err, constants.ErrNotFound) {
-		return journal, nil
+		return journal, false, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("public-feed: bucket journal read: %w", err)
+		return nil, false, fmt.Errorf("public-feed: bucket journal read: %w", err)
 	}
 	complete := bytes.LastIndexByte(data, '\n') + 1
 	for lineNumber, line := range bytes.Split(data[:complete], []byte{'\n'}) {
@@ -58,19 +74,14 @@ func loadPublicBucketJournal(ctx context.Context, fileSvc fs.RuntimeFileService)
 		}
 		var entry models.PublicBucketJournalEntry
 		if err := json.Unmarshal(line, &entry); err != nil {
-			return nil, fmt.Errorf("%w: line %d: %w", constants.ErrPublicBucketJournalCorrupt, lineNumber+1, err)
+			return nil, false, fmt.Errorf("%w: line %d: %w", constants.ErrPublicBucketJournalCorrupt, lineNumber+1, err)
 		}
 		if err := journal.apply(entry); err != nil {
-			return nil, fmt.Errorf("line %d: %w", lineNumber+1, err)
+			return nil, false, fmt.Errorf("line %d: %w", lineNumber+1, err)
 		}
 	}
 	journal.size = int64(complete)
-	if complete < len(data) {
-		if err := fileSvc.Truncate(ctx, constants.PublicFeedBucketJournalPath, journal.size); err != nil {
-			return nil, fmt.Errorf("public-feed: bucket journal discard incomplete tail: %w", err)
-		}
-	}
-	return journal, nil
+	return journal, complete < len(data), nil
 }
 
 func (j *publicBucketJournal) apply(entry models.PublicBucketJournalEntry) error {
@@ -115,6 +126,11 @@ func (j *publicBucketJournal) record(ctx context.Context, entries ...models.Publ
 	}
 	defer func() { _ = file.Close() }()
 	if _, err := file.Write(lines.Bytes()); err != nil {
+		// A partial line would merge with the next append, so it is cut back now.
+		_ = file.Close()
+		if truncateErr := j.fileSvc.Truncate(ctx, constants.PublicFeedBucketJournalPath, j.size); truncateErr != nil {
+			return fmt.Errorf("public-feed: bucket journal write: %w: discard partial line: %w", err, truncateErr)
+		}
 		return fmt.Errorf("public-feed: bucket journal write: %w", err)
 	}
 	if err := file.Sync(); err != nil {
@@ -172,7 +188,7 @@ func ReadPublicBucketStatus(ctx context.Context, fileSvc fs.RuntimeFileService, 
 	if exportConfig.Bucket == nil {
 		return nil, nil
 	}
-	journal, err := loadPublicBucketJournal(ctx, fileSvc)
+	journal, _, err := readPublicBucketJournal(ctx, fileSvc)
 	if err != nil {
 		return nil, err
 	}

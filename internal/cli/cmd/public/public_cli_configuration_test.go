@@ -32,6 +32,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
@@ -910,4 +911,104 @@ func TestPublicStatusCmd_ReportsFeedDriftForEachDisagreement(t *testing.T) {
 	assert.False(t, status.FeedDriftChecked)
 	assert.Empty(t, status.FeedDrift)
 	assert.Contains(t, stderr.String(), "feed drift not checked")
+}
+
+// statusFeedEnv initializes a local feed with an optional bucket and returns the
+// runtime, and the mirror origin that answers feed drift with no runs.
+func statusFeedEnv(t *testing.T, bucket *models.PublicBucketConfig) (fs.RuntimeFileService, *config.Config, string) {
+	t.Helper()
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	useTestKeystore(t, fileSvc)
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(models.PublicFeedBootstrap{})
+	}))
+	t.Cleanup(mirror.Close)
+	initCmd := publicInitCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	initCmd.SetArgs([]string{"--source-id", "deployment-a", "--mirror-origin", mirror.URL})
+	require.NoError(t, initCmd.Execute())
+	if bucket != nil {
+		exportConfig, err := gateway.ReadPublicExportConfig(t.Context(), fileSvc)
+		require.NoError(t, err)
+		exportConfig.Bucket = bucket
+		require.NoError(t, gateway.WritePublicExportConfig(t.Context(), fileSvc, exportConfig))
+	}
+	return fileSvc, cfg, mirror.URL
+}
+
+// statusBucket is the bucket the status tests configure.
+func statusBucket() *models.PublicBucketConfig {
+	return &models.PublicBucketConfig{Name: "feed-bucket", Endpoint: "https://acct.r2.example", PublicOrigin: "https://feed.example", ZoneID: "zone-a"}
+}
+
+// writeStatusBucketJournal writes journal lines as the bucket publisher leaves them.
+func writeStatusBucketJournal(t *testing.T, fileSvc fs.RuntimeFileService, entries ...models.PublicBucketJournalEntry) {
+	t.Helper()
+	var data []byte
+	for _, entry := range entries {
+		encoded, err := json.Marshal(entry)
+		require.NoError(t, err)
+		data = append(data, encoded...)
+		data = append(data, '\n')
+	}
+	require.NoError(t, fileSvc.WriteFile(t.Context(), constants.PublicFeedBucketJournalPath, data, constants.PermFilePrivate))
+}
+
+// runStatusForBucket runs ztd public status against the feed and returns its
+// stdout and stderr.
+func runStatusForBucket(t *testing.T, fileSvc fs.RuntimeFileService, cfg *config.Config, mirrorOrigin string) (string, string, error) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	cmd := publicStatusCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"--mirror-origin", mirrorOrigin})
+	err := cmd.Execute()
+	return stdout.String(), stderr.String(), err
+}
+
+// TestPublicStatusCmd_ReportsBucketPointerAndPendingWork covers both outputs: the
+// bucket object in the JSON status and the text line on stderr. The mirror has no
+// records here, so the lag is floored at zero.
+func TestPublicStatusCmd_ReportsBucketPointerAndPendingWork(t *testing.T) {
+	fileSvc, cfg, mirrorOrigin := statusFeedEnv(t, statusBucket())
+	writeStatusBucketJournal(t, fileSvc,
+		models.PublicBucketJournalEntry{Kind: models.PublicBucketJournalPointer, Revision: 7, Sequence: 3},
+		models.PublicBucketJournalEntry{Kind: models.PublicBucketJournalDelete, Key: "proofs/a"},
+		models.PublicBucketJournalEntry{Kind: models.PublicBucketJournalPurge, Key: "https://feed.example/pointer.json"},
+	)
+
+	stdout, stderr, err := runStatusForBucket(t, fileSvc, cfg, mirrorOrigin)
+	require.NoError(t, err)
+	var status models.PublicPublisherStatus
+	require.NoError(t, json.Unmarshal([]byte(stdout), &status))
+	assert.Equal(t, &models.PublicBucketStatus{Name: "feed-bucket", PointerRevision: 7, PointerSequence: 3, PendingDeletes: 1, PendingPurges: 1}, status.Bucket)
+	assert.Contains(t, stderr, "Bucket: feed-bucket pointer revision 7 at sequence 3, 0 behind, 1 deletes and 1 purges pending\n")
+}
+
+// TestPublicStatusCmd_OmitsBucketWhenOff keeps the status output unchanged for a
+// feed with no bucket: no bucket key in the JSON and no bucket line on stderr.
+func TestPublicStatusCmd_OmitsBucketWhenOff(t *testing.T) {
+	fileSvc, cfg, mirrorOrigin := statusFeedEnv(t, nil)
+
+	stdout, stderr, err := runStatusForBucket(t, fileSvc, cfg, mirrorOrigin)
+	require.NoError(t, err)
+	var raw map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(stdout), &raw))
+	_, present := raw["bucket"]
+	assert.False(t, present, "a feed without a bucket reports no bucket object")
+	assert.NotContains(t, stderr, "Bucket:")
+}
+
+// TestPublicStatusCmd_UnreadableBucketJournalWarnsWithoutFailing reports a journal
+// that cannot be read as a warning, and the status still prints.
+func TestPublicStatusCmd_UnreadableBucketJournalWarnsWithoutFailing(t *testing.T) {
+	fileSvc, cfg, mirrorOrigin := statusFeedEnv(t, statusBucket())
+	require.NoError(t, fileSvc.WriteFile(t.Context(), constants.PublicFeedBucketJournalPath, []byte("not json\n"), constants.PermFilePrivate))
+
+	stdout, stderr, err := runStatusForBucket(t, fileSvc, cfg, mirrorOrigin)
+	require.NoError(t, err, "a bucket read failure must not fail the status command")
+	assert.Contains(t, stderr, "warning: bucket status not read")
+	var status models.PublicPublisherStatus
+	require.NoError(t, json.Unmarshal([]byte(stdout), &status))
+	assert.Nil(t, status.Bucket)
 }

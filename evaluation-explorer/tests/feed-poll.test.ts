@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LIVE_STATUS_POLL_LOOPBACK_MS, LIVE_STATUS_POLL_MS, POINTER_POLL_MS } from '../src/constants';
-import { fixtureModelSummaries } from '../src/fixtures/fixtures';
+import { fixtureCampaignResultEnvelope, fixtureEvaluationSummaries, fixtureModelSummaries } from '../src/fixtures/fixtures';
 import { evalStore } from '../src/state/store';
 import { startFeed, stopFeed } from '../src/state/startup';
 import { loadRunAssignments, resetRunBundleCache } from '../src/state/run-bundles';
@@ -25,7 +25,7 @@ function count(fetchImpl: { mock: { calls: unknown[][] } }, path: string): numbe
 
 /** Lets pending poll work settle. Response bodies resolve on macrotasks, which fake timers do not cover. */
 async function flush(): Promise<void> {
-  for (let turn = 0; turn < 10; turn++) await new Promise<void>((resolve) => setImmediate(resolve));
+  for (let turn = 0; turn < 50; turn++) await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
 const LIVE_TAIL_RECORD = (sequence: number) => ({
@@ -53,24 +53,24 @@ describe('pointer polling', () => {
   it('pauses while the tab is hidden and resumes with an immediate poll when visible', async () => {
     const fetchImpl = serveLayout(makeMirror());
     await startFeed({ fetchImpl });
-    expect(count(fetchImpl, '/pointer.json')).toBe(0);
+    expect(count(fetchImpl, '/pointer.json')).toBe(1);
 
     await vi.advanceTimersByTimeAsync(POINTER_POLL_MS);
     await flush();
-    expect(count(fetchImpl, '/pointer.json')).toBe(1);
+    expect(count(fetchImpl, '/pointer.json')).toBe(2);
 
     setVisibility('hidden');
     await vi.advanceTimersByTimeAsync(POINTER_POLL_MS * 3);
     await flush();
-    expect(count(fetchImpl, '/pointer.json')).toBe(1);
+    expect(count(fetchImpl, '/pointer.json')).toBe(2);
 
     setVisibility('visible');
     await flush();
-    expect(count(fetchImpl, '/pointer.json')).toBe(2);
+    expect(count(fetchImpl, '/pointer.json')).toBe(3);
 
     await vi.advanceTimersByTimeAsync(POINTER_POLL_MS);
     await flush();
-    expect(count(fetchImpl, '/pointer.json')).toBe(3);
+    expect(count(fetchImpl, '/pointer.json')).toBe(4);
   });
 
   it('starts no pointer timer when the tab is hidden at startup', async () => {
@@ -129,10 +129,9 @@ describe('pointer changes', () => {
 
     mirror.snapshot = { ...mirror.snapshot, withdrawal_digest: 'b'.repeat(64) };
     await vi.advanceTimersByTimeAsync(POINTER_POLL_MS);
-    await flush();
+    await vi.waitFor(() => expect(evalStore.getState().currentSnapshot?.withdrawal_digest).toBe('b'.repeat(64)));
 
     expect(count(fetchImpl, '/runtime.json')).toBe(2);
-    expect(evalStore.getState().currentSnapshot?.withdrawal_digest).toBe('b'.repeat(64));
     expect(evalStore.getAssignments(runId, datasetId)).toEqual([]);
   });
 
@@ -144,7 +143,7 @@ describe('pointer changes', () => {
 
     mirror.snapshot = makeSnapshot({ high_water_sequence: 120, feed_chain_hash: '2'.repeat(64) });
     await vi.advanceTimersByTimeAsync(POINTER_POLL_MS);
-    await flush();
+    await vi.waitFor(() => expect(evalStore.getState().observedSequence).toBe(120));
 
     expect(count(fetchImpl, '/runtime.json')).toBe(1);
     expect(requestedPaths(fetchImpl).filter((path) => path.startsWith('/read-model/'))).toHaveLength(2);
@@ -175,8 +174,7 @@ describe('pointer changes', () => {
 
     failing = false;
     await vi.advanceTimersByTimeAsync(POINTER_POLL_MS);
-    await flush();
-    expect(evalStore.getState().connection).toBe('live');
+    await vi.waitFor(() => expect(evalStore.getState().connection).toBe('live'));
     expect(evalStore.getState().observedSequence).toBe(120);
   });
 });
@@ -279,5 +277,145 @@ describe('stale responses', () => {
     await vi.advanceTimersByTimeAsync(POINTER_POLL_MS * 2);
     await flush();
     expect(requestedPaths(fetchImpl).length).toBe(before);
+  });
+});
+
+const LIFECYCLE_TAIL_RECORD = (sequence: number, runId: string, assignmentId: string) => ({
+  sequence,
+  record_type: 'projection',
+  record_bytes: JSON.stringify({
+    schema_version: '1.0.0',
+    message_type: 'PublicAssignmentLifecycleRecord',
+    idempotency_key: `${runId}:${assignmentId}:lifecycle:running`,
+    record: {
+      assignment_id: assignmentId,
+      run_id: runId,
+      scenario_id: 'instruction-exact-format',
+      lifecycle_status: 'EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_RUNNING',
+      designated_role: 'MODEL_CAMPAIGN_ROLE_PRIMARY',
+      variant_id: 'qwen3-4b',
+      observed_at: '2026-10-23T00:00:05Z',
+    },
+  }),
+});
+
+/** An assignment result record of a run, as a bundle or the live stream carries it. */
+function resultRecord(sequence: number, runId: string, assignmentId: string) {
+  return {
+    sequence,
+    record_type: 'projection' as const,
+    record_bytes: JSON.stringify({
+      ...fixtureCampaignResultEnvelope,
+      idempotency_key: `${runId}:${assignmentId}:result`,
+      record: { ...fixtureCampaignResultEnvelope.record, run_id: runId, assignment_id: assignmentId },
+    }),
+  };
+}
+
+describe('live status sealing', () => {
+  it('seals when the tail omits the newest records', async () => {
+    const runId = 'run-seal-gap';
+    const datasetId = `ds-live-${runId}`;
+    const mirror = makeMirror({ active: true });
+    const fetchImpl = serveLayout(mirror);
+    await startFeed({ fetchImpl });
+    expect(evalStore.getState().observedSequence).toBe(100);
+
+    mirror.liveSnapshot = makeSnapshot({ high_water_sequence: 110 });
+    mirror.tail = [LIFECYCLE_TAIL_RECORD(105, runId, 'assign-105')];
+    await vi.advanceTimersByTimeAsync(LIVE_STATUS_POLL_MS);
+    await flush();
+
+    expect(count(fetchImpl, '/live/status.json')).toBeGreaterThan(0);
+    expect(evalStore.getEvents(runId, datasetId).some((event) => event.event_id === `${runId}:assign-105:lifecycle:running`)).toBe(true);
+    expect(evalStore.getState().observedSequence).toBe(110);
+    expect(evalStore.getState().pendingSnapshot).toBeNull();
+    expect(evalStore.getState().currentSnapshot?.high_water_sequence).toBe(110);
+    expect(evalStore.isReconciling()).toBe(false);
+  });
+
+  it('a read model at the same sequence as a sealed live snapshot still applies', async () => {
+    const mirror = makeMirror({ active: true });
+    const fetchImpl = serveLayout(mirror);
+    await startFeed({ fetchImpl });
+
+    mirror.liveSnapshot = makeSnapshot({ high_water_sequence: 110 });
+    await vi.advanceTimersByTimeAsync(LIVE_STATUS_POLL_MS);
+    await flush();
+    expect(evalStore.getState().observedSequence).toBe(110);
+    expect(evalStore.getState().currentSnapshot?.high_water_sequence).toBe(110);
+
+    const summary = fixtureEvaluationSummaries[0]!;
+    mirror.snapshot = makeSnapshot({ high_water_sequence: 110 });
+    mirror.recent = [...mirror.recent, { ...summary, sequence: 110 }];
+    await vi.advanceTimersByTimeAsync(POINTER_POLL_MS);
+    await vi.waitFor(() => expect(evalStore.getEvaluation(summary.dataset_id, summary.run_id)).toBeDefined());
+
+    expect(evalStore.getState().observedSequence).toBe(110);
+    expect(evalStore.getState().connection).toBe('live');
+  });
+
+  it('a cached live status older than the read model is ignored without an error', async () => {
+    const mirror = makeMirror({ active: true });
+    mirror.snapshot = makeSnapshot({ high_water_sequence: 120 });
+    mirror.liveSnapshot = makeSnapshot({ high_water_sequence: 110 });
+    const fetchImpl = serveLayout(mirror);
+    await startFeed({ fetchImpl });
+    const errorsBefore = evalStore.getState().errors;
+
+    await vi.advanceTimersByTimeAsync(LIVE_STATUS_POLL_MS);
+    await flush();
+
+    expect(count(fetchImpl, '/live/status.json')).toBeGreaterThan(0);
+    expect(evalStore.getState().observedSequence).toBe(120);
+    expect(evalStore.getState().errors).toEqual(errorsBefore);
+    expect(evalStore.getState().errors).not.toContain('public snapshot sequence regressed');
+  });
+});
+
+describe('read model refresh keeps on-demand state', () => {
+  it('keeps assignments loaded on demand and proof artifacts across a refresh', async () => {
+    const runId = 'run-keep-assignments';
+    const datasetId = `ds-live-${runId}`;
+    const mirror = makeMirror({ active: true });
+    const fetchImpl = serveLayout(mirror);
+    await startFeed({ fetchImpl });
+
+    evalStore.acceptRunBundle([resultRecord(1, runId, 'assign-1'), resultRecord(2, runId, 'assign-2')], { datasetId, runId });
+    evalStore.acceptProofArtifact('a'.repeat(64), null);
+    const loaded = evalStore.getAssignments(runId, datasetId);
+    expect(loaded).toHaveLength(2);
+
+    const summary = fixtureEvaluationSummaries[0]!;
+    mirror.recent = [...mirror.recent, { ...summary, sequence: 60 }];
+    await vi.advanceTimersByTimeAsync(POINTER_POLL_MS);
+    await vi.waitFor(() => expect(evalStore.getEvaluation(summary.dataset_id, summary.run_id)).toBeDefined());
+
+    expect(evalStore.getAssignments(runId, datasetId)).toEqual(loaded);
+    expect(evalStore.getState().proofArtifacts.has('a'.repeat(64))).toBe(true);
+    expect(evalStore.getState().errors).toEqual([]);
+  });
+
+  it('a withdrawal still clears on-demand assignments after the restart', async () => {
+    const runId = 'run-withdrawal-restart';
+    const datasetId = `ds-live-${runId}`;
+    const bundle = buildRunBundle(runId, ['assign-1']);
+    const mirror = makeMirror({
+      recent: [{ ...settledRunRecord(runId, bundle.sha256, datasetId), lifecycle_state: 'running', assignment_bundle_sha256: undefined, sequence: 50 }],
+      active: true,
+      liveBundles: new Map([[runId, bundle.bytes]]),
+    });
+    const fetchImpl = serveLayout(mirror);
+    vi.stubGlobal('fetch', fetchImpl);
+    await startFeed({ fetchImpl });
+    await loadRunAssignments(datasetId, runId);
+    expect(evalStore.getAssignments(runId, datasetId)).toHaveLength(1);
+
+    mirror.snapshot = { ...mirror.snapshot, withdrawal_digest: 'c'.repeat(64) };
+    await vi.advanceTimersByTimeAsync(POINTER_POLL_MS);
+    await vi.waitFor(() => expect(evalStore.getState().currentSnapshot?.withdrawal_digest).toBe('c'.repeat(64)));
+
+    expect(count(fetchImpl, '/runtime.json')).toBe(2);
+    expect(evalStore.getAssignments(runId, datasetId)).toEqual([]);
   });
 });

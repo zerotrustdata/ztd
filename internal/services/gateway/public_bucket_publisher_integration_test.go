@@ -30,6 +30,7 @@ import (
 type bucketIntegrationEnv struct {
 	env     *mirrorTestEnv
 	fixture *bucketS3Fixture
+	clock   *bucketFakeClock
 	proof   models.PublicProofCatalogEntry
 	segment models.PublicProofManifestSegment
 }
@@ -49,11 +50,12 @@ func newBucketIntegrationEnv(t *testing.T) *bucketIntegrationEnv {
 		SourceID: env.sourceID, Segment: &segment,
 		Artifacts: []models.PublicProofIngestArtifact{{ArtifactID: entry.ArtifactID, Content: content}},
 	}))
-	return &bucketIntegrationEnv{env: env, fixture: newBucketS3Fixture(t), proof: entry, segment: segment}
+	return &bucketIntegrationEnv{env: env, fixture: newBucketS3Fixture(t), clock: newBucketFakeClock(), proof: entry, segment: segment}
 }
 
 // publisher returns a real publisher writing to the fixture with creds. Pointers
-// are signed with the mirror's source key, as the Gateway signs them.
+// are signed with the mirror's source key, as the Gateway signs them. Its clock is
+// b.clock, so a test moves time past the pointer interval explicitly.
 func (b *bucketIntegrationEnv) publisher(t *testing.T, creds models.PublicBucketCredentials) *PublicBucketPublisher {
 	t.Helper()
 	sign := func(pointer models.PublicFeedPointer) (models.PublicFeedPointer, error) {
@@ -62,6 +64,7 @@ func (b *bucketIntegrationEnv) publisher(t *testing.T, creds models.PublicBucket
 	publisher, err := newPublicBucketPublisher(t.Context(), b.fixture.bucketConfig(), b.env.sourceID, b.env.mirror, sign,
 		b.fixture.newClient(creds), b.fixture.newPurger(creds), b.env.fileSvc, testutil.NewTestLogger())
 	require.NoError(t, err)
+	publisher.now = b.clock.Now
 	return publisher
 }
 
@@ -205,8 +208,12 @@ func TestBucketPublisher_WithdrawalFlowRetriesFailingPurge(t *testing.T) {
 	publisher := b.publisher(t, creds)
 	require.NoError(t, publisher.tick(ctx))
 
+	// A dataset withdrawal moves the withdrawal digest, which is the signal that
+	// purges the pointer. The artifact withdrawal removes the proof objects.
 	withdrawal := makeTestSegment(b.env, 2, b.segment.ProofRootSHA256, nil, []string{b.proof.ArtifactID})
 	require.NoError(t, b.env.mirror.storeProofPackage(ctx, models.PublicProofIngestRequest{SourceID: b.env.sourceID, Segment: &withdrawal}))
+	require.NoError(t, b.env.mirror.WithdrawCampaignDataset(ctx, "run-withdrawn"))
+	b.clock.Advance(time.Minute)
 
 	b.fixture.setPurgeFail(true)
 	err := publisher.tick(ctx)

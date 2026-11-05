@@ -272,13 +272,22 @@ export class EvalStore {
 
   /** Install the mirror's complete current read model atomically. Sparse
    *  entity revisions need no history replay to reach the snapshot cursor. */
+  /** Replaces state with a read model. `refresh` is a newer read model of the same
+   *  source and withdrawal state, so what views loaded on demand stays valid: the
+   *  read model holds no assignment results, and a settled run's bundle is unchanged. */
   initBootstrap(
     snapshot: FeedSnapshot,
     recentProjections: ProjectionRecord[],
     proofCount: number,
+    { refresh = false }: { refresh?: boolean } = {},
   ): void {
-    this.campaignContexts = new Map();
+    if (!refresh) this.campaignContexts = new Map();
     const state = emptyState();
+    if (refresh) {
+      state.assignments = this.state.assignments;
+      state.assignmentSources = this.state.assignmentSources;
+      state.proofArtifacts = this.state.proofArtifacts;
+    }
     state.connection = 'live';
     state.mirrorOrigin = this.state.mirrorOrigin;
     state.sourceId = snapshot.source_id;
@@ -339,7 +348,7 @@ export class EvalStore {
         ...state,
         pendingSnapshot: snapshot,
         feedStatus: state.feedStatus
-          ? { ...withFeedSnapshot(state, snapshot, 'Receiving stream updates.'), connection: state.connection }
+          ? { ...withFeedSnapshot(state, snapshot, 'Receiving updates.'), connection: state.connection }
           : null,
       }));
       return;
@@ -348,6 +357,30 @@ export class EvalStore {
       ...state,
       currentSnapshot: snapshot,
       pendingSnapshot: null,
+      connection: 'live',
+      feedStatus: { ...withFeedSnapshot(state, snapshot, 'Snapshot sealed.'), connection: 'live' },
+    }));
+  }
+
+  /** Seals a live status snapshot after its tail was applied. The tail omits
+   *  assignment results by design, so the cursor moves to the snapshot's high
+   *  water rather than waiting for a record that will not arrive this way. A
+   *  cached status older than what the store holds is ignored. */
+  sealLiveSnapshot(snapshot: FeedSnapshot): void {
+    if (snapshot.high_water_sequence < this.state.observedSequence) return;
+    const reference = this.state.currentSnapshot;
+    if (
+      reference &&
+      snapshot.high_water_sequence === reference.high_water_sequence &&
+      snapshot.feed_chain_hash !== reference.feed_chain_hash
+    ) {
+      return;
+    }
+    this.setState((state) => ({
+      ...state,
+      currentSnapshot: snapshot,
+      pendingSnapshot: null,
+      observedSequence: snapshot.high_water_sequence,
       connection: 'live',
       feedStatus: { ...withFeedSnapshot(state, snapshot, 'Snapshot sealed.'), connection: 'live' },
     }));

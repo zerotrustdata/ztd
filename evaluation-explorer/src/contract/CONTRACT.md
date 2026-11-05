@@ -146,6 +146,18 @@ Records are published as ztd public feed records. The JSONL input shape for `ztd
 
 Public records and proof artifacts are published verbatim. Neither the publisher nor the mirror screens record or artifact content by field name or string content; they enforce only the typed record schemas, size bounds, hashes, and signatures.
 
+## Public layout and polling
+
+The browser reads the public feed as static objects. The layout is defined by `internal/services/gateway/public_layout.go` and `public_mirror_layout.go`, and it is served from the feed origin, `https://feed.opendevops.ai` in production. The bucket publisher writes the same objects. [Bucket Layout](../../../docs/architecture/public_spectator.md#bucket-layout) owns the object table, cache headers, and publish order. This section covers only what the Explorer reads.
+
+- `pointer.json` is the signed `PublicFeedPointer` (schema `1.0.0`). It names `read_model_sha256`, `proof_catalog_sha256`, `proof_root_sha256`, and `proof_segment_head`, and it reports `high_water_sequence` and `active`. The Explorer polls it about once a minute while the tab is visible, and polls it at once when the tab becomes visible. The `ztd-adapter` public client does not verify the pointer signature. Offline verification checks it with `ztd public verify-proof --pointer`.
+- `read-model/<read_model_sha256>.json.gz` is the feed bootstrap payload that the pointer names. The read model is loaded again only when the pointer's `read_model_sha256` changes. `ztd-adapter` checks the decoded bytes against that digest.
+- `live/status.json` is the `PublicLiveStatus` object (schema `1.0.0`): `snapshot`, `active_runs`, and a `tail` of the newest records, excluding assignment result records. The Explorer polls it about every 10 seconds while the pointer reports `active`, and every 2 seconds on a loopback mirror.
+- `live/runs/<run_id>.jsonl.gz` is the assignment bundle of a queued or running run. The Explorer reads it on each request, because the object is mutable. A settled run reads its immutable bundle through `proofs/<assignment_bundle_sha256>` instead.
+- `proofs/<sha256>` holds the verbatim bytes of a proof artifact. The Explorer checks each body against the digest its binding names before it renders the body.
+
+The layout does not change the view schema. The Explorer view schema remains `1.14.0`, and the schema chain above and the version-specific allowlist are unchanged by it.
+
 ## Implementation ownership
 
 - `internal/services/evaluation/campaign_publication.go` and its projection builders emit public records from persisted campaign evidence.

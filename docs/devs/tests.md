@@ -106,6 +106,10 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | Test tiers and CLI commands | `internal/cli/cmd/test/test.go` | `./ztd test --help` |
 | Chaos testing harness and summary | `internal/tools/chaos/`, `internal/cli/cmd/test/chaos.go` | `./ztd test chaos --help`, `./ztd test summary` |
 | Public loop qualification harness | `internal/cli/cmd/test/public_loop.go` | `./ztd test public-loop --help` |
+| Bucket publisher, journal, and bucket client | `internal/services/gateway/public_bucket_publisher_integration_test.go`, `public_bucket_publisher_test.go`, `public_bucket_config_test.go` | `./ztd test integration --pkg ./internal/services/gateway --run 'TestBucketPublisher_\|TestBucketJournal_\|TestPublicBucket'` |
+| Bucket S3 fixture | `internal/services/gateway/public_bucket_s3_fixture_test.go` | Used only by the bucket tests above. It is an in-process S3-compatible endpoint and a Cloudflare purge endpoint. It replaces the external bucket and API, and nothing else. |
+| Public layout objects | `internal/services/gateway/public_mirror_layout_integration_test.go` | `./ztd test integration --pkg ./internal/services/gateway --run 'TestPublicMirrorLayout_'` |
+| Public layout qualification | `internal/cli/cmd/test/public_loop.go` (`verifyPublicLoopLayout`) | `./ztd test public-loop --help`. The loop reads `pointer.json`, checks that the read model it names hashes to `read_model_sha256`, and checks the `live/status.json` schema version. |
 | Operator fleet scale qualification | `internal/cli/cmd/test/scale.go`, `test/e2e/operator_fleet_e2e_test.go` | `./ztd test scale --help`, `make test-scale` |
 | Makefile platform test targets and coverage exclusions | `Makefile` (`TEST_PKGS`, `COVERAGE_EXCLUDE_PKGS`) | `make test`, `make test-unit`, `make test-integration`, `make test-enrollment-burst`, `make test-operator-burst`, `make test-coverage`, `make test-cross-enrollment`, `make test-scale`, `make test-airgap` |
 | Platform CI scope | `.github/workflows/build-and-test.yml`, `.github/workflows/build-and-test-fips.yml` | Workflow job steps and `Makefile` CI targets |

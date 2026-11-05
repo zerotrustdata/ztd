@@ -322,7 +322,7 @@ func resequencePublicFeedRecords(records []models.PublicFeedRecord, startSequenc
 }
 
 // PublishLiveEvent appends one validated live event at the next feed sequence
-// and hands it to ExportBatch, which is what puts it on the mirror SSE stream.
+// and hands it to ExportBatch, which publishes it to the mirror feed.
 // A sequence race with another publisher is retried once.
 func (s *PublicPublisherService) PublishLiveEvent(ctx context.Context, body []byte) error {
 	if !s.cfg.Enabled {

@@ -10,19 +10,15 @@
 package eval
 
 import (
-	"bufio"
 	"bytes"
 	"compress/gzip"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,16 +33,10 @@ import (
 // These tests cover the run bundle through the real stack: the CLI coordinator
 // asks the Gateway for the run's assignment bundle, the summary names its
 // digest, and the public mirror serves the bundle and lists it in the proof
-// catalog. Exact record bytes come from the mirror's /stream, because /history
-// re-encodes each item.
-
-// mirrorStreamRecord is one retained record the mirror replays on /stream, with
-// the record bytes exactly as the mirror stores them.
-type mirrorStreamRecord struct {
-	sequence int64
-	bytes    string
-	key      string
-}
+// catalog. Byte-for-byte equality of each result record with the accepted
+// snapshot rows is covered by TestRunBundle_RecordBytesMatchAcceptedSnapshotRows
+// in internal/services/gateway. Here /history supplies each result's sequence
+// and JSON value: it re-encodes items, so it cannot give exact bytes.
 
 // mirrorGet returns the status and body of a GET on the public mirror origin.
 func mirrorGet(t *testing.T, path string) (int, []byte) {
@@ -131,53 +121,6 @@ func latestSummaryBundleDigest(t *testing.T) string {
 	return digest
 }
 
-// mirrorStreamRecords replays the mirror's /stream from the start and returns
-// every retained record through the high-water sequence.
-func mirrorStreamRecords(t *testing.T, through int64) []mirrorStreamRecord {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
-	defer cancel()
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, gwremote.PublicMirrorOrigin+"/stream?since_id=0", nil)
-	require.NoError(t, err)
-	request.Header.Set("Accept", "text/event-stream")
-	response, err := http.DefaultClient.Do(request)
-	require.NoError(t, err)
-	defer func() { _ = response.Body.Close() }()
-	require.Equal(t, http.StatusOK, response.StatusCode)
-
-	var records []mirrorStreamRecord
-	var event, data string
-	var sequence int64
-	scanner := bufio.NewScanner(response.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 16<<20)
-	for scanner.Scan() {
-		line := scanner.Text()
-		switch {
-		case line == "":
-			if event != "" && event != "snapshot" && event != "truncated" && event != "error" && data != "" {
-				var identity struct {
-					Key string `json:"idempotency_key"`
-				}
-				require.NoError(t, json.Unmarshal([]byte(data), &identity))
-				records = append(records, mirrorStreamRecord{sequence: sequence, bytes: data, key: identity.Key})
-			}
-			if sequence >= through {
-				return records
-			}
-			event, data, sequence = "", "", 0
-		case strings.HasPrefix(line, "id: "):
-			sequence, err = strconv.ParseInt(strings.TrimPrefix(line, "id: "), 10, 64)
-			require.NoError(t, err)
-		case strings.HasPrefix(line, "event: "):
-			event = strings.TrimPrefix(line, "event: ")
-		case strings.HasPrefix(line, "data: "):
-			data = strings.TrimPrefix(line, "data: ")
-		}
-	}
-	require.Fail(t, "the mirror stream ended before the high-water sequence", "through %d", through)
-	return nil
-}
-
 // decodeRunBundle gunzips a bundle and decodes each JSONL line.
 func decodeRunBundle(t *testing.T, body []byte) []models.PublicRunBundleLine {
 	t.Helper()
@@ -195,12 +138,12 @@ func decodeRunBundle(t *testing.T, body []byte) []models.PublicRunBundleLine {
 	return lines
 }
 
-// acceptedResultBytes returns, for each assignment, the bytes of the result
-// revision the mirror holds last: the snapshot keeps the latest accepted row per
-// assignment, so a verified or verification-failed revision supersedes the
-// completion revision. The mirror's /stream replays superseded revisions too,
-// so the latest sequence wins.
-func acceptedResultBytes(t *testing.T, records []mirrorStreamRecord, runID string, assignments []*evalv1.EvaluationAssignment) []string {
+// acceptedResultProjections returns, for each assignment ID, the history
+// projection of the result revision the mirror holds last: the snapshot keeps the
+// latest accepted row per assignment, so a verified or verification-failed
+// revision supersedes the completion revision. /history keeps superseded
+// revisions too, so the highest sequence per assignment wins.
+func acceptedResultProjections(t *testing.T, projections []publicationProjection, runID string, assignments []*evalv1.EvaluationAssignment) map[string]publicationProjection {
 	t.Helper()
 	owner := map[string]string{}
 	for _, assignment := range assignments {
@@ -213,18 +156,31 @@ func acceptedResultBytes(t *testing.T, records []mirrorStreamRecord, runID strin
 			owner[key] = id
 		}
 	}
-	acceptedByAssignment := map[string]string{}
-	for _, record := range records {
-		if id, ok := owner[record.key]; ok {
-			acceptedByAssignment[id] = record.bytes
+	acceptedByAssignment := map[string]publicationProjection{}
+	for _, projection := range projections {
+		id, ok := owner[projection.key]
+		if !ok {
+			continue
 		}
+		if current, seen := acceptedByAssignment[id]; seen && current.sequence > projection.sequence {
+			continue
+		}
+		acceptedByAssignment[id] = projection
 	}
 	require.Len(t, acceptedByAssignment, len(assignments), "the mirror serves every assignment result")
-	accepted := make([]string, 0, len(acceptedByAssignment))
-	for _, bytes := range acceptedByAssignment {
-		accepted = append(accepted, bytes)
-	}
-	return accepted
+	return acceptedByAssignment
+}
+
+// historyRecordValue decodes a history item with the sequence and record_type
+// fields /history adds removed, so it can be compared by JSON value with a
+// bundle line's record bytes.
+func historyRecordValue(t *testing.T, projection publicationProjection) any {
+	t.Helper()
+	var object map[string]any
+	require.NoError(t, json.Unmarshal([]byte(projection.raw), &object))
+	delete(object, "sequence")
+	delete(object, "record_type")
+	return object
 }
 
 func TestPublicationRealStack_SummaryNamesTheRunBundleTheMirrorServes(t *testing.T) {
@@ -244,21 +200,34 @@ func TestPublicationRealStack_SummaryNamesTheRunBundleTheMirrorServes(t *testing
 	sum := sha256.Sum256(body)
 	assert.Equal(t, digest, hex.EncodeToString(sum[:]), "the served bundle hashes to the summary digest")
 
-	// (c) One line per published result, in ascending sequence, each carrying the
-	// mirror's exact record bytes and their hash.
+	// (c) One line per published result, in ascending sequence. Each line's
+	// record_hash is the SHA-256 of its record_bytes, its sequence is the latest
+	// history sequence of an assignment's result, and its record_bytes has the JSON
+	// value of that history item.
 	lines := decodeRunBundle(t, body)
 	require.Len(t, lines, len(assignments), "one bundle line per assignment result")
-	expectedBytes := acceptedResultBytes(t, mirrorStreamRecords(t, mirrorHighWater(t)), runID, assignments)
+	accepted := acceptedResultProjections(t, mirrorProjections(t), runID, assignments)
+	bySequence := map[int64]publicationProjection{}
+	expectedSequences := make([]int64, 0, len(accepted))
+	for _, projection := range accepted {
+		bySequence[projection.sequence] = projection
+		expectedSequences = append(expectedSequences, projection.sequence)
+	}
 	lastSequence := int64(-1)
-	gotBytes := make([]string, 0, len(lines))
+	gotSequences := make([]int64, 0, len(lines))
 	for _, line := range lines {
 		assert.Greater(t, line.Sequence, lastSequence, "bundle lines ascend by sequence")
 		lastSequence = line.Sequence
 		sum := sha256.Sum256([]byte(line.RecordBytes))
 		assert.Equal(t, hex.EncodeToString(sum[:]), line.RecordHash, "record_hash is the SHA-256 of record_bytes")
-		gotBytes = append(gotBytes, line.RecordBytes)
+		gotSequences = append(gotSequences, line.Sequence)
+		projection, ok := bySequence[line.Sequence]
+		require.True(t, ok, "bundle line sequence %d is the latest history sequence of an assignment result", line.Sequence)
+		var recordValue any
+		require.NoError(t, json.Unmarshal([]byte(line.RecordBytes), &recordValue))
+		require.Equal(t, historyRecordValue(t, projection), recordValue, "record_bytes has the JSON value of history sequence %d", line.Sequence)
 	}
-	assert.ElementsMatch(t, expectedBytes, gotBytes, "each line carries the exact bytes of one accepted result record")
+	assert.ElementsMatch(t, expectedSequences, gotSequences, "each assignment's latest result revision is bundled once")
 
 	// (d) The active catalog lists exactly one bundle entry, under the summary digest.
 	assertSingleActiveBundle(t, runID, digest)

@@ -688,6 +688,24 @@ func TestBucketPublisher_SettleWritesImmediatelyAndRewritesCatalog(t *testing.T)
 	assert.Equal(t, constants.PublicLayoutPointerKey, settlePuts[len(settlePuts)-1])
 }
 
+func TestBucketPublisher_RunStartWritesPointerImmediately(t *testing.T) {
+	h := newBucketHarness(t)
+	ctx := t.Context()
+	publisher := h.newPublisher()
+	require.NoError(t, publisher.tick(ctx))
+	require.False(t, publisher.lastPointer.Active)
+
+	// Well inside the once-a-minute limit, so only the run starting can force a write.
+	h.clock.Advance(publicBucketTickInterval)
+	h.setActiveRuns(models.PublicLiveRun{DatasetID: "ds-1", RunID: "run-1", LifecycleState: "running"})
+	mark := h.client.logMark()
+	require.NoError(t, publisher.tick(ctx))
+	puts := putsIn(h.client.logSince(mark))
+	require.NotEmpty(t, puts)
+	assert.Equal(t, constants.PublicLayoutPointerKey, puts[len(puts)-1])
+	assert.True(t, publisher.lastPointer.Active, "browsers start polling live status once the pointer says a run is active")
+}
+
 // mustJSONForBucket encodes value the way the harness encodes the catalog.
 func mustJSONForBucket(t *testing.T, value any) []byte {
 	t.Helper()

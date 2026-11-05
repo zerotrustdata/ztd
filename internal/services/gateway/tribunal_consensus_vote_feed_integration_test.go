@@ -10,7 +10,6 @@
 package gateway
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"io"
@@ -71,42 +70,21 @@ func TestConsensusVoteReachesThePublisherCreatedAtSpectatorStart(t *testing.T) {
 	})
 	require.NotNil(t, runtime.Publisher())
 	publicAddr := runtime.PublicListenAddress()
-	// Subscribe before recording the vote to check live delivery, not replay.
-	streamCtx, streamCancel := context.WithTimeout(ctx, 5*time.Second)
-	defer streamCancel()
-	request, err := http.NewRequestWithContext(streamCtx, http.MethodGet,
-		"http://"+publicAddr+"/stream?source="+runtime.Publisher().cfg.SourceID+"&since_id=0", nil)
-	require.NoError(t, err)
-	response, err := http.DefaultClient.Do(request)
-	require.NoError(t, err)
-	defer response.Body.Close()
-	require.Equal(t, http.StatusOK, response.StatusCode)
-	require.Equal(t, "text/event-stream", response.Header.Get("Content-Type"))
-
 	memberAppID := binding.MemberAppIDs[1]
 	require.NoError(t, deliberator.recordVote(ctx, env, binding, memberAppID, memberVote{
 		answer: tribunal.ConsensusVoteAnswer{Decision: tribunal.ConsensusVoteApprove, Reason: "read-only query"},
 	}))
 
-	scanner := bufio.NewScanner(response.Body)
-	var streamLabel string
-	var eventType string
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "event: ") {
-			eventType = strings.TrimPrefix(line, "event: ")
-		}
-		if eventType == string(models.PublicFeedRecordTypeEvent) && strings.HasPrefix(line, "data: ") {
-			var event evalv1.PublicLiveEvent
-			require.NoError(t, evalv1.UnmarshalCanonical([]byte(strings.TrimPrefix(line, "data: ")), &event))
-			streamLabel = event.GetStageLabel()
-			require.Equal(t, "campaign-live-vote", event.GetRunId())
-			require.Equal(t, "ds-live-campaign-live-vote", event.GetDatasetId())
-			require.Equal(t, "assignment-live-vote", event.GetAssignmentId())
-			break
-		}
-	}
-	require.NoError(t, scanner.Err())
+	var liveEvent *evalv1.PublicLiveEvent
+	require.Eventually(t, func() bool {
+		event, found := liveVoteEvent(publicAddr)
+		liveEvent = event
+		return found
+	}, 5*time.Second, 10*time.Millisecond, "the consensus vote never reached live/status.json")
+	streamLabel := liveEvent.GetStageLabel()
+	require.Equal(t, "campaign-live-vote", liveEvent.GetRunId())
+	require.Equal(t, "ds-live-campaign-live-vote", liveEvent.GetDatasetId())
+	require.Equal(t, "assignment-live-vote", liveEvent.GetAssignmentId())
 	require.Len(t, recorder.events, 2)
 	require.Equal(t, tribunalVoteStagePrefix+recorder.events[1].ContentText, streamLabel)
 
@@ -127,6 +105,34 @@ func TestConsensusVoteReachesThePublisherCreatedAtSpectatorStart(t *testing.T) {
 	require.Equal(t, recorded[1], published)
 	require.Equal(t, memberAppID, published.MemberAppID)
 	require.Equal(t, "read-only query", published.Reason)
+}
+
+// liveVoteEvent reads live/status.json and returns the consensus vote stage
+// event in its activity tail, when one is present. Transport and decode
+// failures report not found so the caller polls again.
+func liveVoteEvent(publicAddr string) (*evalv1.PublicLiveEvent, bool) {
+	response, err := http.Get("http://" + publicAddr + "/live/status.json")
+	if err != nil {
+		return nil, false
+	}
+	defer response.Body.Close()
+	var status models.PublicLiveStatus
+	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&status) != nil {
+		return nil, false
+	}
+	for _, record := range status.Tail {
+		if record.RecordType != models.PublicFeedRecordTypeEvent {
+			continue
+		}
+		event := &evalv1.PublicLiveEvent{}
+		if evalv1.UnmarshalCanonical([]byte(record.RecordBytes), event) != nil {
+			continue
+		}
+		if strings.HasPrefix(event.GetStageLabel(), tribunalVoteStagePrefix) {
+			return event, true
+		}
+	}
+	return nil, false
 }
 
 func spectatorHistory(t *testing.T, url string) models.PublicFeedCursorPage {

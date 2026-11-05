@@ -38,7 +38,7 @@ function Shell() {
   useEffect(() => {
     // Start the feed. The startup orchestrator retains only accepted mirror
     // data on transport errors. When runtime.json points at a live mirror,
-    // bootstrap/history/snapshot/SSE connect.
+    // pointer, read model, and live status poll.
     void startFeed();
     return () => stopFeed();
   }, []);

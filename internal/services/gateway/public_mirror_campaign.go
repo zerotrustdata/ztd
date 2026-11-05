@@ -108,8 +108,7 @@ func mirrorRecordWithdrawn(withdrawn map[string]bool, record models.PublicFeedRe
 }
 
 // WithdrawCampaignDataset hides one live campaign dataset from anonymous mirror
-// reads without mutating the signed batch chain. Open streams of the source
-// receive a fresh snapshot so browsers holding the dataset resynchronize.
+// reads without mutating the signed batch chain.
 func (m *PublicMirrorServer) WithdrawCampaignDataset(ctx context.Context, runID string) error {
 	if m == nil || runID == "" {
 		return fmt.Errorf("public mirror: withdraw campaign dataset: %w", constants.ErrMissingRequiredField)
@@ -139,7 +138,6 @@ func (m *PublicMirrorServer) WithdrawCampaignDataset(ctx context.Context, runID 
 	m.mu.Lock()
 	m.sources[sourceID] = &next
 	m.mu.Unlock()
-	m.requestSnapshotResync(sourceID)
 	return nil
 }
 

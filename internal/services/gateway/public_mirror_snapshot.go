@@ -162,7 +162,7 @@ func updatePublicSnapshot(ctx context.Context, tx *sql.Tx, batch models.PublicFe
 			return err
 		}
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT first_sequence, record_key FROM snapshot_records WHERE source_id = ? AND is_event = 1 ORDER BY sequence DESC LIMIT -1 OFFSET ?`, batch.SourceID, constants.PublicFeedSSEReplayMaxRecords)
+	rows, err := tx.QueryContext(ctx, `SELECT first_sequence, record_key FROM snapshot_records WHERE source_id = ? AND is_event = 1 ORDER BY sequence DESC LIMIT -1 OFFSET ?`, batch.SourceID, constants.PublicFeedEventRetentionMaxRecords)
 	if err != nil {
 		return err
 	}
@@ -393,7 +393,7 @@ func (s *PublicMirrorStore) verifyPublicSnapshot(ctx context.Context, source str
 			tail = append(tail, p)
 		}
 		sort.Slice(tail, func(i, j int) bool { return tail[i].sequence > tail[j].sequence })
-		for _, old := range tail[min(len(tail), constants.PublicFeedSSEReplayMaxRecords):] {
+		for _, old := range tail[min(len(tail), constants.PublicFeedEventRetentionMaxRecords):] {
 			delete(events, old.key)
 		}
 		after = batches[len(batches)-1].FirstSequence
