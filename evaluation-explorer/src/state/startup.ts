@@ -87,7 +87,6 @@ function applyReadModel(bootstrap: FeedBootstrap): void {
       evalStore.initBootstrap(
         next,
         bootstrap.recent_projections.map(normalizeRecentProjection),
-        bootstrap.proof_catalog_summary.artifact_count,
       );
     }
     evalStore.acceptTaskIndex(bootstrap.task_index);
@@ -106,7 +105,6 @@ function refreshReadModel(bootstrap: FeedBootstrap): void {
     evalStore.initBootstrap(
       bootstrap.snapshot,
       bootstrap.recent_projections.map(normalizeRecentProjection),
-      bootstrap.proof_catalog_summary.artifact_count,
       { refresh: true },
     );
     evalStore.acceptTaskIndex(bootstrap.task_index);

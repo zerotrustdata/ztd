@@ -151,7 +151,7 @@ describe('Live workspace', () => {
     act(() => {
       evalStore.initBootstrap({ protocol_version: '1.0.0', source_id: 'test', high_water_sequence: 2,
         feed_chain_hash: '0'.repeat(64), withdrawal_digest: '0'.repeat(64), batch_count: 1, generated_at: evaluation.observed_at, freshness: 'active' },
-      [{ sequence: 1, record_type: 'projection', record_bytes: JSON.stringify(updated) }], 0);
+      [{ sequence: 1, record_type: 'projection', record_bytes: JSON.stringify(updated) }]);
     });
     expect(runs.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '7');
   });

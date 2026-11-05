@@ -54,7 +54,7 @@ function seed(runs: SeededRun[]): void {
     freshness: 'active',
   };
   evalStore.setMirrorOrigin('https://mirror.example');
-  evalStore.initBootstrap(snapshot, records, 0);
+  evalStore.initBootstrap(snapshot, records);
 }
 
 function stubFetch(body: Uint8Array): void {

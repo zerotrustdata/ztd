@@ -27,15 +27,11 @@ export interface PublicRecentProjection {
 }
 
 export interface PublicBootstrap {
+  readonly schema_version: '2.0.0';
   readonly protocol_version: string;
   readonly snapshot: PublicSnapshot;
   readonly source_freshness: string;
   readonly recent_projections: readonly PublicRecentProjection[];
-  readonly proof_catalog_summary: {
-    readonly artifact_count: number;
-    readonly total_byte_size: number;
-    readonly last_generated_at?: string;
-  };
   readonly generated_at: string;
 }
 
@@ -47,26 +43,6 @@ export interface PublicHistory {
   readonly limit: number;
 }
 
-export interface PublicProofCatalogEntry {
-  readonly artifact_id: string;
-  readonly filename: string;
-  readonly media_type: string;
-  readonly byte_size: number;
-  readonly sha256: string;
-  readonly classification: string;
-  readonly campaign_id: string;
-  readonly source_run_id?: string;
-  readonly generated_at: string;
-  readonly verification_command: string;
-  readonly immutable_url: string;
-}
-
-export interface PublicProofCatalog {
-  readonly schema_version: string;
-  readonly entries: readonly PublicProofCatalogEntry[];
-  readonly generated_at: string;
-}
-
 export interface PublicRecord {
   readonly sequence: number;
   readonly record_type: string;
@@ -74,15 +50,12 @@ export interface PublicRecord {
   readonly record_bytes: string;
 }
 
-/** pointer.json: the one mutable object. It names the digest-addressed read model and proof catalog. */
+/** pointer.json: the one mutable object. It names the digest-addressed read model. */
 export interface PublicPointer {
   readonly schema_version: string;
   readonly source_id: string;
   readonly revision: number;
   readonly read_model_sha256: string;
-  readonly proof_catalog_sha256?: string;
-  readonly proof_root_sha256?: string;
-  readonly proof_segment_head: number;
   readonly high_water_sequence: number;
   readonly history_first_sequence: number;
   readonly feed_chain_hash: string;
@@ -92,23 +65,6 @@ export interface PublicPointer {
   readonly signing_key_id?: string;
   readonly signing_public_key?: string;
   readonly signature?: string;
-}
-
-export interface PublicProofHead {
-  readonly schema_version: string;
-  readonly source_id: string;
-  readonly segment_index: number;
-  readonly proof_root_sha256: string;
-  readonly campaign_id: string;
-  readonly campaign_revision: string;
-  readonly verified_index_generation_hash: string;
-  readonly verification_ok: boolean;
-  readonly artifact_count: number;
-  readonly verifier_instructions: string;
-  readonly generated_at: string;
-  readonly signing_key_id: string;
-  readonly signing_public_key?: string;
-  readonly signature: string;
 }
 
 export interface PublicLiveRun {
@@ -140,8 +96,6 @@ export interface PublicMirrorState {
   readonly batch_count: number;
   readonly freshness: PublicFreshness;
   readonly display_state: PublicDisplayState;
-  readonly proof_artifact_count: number;
-  readonly proof_total_byte_size: number;
   readonly items: readonly PublicItem[];
   readonly max_items: number;
 }
@@ -203,8 +157,6 @@ export function createPublicMirrorState(maxItems = DEFAULT_MAX_ITEMS): PublicMir
     batch_count: 0,
     freshness: 'source_offline',
     display_state: 'offline',
-    proof_artifact_count: 0,
-    proof_total_byte_size: 0,
     items: [],
     max_items: maxItems,
   };
@@ -257,8 +209,6 @@ export function reconcilePublicBootstrap(state: PublicMirrorState, bootstrap: Pu
   }
   return {
     ...reconciled,
-    proof_artifact_count: bootstrap.proof_catalog_summary.artifact_count,
-    proof_total_byte_size: bootstrap.proof_catalog_summary.total_byte_size,
   };
 }
 

@@ -373,19 +373,17 @@ func TestCampaignProofPublisherRealStack_SingleProofRouteKeepsDigestsWithoutPubl
 	require.NoError(t, proofs.FlushProofCatalog(ctx))
 	bootstrap, err := FetchPublicMirrorBootstrap(ctx)
 	require.NoError(t, err)
-	assert.Positive(t, bootstrap.ProofCatalogSummary.ArtifactCount, "the flushed proof catalog is served by the mirror")
+	assert.Equal(t, constants.PublicReadModelSchemaVersion, bootstrap.SchemaVersion)
 	traceDigest := recorded.PublishedProofArtifacts[assignmentID].AgentTraceSHA256
 	require.NotEmpty(t, traceDigest)
-	catalogResponse := httptest.NewRecorder()
-	e.stack.Gateway.Service.GetPublicMirror().PublicHandler().ServeHTTP(catalogResponse, httptest.NewRequest(http.MethodGet, "/proof-catalog", nil))
-	require.Equal(t, http.StatusOK, catalogResponse.Code)
-	var catalog models.PublicProofCatalog
-	require.NoError(t, json.Unmarshal(catalogResponse.Body.Bytes(), &catalog))
-	require.NotEmpty(t, catalog.Entries, "fixtures and the run bundle remain public")
-	for _, entry := range catalog.Entries {
-		assert.NotEqual(t, want, entry.ArtifactID, "the result's audit digest does not export a database")
-		assert.NotEqual(t, traceDigest, entry.ArtifactID, "the result's trace digest does not export a trace")
+	entries, err := e.stack.Gateway.Service.GetPublicMirror().LayoutArtifacts(ctx, bootstrap.Snapshot.SourceID)
+	require.NoError(t, err)
+	require.NotEmpty(t, entries)
+	for _, entry := range entries {
+		assert.NotEqual(t, want, entry.ArtifactID)
+		assert.NotEqual(t, traceDigest, entry.ArtifactID)
 	}
+
 }
 
 func TestCampaignProofPublisherRealStack_PruneRunProofCatalogRemovesRunProofsFromMirror(t *testing.T) {
@@ -394,13 +392,17 @@ func TestCampaignProofPublisherRealStack_PruneRunProofCatalogRemovesRunProofsFro
 
 	before, err := FetchPublicMirrorBootstrap(ctx)
 	require.NoError(t, err)
-	require.Positive(t, before.ProofCatalogSummary.ArtifactCount)
+	beforeArtifacts, err := e.stack.Gateway.Service.GetPublicMirror().LayoutArtifacts(ctx, before.Snapshot.SourceID)
+	require.NoError(t, err)
+	require.NotEmpty(t, beforeArtifacts)
 
 	require.NoError(t, proofs.PruneRunProofCatalog(ctx, e.req.RunID))
 	require.NoError(t, proofs.FlushProofCatalog(ctx))
 	after, err := FetchPublicMirrorBootstrap(ctx)
 	require.NoError(t, err)
-	assert.Less(t, after.ProofCatalogSummary.ArtifactCount, before.ProofCatalogSummary.ArtifactCount, "the pruned run's proofs leave the mirror catalog")
+	afterArtifacts, err := e.stack.Gateway.Service.GetPublicMirror().LayoutArtifacts(ctx, after.Snapshot.SourceID)
+	require.NoError(t, err)
+	assert.Less(t, len(afterArtifacts), len(beforeArtifacts), "the pruned bundle leaves the active set")
 }
 
 func TestCampaignProofPublisherRealStack_GatewayRefusesIncompleteProofWithPublicationContext(t *testing.T) {

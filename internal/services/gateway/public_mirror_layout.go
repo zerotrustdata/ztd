@@ -30,7 +30,7 @@ import (
 )
 
 // PublicMirrorServer serves the public layout: the pointer, digest-addressed
-// read model and proof objects, and paged history and live objects that the
+// read model, run bundles and fixtures, and paged history and live objects that the
 // bucket publisher and browsers read.
 var _ PublicLayoutSource = (*PublicMirrorServer)(nil)
 
@@ -47,7 +47,7 @@ const (
 )
 
 // publicMirrorLayoutCache is the layout state one mirror keeps: the signer
-// and last served pointer, and the memoized proof catalog per source. The zero
+// and last served pointer, and retained read models. The zero
 // value is ready to use.
 type publicMirrorLayoutCache struct {
 	// pointerMu orders pointer composition, signing, and memoization so
@@ -58,9 +58,6 @@ type publicMirrorLayoutCache struct {
 	// the revision, generation time, and signature cleared.
 	pointer        models.PublicFeedPointer
 	pointerContent models.PublicFeedPointer
-
-	catalogMu sync.Mutex
-	catalogs  map[string]publicLayoutCatalogMemo
 
 	// offlineBootstraps holds the read model of each source with no accepted batch.
 	// The mirror's writeMu guards it.
@@ -76,13 +73,6 @@ type publicLayoutReadModel struct {
 	digest    string
 	gzipBytes []byte
 	expiresAt time.Time
-}
-
-// publicLayoutCatalogMemo is the last catalog built for one source and the
-// proof root it was built from.
-type publicLayoutCatalogMemo struct {
-	root    string
-	catalog PublicLayoutCatalog
 }
 
 // publicEvaluationSummaryRow decodes the fields of an explorer summary that
@@ -165,15 +155,15 @@ func (m *PublicMirrorServer) LayoutState(ctx context.Context, requestedSource st
 		pointer.WithdrawalDigest = readModel.withdrawalDigest
 		pointer.HistoryFirstSequence = summary.RetainedFromSequence
 	}
+	root := ""
 	head, found, err := m.store.ProofHead(ctx, sourceID)
 	if err != nil {
 		return PublicLayoutState{}, fmt.Errorf("mirror layout: read proof head: %w", err)
 	}
 	if found {
-		pointer.ProofRootSHA256 = head.ProofRootSHA256
-		pointer.ProofSegmentHead = head.SegmentIndex
+		root = head.ProofRootSHA256
 	}
-	return PublicLayoutState{Pointer: pointer, ReadModelGzip: readModel.gzipBytes, ActiveRuns: runs}, nil
+	return PublicLayoutState{Pointer: pointer, ProofRootSHA256: root, ReadModelGzip: readModel.gzipBytes, ActiveRuns: runs}, nil
 }
 
 // LayoutDatasetsSince returns the datasets of current records accepted after sequence.
@@ -181,108 +171,22 @@ func (m *PublicMirrorServer) LayoutDatasetsSince(ctx context.Context, sourceID s
 	return m.store.snapshotDatasetsSince(ctx, sourceID, after)
 }
 
-// LayoutProofCatalog returns the proof catalog at the current proof root. The
-// bytes are memoized per source and rebuilt only when the root changes.
-func (m *PublicMirrorServer) LayoutProofCatalog(ctx context.Context, sourceID string) (PublicLayoutCatalog, error) {
-	head, found, err := m.store.ProofHead(ctx, sourceID)
+// LayoutArtifacts selects UI artifacts from the source's internal active catalog.
+// Historical private artifact metadata is never encoded for the public layout.
+func (m *PublicMirrorServer) LayoutArtifacts(ctx context.Context, sourceID string) ([]models.PublicProofCatalogEntry, error) {
+	catalog, found, err := m.store.ProofManifest(ctx, sourceID)
 	if err != nil {
-		return PublicLayoutCatalog{}, fmt.Errorf("mirror layout: read proof head: %w", err)
+		return nil, fmt.Errorf("mirror layout: read internal artifacts: %w", err)
 	}
-	currentRoot := ""
+	entries := []models.PublicProofCatalogEntry{}
 	if found {
-		currentRoot = head.ProofRootSHA256
-	}
-	m.layout.catalogMu.Lock()
-	defer m.layout.catalogMu.Unlock()
-	if memo, ok := m.layout.catalogs[sourceID]; ok && memo.root == currentRoot {
-		return memo.catalog, nil
-	}
-
-	catalog := models.PublicProofCatalog{
-		SchemaVersion: constants.PublicProofCatalogSchemaVersion,
-		Entries:       []models.PublicProofCatalogEntry{},
-	}
-	root := ""
-	manifest, hasManifest, err := m.store.ProofManifest(ctx, sourceID)
-	if err != nil {
-		return PublicLayoutCatalog{}, fmt.Errorf("mirror layout: read proof manifest: %w", err)
-	}
-	if hasManifest {
-		catalog = proofCatalogFromManifest(manifest)
-		root = manifest.ProofRootSHA256
-	}
-	if catalog.Entries == nil {
-		catalog.Entries = []models.PublicProofCatalogEntry{}
-	}
-	body, err := json.Marshal(catalog)
-	if err != nil {
-		return PublicLayoutCatalog{}, fmt.Errorf("mirror layout: encode proof catalog: %w", err)
-	}
-	gzipped, err := publicLayoutGzip(body)
-	if err != nil {
-		return PublicLayoutCatalog{}, err
-	}
-	sum := sha256.Sum256(body)
-	result := PublicLayoutCatalog{SHA256: hex.EncodeToString(sum[:]), Gzip: gzipped, Entries: catalog.Entries}
-	if m.layout.catalogs == nil {
-		m.layout.catalogs = make(map[string]publicLayoutCatalogMemo)
-	}
-	m.layout.catalogs[sourceID] = publicLayoutCatalogMemo{root: root, catalog: result}
-	return result, nil
-}
-
-// LayoutProofHead returns proof-head.json, and false when the source has no
-// proof manifest.
-func (m *PublicMirrorServer) LayoutProofHead(ctx context.Context, sourceID string) ([]byte, bool, error) {
-	head, found, err := m.store.ProofHead(ctx, sourceID)
-	if err != nil {
-		return nil, false, fmt.Errorf("mirror layout: read proof head: %w", err)
-	}
-	if !found {
-		return nil, false, nil
-	}
-	head.SigningPublicKey = m.fillProofSigningKey(sourceID, head.SigningKeyID, head.SigningPublicKey)
-	body, err := json.Marshal(head)
-	if err != nil {
-		return nil, false, fmt.Errorf("mirror layout: encode proof head: %w", err)
-	}
-	return body, true, nil
-}
-
-// LayoutSegmentChunk returns the gzipped proof segment JSONL for one chunk.
-func (m *PublicMirrorServer) LayoutSegmentChunk(ctx context.Context, sourceID string, first int64) ([]byte, bool, error) {
-	gzipped, _, found, err := m.layoutSegmentChunk(ctx, sourceID, first)
-	return gzipped, found, err
-}
-
-// layoutSegmentChunk also reports how many segments the chunk holds, so the
-// route can tell a full, immutable chunk from one that is still growing.
-func (m *PublicMirrorServer) layoutSegmentChunk(ctx context.Context, sourceID string, first int64) ([]byte, int, bool, error) {
-	if !publicLayoutChunkStart(first, constants.PublicLayoutSegmentChunkSize) {
-		return nil, 0, false, nil
-	}
-	segments, err := m.store.proofSegmentsInRange(ctx, sourceID, first, first+constants.PublicLayoutSegmentChunkSize)
-	if err != nil {
-		return nil, 0, false, err
-	}
-	if len(segments) == 0 {
-		return nil, 0, false, nil
-	}
-	var lines bytes.Buffer
-	for index := range segments {
-		segments[index].SigningPublicKey = m.fillProofSigningKey(segments[index].SourceID, segments[index].SigningKeyID, segments[index].SigningPublicKey)
-		line, err := json.Marshal(segments[index])
-		if err != nil {
-			return nil, 0, false, fmt.Errorf("mirror layout: encode proof segment %d: %w", segments[index].SegmentIndex, err)
+		for _, entry := range catalog.Artifacts {
+			if _, allowed := publicLayoutArtifactKey(entry); allowed {
+				entries = append(entries, entry)
+			}
 		}
-		lines.Write(line)
-		lines.WriteByte('\n')
 	}
-	gzipped, err := publicLayoutGzip(lines.Bytes())
-	if err != nil {
-		return nil, 0, false, err
-	}
-	return gzipped, len(segments), true, nil
+	return entries, nil
 }
 
 // LayoutHistoryPage returns one gzipped history page covering
@@ -552,9 +456,6 @@ var publicMirrorLayoutReadPrefixes = []string{
 	"/" + constants.PublicLayoutReadModelPrefix,
 	"/" + constants.PublicLayoutRunsPrefix,
 	"/" + constants.PublicLayoutFixturesPrefix,
-	"/" + constants.PublicLayoutProofCatalogPrefix,
-	"/" + constants.PublicLayoutProofMetaPrefix,
-	"/" + constants.PublicLayoutProofSegmentsPrefix,
 	"/" + constants.PublicLayoutHistoryPrefix,
 	"/" + constants.PublicLayoutLiveRunsPrefix,
 }
@@ -563,7 +464,7 @@ var publicMirrorLayoutReadPrefixes = []string{
 // read route, so it gets the same CORS and rate limit as the other reads.
 func publicMirrorLayoutReadPath(requestPath string) bool {
 	switch requestPath {
-	case "/" + constants.PublicLayoutPointerKey, "/" + constants.PublicLayoutProofHeadKey, "/" + constants.PublicLayoutLiveStatusKey:
+	case "/" + constants.PublicLayoutPointerKey, "/" + constants.PublicLayoutLiveStatusKey:
 		return true
 	}
 	for _, prefix := range publicMirrorLayoutReadPrefixes {
@@ -634,14 +535,6 @@ func (m *PublicMirrorServer) handleLayoutPointer(w http.ResponseWriter, r *http.
 		return
 	}
 	pointer := state.Pointer
-	if pointer.ProofRootSHA256 != "" {
-		catalog, err := m.LayoutProofCatalog(r.Context(), sourceID)
-		if err != nil {
-			m.writeStoreUnavailable(w, "mirror: read layout proof catalog", err)
-			return
-		}
-		pointer.ProofCatalogSHA256 = catalog.SHA256
-	}
 	content := publicPointerContent(pointer)
 	if content != m.layout.pointerContent {
 		pointer.Revision = nextPublicFeedPointerRevision(m.layout.pointer.Revision, time.Now())
@@ -695,126 +588,6 @@ func (m *PublicMirrorServer) handleLayoutReadModel(w http.ResponseWriter, r *htt
 		return
 	}
 	m.writePublicLayoutBody(w, constants.HeaderValueApplicationJSON, "gzip", constants.PublicLayoutCacheImmutable, cached.gzipBytes)
-}
-
-// handleLayoutProofCatalog serves proof-catalog/<sha>.json.gz for the current
-// catalog digest.
-func (m *PublicMirrorServer) handleLayoutProofCatalog(w http.ResponseWriter, r *http.Request) {
-	if !publicLayoutGET(w, r) {
-		return
-	}
-	name, ok := publicLayoutName(r.URL.Path, "/"+constants.PublicLayoutProofCatalogPrefix, constants.PublicLayoutJSONGzipSuffix)
-	sourceID, hasManifest, err := m.resolveProofManifestSource(r.Context(), r.URL.Query().Get("source"))
-	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: resolve layout proof catalog source", err)
-		return
-	}
-	if !ok || !hasManifest {
-		http.NotFound(w, r)
-		return
-	}
-	catalog, err := m.LayoutProofCatalog(r.Context(), sourceID)
-	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read layout proof catalog", err)
-		return
-	}
-	if name != catalog.SHA256 {
-		http.NotFound(w, r)
-		return
-	}
-	m.writePublicLayoutBody(w, constants.HeaderValueApplicationJSON, "gzip", constants.PublicLayoutCacheImmutable, catalog.Gzip)
-}
-
-// handleLayoutProofMeta serves one active catalog entry by artifact ID. A
-// withdrawn, unknown, or malformed ID is not found.
-func (m *PublicMirrorServer) handleLayoutProofMeta(w http.ResponseWriter, r *http.Request) {
-	if !publicLayoutGET(w, r) {
-		return
-	}
-	name, ok := publicLayoutName(r.URL.Path, "/"+constants.PublicLayoutProofMetaPrefix, constants.PublicLayoutJSONSuffix)
-	if !ok || !validPublicProofArtifactID(name) {
-		http.NotFound(w, r)
-		return
-	}
-	sourceID, hasManifest, err := m.resolveProofManifestSource(r.Context(), r.URL.Query().Get("source"))
-	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: resolve proof meta source", err)
-		return
-	}
-	if !hasManifest {
-		http.NotFound(w, r)
-		return
-	}
-	entry, found, err := m.store.proofCatalogEntry(r.Context(), sourceID, name)
-	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read proof meta", err)
-		return
-	}
-	if !found {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set(constants.HeaderCacheControl, constants.PublicLayoutCacheImmutable)
-	m.writeJSON(w, http.StatusOK, entry)
-}
-
-// handleLayoutProofHead serves proof-head.json.
-func (m *PublicMirrorServer) handleLayoutProofHead(w http.ResponseWriter, r *http.Request) {
-	if !publicLayoutGET(w, r) {
-		return
-	}
-	sourceID, hasManifest, err := m.resolveProofManifestSource(r.Context(), r.URL.Query().Get("source"))
-	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: resolve layout proof head source", err)
-		return
-	}
-	if !hasManifest {
-		http.NotFound(w, r)
-		return
-	}
-	body, found, err := m.LayoutProofHead(r.Context(), sourceID)
-	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read layout proof head", err)
-		return
-	}
-	if !found {
-		http.NotFound(w, r)
-		return
-	}
-	m.writePublicLayoutBody(w, constants.HeaderValueApplicationJSON, "", constants.PublicLayoutCacheProofHead, body)
-}
-
-// handleLayoutProofSegments serves proof-segments/<first>.jsonl.gz. A full
-// chunk never changes; a partial one is the chain tail and expires.
-func (m *PublicMirrorServer) handleLayoutProofSegments(w http.ResponseWriter, r *http.Request) {
-	if !publicLayoutGET(w, r) {
-		return
-	}
-	name, ok := publicLayoutName(r.URL.Path, "/"+constants.PublicLayoutProofSegmentsPrefix, constants.PublicLayoutJSONLGzipSuffix)
-	first, indexOK := publicLayoutIndex(name)
-	sourceID, hasManifest, err := m.resolveProofManifestSource(r.Context(), r.URL.Query().Get("source"))
-	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: resolve layout proof segments source", err)
-		return
-	}
-	if !ok || !indexOK || !hasManifest {
-		http.NotFound(w, r)
-		return
-	}
-	body, count, found, err := m.layoutSegmentChunk(r.Context(), sourceID, first)
-	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read layout proof segments", err)
-		return
-	}
-	if !found {
-		http.NotFound(w, r)
-		return
-	}
-	cacheControl := constants.PublicLayoutCacheTail
-	if count == constants.PublicLayoutSegmentChunkSize {
-		cacheControl = constants.PublicLayoutCacheImmutable
-	}
-	m.writePublicLayoutBody(w, constants.HeaderValueApplicationNDJSON, "gzip", cacheControl, body)
 }
 
 // handleLayoutHistory serves history/<first>.json.gz.

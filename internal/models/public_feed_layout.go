@@ -53,19 +53,16 @@ type PublicBucketStatus struct {
 }
 
 // PublicFeedPointer is pointer.json: the one mutable object that names the
-// current digest-addressed read model and proof catalog. It is written last, so
+// current digest-addressed read model. It is written last, so
 // a partial upload never goes live. Digests cover uncompressed bytes, which is
 // what a browser can hash after transport decoding.
 type PublicFeedPointer struct {
 	SchemaVersion string `json:"schema_version"`
 	SourceID      string `json:"source_id"`
 	// Revision increases with every pointer a source writes.
-	Revision           int64  `json:"revision"`
-	ReadModelSHA256    string `json:"read_model_sha256"`
-	ProofCatalogSHA256 string `json:"proof_catalog_sha256,omitempty"`
-	ProofRootSHA256    string `json:"proof_root_sha256,omitempty"`
-	ProofSegmentHead   int64  `json:"proof_segment_head"`
-	HighWaterSequence  int64  `json:"high_water_sequence"`
+	Revision          int64  `json:"revision"`
+	ReadModelSHA256   string `json:"read_model_sha256"`
+	HighWaterSequence int64  `json:"high_water_sequence"`
 	// HistoryFirstSequence is the first retained sequence of the signed batch chain.
 	HistoryFirstSequence int64  `json:"history_first_sequence"`
 	FeedChainHash        string `json:"feed_chain_hash"`
@@ -118,11 +115,12 @@ func SignPublicFeedPointer(pointer PublicFeedPointer, key ed25519.PrivateKey, ke
 func VerifyPublicFeedPointer(pointer PublicFeedPointer, key ed25519.PublicKey) error {
 	if pointer.SchemaVersion != constants.PublicFeedPointerSchemaVersion || pointer.SourceID == "" || pointer.Revision <= 0 ||
 		!validProofHash(pointer.ReadModelSHA256) || !validProofHash(pointer.FeedChainHash) ||
-		(pointer.ProofCatalogSHA256 != "" && !validProofHash(pointer.ProofCatalogSHA256)) ||
-		(pointer.ProofRootSHA256 != "" && !validProofHash(pointer.ProofRootSHA256)) ||
 		(pointer.WithdrawalDigest != "" && !validProofHash(pointer.WithdrawalDigest)) ||
-		pointer.HighWaterSequence < 0 || pointer.ProofSegmentHead < 0 || pointer.GeneratedAt.IsZero() || pointer.SigningKeyID == "" {
+		pointer.HighWaterSequence < 0 || pointer.HistoryFirstSequence < 0 || pointer.GeneratedAt.IsZero() || !validProofHash(pointer.SigningKeyID) {
 		return constants.ErrPublicFeedPointerInvalid
+	}
+	if len(key) != ed25519.PublicKeySize || PublicProofSigningKeyID(key) != pointer.SigningKeyID {
+		return constants.ErrPublicFeedSignatureInvalid
 	}
 	if pointer.SigningPublicKey != "" {
 		published, err := DecodePublicProofSigningKey(pointer.SigningPublicKey)

@@ -579,9 +579,7 @@ func TestPublicationRealStack_DeferredPublishDeliversEventsBeforeAuditProof(t *t
 	out, err = env.run(t, "runs", "publish", runID)
 	require.NoError(t, err, out)
 
-	bootstrap, err := gwremote.FetchPublicMirrorBootstrap(t.Context())
-	require.NoError(t, err)
-	assert.Positive(t, bootstrap.ProofCatalogSummary.ArtifactCount, "the deferred publish ingests the audit proofs")
+	assert.NotEmpty(t, publicationLayoutArtifacts(t, run), "the deferred publish ingests the public UI artifacts")
 	state := loadPublicationState(t, run, runID)
 	for _, assignment := range runAssignments(t, run, runID) {
 		assert.NotEmpty(t, state.PublishedProofArtifacts[assignment.GetAssignmentId()].DatabaseSHA256,
@@ -697,18 +695,15 @@ func TestPublicationRealStack_CatchUpSkipsProofRebuildWhenHashesAreRecorded(t *t
 	out, err := env.run(t, "runs", "publish", runID)
 	require.NoError(t, err, out)
 
-	bootstrap, err := gwremote.FetchPublicMirrorBootstrap(t.Context())
+	before, err := run.stack.Gateway.Service.GetPublicMirror().LayoutHead(t.Context(), "")
 	require.NoError(t, err)
-	require.Positive(t, bootstrap.ProofCatalogSummary.ArtifactCount, "the first publish ingests the audit proofs")
-	require.NotNil(t, bootstrap.ProofCatalogSummary.LastGeneratedAt)
-	ingestedAt := *bootstrap.ProofCatalogSummary.LastGeneratedAt
-
+	require.NotEmpty(t, before.ProofRootSHA256)
 	out, err = env.run(t, "runs", "publish", runID)
 	require.NoError(t, err, out)
-	bootstrap, err = gwremote.FetchPublicMirrorBootstrap(t.Context())
+	after, err := run.stack.Gateway.Service.GetPublicMirror().LayoutHead(t.Context(), "")
 	require.NoError(t, err)
-	require.NotNil(t, bootstrap.ProofCatalogSummary.LastGeneratedAt)
-	assert.True(t, ingestedAt.Equal(*bootstrap.ProofCatalogSummary.LastGeneratedAt), "a catch-up with every hash recorded does not rebuild the proof catalog")
+	assert.Equal(t, before.ProofRootSHA256, after.ProofRootSHA256, "recorded hashes avoid rebuilding the internal proof log")
+
 }
 
 func TestPublicationRealStack_CatchUpRebuildsProofWhenTraceOrFixtureIsUnpublished(t *testing.T) {
@@ -746,10 +741,8 @@ func TestPublicationRealStack_CatchUpRebuildsProofWhenTraceOrFixtureIsUnpublishe
 			runID := onlyRunID(t, run)
 			out, err := env.run(t, "runs", "publish", runID)
 			require.NoError(t, err, out)
-			bootstrap, err := gwremote.FetchPublicMirrorBootstrap(t.Context())
+			before, err := run.stack.Gateway.Service.GetPublicMirror().LayoutHead(t.Context(), "")
 			require.NoError(t, err)
-			require.NotNil(t, bootstrap.ProofCatalogSummary.LastGeneratedAt)
-			before := *bootstrap.ProofCatalogSummary.LastGeneratedAt
 
 			assignments := runAssignments(t, run, runID)
 			assignmentID := assignments[0].GetAssignmentId()
@@ -775,10 +768,9 @@ func TestPublicationRealStack_CatchUpRebuildsProofWhenTraceOrFixtureIsUnpublishe
 
 			out, err = env.run(t, "runs", "publish", runID)
 			require.NoError(t, err, out)
-			bootstrap, err = gwremote.FetchPublicMirrorBootstrap(t.Context())
+			after, err := run.stack.Gateway.Service.GetPublicMirror().LayoutHead(t.Context(), "")
 			require.NoError(t, err)
-			require.NotNil(t, bootstrap.ProofCatalogSummary.LastGeneratedAt)
-			assert.False(t, before.Equal(*bootstrap.ProofCatalogSummary.LastGeneratedAt), "the proof catalog is rebuilt and republished")
+			assert.NotEqual(t, before.ProofRootSHA256, after.ProofRootSHA256, "the rebuilt evidence changes the internal proof head")
 			tt.check(t, loadPublicationState(t, run, runID).PublishedProofArtifacts[assignmentID])
 		})
 	}
@@ -795,9 +787,7 @@ func TestPublicationRealStack_ProofIsIngestedBeforeResultsAndTheMirrorServesIt(t
 	require.NoError(t, err, out)
 	// The mirror push is deferred during catch-up and flushed before the command
 	// returns, so the proof catalog is served once publish returns.
-	bootstrap, err := gwremote.FetchPublicMirrorBootstrap(t.Context())
-	require.NoError(t, err)
-	assert.Positive(t, bootstrap.ProofCatalogSummary.ArtifactCount, "the flushed proof catalog is served by the mirror")
+	assert.NotEmpty(t, publicationLayoutArtifacts(t, run), "the public UI artifacts are available after the flush")
 
 	projections := mirrorProjections(t)
 	for _, assignment := range assignments {
@@ -1360,4 +1350,13 @@ type publicationAssignmentRow struct {
 	AssignmentID       string                       `json:"assignment_id"`
 	VerificationStatus string                       `json:"verification_status"`
 	Metadata           *publicationVerificationMeta `json:"verification_metadata"`
+}
+
+func publicationLayoutArtifacts(t *testing.T, run *realStackRun) []models.PublicProofCatalogEntry {
+	t.Helper()
+	bootstrap, err := gwremote.FetchPublicMirrorBootstrap(t.Context())
+	require.NoError(t, err)
+	artifacts, err := run.stack.Gateway.Service.GetPublicMirror().LayoutArtifacts(t.Context(), bootstrap.Snapshot.SourceID)
+	require.NoError(t, err)
+	return artifacts
 }

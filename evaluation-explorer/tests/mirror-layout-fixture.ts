@@ -30,7 +30,6 @@ export interface LayoutMirror {
   liveSnapshot?: FeedSnapshot;
   /** Live run bundle bytes by run id. A run absent here is a 404. */
   liveBundles: Map<string, Uint8Array>;
-  proofArtifactCount?: number;
 }
 
 export function sha256(bytes: string | Uint8Array): string {
@@ -70,18 +69,17 @@ export function readModelBody(mirror: LayoutMirror): string {
     source_freshness: mirror.snapshot.freshness,
     recent_projections: mirror.recent,
     task_index: mirror.taskIndex,
-    proof_catalog_summary: { artifact_count: mirror.proofArtifactCount ?? 0, total_byte_size: 0 },
+    schema_version: '2.0.0',
     generated_at: mirror.snapshot.generated_at,
   });
 }
 
 export function pointerOf(mirror: LayoutMirror) {
   return {
-    schema_version: '1.0.0',
+    schema_version: '2.0.0',
     source_id: mirror.snapshot.source_id,
     revision: 1,
     read_model_sha256: sha256(readModelBody(mirror)),
-    proof_segment_head: 0,
     high_water_sequence: mirror.snapshot.high_water_sequence,
     history_first_sequence: 1,
     feed_chain_hash: mirror.snapshot.feed_chain_hash,

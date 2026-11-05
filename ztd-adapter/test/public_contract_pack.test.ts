@@ -35,10 +35,6 @@ describe('public spectator contract pack', () => {
       '/live/runs/{run_id}.jsonl.gz',
       '/live/status.json',
       '/pointer.json',
-      '/proof-catalog/{proof_catalog_sha256}.json.gz',
-      '/proof-head.json',
-      '/proof-meta/{sha256}.json',
-      '/proof-segments/{first_index}.jsonl.gz',
       '/runs/{sha256}.jsonl.gz',
       '/fixtures/{sha256}',
       '/read-model/{read_model_sha256}.json.gz',
@@ -66,8 +62,7 @@ describe('public spectator contract pack', () => {
 
   it('describes a proof head without duplicating artifact entries', () => {
     const head = {
-      schema_version: '1.0.0', source_id: 'source', segment_index: 2,
-      proof_root_sha256: 'a'.repeat(64), campaign_id: 'campaign', campaign_revision: 'revision',
+      schema_version: '1.0.0', source_id: 'source', segment_index: 2, proof_root_sha256: 'a'.repeat(64), campaign_id: 'campaign', campaign_revision: 'revision',
       verified_index_generation_hash: 'b'.repeat(64), verification_ok: true, artifact_count: 128,
       verifier_instructions: 'Verify the signed log.', generated_at: '2026-10-25T00:00:00Z',
       signing_key_id: 'key', signature: 'c'.repeat(128),
@@ -83,10 +78,9 @@ describe('public spectator contract pack', () => {
   it('describes typed signed logs including withdrawal-only segments', () => {
     const segment = {
       schema_version: '1.0.0', source_id: 'source', segment_index: 2,
-      previous_root: 'a'.repeat(64), verification_ok: true,
+      previous_root: 'a'.repeat(64), proof_root_sha256: 'c'.repeat(64), verification_ok: true,
       withdrawn_artifact_ids: ['b'.repeat(64)],
-      generated_at: '2026-10-17T00:00:00Z', signing_key_id: 'key',
-      proof_root_sha256: 'c'.repeat(64), signature: 'd'.repeat(128),
+      generated_at: '2026-10-17T00:00:00Z', signing_key_id: 'key', signature: 'd'.repeat(128),
     };
     const response = { schema_version: '1.0.0', source_id: 'source', segments: [segment] };
     expect(isPublicProofSegmentsResponse(response)).toBe(true);
@@ -94,9 +88,9 @@ describe('public spectator contract pack', () => {
     const instructions = readFileSync(join(publicPack, 'offline-verifier.md'), 'utf8');
     expect(instructions).toContain('verify-proof --segments');
     expect(instructions).toContain('--key-registry');
-    expect(instructions).toContain('nonzero `segment_index`');
+    expect(instructions).toContain('assignment_audit_slice');
     expect(instructions).toContain('--pointer pointer.json');
-    expect(instructions).toContain('gunzip -c');
+    expect(instructions).toContain('--read-model read-model.json.gz');
   });
 
   it('ships structurally valid fixtures with verifiable batch hashes and signatures', () => {

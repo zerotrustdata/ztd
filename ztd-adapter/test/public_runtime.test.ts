@@ -58,10 +58,6 @@ describe('public spectator runtime boundary', () => {
     expect(fetchImpl).toHaveBeenLastCalledWith(`https://feed.example.com/runs/${'a'.repeat(64)}.jsonl.gz`, expect.objectContaining({ method: 'GET', credentials: 'omit' }));
     await publicFetch({ endpoint: 'fixture', digest: 'b'.repeat(64) });
     expect(fetchImpl).toHaveBeenLastCalledWith(`https://feed.example.com/fixtures/${'b'.repeat(64)}`, expect.objectContaining({ method: 'GET', credentials: 'omit' }));
-    await publicFetch({ endpoint: 'proofHead' });
-    expect(fetchImpl).toHaveBeenLastCalledWith('https://feed.example.com/proof-head.json', expect.objectContaining({ method: 'GET', credentials: 'omit' }));
-    await publicFetch({ endpoint: 'proofSegments', first: 1001 });
-    expect(fetchImpl).toHaveBeenLastCalledWith('https://feed.example.com/proof-segments/1001.jsonl.gz', expect.objectContaining({ method: 'GET', credentials: 'omit' }));
     await publicFetch({ endpoint: 'history', first: 1 });
     expect(fetchImpl).toHaveBeenLastCalledWith('https://feed.example.com/history/1.json.gz', expect.objectContaining({ method: 'GET', credentials: 'omit' }));
     for (const call of fetchImpl.mock.calls) expect(String(call[0])).not.toContain('?');
@@ -79,11 +75,11 @@ describe('public spectator runtime boundary', () => {
       { endpoint: 'runBundle', digest: `${digest}.jsonl.gz` },
       { endpoint: 'fixture', digest: `${digest}?source=x` },
       { endpoint: 'readModel', digest: `${'a'.repeat(63)}/` },
-      { endpoint: 'proofMeta', digest: `../${'a'.repeat(61)}` },
-      { endpoint: 'proofCatalog', digest: `${digest}?source=x` },
-      { endpoint: 'proofCatalog', digest: 'a'.repeat(63) },
-      { endpoint: 'proofSegments', first: 0 },
-      { endpoint: 'proofSegments', first: '01' },
+      { endpoint: 'fixture', digest: `../${'a'.repeat(61)}` },
+      { endpoint: 'readModel', digest: `${digest}?source=x` },
+      { endpoint: 'readModel', digest: 'a'.repeat(63) },
+      { endpoint: 'history', first: 0 },
+      { endpoint: 'history', first: '01' },
       { endpoint: 'history', first: 1.5 },
       { endpoint: 'history', first: 1e21 },
       { endpoint: 'history', first: '1?cursor=2' },

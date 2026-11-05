@@ -36,17 +36,7 @@ describe('AppFooter', () => {
     expect(screen.queryByRole('link', { name: /Proof segments/ })).not.toBeInTheDocument();
   });
 
-  it('offers the proof head once proofs are published', async () => {
-    evalStore.initBootstrap({
-      protocol_version: '1.0.0', source_id: 'source-a', high_water_sequence: 0, feed_chain_hash: '0'.repeat(64),
-      withdrawal_digest: '0'.repeat(64), batch_count: 0, generated_at: '2026-09-20T00:00:00Z', freshness: 'active',
-    }, [], 3);
-    render(<MemoryRouter><AppFooter /></MemoryRouter>);
-    expect(await screen.findByRole('link', { name: /Proof head/ })).toHaveAttribute('href', 'https://mirror.example/proof-head.json');
-    expect(screen.queryByRole('link', { name: /Proof catalog/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /Proof segments/ })).not.toBeInTheDocument();
-    evalStore.loadFixtures([], []);
-  });
+
 });
 
 describe('AppFooter feed telemetry', () => {

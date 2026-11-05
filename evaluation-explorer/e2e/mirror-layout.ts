@@ -46,7 +46,7 @@ export async function installMirrorLayout(page: Page, options: MirrorLayoutOptio
     source_freshness: 'active',
     recent_projections: records.map((record, index) => ({ ...(record as object), sequence: index + 1 })).reverse(),
     task_index: options.taskIndex ?? [],
-    proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 },
+    schema_version: '2.0.0',
     generated_at: generatedAt,
   });
   const readModelSha256 = sha256(readModel);
@@ -56,7 +56,6 @@ export async function installMirrorLayout(page: Page, options: MirrorLayoutOptio
     source_id: sourceId,
     revision: 1,
     read_model_sha256: readModelSha256,
-    proof_segment_head: 0,
     high_water_sequence: snapshot.high_water_sequence,
     history_first_sequence: 1,
     feed_chain_hash: CHAIN_HASH,

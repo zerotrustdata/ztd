@@ -510,56 +510,6 @@ func readPublicFeedPointer(pointerPath string) (models.PublicFeedPointer, error)
 	return pointer, nil
 }
 
-// selectPointerVerificationKey resolves the key for a signed pointer with the
-// same rules as a proof segment: a pin for pointer.SigningKeyID wins, then the
-// pointer's own signing_public_key. A pin must equal a published key.
-func selectPointerVerificationKey(pointer models.PublicFeedPointer, pinned publicProofKeyRegistry) (ed25519.PublicKey, error) {
-	published := make(map[string]ed25519.PublicKey)
-	if pointer.SigningPublicKey != "" {
-		key, err := models.DecodePublicProofSigningKey(pointer.SigningPublicKey)
-		if err != nil || models.PublicProofSigningKeyID(key) != pointer.SigningKeyID {
-			return nil, constants.ErrPublicFeedPointerInvalid
-		}
-		published[pointer.SigningKeyID] = key
-	}
-	// selectSegmentVerificationKey only reads SourceID and SigningKeyID from the
-	// segment it is given, so a pointer's identity is passed through the same path.
-	identity := models.PublicProofManifestSegment{SourceID: pointer.SourceID, SigningKeyID: pointer.SigningKeyID}
-	key, err := selectSegmentVerificationKey(identity, pinned, published)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", constants.ErrPublicFeedSignatureInvalid, err)
-	}
-	return key, nil
-}
-
-// verifyPublicFeedPointerAgainstChain verifies a signed pointer and binds it to
-// a verified segment chain. The pointer must name the chain's source, its last
-// segment index, and its last segment root. Each is checked against what the
-// chain carries, so key rotation and source transitions need no special case.
-func verifyPublicFeedPointerAgainstChain(pointer models.PublicFeedPointer, chain publicProofChain, keyRegistry publicProofKeyRegistry) error {
-	if pointer.Signature == "" {
-		return fmt.Errorf("%w: pointer is unsigned", constants.ErrPublicFeedSignatureInvalid)
-	}
-	key, err := selectPointerVerificationKey(pointer, keyRegistry)
-	if err != nil {
-		return err
-	}
-	if err := models.VerifyPublicFeedPointer(pointer, key); err != nil {
-		return fmt.Errorf("public-feed: verify pointer: %w", err)
-	}
-	last := chain.Segments[len(chain.Segments)-1]
-	if chainSource := chain.Segments[0].SourceID; pointer.SourceID != chainSource {
-		return fmt.Errorf("%w: pointer source %s does not match chain source %s", constants.ErrPublicFeedPointerInvalid, pointer.SourceID, chainSource)
-	}
-	if pointer.ProofSegmentHead != last.SegmentIndex {
-		return fmt.Errorf("%w: pointer proof segment head %d does not match chain head %d", constants.ErrPublicFeedPointerInvalid, pointer.ProofSegmentHead, last.SegmentIndex)
-	}
-	if pointer.ProofRootSHA256 != last.ProofRootSHA256 {
-		return fmt.Errorf("%w: pointer proof root %s does not match chain head root %s", constants.ErrPublicFeedPointerInvalid, pointer.ProofRootSHA256, last.ProofRootSHA256)
-	}
-	return nil
-}
-
 // publicVerifyProofCmd verifies a chained proof manifest segment log and its
 // referenced proof artifacts offline: chain root continuity from zero hash,
 // recomputed segment roots, Ed25519 signatures, withdrawal exclusions, and
@@ -569,18 +519,37 @@ func publicVerifyProofCmd() *cobra.Command {
 	var artifactsPath string
 	var publicKeyHex string
 	var keyRegistryPath string
-	var pointerPath string
+	var pointerPath, readModelPath, bundlePath, runID string
 
 	cmd := &cobra.Command{
 		Use:   "verify-proof",
 		Short: "Verify a published proof package offline",
-		Long: `Recomputes the segment hash chain from the zero root, checks each Ed25519
-signature under that segment's signing_public_key, and hashes active artifacts.
---public-key and --key-registry are optional pins. The default command checks
-the published signatures and hash chain. It does not establish an out-of-band
-publisher identity. With --pointer, the downloaded signed pointer.json must
-verify and name the chain's source, head segment index, and head root.`,
+		Long: `With --pointer, --read-model, --bundle, --run, and --key-registry (or
+--public-key), authenticates the signed pointer, read model, and run bundle.
+If --artifacts is supplied, verifies each delivered digest-named file against
+that bundle's evidence bindings. Missing private files are not required.
+With --segments and --artifacts, verifies an exported internal proof log and
+its active artifacts. That mode does not establish publisher identity unless
+a trusted key is supplied.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if pointerPath != "" {
+				if segmentsPath != "" {
+					return constants.ErrPublicFeedPointerInvalid
+				}
+				root, err := verifyPointerRunBundle(pointerPath, readModelPath, bundlePath, runID, publicKeyHex, keyRegistryPath)
+				if err != nil {
+					return err
+				}
+				count, err := verifyDeliveredEvidence(artifactsPath, root.Assignments)
+				if err != nil {
+					return err
+				}
+				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Pointer and run bundle verified (revision %d, source %s, run %s, %d assignments, %d delivered files)\n", root.Pointer.Revision, root.Pointer.SourceID, runID, len(root.Assignments), count)
+				return err
+			}
+			if readModelPath != "" || bundlePath != "" || runID != "" {
+				return constants.ErrMissingRequiredField
+			}
 			if strings.TrimSpace(segmentsPath) == "" || strings.TrimSpace(artifactsPath) == "" {
 				return constants.ErrMissingRequiredField
 			}
@@ -595,17 +564,6 @@ verify and name the chain's source, head segment index, and head root.`,
 			chain, err := verifyPublicProofChain(segments, keyRegistry)
 			if err != nil {
 				return err
-			}
-			var pointer *models.PublicFeedPointer
-			if strings.TrimSpace(pointerPath) != "" {
-				decoded, err := readPublicFeedPointer(pointerPath)
-				if err != nil {
-					return err
-				}
-				if err := verifyPublicFeedPointerAgainstChain(decoded, chain, keyRegistry); err != nil {
-					return err
-				}
-				pointer = &decoded
 			}
 
 			for _, artifactID := range chain.ActiveIDs {
@@ -639,10 +597,7 @@ verify and name the chain's source, head segment index, and head root.`,
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Proof package verified (%d segments, %d active artifacts, root %s)\n", len(chain.Segments), len(chain.Active), last.ProofRootSHA256); err != nil {
 				return err
 			}
-			if pointer != nil {
-				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Pointer verified (revision %d, source %s)\n", pointer.Revision, pointer.SourceID)
-				return err
-			}
+
 			return nil
 		},
 	}
@@ -650,9 +605,10 @@ verify and name the chain's source, head segment index, and head root.`,
 	cmd.Flags().StringVar(&artifactsPath, "artifacts", "", "Path to directory containing proof artifact files")
 	cmd.Flags().StringVar(&publicKeyHex, "public-key", "", "Optional hex Ed25519 public key. When set, signatures must verify under this key")
 	cmd.Flags().StringVar(&keyRegistryPath, "key-registry", "", "Optional JSON file pinning key IDs to public key hex. When set, those keys override signing_public_key")
-	cmd.Flags().StringVar(&pointerPath, "pointer", "", "Optional path to a downloaded signed pointer.json bound to the verified chain")
-	_ = cmd.MarkFlagRequired("segments")
-	_ = cmd.MarkFlagRequired("artifacts")
+	cmd.Flags().StringVar(&pointerPath, "pointer", "", "Path to signed pointer.json for pointer-rooted verification")
+	cmd.Flags().StringVar(&readModelPath, "read-model", "", "Path to the pointer's read model (decoded JSON or gzip)")
+	cmd.Flags().StringVar(&bundlePath, "bundle", "", "Path to the digest-bound run bundle (.jsonl.gz)")
+	cmd.Flags().StringVar(&runID, "run", "", "Run ID whose summary binds the bundle")
 	return cmd
 }
 
@@ -688,37 +644,18 @@ func publicVerifyAgentTraceCmd() *cobra.Command {
 	return cmd
 }
 
-// publicVerifyAssignmentCmd verifies an assignment audit database offline. The
-// proof segment log is verified first. The database's SHA-256 must then be an
-// active artifact of that chain before the database's own live events are
-// checked against their record hashes and the header's run and assignment.
-// The database file is read once; the digest and the verified events both come
-// from those bytes.
+// publicVerifyAssignmentCmd authenticates the pointer-rooted run bundle before
+// trusting its database binding, then verifies the database's event hashes.
 func publicVerifyAssignmentCmd() *cobra.Command {
-	var dbPath string
-	var segmentsPath string
-	var publicKeyHex string
-	var keyRegistryPath string
-
+	var dbPath, pointerPath, readModelPath, bundlePath, runID, publicKeyHex, keyRegistryPath string
 	cmd := &cobra.Command{
 		Use:   "verify-assignment",
-		Short: "Verify an assignment audit database against its signed proof segments",
-		Long: `Verifies the segment log, requires the database SHA-256 to be an active
-artifact of that log, then checks the database's live events. The segment log
-supplies signing_public_key unless --public-key or --key-registry is set.`,
+		Short: "Verify an assignment audit database against a signed pointer and run bundle",
+		Long: `Authenticates the pointer with --key-registry or --public-key, checks the
+read model and run bundle digests, requires a matching assignment audit evidence
+binding, then verifies database event hashes and run, assignment, and source identity.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if strings.TrimSpace(dbPath) == "" || strings.TrimSpace(segmentsPath) == "" {
-				return constants.ErrMissingRequiredField
-			}
-			keyRegistry, err := loadPublicProofKeyRegistry(publicKeyHex, keyRegistryPath)
-			if err != nil {
-				return err
-			}
-			segments, err := readPublicProofSegments(segmentsPath)
-			if err != nil {
-				return err
-			}
-			chain, err := verifyPublicProofChain(segments, keyRegistry)
+			root, err := verifyPointerRunBundle(pointerPath, readModelPath, bundlePath, runID, publicKeyHex, keyRegistryPath)
 			if err != nil {
 				return err
 			}
@@ -727,23 +664,38 @@ supplies signing_public_key unless --public-key or --key-registry is set.`,
 				return fmt.Errorf("public-feed: read assignment audit db: %w", err)
 			}
 			digest := models.SHA256Hex(dbBytes)
-			if _, active := chain.Active[digest]; !active {
+			assignmentID := ""
+			for _, assignment := range root.Assignments {
+				for _, binding := range assignment.EvidenceBindings {
+					if binding.GetKind() == evaluation.AssignmentAuditSliceKind && binding.GetSha256() == digest {
+						assignmentID = assignment.AssignmentID
+					}
+				}
+			}
+			if assignmentID == "" {
 				return fmt.Errorf("%w: sha256 %s", constants.ErrPublicAssignmentAuditNotInProof, digest)
 			}
 			header, records, err := assignmentaudit.VerifyDatabase(shared.CommandContext(cmd), dbBytes)
 			if err != nil {
 				return fmt.Errorf("public-feed: verify assignment audit db: %w", err)
 			}
+			if header.RunID != runID || header.AssignmentID != assignmentID || header.SourceID != root.Pointer.SourceID {
+				return fmt.Errorf("%w: database identity differs from bound assignment", constants.ErrPublicAssignmentAuditNotInProof)
+			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Assignment audit verified (run %s, assignment %s, %d events, sha256 %s)\n", header.RunID, header.AssignmentID, len(records), digest)
 			return err
 		},
 	}
-	cmd.Flags().StringVar(&dbPath, "db", "", "Path to the assignment audit SQLite file")
-	cmd.Flags().StringVar(&segmentsPath, "segments", "", "Path to the chained proof-segments.jsonl file")
-	cmd.Flags().StringVar(&publicKeyHex, "public-key", "", "Optional hex Ed25519 public key. When set, signatures must verify under this key")
-	cmd.Flags().StringVar(&keyRegistryPath, "key-registry", "", "Optional JSON file pinning key IDs to public key hex. When set, those keys override signing_public_key")
-	_ = cmd.MarkFlagRequired("db")
-	_ = cmd.MarkFlagRequired("segments")
+	cmd.Flags().StringVar(&dbPath, "db", "", "Path to the delivered assignment audit SQLite file")
+	cmd.Flags().StringVar(&pointerPath, "pointer", "", "Path to signed pointer.json")
+	cmd.Flags().StringVar(&readModelPath, "read-model", "", "Path to the pointer's read model (decoded JSON or gzip)")
+	cmd.Flags().StringVar(&bundlePath, "bundle", "", "Path to the digest-bound run bundle (.jsonl.gz)")
+	cmd.Flags().StringVar(&runID, "run", "", "Run ID whose summary binds the bundle")
+	cmd.Flags().StringVar(&publicKeyHex, "public-key", "", "Trusted hex Ed25519 public key")
+	cmd.Flags().StringVar(&keyRegistryPath, "key-registry", "", "Trusted JSON mapping of key IDs to hex public keys")
+	for _, name := range []string{"db", "pointer", "read-model", "bundle", "run"} {
+		_ = cmd.MarkFlagRequired(name)
+	}
 	return cmd
 }
 

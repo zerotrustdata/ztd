@@ -274,7 +274,7 @@ func (e *mirrorTestEnv) getJSON(path string, target any) int {
 func TestPublicMirror_IngestHandlerRejectsReadRoutes(t *testing.T) {
 	env := newMirrorTestEnv(t)
 
-	for _, path := range []string{"/bootstrap", "/snapshot", "/history", "/proof-catalog", "/proof-head", "/proof-segments", "/proofs/unknown-artifact-id"} {
+	for _, path := range []string{"/bootstrap", "/snapshot", "/history", "/pointer.json", "/live/status.json"} {
 		t.Run(path, func(t *testing.T) {
 			request, requestErr := http.NewRequest(http.MethodGet, env.server.URL+path, nil)
 			require.NoError(t, requestErr)
@@ -1134,8 +1134,6 @@ func TestMirror_JSONReads_CompressGzipResponse(t *testing.T) {
 	require.NoError(t, json.NewDecoder(getGzip("/snapshot?source="+env.sourceID)).Decode(&snapshot))
 	assert.Equal(t, int64(1), snapshot.HighWaterSequence)
 
-	var catalog models.PublicProofCatalog
-	require.NoError(t, json.NewDecoder(getGzip("/proof-catalog?source="+env.sourceID)).Decode(&catalog))
 }
 
 func TestMirror_History_FiltersByRecordKindBeforePagination(t *testing.T) {
@@ -1601,11 +1599,7 @@ func TestMirror_ProofIngest_AuthenticatesValidatesAndAtomicallyStoresPackage(t *
 	assert.True(t, ingestResponse.Accepted)
 	assert.Equal(t, 1, ingestResponse.ArtifactCount)
 
-	response, err = env.client.Get(env.publicServer.URL + "/proofs/" + artifactID)
-	require.NoError(t, err)
-	stored, err := io.ReadAll(response.Body)
-	require.NoError(t, err)
-	require.NoError(t, response.Body.Close())
+	stored := readStoredMirrorProof(t, env.store, artifactID)
 	assert.Equal(t, content, stored)
 }
 
@@ -1663,11 +1657,7 @@ func TestMirror_ProofIngest_AcceptsIncrementalArtifactDelta(t *testing.T) {
 	require.NoError(t, response.Body.Close())
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 
-	response, err = env.client.Get(env.publicServer.URL + "/proofs/" + secondID)
-	require.NoError(t, err)
-	stored, err := io.ReadAll(response.Body)
-	require.NoError(t, err)
-	require.NoError(t, response.Body.Close())
+	stored := readStoredMirrorProof(t, env.store, secondID)
 	assert.Equal(t, secondContent, stored)
 }
 
@@ -1899,26 +1889,6 @@ func TestMirror_ProofRoot_AuthenticatesAndReportsStoredRoot(t *testing.T) {
 // TestMirror_ProofDownload_ServesContentAddressedArtifact verifies that the
 // mirror serves proof artifacts under content-addressed URLs with safe
 // headers.
-func TestMirror_ProofDownload_ServesContentAddressedArtifact(t *testing.T) {
-	env := newMirrorTestEnv(t)
-
-	content := []byte(`{"proof": "test"}`)
-	proofRequest := env.makeProofIngestRequest("proof.json", content)
-	require.NoError(t, env.mirror.storeProofPackage(context.Background(), proofRequest))
-	artifactID := proofRequest.Artifacts[0].ArtifactID
-
-	resp, err := env.client.Get(env.publicServer.URL + "/proofs/" + artifactID)
-	require.NoError(t, err)
-	defer resp.Body.Close()
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
-	assert.Contains(t, resp.Header.Get("Cache-Control"), "immutable")
-	assert.Contains(t, resp.Header.Get("Content-Disposition"), "proof.json")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	assert.Equal(t, content, body)
-}
 
 func TestMirror_RestartRecoversProofCatalogArtifactAndKeyRevocation(t *testing.T) {
 	env := newMirrorTestEnv(t)
@@ -1929,19 +1899,13 @@ func TestMirror_RestartRecoversProofCatalogArtifactAndKeyRevocation(t *testing.T
 	require.NoError(t, env.mirror.RevokeSourceKey(context.Background(), env.sourceID, env.keyID))
 
 	mirror2 := env.reopenMirror()
-	ingest2, public2 := newSplitMirrorServers(t, mirror2)
-	response, err := public2.Client().Get(public2.URL + "/proofs/" + artifactID)
-	require.NoError(t, err)
-	body, err := io.ReadAll(response.Body)
-	require.NoError(t, err)
-	require.NoError(t, response.Body.Close())
-	assert.Equal(t, http.StatusOK, response.StatusCode)
-	assert.Equal(t, content, body)
+	ingest2, _ := newSplitMirrorServers(t, mirror2)
+	assert.Equal(t, content, readStoredMirrorProof(t, env.store, artifactID))
 
 	batch := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"v": "1"}))}, constants.PublicFeedZeroHashHex)
 	requestBody, err := json.Marshal(models.PublicIngestRequest{Batch: batch})
 	require.NoError(t, err)
-	response, err = env.client.Post(ingest2.URL+"/ingest", "application/json", bytes.NewReader(requestBody))
+	response, err := env.client.Post(ingest2.URL+"/ingest", "application/json", bytes.NewReader(requestBody))
 	require.NoError(t, err)
 	var ingestResponse models.PublicIngestResponse
 	require.NoError(t, json.NewDecoder(response.Body).Decode(&ingestResponse))
@@ -2010,104 +1974,7 @@ func TestMirror_ProofDownload_Returns404ForUnknown(t *testing.T) {
 
 // TestMirror_ProofCatalog_ReturnsEntries verifies that the proof catalog
 // endpoint returns the stored catalog entries.
-func TestMirror_ProofCatalog_ReturnsEntries(t *testing.T) {
-	env := newMirrorTestEnv(t)
 
-	content := []byte(`{"proof": "test"}`)
-	proofRequest := env.makeProofIngestRequest("proof.json", content)
-	require.NoError(t, env.mirror.storeProofPackage(context.Background(), proofRequest))
-	artifactID := proofRequest.Artifacts[0].ArtifactID
-
-	var catalog models.PublicProofCatalog
-	status := env.getJSON("/proof-catalog?source="+env.sourceID, &catalog)
-	assert.Equal(t, http.StatusOK, status)
-	assert.Len(t, catalog.Entries, 1)
-	assert.Equal(t, artifactID, catalog.Entries[0].ArtifactID)
-}
-
-// TestMirror_ProofCatalog_ArtifactFilterReturnsOneEntry verifies that the
-// artifact parameter narrows the catalog to that entry, returns an empty
-// catalog for an unknown digest, and rejects a malformed one.
-func TestMirror_ProofCatalog_ArtifactFilterReturnsOneEntry(t *testing.T) {
-	env := newMirrorTestEnv(t)
-	first := env.makeProofIngestRequest("first.json", []byte(`{"proof":"first"}`))
-	require.NoError(t, env.mirror.storeProofPackage(context.Background(), first))
-	second := env.makeProofIngestRequest("second.json", []byte(`{"proof":"second"}`))
-	require.NoError(t, env.mirror.storeProofPackage(context.Background(), second))
-	artifactID := second.Artifacts[0].ArtifactID
-
-	var catalog models.PublicProofCatalog
-	require.Equal(t, http.StatusOK, env.getJSON("/proof-catalog?source="+env.sourceID+"&artifact="+artifactID, &catalog))
-	require.Len(t, catalog.Entries, 1)
-	assert.Equal(t, artifactID, catalog.Entries[0].ArtifactID)
-	assert.Equal(t, "second.json", catalog.Entries[0].Filename)
-
-	var unknown models.PublicProofCatalog
-	require.Equal(t, http.StatusOK, env.getJSON("/proof-catalog?source="+env.sourceID+"&artifact="+strings.Repeat("0", 64), &unknown))
-	assert.Empty(t, unknown.Entries)
-
-	assert.Equal(t, http.StatusBadRequest, env.getJSON("/proof-catalog?source="+env.sourceID+"&artifact=not-a-digest", nil))
-	assert.Equal(t, http.StatusBadRequest, env.getJSON("/proof-catalog?source="+env.sourceID+"&artifact=", nil))
-}
-
-// TestMirror_ProofCatalog_EmptyReturnsEmptyArray verifies that the proof
-// catalog endpoint returns an empty array when no proofs exist.
-func TestMirror_ProofCatalog_EmptyReturnsEmptyArray(t *testing.T) {
-	env := newMirrorTestEnv(t)
-	var catalog models.PublicProofCatalog
-	status := env.getJSON("/proof-catalog?source="+env.sourceID, &catalog)
-	assert.Equal(t, http.StatusOK, status)
-	assert.Empty(t, catalog.Entries)
-}
-
-// TestMirror_ProofHead_ReturnsLegacyHeader verifies that a legacy source
-// exposes its signing header without duplicating the catalog.
-func TestMirror_ProofHead_ReturnsLegacyHeader(t *testing.T) {
-	env := newMirrorTestEnv(t)
-	proofRequest := env.makeProofIngestRequest("proof.json", []byte(`{"proof":"test"}`))
-	require.NoError(t, env.mirror.storeProofPackage(context.Background(), proofRequest))
-
-	var result models.PublicProofHead
-	status := env.getJSON("/proof-head?source="+env.sourceID, &result)
-	assert.Equal(t, http.StatusOK, status)
-	assert.Equal(t, "c1", result.CampaignID)
-	assert.Equal(t, env.sourceID, result.SourceID)
-	assert.Zero(t, result.SegmentIndex)
-	assert.Equal(t, proofRequest.Manifest.Signature, result.Signature)
-	assert.Equal(t, proofRequest.Manifest.ArtifactCount, result.ArtifactCount)
-	assert.Equal(t, proofRequest.Manifest.ProofRootSHA256, result.ProofRootSHA256)
-}
-
-func TestMirror_ProofHead_ReadBoundary(t *testing.T) {
-	env := newMirrorTestEnv(t)
-	for _, tc := range []struct {
-		name   string
-		method string
-		path   string
-		status int
-	}{
-		{"no publications", http.MethodGet, "/proof-head", http.StatusNotFound},
-		{"unknown source", http.MethodGet, "/proof-head?source=unknown", http.StatusNotFound},
-		{"mutation rejected", http.MethodPost, "/proof-head", http.StatusMethodNotAllowed},
-		{"removed manifest route", http.MethodGet, "/proof-manifest", http.StatusNotFound},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			request, err := http.NewRequest(tc.method, env.publicServer.URL+tc.path, nil)
-			require.NoError(t, err)
-			response, err := env.client.Do(request)
-			require.NoError(t, err)
-			require.NoError(t, response.Body.Close())
-			assert.Equal(t, tc.status, response.StatusCode)
-		})
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Full ingest + read cycle test
-// ---------------------------------------------------------------------------
-
-// TestMirror_FullCycle_IngestThenRead verifies the complete cycle: ingest a
-// batch, then read it back through bootstrap, snapshot, and history.
 func TestMirror_FullCycle_IngestThenRead(t *testing.T) {
 	env := newMirrorTestEnv(t)
 
@@ -2262,7 +2129,7 @@ func TestMirror_RecordType_AcceptsKeyRevocationRecords(t *testing.T) {
 // endpoints reject POST requests.
 func TestMirror_MethodNotAllowed_RejectsPOSTOnReadEndpoints(t *testing.T) {
 	env := newMirrorTestEnv(t)
-	for _, path := range []string{"/bootstrap", "/snapshot", "/history", "/proof-catalog"} {
+	for _, path := range []string{"/bootstrap", "/snapshot", "/history"} {
 		resp, err := env.client.Post(env.publicServer.URL+path, "application/json", strings.NewReader("{}"))
 		require.NoError(t, err)
 		assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode, "path: %s", path)
@@ -2330,35 +2197,18 @@ func TestMirror_ContentHashMismatch_RejectsTamperedContentHash(t *testing.T) {
 // Bootstrap with proof catalog summary test
 // ---------------------------------------------------------------------------
 
-// TestMirror_Bootstrap_IncludesProofCatalogSummary verifies that the
-// bootstrap response includes the proof catalog summary when proofs exist.
-func TestMirror_Bootstrap_IncludesProofCatalogSummary(t *testing.T) {
+func TestMirror_Bootstrap_OmitsInternalProofMetadata(t *testing.T) {
 	env := newMirrorTestEnv(t)
-
-	// Ingest a batch.
-	records := []models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"v": "1"}))}
-	batch := env.buildBatch(records, constants.PublicFeedZeroHashHex)
-	_, resp := env.sendIngest(batch)
-	require.True(t, resp.Accepted)
-
-	// Store a proof artifact and catalog.
-	content := []byte(`{"proof": "test"}`)
-	proofRequest := env.makeProofIngestRequest("proof.json", content)
-	require.NoError(t, env.mirror.storeProofPackage(context.Background(), proofRequest))
-
-	var bootstrap models.PublicFeedBootstrap
-	env.getJSON("/bootstrap?source="+env.sourceID, &bootstrap)
-	assert.Equal(t, 1, bootstrap.ProofCatalogSummary.ArtifactCount)
-	assert.Equal(t, int64(len(content)), bootstrap.ProofCatalogSummary.TotalByteSize)
-	assert.NotNil(t, bootstrap.ProofCatalogSummary.LastGeneratedAt)
+	content := []byte(`{"private":"proof"}`)
+	require.NoError(t, env.mirror.storeProofPackage(t.Context(), env.makeProofIngestRequest("proof.json", content)))
+	bootstrap, err := env.mirror.currentBootstrap(t.Context(), env.sourceID)
+	require.NoError(t, err)
+	body, err := json.Marshal(bootstrap)
+	require.NoError(t, err)
+	assert.NotContains(t, string(body), "proof_catalog_summary")
+	assert.Equal(t, constants.PublicReadModelSchemaVersion, bootstrap.SchemaVersion)
 }
 
-// ---------------------------------------------------------------------------
-// History cursor format test
-// ---------------------------------------------------------------------------
-
-// TestMirror_History_CursorIsOpaqueSequence verifies that the cursor is the
-// last sequence number and can be used to fetch the next page.
 func TestMirror_History_CursorIsOpaqueSequence(t *testing.T) {
 	env := newMirrorTestEnv(t)
 
@@ -2578,38 +2428,20 @@ func TestMirror_Bootstrap_ETagInvalidatesFreshnessAndProofChanges(t *testing.T) 
 		assert.Equal(t, models.CampaignFreshnessIntentionallyStopped, body.Snapshot.Freshness)
 	})
 
-	t.Run("proof count and size change", func(t *testing.T) {
+	t.Run("internal proof changes leave read model cached", func(t *testing.T) {
 		env := newMirrorTestEnv(t)
-		records := []models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": "eval-run-1"}))}
-		_, ingestResp := env.sendIngest(env.buildBatch(records, constants.PublicFeedZeroHashHex))
-		require.True(t, ingestResp.Accepted)
-		content := []byte(`{"proof":"tiny"}`)
-		require.NoError(t, env.mirror.storeProofPackage(context.Background(), env.makeProofIngestRequest("proof.json", content)))
+		_, response := env.sendIngest(env.buildBatch([]models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{"kind": "catalog_snapshot", "dataset_id": "eval-run-1"}))}, constants.PublicFeedZeroHashHex))
+		require.True(t, response.Accepted)
 		first := bootstrapResponse(t, env, "")
-		firstETag := first.Header.Get("ETag")
-		first.Body.Close()
-		largerContent := []byte(`{"proof":"proof-content-with-substantially-more-bytes"}`)
-		require.NoError(t, env.mirror.storeProofPackage(context.Background(), env.makeProofIngestRequest("proof.json", largerContent)))
-		second := bootstrapResponse(t, env, firstETag)
+		etag := first.Header.Get("ETag")
+		require.NoError(t, first.Body.Close())
+		content := []byte("private evidence")
+		entry := makeTestCatalogEntry("private.db", content)
+		segment := makeTestSegment(env, 1, constants.PublicFeedZeroHashHex, []models.PublicProofCatalogEntry{entry}, nil)
+		require.NoError(t, env.mirror.storeProofPackage(t.Context(), models.PublicProofIngestRequest{SourceID: env.sourceID, Segment: &segment, Artifacts: []models.PublicProofIngestArtifact{{ArtifactID: entry.ArtifactID, Content: content}}}))
+		second := bootstrapResponse(t, env, etag)
 		defer second.Body.Close()
-		require.Equal(t, http.StatusOK, second.StatusCode)
-		assert.NotEqual(t, firstETag, second.Header.Get("ETag"))
-		var body models.PublicFeedBootstrap
-		require.NoError(t, json.NewDecoder(second.Body).Decode(&body))
-		assert.Equal(t, 1, body.ProofCatalogSummary.ArtifactCount)
-		assert.Equal(t, int64(len(largerContent)), body.ProofCatalogSummary.TotalByteSize)
-		secondETag := second.Header.Get("ETag")
-		sameSizeDifferentContent := []byte(`{"proof":"proof-content-with-substantially-more-byteX"}`)
-		require.Len(t, sameSizeDifferentContent, len(largerContent))
-		require.NoError(t, env.mirror.storeProofPackage(context.Background(), env.makeProofIngestRequest("proof.json", sameSizeDifferentContent)))
-		third := bootstrapResponse(t, env, secondETag)
-		defer third.Body.Close()
-		require.Equal(t, http.StatusOK, third.StatusCode)
-		assert.NotEqual(t, secondETag, third.Header.Get("ETag"))
-		var finalBody models.PublicFeedBootstrap
-		require.NoError(t, json.NewDecoder(third.Body).Decode(&finalBody))
-		assert.Equal(t, 1, finalBody.ProofCatalogSummary.ArtifactCount)
-		assert.Equal(t, int64(len(largerContent)), finalBody.ProofCatalogSummary.TotalByteSize)
+		assert.Equal(t, http.StatusNotModified, second.StatusCode)
 	})
 }
 
@@ -2641,4 +2473,14 @@ func bootstrapResponse(t *testing.T, env *mirrorTestEnv, etag string) *http.Resp
 	resp, err := env.publicServer.Client().Do(req)
 	require.NoError(t, err)
 	return resp
+}
+
+func readStoredMirrorProof(t *testing.T, store *PublicMirrorStore, id string) []byte {
+	t.Helper()
+	file, err := store.openProofArtifact(t.Context(), id)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, file.Close()) }()
+	body, err := io.ReadAll(file)
+	require.NoError(t, err)
+	return body
 }

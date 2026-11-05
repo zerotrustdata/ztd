@@ -15,8 +15,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"io"
-	"net/http"
 	"testing"
 	"time"
 
@@ -84,14 +82,11 @@ func TestMirror_ProofHead_TracksSignedHeadWithoutArtifactList(t *testing.T) {
 				SourceID: env.sourceID, Segment: &segment,
 			}))
 		}
-		response, err := env.client.Get(env.publicServer.URL + "/proof-head?source=" + env.sourceID)
+		head, found, err := env.store.ProofHead(ctx, env.sourceID)
 		require.NoError(t, err)
-		body, err := io.ReadAll(response.Body)
-		require.NoError(t, response.Body.Close())
+		require.True(t, found)
+		body, err := json.Marshal(head)
 		require.NoError(t, err)
-		require.Equal(t, http.StatusOK, response.StatusCode, string(body))
-		var head models.PublicProofHead
-		require.NoError(t, json.Unmarshal(body, &head))
 		assert.Equal(t, segment.SegmentIndex, head.SegmentIndex)
 		assert.Equal(t, segment.ProofRootSHA256, head.ProofRootSHA256)
 		assert.Equal(t, segment.SigningKeyID, head.SigningKeyID)

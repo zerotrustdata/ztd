@@ -13,7 +13,7 @@ describe('proof catalog bootstrap', () => {
   });
 
   it('never fetches the proof catalog during startup, even when artifacts are published', async () => {
-    const fetchImpl = serveLayout(makeMirror({ proofArtifactCount: 1 }));
+    const fetchImpl = serveLayout(makeMirror());
 
     await startFeed({ fetchImpl });
     stopFeed();
@@ -21,6 +21,6 @@ describe('proof catalog bootstrap', () => {
     const paths = requestedPaths(fetchImpl);
     expect(paths.some((path) => path.startsWith('/proof-catalog'))).toBe(false);
     expect(paths.some((path) => path.startsWith('/history'))).toBe(false);
-    expect(evalStore.getState().proofArtifactCount).toBe(1);
+    expect(paths.some((path) => path.startsWith('/proof-'))).toBe(false);
   });
 });

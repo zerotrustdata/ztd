@@ -143,7 +143,7 @@ describe('current snapshot and live deltas', () => {
     ];
     const snapshot: FeedSnapshot = { ...SNAP, high_water_sequence: 4, batch_count: 1 };
 
-    store.initBootstrap(snapshot, records, 0);
+    store.initBootstrap(snapshot, records);
     expect(store.getState().observedSequence).toBe(4);
     expect(store.getState().pendingSnapshot).toBeNull();
 
@@ -160,7 +160,7 @@ describe('current snapshot and live deltas', () => {
   it('read-model entities and cursor become visible together', () => {
     const recent = [snapshotRecord(fixtureCatalogExploratory, 1)];
     const snapshot: FeedSnapshot = { ...SNAP, high_water_sequence: 1, batch_count: 1 };
-    store.initBootstrap(snapshot, recent, 0);
+    store.initBootstrap(snapshot, recent);
     expect(store.getState().catalogs.size).toBe(1);
     expect(store.getState().observedSequence).toBe(1);
   });
@@ -230,7 +230,7 @@ describe('current snapshot and live deltas', () => {
     ];
     const snapshot: FeedSnapshot = { ...SNAP, high_water_sequence: 3, batch_count: 1 };
 
-    store.initBootstrap(snapshot, recent, 0);
+    store.initBootstrap(snapshot, recent);
     store.acceptProjection(snapshotRecord(queuedEnvelope, 2));
     store.acceptProjection(snapshotRecord(resultEnvelope, 3));
 
@@ -248,7 +248,7 @@ describe('current snapshot and live deltas', () => {
     // The mirror may prune early records; the first retained record is
     // accepted at whatever sequence the feed starts at.
     const snapshot: FeedSnapshot = { ...SNAP, high_water_sequence: 5, batch_count: 1 };
-    store.initBootstrap(snapshot, [snapshotRecord(fixtureCatalogExploratory, 3)], 0);
+    store.initBootstrap(snapshot, [snapshotRecord(fixtureCatalogExploratory, 3)]);
     expect(store.getState().observedSequence).toBe(5);
     expect(store.getCatalog(fixtureCatalogExploratory.dataset_id)).toBeDefined();
     expect(store.getState().errors.length).toBe(0);
@@ -256,7 +256,7 @@ describe('current snapshot and live deltas', () => {
 
   it('accepts mirror withdrawal gaps after the first retained record', () => {
     const snapshot: FeedSnapshot = { ...SNAP, high_water_sequence: 5, batch_count: 1 };
-    store.initBootstrap({ ...snapshot, high_water_sequence: 0 }, [], 0);
+    store.initBootstrap({ ...snapshot, high_water_sequence: 0 }, []);
     store.acceptProjection(snapshotRecord(fixtureCatalogExploratory, 3));
     store.acceptProjection(snapshotRecord(fixtureModelSummaries[0]!, 5));
     expect(store.getState().observedSequence).toBe(5);
@@ -265,7 +265,7 @@ describe('current snapshot and live deltas', () => {
 
   it('ignores replayed or regressive sequences after the first record', () => {
     const snapshot: FeedSnapshot = { ...SNAP, high_water_sequence: 5, batch_count: 1 };
-    store.initBootstrap({ ...snapshot, high_water_sequence: 0 }, [], 0);
+    store.initBootstrap({ ...snapshot, high_water_sequence: 0 }, []);
     store.acceptProjection(snapshotRecord(fixtureCatalogExploratory, 3));
     store.acceptProjection(snapshotRecord(fixtureModelSummaries[0]!, 2));
     expect(store.getState().observedSequence).toBe(3);
@@ -294,7 +294,7 @@ describe('current snapshot and live deltas', () => {
 
     const recent = Array.from({ length: 50 }, (_, index) => lifecycleEnvelope(`recent-${index}`, 951 + index));
     const snapshot: FeedSnapshot = { ...SNAP, high_water_sequence: 1000, batch_count: 1 };
-    store.initBootstrap(snapshot, recent, 0);
+    store.initBootstrap(snapshot, recent);
 
     for (let sequence = 1001; sequence <= 2000; sequence += 1) {
       store.acceptProjection(lifecycleEnvelope(`hist-${sequence}`, sequence));
@@ -312,7 +312,7 @@ describe('cross-dataset keying', () => {
   it('the same variant_id in two datasets does not collide', () => {
     const store = new EvalStore();
     const snapshot: FeedSnapshot = { ...SNAP, high_water_sequence: 4, batch_count: 1 };
-    store.initBootstrap({ ...snapshot, high_water_sequence: 0 }, [], 0);
+    store.initBootstrap({ ...snapshot, high_water_sequence: 0 }, []);
     // Exploratory gemma4-e4b at sequence 1, verified gemma4-e4b at sequence 2.
     store.acceptProjection(snapshotRecord(fixtureModelSummaries[0]!, 1));
     store.acceptProjection(snapshotRecord(fixtureVerifiedModelSummaries[0]!, 2));

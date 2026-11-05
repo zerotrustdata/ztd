@@ -81,7 +81,7 @@ function seedRuns(runs: Array<{ runId: string; sha256?: string }>, withdrawalDig
   const summaries: ProjectionRecord[] = runs.map((run, index) =>
     normalizeRecentProjection({ sequence: index + 1, ...summaryFor(run.runId, run.sha256) }),
   );
-  evalStore.initBootstrap(snapshot(withdrawalDigest, runs.length), summaries, 0);
+  evalStore.initBootstrap(snapshot(withdrawalDigest, runs.length), summaries);
 }
 
 /** Serves bundles by their content address; any other URL is a 404. */
@@ -195,7 +195,7 @@ describe('loadRunAssignments', () => {
   it('a settled run without assignment_bundle_sha256 returns no_bundle and fetches nothing', async () => {
     const summary = { ...summaryFor('run-one', undefined), lifecycle_state: 'completed' as const };
     evalStore.setMirrorOrigin(ORIGIN);
-    evalStore.initBootstrap(snapshot('a'.repeat(64), 1), [normalizeRecentProjection({ sequence: 1, ...summary })], 0);
+    evalStore.initBootstrap(snapshot('a'.repeat(64), 1), [normalizeRecentProjection({ sequence: 1, ...summary })]);
     const fetchImpl = servingFetch([]);
 
     const result = await loadRunAssignments(DATASET, 'run-one', { fetchImpl: fetchOf(fetchImpl) });
@@ -404,7 +404,7 @@ describe('retainRuns', () => {
 function seedLiveRun(runId: string): void {
   evalStore.setMirrorOrigin(ORIGIN);
   const summary = { ...summaryFor(runId, undefined), lifecycle_state: 'running' as const };
-  evalStore.initBootstrap(snapshot('a'.repeat(64), 1), [normalizeRecentProjection({ sequence: 1, ...summary })], 0);
+  evalStore.initBootstrap(snapshot('a'.repeat(64), 1), [normalizeRecentProjection({ sequence: 1, ...summary })]);
 }
 
 /** Serves the given bytes by full URL; any other URL is a 404. */

@@ -1338,7 +1338,8 @@ export function isFeedSnapshot(value: unknown): asserts value is FeedSnapshot {
 
 export function isFeedBootstrap(value: unknown): asserts value is FeedBootstrap {
   assertObject(value, 'feed_bootstrap');
-  rejectUnknown(value, ['protocol_version', 'snapshot', 'source_freshness', 'recent_projections', 'task_index', 'proof_catalog_summary', 'generated_at'], 'feed_bootstrap');
+  assert(value.schema_version === '2.0.0', 'feed_bootstrap.schema_version', 'expected 2.0.0');
+  rejectUnknown(value, ['protocol_version', 'snapshot', 'source_freshness', 'recent_projections', 'task_index', 'schema_version', 'generated_at'], 'feed_bootstrap');
   assertString(value.protocol_version, 'feed_bootstrap.protocol_version');
   assert(value.protocol_version === '1.0.0', 'feed_bootstrap.protocol_version', 'expected 1.0.0');
   isFeedSnapshot(value.snapshot);
@@ -1368,13 +1369,6 @@ export function isFeedBootstrap(value: unknown): asserts value is FeedBootstrap 
       assertOptional(result.verification_status, `${resultPath}.verification_status`, assertString);
     }
   }
-  assertObject(value.proof_catalog_summary, 'feed_bootstrap.proof_catalog_summary');
-  rejectUnknown(value.proof_catalog_summary, ['artifact_count', 'total_byte_size', 'last_generated_at'], 'feed_bootstrap.proof_catalog_summary');
-  assertInteger(value.proof_catalog_summary.artifact_count, 'feed_bootstrap.proof_catalog_summary.artifact_count');
-  assert(value.proof_catalog_summary.artifact_count >= 0, 'feed_bootstrap.proof_catalog_summary.artifact_count', 'must be >= 0');
-  assertInteger(value.proof_catalog_summary.total_byte_size, 'feed_bootstrap.proof_catalog_summary.total_byte_size');
-  assert(value.proof_catalog_summary.total_byte_size >= 0, 'feed_bootstrap.proof_catalog_summary.total_byte_size', 'must be >= 0');
-  assertOptional(value.proof_catalog_summary.last_generated_at, 'feed_bootstrap.proof_catalog_summary.last_generated_at', assertString);
   assertString(value.generated_at, 'feed_bootstrap.generated_at');
 }
 

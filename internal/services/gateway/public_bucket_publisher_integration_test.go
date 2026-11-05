@@ -11,9 +11,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"slices"
-	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -102,9 +99,6 @@ func TestBucketPublisher_PartialSyncNeverMovesPointer(t *testing.T) {
 	pointer := b.pointer(t)
 	requireBucketObject(t, b.fixture, constants.PublicLayoutReadModelPrefix+pointer.ReadModelSHA256+constants.PublicLayoutJSONGzipSuffix)
 	requireBucketObject(t, b.fixture, bucketArtifactKey(b.proof))
-	requireBucketObject(t, b.fixture, constants.PublicLayoutProofMetaPrefix+b.proof.ArtifactID+constants.PublicLayoutJSONSuffix)
-	requireBucketObject(t, b.fixture, constants.PublicLayoutProofCatalogPrefix+pointer.ProofCatalogSHA256+constants.PublicLayoutJSONGzipSuffix)
-	requireBucketObject(t, b.fixture, bucketFakeSegmentKey(1))
 }
 
 func TestBucketPublisher_WrongSecretIsRejected(t *testing.T) {
@@ -138,11 +132,11 @@ func TestBucketPublisher_ObjectHeaders(t *testing.T) {
 	digest := sha256.Sum256(plain)
 	assert.Equal(t, pointer.ReadModelSHA256, hex.EncodeToString(digest[:]), "the pointer's digest covers the decoded read model")
 
-	catalog, err := b.env.mirror.LayoutProofCatalog(ctx, b.env.sourceID)
+	catalog, err := b.env.mirror.LayoutArtifacts(ctx, b.env.sourceID)
 	require.NoError(t, err)
-	require.Len(t, catalog.Entries, 1)
+	require.Len(t, catalog, 1)
 	proof := requireBucketObject(t, b.fixture, bucketArtifactKey(b.proof))
-	assert.Equal(t, catalog.Entries[0].MediaType, proof.contentType, "a proof is served with its catalog media type")
+	assert.Equal(t, catalog[0].MediaType, proof.contentType, "a proof is served with its catalog media type")
 	assert.Empty(t, proof.contentEncoding, "a proof is stored as is, without Content-Encoding")
 }
 
@@ -156,49 +150,12 @@ func TestBucketPublisher_DownloadedFilesVerify(t *testing.T) {
 	pointer := b.pointer(t)
 	require.NoError(t, models.VerifyPublicFeedPointer(pointer, b.env.pub))
 
-	// Join the proof-segments chunks in first-index order and verify the chain.
-	type chunk struct {
-		first int64
-		key   string
+	// The public layout publishes no internal proof metadata or log projections.
+	for _, prefix := range []string{constants.PublicLayoutProofCatalogPrefix, constants.PublicLayoutProofMetaPrefix, constants.PublicLayoutProofSegmentsPrefix, constants.PublicLayoutProofHeadKey, constants.PublicLayoutProofPrefix} {
+		assert.Empty(t, b.fixture.keys(prefix))
 	}
-	var chunks []chunk
-	for _, key := range b.fixture.keys(constants.PublicLayoutProofSegmentsPrefix) {
-		name := strings.TrimPrefix(key, constants.PublicLayoutProofSegmentsPrefix)
-		first, err := strconv.ParseInt(strings.TrimSuffix(name, constants.PublicLayoutJSONLGzipSuffix), 10, 64)
-		require.NoError(t, err)
-		chunks = append(chunks, chunk{first: first, key: key})
-	}
-	slices.SortFunc(chunks, func(a, b chunk) int { return int(a.first - b.first) })
-	require.NotEmpty(t, chunks)
-	var joined []byte
-	for _, c := range chunks {
-		joined = append(joined, requireBucketObject(t, b.fixture, c.key).body...)
-	}
-	lines := strings.Split(strings.TrimSpace(string(gunzipLayout(t, joined))), "\n")
-	require.Len(t, lines, int(pointer.ProofSegmentHead))
-	previous := constants.PublicFeedZeroHashHex
-	for _, line := range lines {
-		var segment models.PublicProofManifestSegment
-		require.NoError(t, json.Unmarshal([]byte(line), &segment))
-		require.NoError(t, models.VerifyPublicProofSegment(b.env.sourceID, segment, b.env.pub))
-		assert.Equal(t, previous, segment.PreviousRoot, "each segment links to the one before it")
-		previous = segment.ProofRootSHA256
-	}
-	assert.Equal(t, pointer.ProofRootSHA256, previous, "the chain ends at the pointer's proof root")
-
-	// The catalog decodes to the digest the pointer names.
-	catalog := gunzipLayout(t, requireBucketObject(t, b.fixture, constants.PublicLayoutProofCatalogPrefix+pointer.ProofCatalogSHA256+constants.PublicLayoutJSONGzipSuffix).body)
-	catalogDigest := sha256.Sum256(catalog)
-	assert.Equal(t, pointer.ProofCatalogSHA256, hex.EncodeToString(catalogDigest[:]))
-
-	// Each listed artifact downloads and hashes to its own ID.
-	metaKeys := b.fixture.keys(constants.PublicLayoutProofMetaPrefix)
-	require.Len(t, metaKeys, 1)
-	var entry models.PublicProofCatalogEntry
-	require.NoError(t, json.Unmarshal(requireBucketObject(t, b.fixture, metaKeys[0]).body, &entry))
-	proof := requireBucketObject(t, b.fixture, bucketArtifactKey(entry))
-	proofDigest := sha256.Sum256(proof.body)
-	assert.Equal(t, entry.ArtifactID, hex.EncodeToString(proofDigest[:]))
+	body := requireBucketObject(t, b.fixture, bucketArtifactKey(b.proof)).body
+	assert.Equal(t, b.proof.ArtifactID, models.SHA256Hex(body))
 }
 
 func TestBucketPublisher_WithdrawalFlowRetriesFailingPurge(t *testing.T) {

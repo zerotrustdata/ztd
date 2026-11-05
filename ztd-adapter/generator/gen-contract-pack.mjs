@@ -1132,16 +1132,13 @@ const PUBLIC_CACHE = {
 function publicPointerSchema() {
   return {
     type: 'object',
-    description: 'Mutable mirror pointer. It names the current digest-addressed read model and proof catalog. It is written last, so a partial publish never goes live. While a run is active the publisher holds it and moves it only when the active run set changes, a withdrawal lands, or records of a dataset that is not executing arrive; live/status.json carries the run in between. generated_at is when the pointer was composed, not a freshness signal.',
-    required: ['schema_version', 'source_id', 'revision', 'read_model_sha256', 'proof_segment_head', 'high_water_sequence', 'history_first_sequence', 'feed_chain_hash', 'active', 'generated_at'],
+    description: 'Mutable mirror pointer. It names the current digest-addressed read model. It is written last, so a partial publish never goes live. While a run is active the publisher holds it and moves it only when the active run set changes, a withdrawal lands, or records of a dataset that is not executing arrive; live/status.json carries the run in between. generated_at is when the pointer was composed, not a freshness signal.',
+    required: ['schema_version', 'source_id', 'revision', 'read_model_sha256', 'high_water_sequence', 'history_first_sequence', 'feed_chain_hash', 'active', 'generated_at'],
     properties: {
-      schema_version: { type: 'string', const: '1.0.0' },
+      schema_version: { type: 'string', const: '2.0.0' },
       source_id: { type: 'string', minLength: 1 },
       revision: { type: 'integer', minimum: 1, description: 'Increases with every pointer the source writes' },
       read_model_sha256: { ...PUBLIC_DIGEST_SCHEMA, description: 'SHA-256 of the decoded read-model bytes' },
-      proof_catalog_sha256: { ...PUBLIC_DIGEST_SCHEMA, description: 'SHA-256 of the decoded proof catalog bytes' },
-      proof_root_sha256: { ...PUBLIC_DIGEST_SCHEMA },
-      proof_segment_head: { type: 'integer', minimum: 0 },
       high_water_sequence: { type: 'integer', minimum: 0 },
       history_first_sequence: { type: 'integer', minimum: 0, description: 'First retained sequence of the signed batch chain' },
       feed_chain_hash: { ...PUBLIC_DIGEST_SCHEMA },
@@ -1212,10 +1209,6 @@ function generatePublicOpenApi() {
     paths: {
       '/pointer.json': { get: { operationId: 'public_pointer', responses: { '200': { description: 'Signed pointer naming the current digest-addressed objects', headers: headers(PUBLIC_CACHE.pointer), content: json({ $ref: '#/components/schemas/PublicPointer' }) } } } },
       '/read-model/{read_model_sha256}.json.gz': { get: { operationId: 'public_read_model', parameters: [digestParam('read_model_sha256')], responses: { '200': { description: 'Gzip-encoded read model in the /bootstrap shape. The SHA-256 of the decoded bytes equals the pointer read_model_sha256.', headers: headers(PUBLIC_CACHE.immutable, 'gzip'), content: json({ $ref: '#/components/schemas/PublicFeedBootstrap' }) }, '404': { description: 'Unknown digest' } } } },
-      '/proof-meta/{sha256}.json': { get: { operationId: 'public_proof_meta', parameters: [digestParam('sha256')], responses: { '200': { description: 'One active proof catalog entry', headers: headers(PUBLIC_CACHE.immutable), content: json({ $ref: '#/components/schemas/PublicProofCatalogEntry' }) }, '404': { description: 'Unknown or withdrawn artifact' } } } },
-      '/proof-catalog/{proof_catalog_sha256}.json.gz': { get: { operationId: 'public_proof_catalog', parameters: [digestParam('proof_catalog_sha256')], responses: { '200': { description: 'Gzip-encoded public-safe proof catalog. The SHA-256 of the decoded bytes equals the pointer proof_catalog_sha256.', headers: headers(PUBLIC_CACHE.immutable, 'gzip'), content: json({ $ref: '#/components/schemas/PublicProofCatalog' }) }, '404': { description: 'Unknown digest' } } } },
-      '/proof-head.json': { get: { operationId: 'public_proof_head', responses: { '200': { description: 'Constant-size proof head without artifact entries; verify the signed log for authenticity', headers: headers(PUBLIC_CACHE.proofHead), content: json({ $ref: '#/components/schemas/PublicProofHead' }) }, '404': { description: 'No proof publication for the source' } } } },
-      '/proof-segments/{first_index}.jsonl.gz': { get: { operationId: 'public_proof_segments', parameters: [sequenceParam('first_index')], responses: { '200': { description: 'Gzip-encoded JSON Lines of up to 1000 source-signed proof segments, including withdrawals. Full chunks are immutable; the last chunk uses the tail policy.', headers: headers([PUBLIC_CACHE.tail, PUBLIC_CACHE.immutable], 'gzip'), content: { 'application/x-ndjson': { schema: { $ref: '#/components/schemas/PublicProofManifestSegment' } } } }, '404': { description: 'No segments in the range' } } } },
       '/history/{first_sequence}.json.gz': { get: { operationId: 'public_history', parameters: [sequenceParam('first_sequence')], responses: { '200': { description: 'Gzip-encoded bounded history page', headers: headers(PUBLIC_CACHE.history, 'gzip'), content: json({ $ref: '#/components/schemas/PublicFeedCursorPage' }) }, '404': { description: 'No records in the range' } } } },
       '/runs/{sha256}.jsonl.gz': { get: { operationId: 'public_run_bundle', parameters: [digestParam('sha256')], responses: { '200': { description: 'Selected settled run bundle. The SHA-256 covers stored gzip bytes; no Content-Encoding is set.', headers: headers(PUBLIC_CACHE.immutable), content: { 'application/gzip': { schema: { type: 'string', format: 'binary' } } } }, '404': { description: 'Unknown, withdrawn, or not a run bundle' } } } },
       '/fixtures/{sha256}': { get: { operationId: 'public_scenario_fixture', parameters: [digestParam('sha256')], responses: { '200': { description: 'Campaign-frozen scenario input or gold criteria, selected from the internal proof log. Check bytes against the evidence binding digest and scenario identity.', headers: headers(PUBLIC_CACHE.immutable), content: { 'application/json': { schema: { type: 'string', format: 'binary' } } } }, '404': { description: 'Unknown, withdrawn, or not a scenario fixture' } } } },
@@ -1297,7 +1290,7 @@ function publicFixture(freshness) {
       records: [{ sequence: 1, record_type: 'projection', record_hash: recordHash, record_bytes: recordBytes }],
     },
     bootstrap: {
-      protocol_version: '1.0.0', snapshot: { protocol_version: '1.0.0', source_id: sourceID, high_water_sequence: 1, feed_chain_hash: contentHash, batch_count: 1, withdrawal_digest: '0'.repeat(64), generated_at: generatedAt, freshness }, source_freshness: freshness, recent_projections: [projection], proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 }, generated_at: generatedAt,
+      protocol_version: '1.0.0', snapshot: { protocol_version: '1.0.0', source_id: sourceID, high_water_sequence: 1, feed_chain_hash: contentHash, batch_count: 1, withdrawal_digest: '0'.repeat(64), generated_at: generatedAt, freshness }, source_freshness: freshness, recent_projections: [projection], schema_version: '2.0.0', generated_at: generatedAt,
     },
   });
 }
@@ -1314,25 +1307,29 @@ function generatePublicFixtures() {
 }
 
 function generateOfflineVerifierInstructions() {
-  return `# Public Proof Offline Verification
+  return `# Public Evidence Offline Verification
 
-Follow the [canonical offline proof verification procedure](../../../docs/architecture/public_spectator.md#offline-proof-verification). The public body layout now selects only run bundles and scenario fixtures. Historical private catalog entries have no body path in the bucket, and the current segment verifier requires all active entries. Obtain those historical files separately before using this procedure. Newly digest-only audit databases need the pending pointer-rooted verifier; this procedure cannot authenticate them. Every path below is relative to the feed origin and needs no credentials.
+Follow the [canonical offline verification procedure](../../../docs/architecture/public_spectator.md#offline-proof-verification). Public evidence is authenticated through a trusted Ed25519 signing key, the signed pointer, its read model, and the settled run bundle named by the selected run's evaluation summary. The browser checks object digests but does not authenticate the pointer signature.
 
-1. \`pointer.json\`: the signed pointer. It names \`proof_segment_head\`, \`proof_catalog_sha256\`, and \`proof_root_sha256\`.
-2. Every \`proof-segments/<first_index>.jsonl.gz\` chunk, where \`first_index\` is 1, 1001, 2001, and so on up to \`proof_segment_head\`. Decompress the chunks and join them in ascending \`first_index\` order into one JSONL file:
+Download \`pointer.json\`, the \`read-model/<read_model_sha256>.json.gz\` object it names, and the selected run's \`runs/<assignment_bundle_sha256>.jsonl.gz\`. Keep the bundle's gzip bytes unchanged: its digest covers the stored file. The read model digest covers decoded JSON; the CLI accepts its gzip object or decoded bytes. Obtain trusted keys separately as a JSON mapping of key ID (or source ID plus colon plus key ID) to hex Ed25519 public key. A registry can contain old and rotated keys; a self-published key alone is never trusted in this mode.
 
-   \`\`\`sh
-   head=$(jq -r .proof_segment_head pointer.json)
-   for ((i = 1; i <= head; i += 1000)); do gunzip -c "proof-segments/$i.jsonl.gz"; done > proof-segments.jsonl
-   \`\`\`
+\`\`\`bash
+ztd public verify-proof --pointer pointer.json --read-model read-model.json.gz --bundle run.jsonl.gz --run "$RUN_ID" --key-registry trusted-keys.json
+\`\`\`
 
-3. \`proof-catalog/<proof_catalog_sha256>.json.gz\`, decompressed. It lists the active artifacts. Download run bundles from \`runs/<sha256>.jsonl.gz\` and scenario input/gold fixtures from \`fixtures/<sha256>\`. Save each file under its bare SHA-256 in one directory, such as \`./proofs\`, together with any separately delivered historical artifacts. There is no generic public body route in the bucket.
+The verifier checks the pointer signature and source/sequence/feed-hash/withdrawal identity, hashes the read model and gzip bundle, and then checks each exact record_bytes hash, ordered sequence, run identity, and assignment uniqueness. An absent or withdrawn run has no usable bundle binding in a current read model.
 
-Offline, run \`ztd public verify-proof --segments proof-segments.jsonl --artifacts ./proofs --pointer pointer.json\`. The verifier recomputes the signed segment chain from the zero root, checks each Ed25519 signature under that segment's \`signing_public_key\` (SHA-256 of the key must equal \`signing_key_id\`), applies withdrawals, and verifies active artifact sizes and hashes. With \`--pointer\`, the signed pointer must verify and name the chain's source, head segment index, and head root. Pass \`--public-key\` or \`--key-registry trusted-keys.json\` to require a key supplied separately. The default command checks the published signatures and hash chain; it does not establish an out-of-band publisher identity.
+Scenario fixtures remain public at \`fixtures/<sha256>\`. Full agent traces and assignment audit databases are delivered under agreement. Place any delivered files under their bare SHA-256 in a directory and add \`--artifacts ./delivered\` to verify each against the authenticated assignment evidence bindings. Missing private files are not required. Unbound files, changed bytes, directories, and symlinks fail verification.
 
-The \`proof-head.json\` object contains the latest signing header, including \`signing_public_key\` when the mirror has it, without artifact entries. A head with a nonzero \`segment_index\` carries that segment's root and signature; verification requires the signed log. The head's root identifies the advertised log position. It does not independently establish freshness.
+For an assignment audit database, use the same trust inputs:
 
-For a legacy source with segment index zero, reconstruct its full manifest from the proof head metadata and catalog entries in response order, then use the legacy ordered manifest-root and Ed25519 verification procedure. Verify signed feed fixtures by recomputing each record hash, recomputing the batch content hash from the ordered protocol fields, and verifying the Ed25519 signature over the decoded content hash. Missing active artifacts, unknown fields, hash or signature mismatches, traversal paths, and symlinks invalidate the package.
+\`\`\`bash
+ztd public verify-assignment --db assignment.db --pointer pointer.json --read-model read-model.json.gz --bundle run.jsonl.gz --run "$RUN_ID" --key-registry trusted-keys.json
+\`\`\`
+
+This additionally requires an assignment_audit_slice digest binding, verifies the database's live-event record hashes, and matches its source, run, and assignment identity. Database verification does not independently verify every governed execution receipt. The database is plaintext SQLite and needs no vault key.
+
+The pointer authenticates a captured state; it does not prove that a capture is the latest state. A previously downloaded pointer and bundle can still verify after withdrawal. Remote mirrors without a source signing key serve unsigned pointers and cannot supply this trust root. Bounded history remains public for signed feed-chain checks, subject to retention and withdrawals. The internal proof log is no longer an anonymous endpoint or bucket projection. The separate \`verify-proof --segments\` mode remains for an explicitly obtained internal log and its active files.
 `;
 }
 

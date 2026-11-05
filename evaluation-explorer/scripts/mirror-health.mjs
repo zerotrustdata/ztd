@@ -147,10 +147,7 @@ async function main() {
     console.log(`  high_water:  ${snapshot?.high_water_sequence ?? 0}`);
     console.log(`  batch_count: ${snapshot?.batch_count ?? 0}`);
     console.log(`  recent projections: ${recent}`);
-    const catalogSummary = bs?.proof_catalog_summary;
-    if (catalogSummary) {
-      console.log(`  proof artifacts:    ${catalogSummary.artifact_count ?? 0} (${catalogSummary.total_byte_size ?? 0} bytes)`);
-    }
+
   }
 
   if (publisherHighWater !== null) {

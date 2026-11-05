@@ -30,7 +30,6 @@ func testPublicFeedPointer() PublicFeedPointer {
 		Revision:          7,
 		ReadModelSHA256:   hex.EncodeToString(readModel[:]),
 		FeedChainHash:     hex.EncodeToString(chain[:]),
-		ProofSegmentHead:  2,
 		HighWaterSequence: 40,
 		GeneratedAt:       time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC),
 	}

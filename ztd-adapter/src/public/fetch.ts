@@ -12,9 +12,9 @@ const INDEX_PATTERN = /^[1-9][0-9]*$/;
  * path or query string can reach fetch.
  */
 export type PublicRequest =
-  | { readonly endpoint: 'pointer' | 'liveStatus' | 'proofHead' }
-  | { readonly endpoint: 'readModel' | 'proofMeta' | 'proofCatalog' | 'runBundle' | 'fixture'; readonly digest: string }
-  | { readonly endpoint: 'proofSegments' | 'history'; readonly first: number | string };
+  | { readonly endpoint: 'pointer' | 'liveStatus' }
+  | { readonly endpoint: 'readModel' | 'runBundle' | 'fixture'; readonly digest: string }
+  | { readonly endpoint: 'history'; readonly first: number | string };
 
 export type PublicEndpoint = PublicRequest['endpoint'];
 
@@ -59,13 +59,9 @@ function publicPath(request: PublicRequest): string {
   switch (request.endpoint) {
     case 'pointer': return '/pointer.json';
     case 'liveStatus': return '/live/status.json';
-    case 'proofHead': return '/proof-head.json';
     case 'readModel': return `/read-model/${digestKey(request.endpoint, request.digest)}.json.gz`;
     case 'runBundle': return `/runs/${digestKey(request.endpoint, request.digest)}.jsonl.gz`;
     case 'fixture': return `/fixtures/${digestKey(request.endpoint, request.digest)}`;
-    case 'proofMeta': return `/proof-meta/${digestKey(request.endpoint, request.digest)}.json`;
-    case 'proofCatalog': return `/proof-catalog/${digestKey(request.endpoint, request.digest)}.json.gz`;
-    case 'proofSegments': return `/proof-segments/${indexKey(request.endpoint, request.first)}.jsonl.gz`;
     case 'history': return `/history/${indexKey(request.endpoint, request.first)}.json.gz`;
     default: throw new PublicEndpointNotAllowedError(String((request as { endpoint: unknown }).endpoint), '');
   }

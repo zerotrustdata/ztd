@@ -980,13 +980,13 @@ export interface FeedTaskIndexEntry {
 
 /** Public feed bootstrap response. */
 export interface FeedBootstrap {
+  schema_version: '2.0.0';
   protocol_version: string;
   snapshot: FeedSnapshot;
   source_freshness: FreshnessState;
   recent_projections: FeedBootstrapRecentProjection[];
   /** Up to ten most recent results per task, newest first. */
   task_index: FeedTaskIndexEntry[];
-  proof_catalog_summary: { artifact_count: number; total_byte_size: number; last_generated_at?: string };
   generated_at: string;
 }
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical typed wire models for the public spectator feed protocol. The Gateway outbound publisher signs and sends append-only batches to a hosted mirror's authenticated ingest endpoint. Public browsers connect to the mirror's anonymous read-only endpoints (bootstrap, cursor-paginated history, replayable SSE, content-addressed proof downloads). The private Gateway receives no public connection. All models exclude null fields on the wire.",
+  "_comment": "Canonical typed wire models for the public spectator feed protocol. The Gateway outbound publisher signs and sends append-only batches to a hosted mirror's authenticated ingest endpoint. Public browsers connect to the mirror's anonymous read-only endpoints (signed pointer, read model, bounded history, live status, digest-addressed run bundles and fixtures). The private Gateway receives no public connection. All models exclude null fields on the wire.",
   "_authority": "gateway",
   "_consumers": ["browser", "mirror", "offline-verifier"],
 
@@ -45,12 +45,12 @@
   },
 
   "public_feed_bootstrap": {
+    "schema_version": {"type":"string", "required":true, "const":"2.0.0", "description":"Read model schema version, independent of the signed feed batch protocol"},
     "_description": "One bounded initial snapshot for public first paint. Contains the feed snapshot, current source freshness, recent projections, and proof catalog summary. SSE provides incremental change notifications after the snapshot.",
     "protocol_version": {"type": "string", "required": true, "description": "Public feed protocol version"},
     "snapshot": {"type": "object", "required": true, "model": "public_feed_snapshot", "description": "Current feed snapshot with high-water sequence and feed-chain hash"},
     "source_freshness": {"type": "string", "required": true, "description": "Source freshness label", "enum": ["active", "delayed", "stale", "intentionally_stopped", "safety_stopped", "source_offline"]},
     "recent_projections": {"type": "array", "required": true, "description": "Bounded list of recent public projections (JSON objects). Each carries only allowlisted fields."},
-    "proof_catalog_summary": {"type": "object", "required": true, "model": "public_proof_catalog_summary", "description": "Summary of the available public proof packages"},
     "generated_at": {"type": "string", "format": "iso8601", "required": true, "description": "UTC timestamp when the bootstrap was produced"}
   },
 

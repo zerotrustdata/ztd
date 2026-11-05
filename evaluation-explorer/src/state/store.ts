@@ -140,7 +140,6 @@ export interface StoreState {
   eventIds: Set<string>;
   errors: string[];
   lastAcceptedAt: string | undefined;
-  proofArtifactCount: number;
 }
 
 function snapshotPinnedFreshness(freshness: FeedSnapshot['freshness']): FreshnessState | undefined {
@@ -189,7 +188,6 @@ function emptyState(): StoreState {
     eventIds: new Set(),
     errors: [],
     lastAcceptedAt: undefined,
-    proofArtifactCount: 0,
   };
 }
 
@@ -273,7 +271,6 @@ export class EvalStore {
   initBootstrap(
     snapshot: FeedSnapshot,
     recentProjections: ProjectionRecord[],
-    proofCount: number,
     { refresh = false }: { refresh?: boolean } = {},
   ): void {
     if (!refresh) this.campaignContexts = new Map();
@@ -289,7 +286,6 @@ export class EvalStore {
     state.currentSnapshot = snapshot;
     state.feedStatus = withFeedSnapshot(state, snapshot, 'Current snapshot loaded.');
     state.feedStatus.connection = 'live';
-    state.proofArtifactCount = proofCount;
     // Snapshot entities are sparse revisions, ordered by their accepted sequence.
     const records = [...recentProjections].sort((a, b) => a.sequence - b.sequence);
     for (const record of records) {

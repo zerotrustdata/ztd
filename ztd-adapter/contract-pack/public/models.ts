@@ -52,11 +52,11 @@ export interface PublicFeedSnapshot {
 }
 
 export interface PublicFeedBootstrap {
+  schema_version: string;
   protocol_version: string;
   snapshot: PublicFeedSnapshot;
   source_freshness: CampaignFreshness;
   recent_projections: unknown[];
-  proof_catalog_summary: PublicProofCatalogSummary;
   generated_at: string;
 }
 
@@ -198,11 +198,11 @@ export function isPublicFeedSnapshot(value: unknown): value is PublicFeedSnapsho
 export function isPublicFeedBootstrap(value: unknown): value is PublicFeedBootstrap {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
+  if (!(typeof v.schema_version === 'string')) return false; /* schema_version */
   if (!(typeof v.protocol_version === 'string')) return false; /* protocol_version */
   if (!(isPublicFeedSnapshot(v.snapshot))) return false; /* snapshot */
   if (!(typeof v.source_freshness === 'string' && (CAMPAIGN_FRESHNESS_VALUES as readonly string[]).includes(v.source_freshness))) return false; /* source_freshness */
   if (!(Array.isArray(v.recent_projections))) return false; /* recent_projections */
-  if (!(isPublicProofCatalogSummary(v.proof_catalog_summary))) return false; /* proof_catalog_summary */
   if (!(typeof v.generated_at === 'string')) return false; /* generated_at */
   return true;
 }

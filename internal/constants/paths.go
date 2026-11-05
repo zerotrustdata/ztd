@@ -982,7 +982,8 @@ const (
 
 // Public feed schema and protocol version constants.
 const (
-	PublicFeedPointerSchemaVersion     = "1.0.0"
+	PublicFeedPointerSchemaVersion     = "2.0.0"
+	PublicReadModelSchemaVersion       = "2.0.0"
 	PublicLiveStatusSchemaVersion      = "1.0.0"
 	PublicFeedProtocolVersion          = "1.0.0"
 	PublicFeedSchemaVersion            = "1.0.0"

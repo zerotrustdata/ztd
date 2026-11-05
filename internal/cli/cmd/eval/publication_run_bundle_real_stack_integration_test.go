@@ -52,21 +52,17 @@ func mirrorGet(t *testing.T, path string) (int, []byte) {
 }
 
 // mirrorProofCatalogEntries returns the active entries of the mirror's proof catalog.
-func mirrorProofCatalogEntries(t *testing.T) []models.PublicProofCatalogEntry {
+func mirrorProofCatalogEntries(t *testing.T, run *realStackRun) []models.PublicProofCatalogEntry {
 	t.Helper()
-	status, body := mirrorGet(t, "/proof-catalog")
-	require.Equal(t, http.StatusOK, status, string(body))
-	var catalog models.PublicProofCatalog
-	require.NoError(t, json.Unmarshal(body, &catalog))
-	return catalog.Entries
+	return publicationLayoutArtifacts(t, run)
 }
 
 // runBundleEntries returns the active catalog entries that are runID's assignment bundle.
-func runBundleEntries(t *testing.T, runID string) []models.PublicProofCatalogEntry {
+func runBundleEntries(t *testing.T, run *realStackRun, runID string) []models.PublicProofCatalogEntry {
 	t.Helper()
 	filename := runID + constants.PublicRunBundleFilenameSuffix
 	var entries []models.PublicProofCatalogEntry
-	for _, entry := range mirrorProofCatalogEntries(t) {
+	for _, entry := range mirrorProofCatalogEntries(t, run) {
 		if entry.Filename == filename {
 			entries = append(entries, entry)
 		}
@@ -76,9 +72,9 @@ func runBundleEntries(t *testing.T, runID string) []models.PublicProofCatalogEnt
 
 // assertSingleActiveBundle requires the catalog to list exactly one bundle for
 // the run, with the given digest as its artifact id.
-func assertSingleActiveBundle(t *testing.T, runID, digest string) {
+func assertSingleActiveBundle(t *testing.T, run *realStackRun, runID, digest string) {
 	t.Helper()
-	entries := runBundleEntries(t, runID)
+	entries := runBundleEntries(t, run, runID)
 	require.Len(t, entries, 1, "exactly one active assignment bundle for the run")
 	assert.Equal(t, digest, entries[0].ArtifactID, "the active bundle is the one the summary names")
 	assert.Equal(t, constants.MediaTypeGzip, entries[0].MediaType)
@@ -86,10 +82,10 @@ func assertSingleActiveBundle(t *testing.T, runID, digest string) {
 
 // runAuditProofIDs maps the active assignment database and agent trace artifact
 // ids of runID to their filenames.
-func runAuditProofIDs(t *testing.T, runID string) map[string]string {
+func runAuditProofIDs(t *testing.T, run *realStackRun, runID string) map[string]string {
 	t.Helper()
 	ids := map[string]string{}
-	for _, entry := range mirrorProofCatalogEntries(t) {
+	for _, entry := range mirrorProofCatalogEntries(t, run) {
 		if entry.SourceRunID != runID {
 			continue
 		}
@@ -195,7 +191,7 @@ func TestPublicationRealStack_SummaryNamesTheRunBundleTheMirrorServes(t *testing
 	require.Regexp(t, `^[0-9a-f]{64}$`, digest, "the summary names its assignment bundle")
 
 	// (b) The mirror serves the bundle under that digest, and the bytes hash to it.
-	status, body := mirrorGet(t, "/proofs/"+digest)
+	status, body := mirrorGet(t, "/runs/"+digest+".jsonl.gz")
 	require.Equal(t, http.StatusOK, status, string(body))
 	sum := sha256.Sum256(body)
 	assert.Equal(t, digest, hex.EncodeToString(sum[:]), "the served bundle hashes to the summary digest")
@@ -230,7 +226,7 @@ func TestPublicationRealStack_SummaryNamesTheRunBundleTheMirrorServes(t *testing
 	assert.ElementsMatch(t, expectedSequences, gotSequences, "each assignment's latest result revision is bundled once")
 
 	// (d) The active catalog lists exactly one bundle entry, under the summary digest.
-	assertSingleActiveBundle(t, runID, digest)
+	assertSingleActiveBundle(t, run, runID, digest)
 }
 
 func TestPublicationRealStack_RepeatPublishKeepsTheSameBundleAndForcedRepublishReplacesIt(t *testing.T) {
@@ -240,23 +236,23 @@ func TestPublicationRealStack_RepeatPublishKeepsTheSameBundleAndForcedRepublishR
 	runID := onlyRunID(t, run)
 	first := latestSummaryBundleDigest(t)
 	require.Regexp(t, `^[0-9a-f]{64}$`, first)
-	assertSingleActiveBundle(t, runID, first)
+	assertSingleActiveBundle(t, run, runID, first)
 
 	out, err := env.run(t, "runs", "publish", runID)
 	require.NoError(t, err, out)
 	assert.Equal(t, first, latestSummaryBundleDigest(t), "a repeat publish keeps the summary digest")
-	assertSingleActiveBundle(t, runID, first)
+	assertSingleActiveBundle(t, run, runID, first)
 
-	audit := runAuditProofIDs(t, runID)
+	audit := runAuditProofIDs(t, run, runID)
 	require.NotEmpty(t, audit, "the run has active audit database and agent trace entries")
 
 	out, err = env.run(t, "runs", "publish", runID, "--force")
 	require.NoError(t, err, out)
 	assert.Contains(t, out, "forced republish")
 	second := latestSummaryBundleDigest(t)
-	assertSingleActiveBundle(t, runID, second)
+	assertSingleActiveBundle(t, run, runID, second)
 
-	active := mirrorProofCatalogEntries(t)
+	active := mirrorProofCatalogEntries(t, run)
 	activeIDs := map[string]bool{}
 	for _, entry := range active {
 		activeIDs[entry.ArtifactID] = true
@@ -281,12 +277,12 @@ func TestPublicationRealStack_SummaryBundleDigestFollowsAVerificationThatChanges
 	runID := onlyRunID(t, run)
 	published := latestSummaryBundleDigest(t)
 	require.Regexp(t, `^[0-9a-f]{64}$`, published)
-	assertSingleActiveBundle(t, runID, published)
+	assertSingleActiveBundle(t, run, runID, published)
 
 	out, err := verifyCLI(t, env, runID)
 	require.NoError(t, err, out)
 	assert.Equal(t, "passed", latestSummary(t).VerifierState, "the verification published its summary revision")
 	verified := latestSummaryBundleDigest(t)
 	assert.Equal(t, published, verified, "a verification that changes no result records keeps the bundle digest")
-	assertSingleActiveBundle(t, runID, verified)
+	assertSingleActiveBundle(t, run, runID, verified)
 }

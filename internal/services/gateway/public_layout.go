@@ -20,9 +20,10 @@ import (
 // PublicLayoutState is the mirror's current public layout head: everything a
 // pointer names, with the read model those fields describe.
 type PublicLayoutState struct {
-	// Pointer is unsigned with Revision zero. Its ProofCatalogSHA256 is empty
-	// until the caller fills it from LayoutProofCatalog.
+	// Pointer is unsigned with Revision zero.
 	Pointer models.PublicFeedPointer
+	// ProofRootSHA256 is internal artifact synchronization state, never public.
+	ProofRootSHA256 string
 	// ReadModelGzip is the gzipped read model. Pointer.ReadModelSHA256 is the
 	// SHA-256 of its uncompressed bytes.
 	ReadModelGzip []byte
@@ -42,15 +43,6 @@ type PublicLayoutHead struct {
 	ActiveRuns []models.PublicLiveRun
 }
 
-// PublicLayoutCatalog is the proof catalog as one layout object.
-type PublicLayoutCatalog struct {
-	// SHA256 covers the uncompressed catalog JSON.
-	SHA256 string
-	Gzip   []byte
-	// Entries are the active artifacts the catalog lists.
-	Entries []models.PublicProofCatalogEntry
-}
-
 // PublicLayoutSource is what the bucket publisher reads from the colocated
 // mirror. The mirror's own layout routes serve the same bytes, so the bucket and
 // the loopback listener share one read path.
@@ -64,15 +56,9 @@ type PublicLayoutSource interface {
 	// records accepted after sequence, so a held pointer moves for records of a run
 	// that is not executing.
 	LayoutDatasetsSince(ctx context.Context, sourceID string, after int64) ([]string, error)
-	// LayoutProofCatalog returns the catalog at the current proof root. Bytes are
-	// stable for one proof root.
-	LayoutProofCatalog(ctx context.Context, sourceID string) (PublicLayoutCatalog, error)
-	// LayoutProofHead returns proof-head.json and false when no head exists.
-	LayoutProofHead(ctx context.Context, sourceID string) ([]byte, bool, error)
-	// LayoutSegmentChunk returns the gzipped JSONL of the segments in
-	// [first, first+constants.PublicLayoutSegmentChunkSize) with signing_public_key
-	// filled in, and false when the range holds none.
-	LayoutSegmentChunk(ctx context.Context, sourceID string, first int64) ([]byte, bool, error)
+	// LayoutArtifacts returns active UI artifacts from the internal proof log.
+	// It does not encode or expose a catalog projection.
+	LayoutArtifacts(ctx context.Context, sourceID string) ([]models.PublicProofCatalogEntry, error)
 	// LayoutHistoryPage returns one gzipped page of retained records in
 	// [first, first+constants.PublicLayoutHistoryPageRecords) under /history's
 	// withdrawal filter, and false when the span holds none.

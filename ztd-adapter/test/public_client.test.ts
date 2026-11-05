@@ -8,7 +8,6 @@ import { PublicClientError, PublicEndpointNotAllowedError, createPublicClient, p
 
 const config = parsePublicRuntimeConfig({ schema_version: '1.0.0', mirror_origin: 'https://feed.example.com' });
 const zero = '0'.repeat(64);
-const artifactID = 'a'.repeat(64);
 const generatedAt = '2026-09-13T00:00:00Z';
 
 const snapshot = {
@@ -26,25 +25,8 @@ const readModelText = JSON.stringify({
   snapshot,
   source_freshness: 'source_offline',
   recent_projections: [{ sequence: 1, kind: 'catalog_snapshot' }],
-  proof_catalog_summary: { artifact_count: 1, total_byte_size: 12 },
+  schema_version: '2.0.0',
   generated_at: generatedAt,
-});
-
-const catalogText = JSON.stringify({
-  schema_version: '1.0.0',
-  generated_at: generatedAt,
-  entries: [{
-    artifact_id: artifactID,
-    filename: 'proof.db',
-    media_type: 'application/vnd.sqlite3',
-    byte_size: 12,
-    sha256: artifactID,
-    classification: 'public_safe',
-    campaign_id: 'campaign-1',
-    generated_at: generatedAt,
-    verification_command: 'ztd public verify-proof --segments proof-segments.jsonl --artifacts ./proofs',
-    immutable_url: `/proofs/${artifactID}`,
-  }],
 });
 
 function sha256(text: string): string {
@@ -53,12 +35,10 @@ function sha256(text: string): string {
 
 function pointerBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    schema_version: '1.0.0',
+    schema_version: '2.0.0',
     source_id: 'deployment-a',
     revision: 1,
     read_model_sha256: sha256(readModelText),
-    proof_catalog_sha256: sha256(catalogText),
-    proof_segment_head: 0,
     high_water_sequence: 0,
     history_first_sequence: 0,
     feed_chain_hash: zero,
@@ -90,7 +70,6 @@ describe('public spectator typed client', () => {
     const fetchImpl = mirror({
       '/pointer.json': JSON.stringify(pointerBody()),
       [`/read-model/${sha256(readModelText)}.json.gz`]: readModelText,
-      [`/proof-catalog/${sha256(catalogText)}.json.gz`]: catalogText,
       '/live/status.json': JSON.stringify(liveStatusBody),
     });
     const client = createPublicClient(config, fetchImpl);
@@ -98,47 +77,24 @@ describe('public spectator typed client', () => {
     const pointer = await client.pointer();
     expect(pointer).toMatchObject({ source_id: 'deployment-a', revision: 1 });
     await expect(client.readModel(pointer)).resolves.toMatchObject({ source_freshness: 'source_offline' });
-    await expect(client.proofCatalog(pointer)).resolves.toMatchObject({ entries: [{ filename: 'proof.db' }] });
     await expect(client.liveStatus()).resolves.toMatchObject({ active_runs: [], tail: [] });
 
     const urls = fetchImpl.mock.calls.map((call) => String(call[0]));
     expect(urls).toEqual([
       'https://feed.example.com/pointer.json',
       `https://feed.example.com/read-model/${sha256(readModelText)}.json.gz`,
-      `https://feed.example.com/proof-catalog/${sha256(catalogText)}.json.gz`,
       'https://feed.example.com/live/status.json',
     ]);
     for (const call of fetchImpl.mock.calls) expect(call[1]).toMatchObject({ credentials: 'omit', method: 'GET' });
   });
 
-  it('returns the proof catalog entry, and null for an unknown or withdrawn artifact', async () => {
-    const entry = JSON.parse(catalogText).entries[0];
-    const fetchImpl = mirror({
-      [`/proof-meta/${artifactID}.json`]: JSON.stringify(entry),
-    });
-    const client = createPublicClient(config, fetchImpl);
-
-    await expect(client.proofCatalogEntry(artifactID)).resolves.toMatchObject({ filename: 'proof.db' });
-    await expect(client.proofCatalogEntry('b'.repeat(64))).resolves.toBeNull();
-  });
-
   it('throws when the decoded read model does not hash to the pointer digest', async () => {
-    const tampered = readModelText.replace('"artifact_count":1', '"artifact_count":2');
+    const tampered = readModelText.replace('source_offline', 'stale');
     const fetchImpl = mirror({ [`/read-model/${sha256(readModelText)}.json.gz`]: tampered });
     const client = createPublicClient(config, fetchImpl);
 
     await expect(client.readModel(pointerBody() as never)).rejects.toThrow(/digest mismatch/);
     await expect(client.readModel(pointerBody() as never)).rejects.toBeInstanceOf(PublicClientError);
-  });
-
-  it('throws when the pointer names no proof catalog', async () => {
-    const fetchImpl = mirror({});
-    const client = createPublicClient(config, fetchImpl);
-    const pointer = pointerBody();
-    delete pointer.proof_catalog_sha256;
-
-    await expect(client.proofCatalog(pointer as never)).rejects.toBeInstanceOf(PublicClientError);
-    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('refuses digests with uppercase or path characters before any request', async () => {
@@ -147,7 +103,6 @@ describe('public spectator typed client', () => {
     const invalid = ['A'.repeat(64), 'a'.repeat(63), `${'a'.repeat(62)}/.`, `${'a'.repeat(63)}?`, `../${'a'.repeat(61)}`];
 
     for (const digest of invalid) {
-      await expect(client.proofCatalogEntry(digest)).rejects.toBeInstanceOf(PublicEndpointNotAllowedError);
       await expect(client.readModel(pointerBody({ read_model_sha256: digest }) as never)).rejects.toBeInstanceOf(PublicEndpointNotAllowedError);
     }
     expect(fetchImpl).not.toHaveBeenCalled();

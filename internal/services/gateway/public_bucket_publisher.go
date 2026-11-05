@@ -102,15 +102,12 @@ type PublicBucketPublisher struct {
 	// pointer holds advance it ahead of proofsRoot.
 	activeRoot     string
 	lastHeldProofs time.Time
-	// present holds UI artifact and proof-meta keys known to be in the bucket.
+	// present holds UI artifact keys known to be in the bucket.
 	present map[string]bool
 	// active holds layout keys, including artifacts uploaded during a pointer hold.
-	active       map[string]bool
-	proofsRoot   string
-	catalogRoot  string
-	catalogSHA   string
-	segmentsHead int64
-	historyHigh  int64
+	active      map[string]bool
+	proofsRoot  string
+	historyHigh int64
 
 	// withdrawalSweep is set while objects a withdrawal left behind are still owed
 	// removal: read models and catalogs that may name the withdrawn data.
@@ -210,7 +207,7 @@ func (p *PublicBucketPublisher) tick(ctx context.Context) error {
 		errs = append(errs, err)
 	}
 	changed := head.HighWaterSequence != p.lastPointer.HighWaterSequence || head.FeedChainHash != p.lastPointer.FeedChainHash ||
-		head.ProofRootSHA256 != p.lastPointer.ProofRootSHA256 || head.Freshness != p.lastFreshness
+		head.ProofRootSHA256 != p.proofsRoot || head.Freshness != p.lastFreshness
 	held := len(head.ActiveRuns) > 0
 	due := force
 	if !force && changed && p.now().Sub(p.lastSync) >= publicBucketPointerInterval {
@@ -295,12 +292,12 @@ func (p *PublicBucketPublisher) uploadHeldProofs(ctx context.Context, root strin
 	if p.now().Sub(p.lastHeldProofs) < publicBucketPointerInterval {
 		return false, nil
 	}
-	catalog, err := p.source.LayoutProofCatalog(ctx, p.sourceID)
+	catalog, err := p.source.LayoutArtifacts(ctx, p.sourceID)
 	if err != nil {
 		return false, fmt.Errorf("public-feed: bucket: read catalog: %w", err)
 	}
-	listed := make(map[string]bool, len(catalog.Entries))
-	for _, entry := range catalog.Entries {
+	listed := make(map[string]bool, len(catalog))
+	for _, entry := range catalog {
 		if key, ok := publicLayoutArtifactKey(entry); ok {
 			listed[key] = true
 		}
@@ -310,7 +307,7 @@ func (p *PublicBucketPublisher) uploadHeldProofs(ctx context.Context, root strin
 			return true, nil
 		}
 	}
-	if err := p.uploadProofs(ctx, catalog.Entries); err != nil {
+	if err := p.uploadProofs(ctx, catalog); err != nil {
 		return false, err
 	}
 	// Uploaded artifacts join the active set, so one withdrawn before the next
@@ -333,59 +330,35 @@ func (p *PublicBucketPublisher) uploadHeldProofs(ctx context.Context, root strin
 func (p *PublicBucketPublisher) syncLayout(ctx context.Context, state PublicLayoutState, activeRuns []models.PublicLiveRun, force, withdrew bool) error {
 	first := !p.synced
 	if first {
-		if err := p.loadPresent(ctx); err != nil {
+		if err := p.loadUIArtifacts(ctx); err != nil {
 			return err
 		}
 	}
 	pointer := state.Pointer
 	pointer.Active = len(activeRuns) > 0
-	root := pointer.ProofRootSHA256
+	root := state.ProofRootSHA256
 
 	nextActive := p.active
 	var withdrawn []string
 	if root != "" && (first || root != p.proofsRoot || root != p.activeRoot) {
-		catalog, err := p.source.LayoutProofCatalog(ctx, p.sourceID)
+		catalog, err := p.source.LayoutArtifacts(ctx, p.sourceID)
 		if err != nil {
 			return fmt.Errorf("public-feed: bucket: read catalog: %w", err)
 		}
-		nextActive = make(map[string]bool, len(catalog.Entries))
-		for _, entry := range catalog.Entries {
+		nextActive = make(map[string]bool, len(catalog))
+		for _, entry := range catalog {
 			if key, ok := publicLayoutArtifactKey(entry); ok {
 				nextActive[key] = true
 			}
 		}
-		if err := p.uploadProofs(ctx, catalog.Entries); err != nil {
+		if err := p.uploadProofs(ctx, catalog); err != nil {
 			return err
 		}
 		withdrawn = p.withdrawnArtifacts(nextActive, first)
-		if err := p.uploadSegments(ctx, pointer.ProofSegmentHead); err != nil {
-			return err
-		}
-		head, ok, err := p.source.LayoutProofHead(ctx, p.sourceID)
-		if err != nil {
-			return fmt.Errorf("public-feed: bucket: read proof head: %w", err)
-		}
-		if ok {
-			if err := p.putBytes(ctx, constants.PublicLayoutProofHeadKey, head, constants.HeaderValueApplicationJSON, "", constants.PublicLayoutCacheProofHead); err != nil {
-				return err
-			}
-		}
 	}
-	// During a run the catalog and history stay as they are, since rewriting them
-	// every minute is costly and proof-meta objects serve lookups between rewrites.
-	// They catch up once no run is active, or at once if an artifact was withdrawn.
+	// History catches up when the active set changes, no run is active, or an
+	// artifact withdrawal forces a new pointer.
 	settling := force || !pointer.Active || len(withdrawn) > 0
-	if root != "" && settling && p.catalogRoot != root {
-		catalog, err := p.source.LayoutProofCatalog(ctx, p.sourceID)
-		if err != nil {
-			return fmt.Errorf("public-feed: bucket: read catalog: %w", err)
-		}
-		key := constants.PublicLayoutProofCatalogPrefix + catalog.SHA256 + constants.PublicLayoutJSONGzipSuffix
-		if err := p.putBytes(ctx, key, catalog.Gzip, constants.HeaderValueApplicationJSON, constants.HeaderValueGzip, constants.PublicLayoutCacheImmutable); err != nil {
-			return err
-		}
-		p.catalogRoot, p.catalogSHA = root, catalog.SHA256
-	}
 	historyPages, err := p.publishHistory(ctx, pointer, settling, withdrew)
 	if err != nil {
 		return err
@@ -395,7 +368,6 @@ func (p *PublicBucketPublisher) syncLayout(ctx context.Context, state PublicLayo
 		return err
 	}
 
-	pointer.ProofCatalogSHA256 = p.catalogSHA
 	pointer.Revision = nextPublicFeedPointerRevision(p.journal.revision, p.now())
 	signed, err := p.sign(pointer)
 	if err != nil {
@@ -412,9 +384,7 @@ func (p *PublicBucketPublisher) syncLayout(ctx context.Context, state PublicLayo
 	// Nothing names the withdrawn objects from here on, so they can go.
 	entries := []models.PublicBucketJournalEntry{{Kind: models.PublicBucketJournalPointer, Revision: signed.Revision, Sequence: signed.HighWaterSequence, WithdrawalDigest: signed.WithdrawalDigest}}
 	for _, key := range withdrawn {
-		artifactID := publicLayoutArtifactID(key)
 		entries = append(entries, p.deleteEntries(key)...)
-		entries = append(entries, p.deleteEntries(constants.PublicLayoutProofMetaPrefix+artifactID+constants.PublicLayoutJSONSuffix)...)
 	}
 	for _, key := range historyPages.deleted {
 		entries = append(entries, p.deleteEntries(key)...)
@@ -422,7 +392,7 @@ func (p *PublicBucketPublisher) syncLayout(ctx context.Context, state PublicLayo
 	// Deleting a run withdraws its dataset and prunes its proofs as two steps, which
 	// can land on separate ticks, so either one counts as a withdrawal.
 	if withdrew || len(withdrawn) > 0 {
-		entries = append(entries, p.purgeEntry(constants.PublicLayoutPointerKey), p.purgeEntry(constants.PublicLayoutProofHeadKey))
+		entries = append(entries, p.purgeEntry(constants.PublicLayoutPointerKey))
 		p.withdrawalSweep = true
 	}
 	if withdrew {
@@ -434,15 +404,12 @@ func (p *PublicBucketPublisher) syncLayout(ctx context.Context, state PublicLayo
 		return err
 	}
 	for _, key := range withdrawn {
-		artifactID := publicLayoutArtifactID(key)
 		delete(p.present, key)
-		delete(p.present, constants.PublicLayoutProofMetaPrefix+artifactID+constants.PublicLayoutJSONSuffix)
 	}
 	p.active = nextActive
 	if root != "" {
 		p.proofsRoot, p.activeRoot = root, root
 	}
-	p.segmentsHead = max(p.segmentsHead, pointer.ProofSegmentHead)
 	if historyPages.high > 0 {
 		p.historyHigh = historyPages.high
 	}
@@ -453,9 +420,9 @@ func (p *PublicBucketPublisher) syncLayout(ctx context.Context, state PublicLayo
 	return nil
 }
 
-// loadPresent lists UI artifact keys, so an interrupted sync resumes without listing historical private proofs.
-func (p *PublicBucketPublisher) loadPresent(ctx context.Context) error {
-	for _, prefix := range []string{constants.PublicLayoutRunsPrefix, constants.PublicLayoutFixturesPrefix, constants.PublicLayoutProofMetaPrefix} {
+// loadUIArtifacts lists UI artifact keys, so an interrupted sync resumes without listing historical private proofs.
+func (p *PublicBucketPublisher) loadUIArtifacts(ctx context.Context) error {
+	for _, prefix := range []string{constants.PublicLayoutRunsPrefix, constants.PublicLayoutFixturesPrefix} {
 		objects, err := p.client.List(ctx, prefix)
 		if err != nil {
 			return fmt.Errorf("public-feed: bucket: list %s: %w", prefix, err)
@@ -489,7 +456,7 @@ func (p *PublicBucketPublisher) withdrawnArtifacts(next map[string]bool, first b
 	return withdrawn
 }
 
-// uploadProofs uploads missing artifacts and their catalog entries with a bounded
+// uploadProofs uploads missing artifacts with a bounded
 // worker pool. An interrupted upload resumes from what present records.
 func (p *PublicBucketPublisher) uploadProofs(ctx context.Context, entries []models.PublicProofCatalogEntry) error {
 	workCtx, cancel := context.WithCancel(ctx)
@@ -522,7 +489,7 @@ feed:
 			continue
 		}
 		mu.Lock()
-		missing := !p.present[key] || !p.present[constants.PublicLayoutProofMetaPrefix+entry.ArtifactID+constants.PublicLayoutJSONSuffix]
+		missing := !p.present[key]
 		mu.Unlock()
 		if !missing {
 			continue
@@ -541,8 +508,7 @@ feed:
 	return ctx.Err()
 }
 
-// uploadProof uploads the artifact and then its catalog entry. The entry going
-// second means a proof-meta hit always has its artifact.
+// uploadProof uploads one allowed UI artifact.
 func (p *PublicBucketPublisher) uploadProof(ctx context.Context, entry models.PublicProofCatalogEntry, mu *sync.Mutex) error {
 	proofKey, allowed := publicLayoutArtifactKey(entry)
 	if !allowed {
@@ -571,45 +537,6 @@ func (p *PublicBucketPublisher) uploadProof(ctx context.Context, entry models.Pu
 		mu.Lock()
 		p.present[proofKey] = true
 		mu.Unlock()
-	}
-	encoded, err := json.Marshal(entry)
-	if err != nil {
-		return fmt.Errorf("public-feed: bucket: encode proof entry %s: %w", entry.ArtifactID, err)
-	}
-	metaKey := constants.PublicLayoutProofMetaPrefix + entry.ArtifactID + constants.PublicLayoutJSONSuffix
-	if err := p.putBytes(ctx, metaKey, encoded, constants.HeaderValueApplicationJSON, "", constants.PublicLayoutCacheImmutable); err != nil {
-		return err
-	}
-	mu.Lock()
-	p.present[metaKey] = true
-	mu.Unlock()
-	return nil
-}
-
-// uploadSegments writes each chunk from the one holding the first segment not yet
-// uploaded through the one holding head. Only the last chunk can still change.
-func (p *PublicBucketPublisher) uploadSegments(ctx context.Context, head int64) error {
-	if head <= 0 {
-		return nil
-	}
-	size := int64(constants.PublicLayoutSegmentChunkSize)
-	start := ((p.segmentsHead+1)-1)/size*size + 1
-	for first := start; first <= head; first += size {
-		chunk, ok, err := p.source.LayoutSegmentChunk(ctx, p.sourceID, first)
-		if err != nil {
-			return fmt.Errorf("public-feed: bucket: read segment chunk %d: %w", first, err)
-		}
-		if !ok {
-			continue
-		}
-		cache := constants.PublicLayoutCacheTail
-		if first+size-1 <= head {
-			cache = constants.PublicLayoutCacheImmutable
-		}
-		key := constants.PublicLayoutProofSegmentsPrefix + strconv.FormatInt(first, 10) + constants.PublicLayoutJSONLGzipSuffix
-		if err := p.putBytes(ctx, key, chunk, constants.HeaderValueApplicationNDJSON, constants.HeaderValueGzip, cache); err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -812,9 +739,6 @@ func (p *PublicBucketPublisher) sweep(ctx context.Context, cutoff time.Time, pur
 	keep := map[string]bool{
 		constants.PublicLayoutReadModelPrefix + p.lastPointer.ReadModelSHA256 + constants.PublicLayoutJSONGzipSuffix: true,
 	}
-	if p.lastPointer.ProofCatalogSHA256 != "" {
-		keep[constants.PublicLayoutProofCatalogPrefix+p.lastPointer.ProofCatalogSHA256+constants.PublicLayoutJSONGzipSuffix] = true
-	}
 	var entries []models.PublicBucketJournalEntry
 	queue := func(key string) {
 		if purge {
@@ -823,7 +747,7 @@ func (p *PublicBucketPublisher) sweep(ctx context.Context, cutoff time.Time, pur
 		}
 		entries = append(entries, models.PublicBucketJournalEntry{Kind: models.PublicBucketJournalDelete, Key: key})
 	}
-	for _, prefix := range []string{constants.PublicLayoutReadModelPrefix, constants.PublicLayoutProofCatalogPrefix} {
+	for _, prefix := range []string{constants.PublicLayoutReadModelPrefix} {
 		objects, err := p.client.List(ctx, prefix)
 		if err != nil {
 			return fmt.Errorf("public-feed: bucket: list %s: %w", prefix, err)

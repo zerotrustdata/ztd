@@ -83,7 +83,7 @@ type bucketFakeSource struct {
 	segmentHead  int64
 	historyFirst int64
 	readModel    []byte
-	catalog      PublicLayoutCatalog
+	catalog      []models.PublicProofCatalogEntry
 	proofHead    []byte
 	chunks       map[int64][]byte
 	history      map[int64][]byte
@@ -135,8 +135,6 @@ func (s *bucketFakeSource) LayoutState(_ context.Context, _ string) (PublicLayou
 		SchemaVersion:        constants.PublicFeedPointerSchemaVersion,
 		SourceID:             bucketFakeSourceID,
 		ReadModelSHA256:      hashBytes(s.readModel),
-		ProofRootSHA256:      s.head.ProofRootSHA256,
-		ProofSegmentHead:     s.segmentHead,
 		HighWaterSequence:    s.head.HighWaterSequence,
 		HistoryFirstSequence: s.historyFirst,
 		FeedChainHash:        s.head.FeedChainHash,
@@ -145,18 +143,17 @@ func (s *bucketFakeSource) LayoutState(_ context.Context, _ string) (PublicLayou
 		GeneratedAt:          time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC),
 	}
 	return PublicLayoutState{
-		Pointer:       pointer,
-		ReadModelGzip: slices.Clone(s.readModel),
-		ActiveRuns:    slices.Clone(runs),
+		Pointer:         pointer,
+		ProofRootSHA256: s.head.ProofRootSHA256,
+		ReadModelGzip:   slices.Clone(s.readModel),
+		ActiveRuns:      slices.Clone(runs),
 	}, nil
 }
 
-func (s *bucketFakeSource) LayoutProofCatalog(_ context.Context, _ string) (PublicLayoutCatalog, error) {
+func (s *bucketFakeSource) LayoutArtifacts(_ context.Context, _ string) ([]models.PublicProofCatalogEntry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	catalog := s.catalog
-	catalog.Entries = slices.Clone(s.catalog.Entries)
-	return catalog, nil
+	return slices.Clone(s.catalog), nil
 }
 
 func (s *bucketFakeSource) LayoutDatasetsSince(_ context.Context, _ string, after int64) ([]string, error) {
@@ -170,19 +167,6 @@ func (s *bucketFakeSource) LayoutDatasetsSince(_ context.Context, _ string, afte
 	}
 	slices.Sort(datasets)
 	return datasets, nil
-}
-
-func (s *bucketFakeSource) LayoutProofHead(_ context.Context, _ string) ([]byte, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return slices.Clone(s.proofHead), s.proofHead != nil, nil
-}
-
-func (s *bucketFakeSource) LayoutSegmentChunk(_ context.Context, _ string, first int64) ([]byte, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	chunk, ok := s.chunks[first]
-	return slices.Clone(chunk), ok, nil
 }
 
 func (s *bucketFakeSource) LayoutHistoryPage(_ context.Context, _ string, first int64) ([]byte, bool, error) {
@@ -452,12 +436,10 @@ func (h *bucketHarness) setProofRoot(entries ...models.PublicProofCatalogEntry) 
 	for _, entry := range entries {
 		ids = append(ids, entry.ArtifactID)
 	}
-	encoded, err := json.Marshal(entries)
-	require.NoError(h.t, err)
 	h.source.mu.Lock()
 	defer h.source.mu.Unlock()
 	h.source.head.ProofRootSHA256 = hashBytes([]byte(strings.Join(ids, ",")))
-	h.source.catalog = PublicLayoutCatalog{SHA256: hashBytes(encoded), Gzip: encoded, Entries: entries}
+	h.source.catalog = entries
 }
 
 func (h *bucketHarness) setReadModel(body string) {
@@ -578,10 +560,6 @@ func TestBucketPublisher_PointerWrittenLast(t *testing.T) {
 	for _, key := range []string{
 		bucketArtifactKey(first),
 		bucketArtifactKey(second),
-		constants.PublicLayoutProofMetaPrefix + first.ArtifactID + constants.PublicLayoutJSONSuffix,
-		constants.PublicLayoutProofMetaPrefix + second.ArtifactID + constants.PublicLayoutJSONSuffix,
-		bucketFakeSegmentKey(1),
-		constants.PublicLayoutProofHeadKey,
 		bucketFakeHistoryKey(1),
 		bucketFakeReadModelKey(h.source.readModel),
 	} {
@@ -589,13 +567,6 @@ func TestBucketPublisher_PointerWrittenLast(t *testing.T) {
 		require.NotEqual(t, -1, index, "expected a Put of %s", key)
 		assert.Less(t, index, pointerIndex, "%s must be written before pointer.json", key)
 	}
-	assert.Less(t, lastIndex(bucketArtifactKey(first)), lastIndex(constants.PublicLayoutProofMetaPrefix+first.ArtifactID+constants.PublicLayoutJSONSuffix),
-		"a proof-meta object must follow its artifact")
-	assert.Less(t, lastIndex(bucketArtifactKey(second)), lastIndex(constants.PublicLayoutProofMetaPrefix+second.ArtifactID+constants.PublicLayoutJSONSuffix),
-		"a proof-meta object must follow its artifact")
-	catalogPuts := countPuts(h.client.logSince(0), constants.PublicLayoutProofCatalogPrefix)
-	assert.Equal(t, 1, catalogPuts, "a first sync writes the catalog")
-	assert.Less(t, slices.IndexFunc(puts, func(key string) bool { return strings.HasPrefix(key, constants.PublicLayoutProofCatalogPrefix) }), pointerIndex)
 }
 
 func TestBucketPublisher_FailedUploadLeavesPointerUnmoved(t *testing.T) {
@@ -619,7 +590,6 @@ func TestBucketPublisher_FailedUploadLeavesPointerUnmoved(t *testing.T) {
 
 	retry := h.client.logSince(mark)
 	assert.Contains(t, retry, "put "+bucketArtifactKey(failing), "the retry uploads the missing artifact")
-	assert.Contains(t, retry, "put "+constants.PublicLayoutProofMetaPrefix+failing.ArtifactID+constants.PublicLayoutJSONSuffix)
 	assert.Zero(t, countPuts(retry, bucketArtifactKey(keep)), "the artifact already in the bucket is not uploaded again")
 	assert.Zero(t, countPuts(retry, constants.PublicLayoutProofMetaPrefix+keep.ArtifactID))
 	assert.True(t, h.client.has(constants.PublicLayoutPointerKey), "the retry writes the pointer")
@@ -686,10 +656,10 @@ func TestBucketPublisher_HoldsReadModelDuringRun(t *testing.T) {
 	calls := h.client.logSince(mark)
 	assert.Zero(t, countPuts(calls, constants.PublicLayoutPointerKey), "the pointer holds while only the active run's records arrive")
 	assert.Zero(t, countPuts(calls, constants.PublicLayoutReadModelPrefix), "no read model is uploaded during the run")
-	assert.Zero(t, countPuts(calls, constants.PublicLayoutProofCatalogPrefix), "the catalog is not rewritten during the run")
+	assert.Zero(t, countPuts(calls, constants.PublicLayoutProofCatalogPrefix), "no public catalog is written")
 	for _, entry := range proofs {
 		assert.True(t, h.client.has(bucketArtifactKey(entry)), "a proof is uploaded during the run")
-		assert.True(t, h.client.has(constants.PublicLayoutProofMetaPrefix+entry.ArtifactID+constants.PublicLayoutJSONSuffix), "a proof-meta object is uploaded during the run")
+		assert.True(t, h.client.has(bucketArtifactKey(entry)), "a UI artifact is uploaded during the run")
 	}
 	h.source.mu.Lock()
 	stateCalls := h.source.layoutStateCalls
@@ -837,7 +807,7 @@ func TestBucketPublisher_HeldUploadWithdrawnBeforeNextPointerIsDeleted(t *testin
 	assert.True(t, h.client.has(bucketArtifactKey(kept)))
 }
 
-func TestBucketPublisher_SettleWritesImmediatelyAndRewritesCatalog(t *testing.T) {
+func TestBucketPublisher_SettleWritesImmediately(t *testing.T) {
 	h := newBucketHarness(t)
 	ctx := t.Context()
 	run := models.PublicLiveRun{DatasetID: "ds-1", RunID: "run-1", LifecycleState: "running"}
@@ -847,7 +817,6 @@ func TestBucketPublisher_SettleWritesImmediatelyAndRewritesCatalog(t *testing.T)
 	h.setProofRoot(first)
 	publisher := h.newPublisher()
 	require.NoError(t, publisher.tick(ctx))
-	require.Equal(t, 1, countPuts(h.client.logSince(0), constants.PublicLayoutProofCatalogPrefix))
 
 	h.clock.Advance(time.Minute)
 	h.setProofRoot(first, second)
@@ -865,10 +834,6 @@ func TestBucketPublisher_SettleWritesImmediatelyAndRewritesCatalog(t *testing.T)
 	require.NoError(t, publisher.tick(ctx))
 	settle := h.client.logSince(mark)
 	settlePuts := putsIn(settle)
-	require.Equal(t, 1, countPuts(settle, constants.PublicLayoutProofCatalogPrefix), "the catalog is written on the tick the run settles")
-	catalogKey := constants.PublicLayoutProofCatalogPrefix + hashBytes(mustJSONForBucket(t, []models.PublicProofCatalogEntry{first, second})) + constants.PublicLayoutJSONGzipSuffix
-	assert.Contains(t, settlePuts, catalogKey)
-	assert.Less(t, slices.Index(settlePuts, catalogKey), len(settlePuts)-1)
 	assert.Equal(t, constants.PublicLayoutPointerKey, settlePuts[len(settlePuts)-1])
 }
 
@@ -898,7 +863,7 @@ func mustJSONForBucket(t *testing.T, value any) []byte {
 	return encoded
 }
 
-func TestBucketPublisher_IdleProofChangeRewritesCatalog(t *testing.T) {
+func TestBucketPublisher_IdleArtifactChangeWritesPointer(t *testing.T) {
 	h := newBucketHarness(t)
 	ctx := t.Context()
 	first := h.proof("scenario-first.input.json", []byte(`{"first":1}`))
@@ -913,12 +878,7 @@ func TestBucketPublisher_IdleProofChangeRewritesCatalog(t *testing.T) {
 	require.NoError(t, publisher.tick(ctx))
 
 	calls := putsIn(h.client.logSince(mark))
-	require.Equal(t, 1, countPuts(h.client.logSince(mark), constants.PublicLayoutProofCatalogPrefix), "with no active run the catalog is written with the next pointer")
 	assert.Equal(t, constants.PublicLayoutPointerKey, calls[len(calls)-1])
-	pointer := h.pointerInBucket()
-	catalogKey := constants.PublicLayoutProofCatalogPrefix + pointer.ProofCatalogSHA256 + constants.PublicLayoutJSONGzipSuffix
-	assert.Contains(t, calls, catalogKey, "the pointer names the catalog it was written with")
-	assert.True(t, h.client.has(catalogKey), "the pointer's catalog is in the bucket")
 }
 
 func TestBucketPublisher_StatusWrittenOnlyOnChange(t *testing.T) {
@@ -1023,7 +983,6 @@ func TestBucketPublisher_LiveBundleRefreshesAtMostOncePerMinute(t *testing.T) {
 type bucketWithdrawal struct {
 	artifactID      string
 	oldReadModelKey string
-	oldCatalogKey   string
 }
 
 // bucketWithdrawalSetup publishes two artifacts with one tick, then withdraws the
@@ -1051,7 +1010,6 @@ func bucketWithdrawalSetup(t *testing.T, h *bucketHarness, publisher *PublicBuck
 	return bucketWithdrawal{
 		artifactID:      withdrawn.ArtifactID,
 		oldReadModelKey: constants.PublicLayoutReadModelPrefix + before.ReadModelSHA256 + constants.PublicLayoutJSONGzipSuffix,
-		oldCatalogKey:   constants.PublicLayoutProofCatalogPrefix + before.ProofCatalogSHA256 + constants.PublicLayoutJSONGzipSuffix,
 	}
 }
 
@@ -1061,7 +1019,6 @@ func TestBucketPublisher_WithdrawalDeletesAndPurges(t *testing.T) {
 	publisher := h.newPublisher()
 	withdrawal := bucketWithdrawalSetup(t, h, publisher)
 	require.True(t, h.client.has(withdrawal.oldReadModelKey), "the earlier read model is in the bucket before the withdrawal")
-	require.True(t, h.client.has(withdrawal.oldCatalogKey), "the earlier catalog is in the bucket before the withdrawal")
 	statusMark := h.client.logMark()
 
 	require.NoError(t, publisher.tick(ctx))
@@ -1069,7 +1026,6 @@ func TestBucketPublisher_WithdrawalDeletesAndPurges(t *testing.T) {
 	assert.False(t, h.client.has(constants.PublicLayoutFixturesPrefix+withdrawal.artifactID), "the withdrawn artifact is deleted from fixtures/")
 	assert.False(t, h.client.has(constants.PublicLayoutProofMetaPrefix+withdrawal.artifactID+constants.PublicLayoutJSONSuffix), "the withdrawn artifact's proof-meta is deleted")
 	assert.False(t, h.client.has(withdrawal.oldReadModelKey), "an earlier read model is deleted with no grace")
-	assert.False(t, h.client.has(withdrawal.oldCatalogKey), "an earlier catalog is deleted with no grace")
 	assert.True(t, h.client.has(bucketFakeReadModelKey([]byte(`{"read":"model-1"}`))), "the current read model stays")
 
 	calls := h.client.logSince(statusMark)
@@ -1078,11 +1034,8 @@ func TestBucketPublisher_WithdrawalDeletesAndPurges(t *testing.T) {
 	purged := h.purger.purged()
 	for _, url := range []string{
 		bucketFakeKeyURL(constants.PublicLayoutFixturesPrefix + withdrawal.artifactID),
-		bucketFakeKeyURL(constants.PublicLayoutProofMetaPrefix + withdrawal.artifactID + constants.PublicLayoutJSONSuffix),
 		bucketFakeKeyURL(constants.PublicLayoutPointerKey),
-		bucketFakeKeyURL(constants.PublicLayoutProofHeadKey),
 		bucketFakeKeyURL(withdrawal.oldReadModelKey),
-		bucketFakeKeyURL(withdrawal.oldCatalogKey),
 	} {
 		assert.Contains(t, purged, url)
 	}

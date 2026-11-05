@@ -122,7 +122,7 @@
       "type": "object"
     },
     "public_pointer": {
-      "description": "Mutable mirror pointer. It names the current digest-addressed read model and proof catalog. It is written last, so a partial publish never goes live. While a run is active the publisher holds it and moves it only when the active run set changes, a withdrawal lands, or records of a dataset that is not executing arrive; live/status.json carries the run in between. generated_at is when the pointer was composed, not a freshness signal.",
+      "description": "Mutable mirror pointer. It names the current digest-addressed read model. It is written last, so a partial publish never goes live. While a run is active the publisher holds it and moves it only when the active run set changes, a withdrawal lands, or records of a dataset that is not executing arrive; live/status.json carries the run in between. generated_at is when the pointer was composed, not a freshness signal.",
       "properties": {
         "active": {
           "description": "True while a run is executing; poll live/status.json",
@@ -145,19 +145,6 @@
           "minimum": 0,
           "type": "integer"
         },
-        "proof_catalog_sha256": {
-          "description": "SHA-256 of the decoded proof catalog bytes",
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
-        },
-        "proof_root_sha256": {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
-        },
-        "proof_segment_head": {
-          "minimum": 0,
-          "type": "integer"
-        },
         "read_model_sha256": {
           "description": "SHA-256 of the decoded read-model bytes",
           "pattern": "^[0-9a-f]{64}$",
@@ -169,7 +156,7 @@
           "type": "integer"
         },
         "schema_version": {
-          "const": "1.0.0",
+          "const": "2.0.0",
           "type": "string"
         },
         "signature": {
@@ -199,7 +186,6 @@
         "source_id",
         "revision",
         "read_model_sha256",
-        "proof_segment_head",
         "high_water_sequence",
         "history_first_sequence",
         "feed_chain_hash",

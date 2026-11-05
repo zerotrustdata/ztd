@@ -2,7 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { Link } from 'react-router-dom';
-import { useFeedStatus, useStoreState } from '../state/store';
+import { useFeedStatus } from '../state/store';
 import { useMirrorOrigin } from '../state/mirror';
 import { ZTD_REPO_URL } from '../content/platform';
 import descriptorUrl from '../contract/descriptor.json?url';
@@ -20,7 +20,6 @@ function acceptedLabel(iso: string, now: Date = new Date()): string {
 export function AppFooter() {
   const origin = useMirrorOrigin();
   const feedStatus = useFeedStatus();
-  const proofsPublished = useStoreState((state) => state.proofArtifactCount > 0);
   const external = { target: '_blank', rel: 'noopener noreferrer' } as const;
 
   return (
@@ -45,9 +44,6 @@ export function AppFooter() {
         {origin ? (
           <>
             <a href={`${origin}/pointer.json`} {...external}>Pointer <code>JSON</code></a>
-            {proofsPublished ? (
-              <a href={`${origin}/proof-head.json`} {...external}>Proof head <code>JSON</code></a>
-            ) : null}
             <a href={`${origin}/live/status.json`} {...external}>Live status <code>JSON</code></a>
           </>
         ) : (

@@ -28,12 +28,6 @@ import (
 // published key.
 const PublicProofVerifierInstructions = "Run ztd public verify-proof --segments proof-segments.jsonl --artifacts ./proofs. The command recomputes each segment root from the zero hash, checks each Ed25519 signature under the segment's signing_public_key, requires SHA-256 of that key to equal signing_key_id, applies withdrawals, and hashes active artifacts by their content-addressed IDs. Pass --public-key or --key-registry to require a key supplied separately. The default command checks the published signatures and hash chain; it does not establish an out-of-band publisher identity."
 
-// PublicAssignmentAuditVerificationCommand is the offline command published
-// on an assignment events database. The segment log supplies the signing key.
-func PublicAssignmentAuditVerificationCommand(dbFilename string) string {
-	return fmt.Sprintf("ztd public verify-assignment --db %s --segments proof-segments.jsonl", dbFilename)
-}
-
 // PublicProofSigningKeyID is the SHA-256 hex of an Ed25519 public key. The
 // publisher stores that digest as signing_key_id.
 func PublicProofSigningKeyID(key ed25519.PublicKey) string {
@@ -151,13 +145,6 @@ type PublicFeedSnapshot struct {
 	DatasetID string `json:"dataset_id,omitempty"`
 }
 
-// PublicProofCatalogSummary is the summary of the proof catalog for bootstrap.
-type PublicProofCatalogSummary struct {
-	ArtifactCount   int        `json:"artifact_count"`
-	TotalByteSize   int64      `json:"total_byte_size"`
-	LastGeneratedAt *time.Time `json:"last_generated_at,omitempty"`
-}
-
 // PublicFeedObject is an open-ended public JSON object. Public projections
 // intentionally admit schema-versioned fields owned by the evaluation publisher;
 // RawMessage preserves those fields without converting the boundary to an
@@ -195,13 +182,13 @@ func (o PublicFeedObject) SetInt64Field(name string, value int64) {
 // RecentProjections carries the latest record per entity plus bounded activity,
 // newest first. It is independent of replay-history retention.
 type PublicFeedBootstrap struct {
-	ProtocolVersion     string                    `json:"protocol_version"`
-	Snapshot            PublicFeedSnapshot        `json:"snapshot"`
-	SourceFreshness     CampaignFreshness         `json:"source_freshness"`
-	RecentProjections   []PublicFeedObject        `json:"recent_projections"`
-	TaskIndex           []PublicTaskIndexEntry    `json:"task_index"`
-	ProofCatalogSummary PublicProofCatalogSummary `json:"proof_catalog_summary"`
-	GeneratedAt         time.Time                 `json:"generated_at"`
+	SchemaVersion     string                 `json:"schema_version"`
+	ProtocolVersion   string                 `json:"protocol_version"`
+	Snapshot          PublicFeedSnapshot     `json:"snapshot"`
+	SourceFreshness   CampaignFreshness      `json:"source_freshness"`
+	RecentProjections []PublicFeedObject     `json:"recent_projections"`
+	TaskIndex         []PublicTaskIndexEntry `json:"task_index"`
+	GeneratedAt       time.Time              `json:"generated_at"`
 }
 
 // PublicTaskIndexEntry lists the most recent assignment results of one task,

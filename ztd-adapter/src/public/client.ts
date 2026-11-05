@@ -7,9 +7,6 @@ import type {
   PublicBootstrap,
   PublicLiveStatus,
   PublicPointer,
-  PublicProofCatalog,
-  PublicProofCatalogEntry,
-  PublicProofHead,
   PublicRecentProjection,
   PublicSnapshot,
 } from './state.js';
@@ -27,11 +24,7 @@ export interface PublicClient {
   /** The read model the pointer names. Throws PublicClientError when the decoded bytes do not hash to read_model_sha256. */
   readModel(pointer: PublicPointer, signal?: AbortSignal): Promise<PublicBootstrap>;
   liveStatus(signal?: AbortSignal): Promise<PublicLiveStatus>;
-  /** One active proof catalog entry, or null when the artifact is unknown or withdrawn. */
-  proofCatalogEntry(artifactID: string, signal?: AbortSignal): Promise<PublicProofCatalogEntry | null>;
-  /** The catalog the pointer names. Throws PublicClientError when the pointer names none or the digest does not match. */
-  proofCatalog(pointer: PublicPointer, signal?: AbortSignal): Promise<PublicProofCatalog>;
-  proofHead(signal?: AbortSignal): Promise<PublicProofHead>;
+
 }
 
 function object(value: unknown): Record<string, unknown> | null {
@@ -82,30 +75,24 @@ function recentProjection(value: unknown): value is PublicRecentProjection {
 
 function bootstrap(value: unknown): value is PublicBootstrap {
   const candidate = object(value);
-  const summary = object(candidate?.proof_catalog_summary);
   return candidate !== null
+    && candidate.schema_version === '2.0.0'
     && string(candidate.protocol_version)
     && snapshot(candidate.snapshot)
     && string(candidate.source_freshness)
     && Array.isArray(candidate.recent_projections)
     && candidate.recent_projections.every(recentProjection)
-    && summary !== null
-    && integer(summary.artifact_count)
-    && integer(summary.total_byte_size)
     && string(candidate.generated_at);
 }
 
 function pointer(value: unknown): value is PublicPointer {
   const candidate = object(value);
   return candidate !== null
-    && candidate.schema_version === '1.0.0'
+    && candidate.schema_version === '2.0.0'
     && string(candidate.source_id)
     && candidate.source_id !== ''
     && positiveInteger(candidate.revision)
     && digest(candidate.read_model_sha256)
-    && optional(digest)(candidate.proof_catalog_sha256)
-    && optional(digest)(candidate.proof_root_sha256)
-    && integer(candidate.proof_segment_head)
     && integer(candidate.high_water_sequence)
     && integer(candidate.history_first_sequence)
     && digest(candidate.feed_chain_hash)
@@ -115,25 +102,6 @@ function pointer(value: unknown): value is PublicPointer {
     && optional(digest)(candidate.signing_key_id)
     && optional(digest)(candidate.signing_public_key)
     && optional(signature)(candidate.signature);
-}
-
-function proofHead(value: unknown): value is PublicProofHead {
-  const candidate = object(value);
-  return candidate !== null
-    && candidate.schema_version === '1.0.0'
-    && string(candidate.source_id)
-    && integer(candidate.segment_index)
-    && digest(candidate.proof_root_sha256)
-    && string(candidate.campaign_id)
-    && string(candidate.campaign_revision)
-    && digest(candidate.verified_index_generation_hash)
-    && typeof candidate.verification_ok === 'boolean'
-    && integer(candidate.artifact_count)
-    && string(candidate.verifier_instructions)
-    && string(candidate.generated_at)
-    && digest(candidate.signing_key_id)
-    && optional(digest)(candidate.signing_public_key)
-    && signature(candidate.signature);
 }
 
 function liveRun(value: unknown): boolean {
@@ -155,32 +123,6 @@ function liveStatus(value: unknown): value is PublicLiveStatus {
     && candidate.active_runs.every(liveRun)
     && Array.isArray(candidate.tail)
     && candidate.tail.every(liveRecord);
-}
-
-function proofCatalogEntry(value: unknown): value is PublicProofCatalogEntry {
-  const candidate = object(value);
-  return candidate !== null
-    && string(candidate.artifact_id)
-    && string(candidate.filename)
-    && string(candidate.media_type)
-    && typeof candidate.byte_size === 'number' && Number.isSafeInteger(candidate.byte_size) && candidate.byte_size >= 0
-    && digest(candidate.sha256)
-    && string(candidate.classification)
-    && string(candidate.campaign_id)
-    && (candidate.source_run_id === undefined || string(candidate.source_run_id))
-    && string(candidate.generated_at)
-    && string(candidate.verification_command)
-    && string(candidate.immutable_url)
-    && candidate.immutable_url.startsWith('/proofs/');
-}
-
-function proofCatalog(value: unknown): value is PublicProofCatalog {
-  const candidate = object(value);
-  return candidate !== null
-    && string(candidate.schema_version)
-    && Array.isArray(candidate.entries)
-    && candidate.entries.every(proofCatalogEntry)
-    && string(candidate.generated_at);
 }
 
 async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
@@ -211,18 +153,6 @@ export function createPublicClient(config: PublicRuntimeConfig, fetchImpl: typeo
     pointer: (signal) => readJSON(fetchPublic, 'pointer', { endpoint: 'pointer' }, pointer, signal),
     readModel: (current, signal) => readDigested(fetchPublic, 'readModel', { endpoint: 'readModel', digest: current.read_model_sha256 }, bootstrap, signal),
     liveStatus: (signal) => readJSON(fetchPublic, 'liveStatus', { endpoint: 'liveStatus' }, liveStatus, signal),
-    proofCatalogEntry: async (artifactID, signal) => {
-      const response = await fetchPublic({ endpoint: 'proofMeta', digest: artifactID }, signal);
-      if (response.status === 404) return null;
-      if (!response.ok) throw new PublicClientError('proofCatalogEntry', response.status, 'mirror request failed');
-      const body = decodePublicJSON(response.bytes);
-      if (!proofCatalogEntry(body)) throw new PublicClientError('proofCatalogEntry', response.status, 'invalid response');
-      return body;
-    },
-    proofCatalog: async (current, signal) => {
-      if (current.proof_catalog_sha256 === undefined) throw new PublicClientError('proofCatalog', 0, 'pointer names no proof catalog');
-      return readDigested(fetchPublic, 'proofCatalog', { endpoint: 'proofCatalog', digest: current.proof_catalog_sha256 }, proofCatalog, signal);
-    },
-    proofHead: (signal) => readJSON(fetchPublic, 'proofHead', { endpoint: 'proofHead' }, proofHead, signal),
+
   };
 }

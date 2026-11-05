@@ -215,7 +215,7 @@ describe('isFeedBootstrap', () => {
       },
       source_freshness: 'stale',
       recent_projections: [],
-      proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 },
+      schema_version: '2.0.0',
       generated_at: '2026-09-14T08:00:00Z',
     };
     expect(() => isFeedBootstrap(bad)).toThrow(ValidationError);

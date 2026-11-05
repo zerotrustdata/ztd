@@ -83,68 +83,24 @@ curl -o /dev/null -sS -w '%{http_code}\n' -X POST http://127.0.0.1:8082/proof-in
 Read the layout on the public listener. The objects are the same ones the bucket serves. Set the shell variable `PUBLIC_ORIGIN` to `http://127.0.0.1:8082` for a local mirror, or to the bucket's public origin:
 
 ```bash
-curl -fsS "${PUBLIC_ORIGIN}/pointer.json" | jq '{revision, read_model_sha256, proof_catalog_sha256, proof_root_sha256, proof_segment_head, high_water_sequence, active}'
-curl -fsS "${PUBLIC_ORIGIN}/proof-head.json" | jq '{segment_index, proof_root_sha256}'
+curl -fsS "${PUBLIC_ORIGIN}/pointer.json" | jq '{schema_version, revision, read_model_sha256, high_water_sequence, active}'
 curl -fsS "${PUBLIC_ORIGIN}/live/status.json" | jq '{active_runs, tail: (.tail | length)}'
 ```
 
-Read the read model and catalog that the pointer names. Each is gzip, served with `Content-Encoding: gzip`. Pass `--compressed` to receive the decoded JSON:
+Read the immutable model named by one captured pointer. Its digest covers decoded JSON; run-bundle digests cover the stored gzip bytes. Set `RUN_ID` to the settled run to verify and obtain `trusted-keys.json` through a trusted channel before verification:
 
 ```bash
-READ_MODEL=$(curl -fsS "${PUBLIC_ORIGIN}/pointer.json" | jq -r .read_model_sha256)
-curl -fsS --compressed "${PUBLIC_ORIGIN}/read-model/${READ_MODEL}.json.gz" | jq '.snapshot | {high_water_sequence, freshness}'
-CATALOG=$(curl -fsS "${PUBLIC_ORIGIN}/pointer.json" | jq -r .proof_catalog_sha256)
-curl -fsS --compressed "${PUBLIC_ORIGIN}/proof-catalog/${CATALOG}.json.gz" | jq '.entries | length'
+curl -fsS "${PUBLIC_ORIGIN}/pointer.json" > pointer.json
+MODEL=$(jq -r .read_model_sha256 pointer.json)
+curl -fsS --compressed "${PUBLIC_ORIGIN}/read-model/${MODEL}.json.gz" > read-model.json
+BUNDLE=$(jq -r --arg run "$RUN_ID" '.recent_projections[] | select(.kind == "evaluation_summary" and .run_id == $run) | .assignment_bundle_sha256' read-model.json)
+curl -fsS "${PUBLIC_ORIGIN}/runs/${BUNDLE}.jsonl.gz" > run.jsonl.gz
+./ztd public verify-proof --pointer pointer.json --read-model read-model.json --bundle run.jsonl.gz --run "$RUN_ID" --key-registry trusted-keys.json
 ```
 
-Each proof artifact is `proofs/<sha256>`, and its metadata is `proof-meta/<sha256>.json`. Download the catalog the pointer names, then save each artifact under its digest name, because `ztd public verify-proof --artifacts` looks for files named by artifact ID:
+Only run bundles and frozen scenario fixtures are public artifact bodies. Private traces and audit databases are delivered under agreement with SHA-256 bindings in the authenticated bundle. Add `--artifacts ./delivered` for digest-named delivered files. To verify a delivered audit database's event hashes and identity, use `verify-assignment --db assignment.db` with the same pointer, read-model, bundle, run, and key inputs. See the [canonical offline verification procedure](../architecture/public_spectator.md#offline-proof-verification) for trust and freshness limits.
 
-```bash
-mkdir -p artifacts
-curl -fsS --compressed "${PUBLIC_ORIGIN}/proof-catalog/${CATALOG}.json.gz" -o catalog.json
-jq -r '.entries[].artifact_id' catalog.json | while IFS= read -r artifact; do
-  curl -fsS "${PUBLIC_ORIGIN}/proofs/${artifact}" -o "artifacts/${artifact}"
-done
-```
-
-The signed segment log is split into chunks of 1,000 segments, `proof-segments/<first_index>.jsonl.gz`, where `first_index` is the index of the chunk's first segment: 1, 1001, 2001, and so on, up to `proof_segment_head` from the pointer. Fetch every chunk, keep the gzip bytes, and join them in `first_index` order. Send `Accept-Encoding: gzip` so the saved file stays gzip, then decompress the joined stream once:
-
-```bash
-mkdir -p segments
-HEAD=$(curl -fsS "${PUBLIC_ORIGIN}/pointer.json" | jq -r .proof_segment_head)
-for first in $(seq 1 1000 "${HEAD}"); do
-  curl -fsS -H 'Accept-Encoding: gzip' -o "segments/${first}.jsonl.gz" "${PUBLIC_ORIGIN}/proof-segments/${first}.jsonl.gz"
-done
-for first in $(seq 1 1000 "${HEAD}"); do cat "segments/${first}.jsonl.gz"; done | gunzip -c > proof-segments.jsonl
-```
-
-Do not use `--compressed` for the chunks, because curl would then decode each chunk before the join. The last chunk is rewritten until it fills, so fetch it again if the pointer's `proof_segment_head` has moved since the first download.
-
-History pages are `history/<first_sequence>.json.gz`, 1,000 sequences per page, starting at sequence 1. They use the same withdrawal filter as `/history`:
-
-```bash
-curl -fsS --compressed "${PUBLIC_ORIGIN}/history/1.json.gz" | jq '.items | length'
-```
-
-Live objects are `live/status.json` (about 10 seconds cache) and `live/runs/<run>.jsonl.gz` (about 60 seconds cache, executing runs only). A run's live object is gzip with no `Content-Encoding`, so `gunzip -c` reads it directly:
-
-```bash
-curl -fsS -o live.jsonl.gz "${PUBLIC_ORIGIN}/live/runs/${RUN_ID}.jsonl.gz"
-gunzip -c live.jsonl.gz | jq -c '{sequence, record_hash}'
-```
-
-The listener also serves the listener routes that the CLI, tests, and cloud deployments use: `/bootstrap`, `/snapshot`, `/history`, `/proof-catalog`, `/proof-head`, and `/proof-segments`, with `?source=` where the route takes one. Public clients omit credentials. See the [offline verification procedure](../architecture/public_spectator.md#offline-proof-verification) for verifying downloaded evidence.
-
-Each settled run's assignment results are one run bundle in the proof catalog, named `<run-id>.assignments.jsonl.gz`. Set `RUN_ID` to a run's ID to download its bundle, check its digest, and read its lines. Each line holds a record's `sequence`, `record_hash`, and `record_bytes`. The bundle is a file with no `Content-Encoding`:
-
-```bash
-BUNDLE=$(jq -r --arg name "${RUN_ID}.assignments.jsonl.gz" '.entries[] | select(.filename == $name) | .artifact_id' catalog.json)
-curl -fsS -o run-bundle.jsonl.gz "${PUBLIC_ORIGIN}/proofs/${BUNDLE}"
-echo "${BUNDLE}  run-bundle.jsonl.gz" | sha256sum --check
-gunzip -c run-bundle.jsonl.gz | jq -c '{sequence, record_hash}'
-```
-
-The same digest is the run's `evaluation_summary.assignment_bundle_sha256`. After upgrading, run `ztd eval runs publish --all` so every settled run publishes a bundle and its model summaries carry `security_pass_rate`.
+The listener retains `/bootstrap`, `/snapshot`, and `/history` for CLI and cloud consumers. Anonymous `/proofs/`, `/proof-catalog`, `/proof-head`, `/proof-segments`, and their static projections return 404. The authenticated private proof transport remains unchanged. Public clients omit credentials.
 
 ## Publish the layout to a bucket
 

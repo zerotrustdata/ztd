@@ -592,21 +592,16 @@ func TestPublicPushCmd_AuthenticatesAndPublishesProofPackage(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, artifactCount)
 
-	// Export the mirror's signed log, disconnect, and run the documented
-	// offline verifier against the content-addressed publisher artifacts.
-	response, err := http.Get(publicServer.URL + "/proof-segments?source=" + exportConfig.SourceID)
+	// Explicit internal exports remain verifiable without anonymous proof routes.
+	segments, err := store.ProofSegments(t.Context(), exportConfig.SourceID)
 	require.NoError(t, err)
-	defer response.Body.Close()
-	require.Equal(t, http.StatusOK, response.StatusCode)
-	var exported models.PublicProofSegmentsResponse
-	require.NoError(t, json.NewDecoder(response.Body).Decode(&exported))
-	require.Len(t, exported.Segments, 2)
+	require.Len(t, segments, 2)
 	var log bytes.Buffer
-	for _, segment := range exported.Segments {
+	for _, segment := range segments {
 		require.NoError(t, json.NewEncoder(&log).Encode(segment))
 	}
 	const exportedLog = "downloaded-proof-segments.jsonl"
-	require.NoError(t, fileSvc.WriteFile(context.Background(), exportedLog, log.Bytes(), constants.PermFilePrivate))
+	require.NoError(t, fileSvc.WriteFile(t.Context(), exportedLog, log.Bytes(), constants.PermFilePrivate))
 	server.Close()
 	verify := publicVerifyProofCmd()
 	var output bytes.Buffer

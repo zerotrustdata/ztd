@@ -1,10 +1,6 @@
 {
   "bootstrap": {
     "generated_at": "2026-09-13T00:00:00Z",
-    "proof_catalog_summary": {
-      "artifact_count": 0,
-      "total_byte_size": 0
-    },
     "protocol_version": "1.0.0",
     "recent_projections": [
       {
@@ -15,6 +11,7 @@
         "source_freshness": "delayed"
       }
     ],
+    "schema_version": "2.0.0",
     "snapshot": {
       "batch_count": 1,
       "feed_chain_hash": "fd77e99c91ae2bfbd5d83d784a16bae3176c7f359d230aa7c306c836175e6132",

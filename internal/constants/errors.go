@@ -1359,6 +1359,8 @@ var (
 	ErrPublicFeedProofIngestRejected          = errors.New("public-feed: mirror rejected proof package")
 	ErrPublicFeedProofArtifactsMissing        = errors.New("public-feed: proof manifest lists artifacts the mirror does not hold")
 	ErrPublicAssignmentAuditEventsMissing     = errors.New("public-feed: no retained event records for the assignment")
+	ErrPublicRunBundleInvalid                 = errors.New("public-feed: invalid run bundle")
+	ErrPublicReadModelInvalid                 = errors.New("public-feed: invalid read model")
 	ErrPublicRunBundleEmpty                   = errors.New("public-feed: run has no assignment result records to bundle")
 	ErrPublicFeedPointerInvalid               = errors.New("public-feed: feed pointer is invalid")
 	ErrPublicBucketConfigInvalid              = errors.New("public-feed: bucket configuration is invalid")

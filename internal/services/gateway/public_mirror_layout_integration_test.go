@@ -99,7 +99,7 @@ func TestPublicMirrorLayout_PointerNamesServedReadModel(t *testing.T) {
 	assert.Equal(t, int64(1), pointer.HighWaterSequence)
 	assert.Equal(t, int64(1), pointer.HistoryFirstSequence)
 	assert.True(t, pointer.Active, "a running evaluation summary marks the pointer active")
-	assert.Empty(t, pointer.ProofCatalogSHA256, "no proof root, no catalog digest")
+	assert.NotContains(t, string(pointerBody), "proof_")
 
 	readModelResponse, readModelBody := layoutGet(t, client, env.publicServer.URL, "/read-model/"+pointer.ReadModelSHA256+".json.gz")
 	require.Equal(t, http.StatusOK, readModelResponse.StatusCode)
@@ -189,67 +189,24 @@ func TestPublicMirrorLayout_WithdrawalInvalidatesRetainedReadModels(t *testing.T
 	}
 }
 
-func TestPublicMirrorLayout_ProofMetaMissesWithdrawnArtifact(t *testing.T) {
+func TestPublicMirrorLayout_InternalProofRoutesRemoved(t *testing.T) {
 	env := newMirrorTestEnv(t)
 	client := layoutClient(t)
-	ctx := t.Context()
-	content := []byte(`{"proof":"meta"}`)
-	entry := makeTestCatalogEntry("meta.json", content)
-	first := makeTestSegment(env, 1, constants.PublicFeedZeroHashHex, []models.PublicProofCatalogEntry{entry}, nil)
-	require.NoError(t, env.mirror.storeProofPackage(ctx, models.PublicProofIngestRequest{
-		SourceID: env.sourceID, Segment: &first,
-		Artifacts: []models.PublicProofIngestArtifact{{ArtifactID: entry.ArtifactID, Content: content}},
-	}))
-
-	path := "/proof-meta/" + entry.ArtifactID + ".json"
-	response, body := layoutGet(t, client, env.publicServer.URL, path)
-	require.Equal(t, http.StatusOK, response.StatusCode, string(body))
-	assert.Equal(t, constants.PublicLayoutCacheImmutable, response.Header.Get(constants.HeaderCacheControl))
-	var served models.PublicProofCatalogEntry
-	require.NoError(t, json.Unmarshal(body, &served))
-	assert.Equal(t, entry.ArtifactID, served.ArtifactID)
-	assert.Equal(t, entry.Filename, served.Filename)
-
-	withdrawal := makeTestSegment(env, 2, first.ProofRootSHA256, nil, []string{entry.ArtifactID})
-	require.NoError(t, env.mirror.storeProofPackage(ctx, models.PublicProofIngestRequest{SourceID: env.sourceID, Segment: &withdrawal}))
-	response, body = layoutGet(t, client, env.publicServer.URL, path)
-	assert.Equal(t, http.StatusNotFound, response.StatusCode, string(body))
-}
-
-func TestPublicMirrorLayout_SegmentChunkMatchesProofSegmentsRoute(t *testing.T) {
-	env := newMirrorTestEnv(t)
-	client := layoutClient(t)
-	ctx := t.Context()
-	var previousRoot = constants.PublicFeedZeroHashHex
-	for index := int64(1); index <= 2; index++ {
-		content := []byte(fmt.Sprintf(`{"segment":%d}`, index))
-		entry := makeTestCatalogEntry(fmt.Sprintf("segment-%d.json", index), content)
-		segment := makeTestSegment(env, index, previousRoot, []models.PublicProofCatalogEntry{entry}, nil)
-		require.NoError(t, env.mirror.storeProofPackage(ctx, models.PublicProofIngestRequest{
-			SourceID: env.sourceID, Segment: &segment,
-			Artifacts: []models.PublicProofIngestArtifact{{ArtifactID: entry.ArtifactID, Content: content}},
-		}))
-		previousRoot = segment.ProofRootSHA256
+	content := []byte(`{"private":"historical"}`)
+	entry := makeTestCatalogEntry("assignment-audit.db", content)
+	segment := makeTestSegment(env, 1, constants.PublicFeedZeroHashHex, []models.PublicProofCatalogEntry{entry}, nil)
+	require.NoError(t, env.mirror.storeProofPackage(t.Context(), models.PublicProofIngestRequest{SourceID: env.sourceID, Segment: &segment, Artifacts: []models.PublicProofIngestArtifact{{ArtifactID: entry.ArtifactID, Content: content}}}))
+	for _, path := range []string{"/proofs/" + entry.ArtifactID, "/proof-catalog", "/proof-head", "/proof-segments", "/proof-catalog/" + entry.ArtifactID + ".json.gz", "/proof-meta/" + entry.ArtifactID + ".json", "/proof-head.json", "/proof-segments/1.jsonl.gz"} {
+		response, body := layoutGet(t, client, env.publicServer.URL, path)
+		assert.Equal(t, http.StatusNotFound, response.StatusCode, "%s: %s", path, body)
 	}
-
-	routeResponse, routeBody := layoutGet(t, client, env.publicServer.URL, "/proof-segments?source="+env.sourceID)
-	require.Equal(t, http.StatusOK, routeResponse.StatusCode, string(routeBody))
-	var listed models.PublicProofSegmentsResponse
-	require.NoError(t, json.Unmarshal(routeBody, &listed))
-	require.Len(t, listed.Segments, 2)
-
-	chunkResponse, chunkBody := layoutGet(t, client, env.publicServer.URL, "/proof-segments/1.jsonl.gz")
-	require.Equal(t, http.StatusOK, chunkResponse.StatusCode)
-	assert.Equal(t, constants.HeaderValueApplicationNDJSON, chunkResponse.Header.Get(constants.HeaderContentType))
-	assert.Equal(t, "gzip", chunkResponse.Header.Get("Content-Encoding"))
-	assert.Equal(t, constants.PublicLayoutCacheTail, chunkResponse.Header.Get(constants.HeaderCacheControl), "a partial chunk is the chain tail")
-	lines := strings.Split(strings.TrimSpace(string(gunzipLayout(t, chunkBody))), "\n")
-	require.Len(t, lines, len(listed.Segments))
-	for index, line := range lines {
-		var fromChunk models.PublicProofManifestSegment
-		require.NoError(t, json.Unmarshal([]byte(line), &fromChunk))
-		assert.Equal(t, listed.Segments[index], fromChunk)
-	}
+	// Internal metadata and files remain intact on an existing root.
+	_, found, err := env.store.proofCatalogEntry(t.Context(), env.sourceID, entry.ArtifactID)
+	require.NoError(t, err)
+	assert.True(t, found)
+	file, err := env.store.openProofArtifact(t.Context(), entry.ArtifactID)
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
 }
 
 func TestPublicMirrorLayout_LiveStatusTailBoundedAndOmitsResults(t *testing.T) {

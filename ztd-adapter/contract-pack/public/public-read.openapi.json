@@ -241,177 +241,6 @@
         }
       }
     },
-    "/proof-catalog/{proof_catalog_sha256}.json.gz": {
-      "get": {
-        "operationId": "public_proof_catalog",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "proof_catalog_sha256",
-            "required": true,
-            "schema": {
-              "pattern": "^[0-9a-f]{64}$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProofCatalog"
-                }
-              }
-            },
-            "description": "Gzip-encoded public-safe proof catalog. The SHA-256 of the decoded bytes equals the pointer proof_catalog_sha256.",
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "enum": [
-                    "public, max-age=31536000, immutable"
-                  ],
-                  "type": "string"
-                }
-              },
-              "Content-Encoding": {
-                "schema": {
-                  "enum": [
-                    "gzip"
-                  ],
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Unknown digest"
-          }
-        }
-      }
-    },
-    "/proof-head.json": {
-      "get": {
-        "operationId": "public_proof_head",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProofHead"
-                }
-              }
-            },
-            "description": "Constant-size proof head without artifact entries; verify the signed log for authenticity",
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "enum": [
-                    "public, max-age=30"
-                  ],
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No proof publication for the source"
-          }
-        }
-      }
-    },
-    "/proof-meta/{sha256}.json": {
-      "get": {
-        "operationId": "public_proof_meta",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "sha256",
-            "required": true,
-            "schema": {
-              "pattern": "^[0-9a-f]{64}$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProofCatalogEntry"
-                }
-              }
-            },
-            "description": "One active proof catalog entry",
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "enum": [
-                    "public, max-age=31536000, immutable"
-                  ],
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Unknown or withdrawn artifact"
-          }
-        }
-      }
-    },
-    "/proof-segments/{first_index}.jsonl.gz": {
-      "get": {
-        "operationId": "public_proof_segments",
-        "parameters": [
-          {
-            "description": "Chunk or page start; 1, 1001, 2001, and so on",
-            "in": "path",
-            "name": "first_index",
-            "required": true,
-            "schema": {
-              "pattern": "^[1-9][0-9]*$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/x-ndjson": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProofManifestSegment"
-                }
-              }
-            },
-            "description": "Gzip-encoded JSON Lines of up to 1000 source-signed proof segments, including withdrawals. Full chunks are immutable; the last chunk uses the tail policy.",
-            "headers": {
-              "Cache-Control": {
-                "schema": {
-                  "enum": [
-                    "public, max-age=60",
-                    "public, max-age=31536000, immutable"
-                  ],
-                  "type": "string"
-                }
-              },
-              "Content-Encoding": {
-                "schema": {
-                  "enum": [
-                    "gzip"
-                  ],
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "No segments in the range"
-          }
-        }
-      }
-    },
     "/read-model/{read_model_sha256}.json.gz": {
       "get": {
         "operationId": "public_read_model",
@@ -577,12 +406,6 @@
         "required": true,
         "type": "string"
       },
-      "proof_catalog_summary": {
-        "description": "Summary of the available public proof packages",
-        "model": "public_proof_catalog_summary",
-        "required": true,
-        "type": "object"
-      },
       "protocol_version": {
         "description": "Public feed protocol version",
         "required": true,
@@ -592,6 +415,12 @@
         "description": "Bounded list of recent public projections (JSON objects). Each carries only allowlisted fields.",
         "required": true,
         "type": "array"
+      },
+      "schema_version": {
+        "const": "2.0.0",
+        "description": "Read model schema version, independent of the signed feed batch protocol",
+        "required": true,
+        "type": "string"
       },
       "snapshot": {
         "description": "Current feed snapshot with high-water sequence and feed-chain hash",
@@ -790,7 +619,7 @@
       "type": "object"
     },
     "public_pointer": {
-      "description": "Mutable mirror pointer. It names the current digest-addressed read model and proof catalog. It is written last, so a partial publish never goes live. While a run is active the publisher holds it and moves it only when the active run set changes, a withdrawal lands, or records of a dataset that is not executing arrive; live/status.json carries the run in between. generated_at is when the pointer was composed, not a freshness signal.",
+      "description": "Mutable mirror pointer. It names the current digest-addressed read model. It is written last, so a partial publish never goes live. While a run is active the publisher holds it and moves it only when the active run set changes, a withdrawal lands, or records of a dataset that is not executing arrive; live/status.json carries the run in between. generated_at is when the pointer was composed, not a freshness signal.",
       "properties": {
         "active": {
           "description": "True while a run is executing; poll live/status.json",
@@ -813,19 +642,6 @@
           "minimum": 0,
           "type": "integer"
         },
-        "proof_catalog_sha256": {
-          "description": "SHA-256 of the decoded proof catalog bytes",
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
-        },
-        "proof_root_sha256": {
-          "pattern": "^[0-9a-f]{64}$",
-          "type": "string"
-        },
-        "proof_segment_head": {
-          "minimum": 0,
-          "type": "integer"
-        },
         "read_model_sha256": {
           "description": "SHA-256 of the decoded read-model bytes",
           "pattern": "^[0-9a-f]{64}$",
@@ -837,7 +653,7 @@
           "type": "integer"
         },
         "schema_version": {
-          "const": "1.0.0",
+          "const": "2.0.0",
           "type": "string"
         },
         "signature": {
@@ -867,7 +683,6 @@
         "source_id",
         "revision",
         "read_model_sha256",
-        "proof_segment_head",
         "high_water_sequence",
         "history_first_sequence",
         "feed_chain_hash",
