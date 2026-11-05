@@ -99,15 +99,32 @@ func publicInitCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory pub
 	return cmd
 }
 
+// publicBucketFieldFlags set one field each of the bucket configuration.
+var publicBucketFieldFlags = []string{"bucket-name", "bucket-endpoint", "bucket-public-origin", "bucket-zone-id"}
+
 func publicConfigSetCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory publicFileSvcFactory) *cobra.Command {
 	var mirrorOrigin string
 	var enabled bool
+	var bucketName, bucketEndpoint, bucketPublicOrigin, bucketZoneID string
+	var bucketCredentialsFile string
+	var bucketRemove bool
 	cmd := &cobra.Command{
 		Use:   "set",
 		Short: "Update public-feed publisher configuration",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if !cmd.Flags().Changed("mirror-origin") && !cmd.Flags().Changed("enabled") {
+			flags := cmd.Flags()
+			bucketFieldSet := false
+			for _, name := range publicBucketFieldFlags {
+				if flags.Changed(name) {
+					bucketFieldSet = true
+				}
+			}
+			bucketCredentialsSet := flags.Changed("bucket-credentials-file")
+			if !flags.Changed("mirror-origin") && !flags.Changed("enabled") && !bucketFieldSet && !bucketCredentialsSet && !flags.Changed("bucket-remove") {
 				return fmt.Errorf("%w: no configuration field was specified", constants.ErrValidationFailed)
+			}
+			if bucketRemove && (bucketFieldSet || bucketCredentialsSet) {
+				return fmt.Errorf("%w: --bucket-remove cannot be combined with other bucket flags", constants.ErrValidationFailed)
 			}
 			cfg, err := configLoader("")
 			if err != nil {
@@ -122,14 +139,49 @@ func publicConfigSetCmdWithConfig(configLoader publicConfigLoader, fileSvcFactor
 			if err != nil {
 				return err
 			}
-			if cmd.Flags().Changed("mirror-origin") {
+			if flags.Changed("mirror-origin") {
 				exportConfig.MirrorOrigin = mirrorOrigin
 			}
-			if cmd.Flags().Changed("enabled") {
+			if flags.Changed("enabled") {
 				exportConfig.Enabled = enabled
+			}
+			switch {
+			case bucketRemove:
+				exportConfig.Bucket = nil
+			case bucketFieldSet:
+				bucket := models.PublicBucketConfig{}
+				if exportConfig.Bucket != nil {
+					bucket = *exportConfig.Bucket
+				}
+				if flags.Changed("bucket-name") {
+					bucket.Name = bucketName
+				}
+				if flags.Changed("bucket-endpoint") {
+					bucket.Endpoint = bucketEndpoint
+				}
+				if flags.Changed("bucket-public-origin") {
+					bucket.PublicOrigin = bucketPublicOrigin
+				}
+				if flags.Changed("bucket-zone-id") {
+					bucket.ZoneID = bucketZoneID
+				}
+				exportConfig.Bucket = &bucket
 			}
 			if err := gateway.ValidatePublicExportConfig(exportConfig); err != nil {
 				return err
+			}
+			if bucketCredentialsSet {
+				credentials, err := readPublicBucketCredentialsFile(bucketCredentialsFile, cmd.InOrStdin())
+				if err != nil {
+					return err
+				}
+				ks, err := publicKeystore(fileSvc)
+				if err != nil {
+					return err
+				}
+				if err := gateway.WritePublicBucketCredentials(ctx, fileSvc, ks, credentials); err != nil {
+					return err
+				}
 			}
 			if err := gateway.WritePublicExportConfig(ctx, fileSvc, exportConfig); err != nil {
 				return err
@@ -140,7 +192,39 @@ func publicConfigSetCmdWithConfig(configLoader publicConfigLoader, fileSvcFactor
 	}
 	cmd.Flags().StringVar(&mirrorOrigin, "mirror-origin", "", "Hosted public mirror origin")
 	cmd.Flags().BoolVar(&enabled, "enabled", true, "Enable or disable public publication")
+	cmd.Flags().StringVar(&bucketName, "bucket-name", "", "Bucket the public layout publishes to")
+	cmd.Flags().StringVar(&bucketEndpoint, "bucket-endpoint", "", "S3 API origin of the bucket (https unless loopback)")
+	cmd.Flags().StringVar(&bucketPublicOrigin, "bucket-public-origin", "", "Public origin of the bucket (https unless loopback)")
+	cmd.Flags().StringVar(&bucketZoneID, "bucket-zone-id", "", "Cloudflare zone whose cache is purged on withdrawal")
+	cmd.Flags().StringVar(&bucketCredentialsFile, "bucket-credentials-file", "", "JSON file of bucket credentials, or - for stdin")
+	cmd.Flags().BoolVar(&bucketRemove, "bucket-remove", false, "Remove the bucket configuration; sealed credentials are kept")
 	return cmd
+}
+
+// readPublicBucketCredentialsFile strictly decodes bucket credentials from path,
+// or from stdin when path is "-". The decode errors never echo field values.
+func readPublicBucketCredentialsFile(path string, stdin io.Reader) (models.PublicBucketCredentials, error) {
+	var data []byte
+	var err error
+	if path == "-" {
+		data, err = io.ReadAll(stdin)
+	} else {
+		data, err = os.ReadFile(path)
+	}
+	if err != nil {
+		return models.PublicBucketCredentials{}, fmt.Errorf("%w: read: %w", constants.ErrPublicBucketCredentialsRequired, err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var credentials models.PublicBucketCredentials
+	if err := decoder.Decode(&credentials); err != nil {
+		return models.PublicBucketCredentials{}, fmt.Errorf("%w: decode: %w", constants.ErrPublicBucketCredentialsRequired, err)
+	}
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return models.PublicBucketCredentials{}, fmt.Errorf("%w: trailing JSON", constants.ErrPublicBucketCredentialsRequired)
+	}
+	return credentials, nil
 }
 
 func publicSourceTransitionCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory publicFileSvcFactory) *cobra.Command {
@@ -406,6 +490,76 @@ func verifyPublicProofChain(segments []models.PublicProofManifestSegment, keyReg
 	return chain, nil
 }
 
+// readPublicFeedPointer strictly decodes a downloaded pointer.json. Unknown
+// fields, a decode failure, or trailing JSON all wrap ErrPublicFeedPointerInvalid.
+func readPublicFeedPointer(pointerPath string) (models.PublicFeedPointer, error) {
+	body, err := os.ReadFile(pointerPath)
+	if err != nil {
+		return models.PublicFeedPointer{}, fmt.Errorf("public-feed: read pointer: %w", err)
+	}
+	var pointer models.PublicFeedPointer
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&pointer); err != nil {
+		return models.PublicFeedPointer{}, fmt.Errorf("%w: decode pointer: %w", constants.ErrPublicFeedPointerInvalid, err)
+	}
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return models.PublicFeedPointer{}, fmt.Errorf("%w: trailing JSON", constants.ErrPublicFeedPointerInvalid)
+	}
+	return pointer, nil
+}
+
+// selectPointerVerificationKey resolves the key for a signed pointer with the
+// same rules as a proof segment: a pin for pointer.SigningKeyID wins, then the
+// pointer's own signing_public_key. A pin must equal a published key.
+func selectPointerVerificationKey(pointer models.PublicFeedPointer, pinned publicProofKeyRegistry) (ed25519.PublicKey, error) {
+	published := make(map[string]ed25519.PublicKey)
+	if pointer.SigningPublicKey != "" {
+		key, err := models.DecodePublicProofSigningKey(pointer.SigningPublicKey)
+		if err != nil || models.PublicProofSigningKeyID(key) != pointer.SigningKeyID {
+			return nil, constants.ErrPublicFeedPointerInvalid
+		}
+		published[pointer.SigningKeyID] = key
+	}
+	// selectSegmentVerificationKey only reads SourceID and SigningKeyID from the
+	// segment it is given, so a pointer's identity is passed through the same path.
+	identity := models.PublicProofManifestSegment{SourceID: pointer.SourceID, SigningKeyID: pointer.SigningKeyID}
+	key, err := selectSegmentVerificationKey(identity, pinned, published)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrPublicFeedSignatureInvalid, err)
+	}
+	return key, nil
+}
+
+// verifyPublicFeedPointerAgainstChain verifies a signed pointer and binds it to
+// a verified segment chain. The pointer must name the chain's source, its last
+// segment index, and its last segment root. Each is checked against what the
+// chain carries, so key rotation and source transitions need no special case.
+func verifyPublicFeedPointerAgainstChain(pointer models.PublicFeedPointer, chain publicProofChain, keyRegistry publicProofKeyRegistry) error {
+	if pointer.Signature == "" {
+		return fmt.Errorf("%w: pointer is unsigned", constants.ErrPublicFeedSignatureInvalid)
+	}
+	key, err := selectPointerVerificationKey(pointer, keyRegistry)
+	if err != nil {
+		return err
+	}
+	if err := models.VerifyPublicFeedPointer(pointer, key); err != nil {
+		return fmt.Errorf("public-feed: verify pointer: %w", err)
+	}
+	last := chain.Segments[len(chain.Segments)-1]
+	if chainSource := chain.Segments[0].SourceID; pointer.SourceID != chainSource {
+		return fmt.Errorf("%w: pointer source %s does not match chain source %s", constants.ErrPublicFeedPointerInvalid, pointer.SourceID, chainSource)
+	}
+	if pointer.ProofSegmentHead != last.SegmentIndex {
+		return fmt.Errorf("%w: pointer proof segment head %d does not match chain head %d", constants.ErrPublicFeedPointerInvalid, pointer.ProofSegmentHead, last.SegmentIndex)
+	}
+	if pointer.ProofRootSHA256 != last.ProofRootSHA256 {
+		return fmt.Errorf("%w: pointer proof root %s does not match chain head root %s", constants.ErrPublicFeedPointerInvalid, pointer.ProofRootSHA256, last.ProofRootSHA256)
+	}
+	return nil
+}
+
 // publicVerifyProofCmd verifies a chained proof manifest segment log and its
 // referenced proof artifacts offline: chain root continuity from zero hash,
 // recomputed segment roots, Ed25519 signatures, withdrawal exclusions, and
@@ -415,6 +569,7 @@ func publicVerifyProofCmd() *cobra.Command {
 	var artifactsPath string
 	var publicKeyHex string
 	var keyRegistryPath string
+	var pointerPath string
 
 	cmd := &cobra.Command{
 		Use:   "verify-proof",
@@ -423,7 +578,8 @@ func publicVerifyProofCmd() *cobra.Command {
 signature under that segment's signing_public_key, and hashes active artifacts.
 --public-key and --key-registry are optional pins. The default command checks
 the published signatures and hash chain. It does not establish an out-of-band
-publisher identity.`,
+publisher identity. With --pointer, the downloaded signed pointer.json must
+verify and name the chain's source, head segment index, and head root.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if strings.TrimSpace(segmentsPath) == "" || strings.TrimSpace(artifactsPath) == "" {
 				return constants.ErrMissingRequiredField
@@ -439,6 +595,17 @@ publisher identity.`,
 			chain, err := verifyPublicProofChain(segments, keyRegistry)
 			if err != nil {
 				return err
+			}
+			var pointer *models.PublicFeedPointer
+			if strings.TrimSpace(pointerPath) != "" {
+				decoded, err := readPublicFeedPointer(pointerPath)
+				if err != nil {
+					return err
+				}
+				if err := verifyPublicFeedPointerAgainstChain(decoded, chain, keyRegistry); err != nil {
+					return err
+				}
+				pointer = &decoded
 			}
 
 			for _, artifactID := range chain.ActiveIDs {
@@ -469,14 +636,21 @@ publisher identity.`,
 			}
 
 			last := chain.Segments[len(chain.Segments)-1]
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Proof package verified (%d segments, %d active artifacts, root %s)\n", len(chain.Segments), len(chain.Active), last.ProofRootSHA256)
-			return err
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Proof package verified (%d segments, %d active artifacts, root %s)\n", len(chain.Segments), len(chain.Active), last.ProofRootSHA256); err != nil {
+				return err
+			}
+			if pointer != nil {
+				_, err = fmt.Fprintf(cmd.OutOrStdout(), "Pointer verified (revision %d, source %s)\n", pointer.Revision, pointer.SourceID)
+				return err
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&segmentsPath, "segments", "", "Path to the chained proof-segments.jsonl file")
 	cmd.Flags().StringVar(&artifactsPath, "artifacts", "", "Path to directory containing proof artifact files")
 	cmd.Flags().StringVar(&publicKeyHex, "public-key", "", "Optional hex Ed25519 public key. When set, signatures must verify under this key")
 	cmd.Flags().StringVar(&keyRegistryPath, "key-registry", "", "Optional JSON file pinning key IDs to public key hex. When set, those keys override signing_public_key")
+	cmd.Flags().StringVar(&pointerPath, "pointer", "", "Optional path to a downloaded signed pointer.json bound to the verified chain")
 	_ = cmd.MarkFlagRequired("segments")
 	_ = cmd.MarkFlagRequired("artifacts")
 	return cmd

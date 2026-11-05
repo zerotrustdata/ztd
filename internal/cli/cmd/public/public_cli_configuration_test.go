@@ -16,6 +16,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -23,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -645,6 +647,202 @@ func TestPublicConfigSetCmd_UpdatesOnlyExplicitFields(t *testing.T) {
 	assert.Equal(t, "deployment-a", updated.SourceID)
 	assert.Equal(t, "https://new.example", updated.MirrorOrigin)
 	assert.Equal(t, "key-a", updated.SigningKeyID)
+}
+
+const (
+	testBucketAccessKeyID = "access-key-value-0001"
+	testBucketSecret      = "secret-value-0001"
+	testBucketPurgeToken  = "purge-token-value-0001"
+)
+
+func testBucketCredentials() models.PublicBucketCredentials {
+	return models.PublicBucketCredentials{AccessKeyID: testBucketAccessKeyID, SecretAccessKey: testBucketSecret, PurgeToken: testBucketPurgeToken}
+}
+
+func writeBucketTestFeedConfig(t *testing.T, fileSvc fs.RuntimeFileService, mirrorOrigin string) {
+	t.Helper()
+	exportConfig := models.DefaultPublicExportConfig()
+	exportConfig.Enabled = true
+	exportConfig.SourceID = "deployment-a"
+	exportConfig.MirrorOrigin = mirrorOrigin
+	exportConfig.SigningKeyID = "key-a"
+	body, err := json.Marshal(exportConfig)
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.WriteFile(context.Background(), constants.PublicFeedExportConfigPath, body, constants.PermFilePrivate))
+}
+
+func writeBucketCredentialsFile(t *testing.T, credentials models.PublicBucketCredentials) string {
+	t.Helper()
+	data, err := json.Marshal(credentials)
+	require.NoError(t, err)
+	path := filepath.Join(testutil.TempDir(t), "bucket-credentials.json")
+	require.NoError(t, os.WriteFile(path, data, constants.PermFilePrivate))
+	return path
+}
+
+func fullBucketSetArgs(credentialsPath string) []string {
+	return []string{
+		"--bucket-name", "feed-bucket",
+		"--bucket-endpoint", "https://acct.r2.example",
+		"--bucket-public-origin", "https://feed.example",
+		"--bucket-zone-id", "zone-a",
+		"--bucket-credentials-file", credentialsPath,
+	}
+}
+
+func bucketConfigOnDisk(t *testing.T, fileSvc fs.RuntimeFileService) models.PublicExportConfig {
+	t.Helper()
+	exportConfig, err := gateway.ReadPublicExportConfig(context.Background(), fileSvc)
+	require.NoError(t, err)
+	return exportConfig
+}
+
+func TestPublicConfigSetCmd_BucketFieldsPersistWithSealedCredentials(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	ks := useTestKeystore(t, fileSvc)
+	writeBucketTestFeedConfig(t, fileSvc, "http://127.0.0.1:8443")
+	ctx := context.Background()
+
+	var output bytes.Buffer
+	cmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetOut(&output)
+	cmd.SetArgs(fullBucketSetArgs(writeBucketCredentialsFile(t, testBucketCredentials())))
+	require.NoError(t, cmd.Execute())
+	assert.Equal(t, "Public feed configuration updated\n", output.String())
+
+	exportConfig := bucketConfigOnDisk(t, fileSvc)
+	require.NotNil(t, exportConfig.Bucket)
+	assert.Equal(t, models.PublicBucketConfig{Name: "feed-bucket", Endpoint: "https://acct.r2.example", PublicOrigin: "https://feed.example", ZoneID: "zone-a"}, *exportConfig.Bucket)
+	assert.Equal(t, "http://127.0.0.1:8443", exportConfig.MirrorOrigin)
+
+	credentials, err := gateway.ReadPublicBucketCredentials(ctx, fileSvc, ks)
+	require.NoError(t, err)
+	assert.Equal(t, testBucketCredentials(), credentials)
+
+	raw, err := fileSvc.ReadFile(ctx, constants.PublicFeedBucketCredentialsPath)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), testBucketSecret)
+	assert.NotContains(t, string(raw), testBucketPurgeToken)
+	assert.NotContains(t, string(raw), testBucketAccessKeyID)
+
+	// A later partial update overwrites only the flag given.
+	partial := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	partial.SetArgs([]string{"--bucket-zone-id", "zone-b"})
+	require.NoError(t, partial.Execute())
+	exportConfig = bucketConfigOnDisk(t, fileSvc)
+	require.NotNil(t, exportConfig.Bucket)
+	assert.Equal(t, models.PublicBucketConfig{Name: "feed-bucket", Endpoint: "https://acct.r2.example", PublicOrigin: "https://feed.example", ZoneID: "zone-b"}, *exportConfig.Bucket)
+}
+
+func TestPublicConfigSetCmd_ReadsBucketCredentialsFromStdin(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	ks := useTestKeystore(t, fileSvc)
+	writeBucketTestFeedConfig(t, fileSvc, "http://127.0.0.1:8443")
+	data, err := json.Marshal(testBucketCredentials())
+	require.NoError(t, err)
+
+	cmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetIn(strings.NewReader(string(data)))
+	cmd.SetArgs(fullBucketSetArgs("-"))
+	require.NoError(t, cmd.Execute())
+
+	credentials, err := gateway.ReadPublicBucketCredentials(context.Background(), fileSvc, ks)
+	require.NoError(t, err)
+	assert.Equal(t, testBucketCredentials(), credentials)
+}
+
+func TestPublicConfigSetCmd_RefusesBucketOnSeparatelyHostedMirror(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	useTestKeystore(t, fileSvc)
+	writeBucketTestFeedConfig(t, fileSvc, "https://mirror.example")
+	ctx := context.Background()
+
+	cmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetArgs(fullBucketSetArgs(writeBucketCredentialsFile(t, testBucketCredentials())))
+
+	require.ErrorIs(t, cmd.Execute(), constants.ErrPublicBucketRequiresLocalMirror)
+	assert.Nil(t, bucketConfigOnDisk(t, fileSvc).Bucket)
+	exists, err := fileSvc.FileExists(ctx, constants.PublicFeedBucketCredentialsPath)
+	require.NoError(t, err)
+	assert.False(t, exists)
+}
+
+func TestPublicConfigSetCmd_RefusesNonHTTPSBucketEndpointOnPublicHost(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	useTestKeystore(t, fileSvc)
+	writeBucketTestFeedConfig(t, fileSvc, "http://127.0.0.1:8443")
+
+	cmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetArgs([]string{"--bucket-name", "feed-bucket", "--bucket-endpoint", "http://acct.r2.example", "--bucket-public-origin", "https://feed.example", "--bucket-zone-id", "zone-a"})
+
+	require.ErrorIs(t, cmd.Execute(), constants.ErrPublicBucketConfigInvalid)
+	assert.Nil(t, bucketConfigOnDisk(t, fileSvc).Bucket)
+}
+
+func TestPublicConfigSetCmd_RefusesBucketCredentialsMissingPurgeToken(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	useTestKeystore(t, fileSvc)
+	writeBucketTestFeedConfig(t, fileSvc, "http://127.0.0.1:8443")
+	credentials := testBucketCredentials()
+	credentials.PurgeToken = ""
+
+	cmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetArgs(fullBucketSetArgs(writeBucketCredentialsFile(t, credentials)))
+
+	require.ErrorIs(t, cmd.Execute(), constants.ErrPublicBucketCredentialsRequired)
+	assert.Nil(t, bucketConfigOnDisk(t, fileSvc).Bucket)
+}
+
+func TestPublicConfigSetCmd_RefusesCredentialsWithoutKeystore(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	writeBucketTestFeedConfig(t, fileSvc, "http://127.0.0.1:8443")
+	errKeystore := errors.New("keystore unavailable")
+	original := openPublicKeystore
+	openPublicKeystore = func(fs.RuntimeFileService) (*keystore.Keystore, error) { return nil, errKeystore }
+	t.Cleanup(func() { openPublicKeystore = original })
+
+	cmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetArgs(fullBucketSetArgs(writeBucketCredentialsFile(t, testBucketCredentials())))
+
+	require.ErrorIs(t, cmd.Execute(), errKeystore)
+	assert.Nil(t, bucketConfigOnDisk(t, fileSvc).Bucket)
+}
+
+func TestPublicConfigSetCmd_BucketRemoveClearsConfigAndKeepsCredentials(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	ks := useTestKeystore(t, fileSvc)
+	writeBucketTestFeedConfig(t, fileSvc, "http://127.0.0.1:8443")
+	setCmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	setCmd.SetArgs(fullBucketSetArgs(writeBucketCredentialsFile(t, testBucketCredentials())))
+	require.NoError(t, setCmd.Execute())
+
+	removeCmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	removeCmd.SetArgs([]string{"--bucket-remove"})
+	require.NoError(t, removeCmd.Execute())
+
+	assert.Nil(t, bucketConfigOnDisk(t, fileSvc).Bucket)
+	credentials, err := gateway.ReadPublicBucketCredentials(context.Background(), fileSvc, ks)
+	require.NoError(t, err)
+	assert.Equal(t, testBucketCredentials(), credentials)
+}
+
+func TestPublicConfigSetCmd_BucketRemoveRejectsCombinedBucketFlags(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	useTestKeystore(t, fileSvc)
+	writeBucketTestFeedConfig(t, fileSvc, "http://127.0.0.1:8443")
+	setCmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	setCmd.SetArgs([]string{"--bucket-name", "feed-bucket", "--bucket-endpoint", "https://acct.r2.example", "--bucket-public-origin", "https://feed.example", "--bucket-zone-id", "zone-a"})
+	require.NoError(t, setCmd.Execute())
+
+	for _, args := range [][]string{
+		{"--bucket-remove", "--bucket-zone-id", "zone-b"},
+		{"--bucket-remove", "--bucket-credentials-file", writeBucketCredentialsFile(t, testBucketCredentials())},
+	} {
+		removeCmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+		removeCmd.SetArgs(args)
+		require.ErrorIs(t, removeCmd.Execute(), constants.ErrValidationFailed)
+	}
+	require.NotNil(t, bucketConfigOnDisk(t, fileSvc).Bucket)
 }
 
 // Each row of a stored verification report against the feed's verifier state. Plain

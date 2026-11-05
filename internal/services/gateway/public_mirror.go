@@ -108,6 +108,8 @@ type PublicMirrorServer struct {
 	maxSSESubscribers        int
 	trustedProxyNetworks     []*net.IPNet
 	bootstrapCache           map[string]cachedBootstrapSnapshot
+	// layout holds the public layout's pointer and proof catalog state.
+	layout publicMirrorLayoutCache
 }
 
 type cachedBootstrapSnapshot struct {
@@ -677,6 +679,15 @@ func (m *PublicMirrorServer) publicReadMux() *http.ServeMux {
 	mux.Handle("/proof-head", m.withGzip(http.HandlerFunc(m.handleProofHead)))
 	mux.Handle("/proof-segments", m.withGzip(http.HandlerFunc(m.handleProofSegments)))
 	mux.HandleFunc("/proofs/", m.handleProofDownload)
+	mux.HandleFunc("/"+constants.PublicLayoutPointerKey, m.handleLayoutPointer)
+	mux.HandleFunc("/"+constants.PublicLayoutReadModelPrefix, m.handleLayoutReadModel)
+	mux.HandleFunc("/"+constants.PublicLayoutProofCatalogPrefix, m.handleLayoutProofCatalog)
+	mux.HandleFunc("/"+constants.PublicLayoutProofMetaPrefix, m.handleLayoutProofMeta)
+	mux.HandleFunc("/"+constants.PublicLayoutProofHeadKey, m.handleLayoutProofHead)
+	mux.HandleFunc("/"+constants.PublicLayoutProofSegmentsPrefix, m.handleLayoutProofSegments)
+	mux.HandleFunc("/"+constants.PublicLayoutHistoryPrefix, m.handleLayoutHistory)
+	mux.HandleFunc("/"+constants.PublicLayoutLiveStatusKey, m.handleLayoutLiveStatus)
+	mux.HandleFunc("/"+constants.PublicLayoutLiveRunsPrefix, m.handleLayoutLiveRun)
 	return mux
 }
 
@@ -735,7 +746,7 @@ func publicMirrorAnonymousReadPath(requestPath string) bool {
 	case "/bootstrap", "/snapshot", "/history", "/stream", "/proof-catalog", "/proof-head", "/proof-segments":
 		return true
 	default:
-		return strings.HasPrefix(requestPath, "/proofs/")
+		return strings.HasPrefix(requestPath, "/proofs/") || publicMirrorLayoutReadPath(requestPath)
 	}
 }
 
@@ -1601,11 +1612,8 @@ scan:
 			return
 		}
 		for _, rec := range records {
-			var item models.PublicFeedObject
-			if err := json.Unmarshal([]byte(rec.RecordBytes), &item); err != nil {
-				continue
-			}
-			if mirrorProjectionWithdrawn(summary.WithdrawnDatasetIDs, item) {
+			item, ok := publicHistoryItem(rec, summary.WithdrawnDatasetIDs)
+			if !ok {
 				continue
 			}
 			if recordKind != "" {
@@ -1624,8 +1632,6 @@ scan:
 				hasMore = true
 				break scan
 			}
-			item.SetInt64Field("sequence", rec.Sequence)
-			item["record_type"] = json.RawMessage(strconv.Quote(string(rec.RecordType)))
 			items = append(items, item)
 			lastSeq = rec.Sequence
 		}
@@ -1647,6 +1653,22 @@ scan:
 		HasMore:         hasMore,
 		Limit:           limit,
 	})
+}
+
+// publicHistoryItem decodes one retained record into a history item with its
+// sequence and record_type set. It reports false for a malformed record or one
+// whose dataset is withdrawn. /history and the layout history pages share it.
+func publicHistoryItem(rec models.PublicFeedRecord, withdrawn map[string]bool) (models.PublicFeedObject, bool) {
+	var item models.PublicFeedObject
+	if err := json.Unmarshal([]byte(rec.RecordBytes), &item); err != nil {
+		return nil, false
+	}
+	if mirrorProjectionWithdrawn(withdrawn, item) {
+		return nil, false
+	}
+	item.SetInt64Field("sequence", rec.Sequence)
+	item["record_type"] = json.RawMessage(strconv.Quote(string(rec.RecordType)))
+	return item, true
 }
 
 // handleStream handles GET /stream — replayable SSE. The client connects with

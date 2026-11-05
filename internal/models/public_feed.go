@@ -639,6 +639,9 @@ type PublicExportConfig struct {
 	RetryInitialBackoffSecs int    `json:"retry_initial_backoff_seconds"`
 	RetryMaxBackoffSecs     int    `json:"retry_max_backoff_seconds"`
 	AckWindowSecs           int    `json:"ack_confirmation_window_seconds"`
+	// Bucket configures publishing the public layout to an S3-compatible bucket.
+	// Absent means bucket publishing is off.
+	Bucket *PublicBucketConfig `json:"bucket,omitempty"`
 }
 
 // DefaultPublicExportConfig returns the default export configuration with
@@ -686,6 +689,8 @@ type PublicPublisherStatus struct {
 	// FeedDrift lists runs whose published verifier state differs from their
 	// stored verification report. It is compared on read, never stored.
 	FeedDrift []PublicFeedVerificationDrift `json:"feed_drift,omitempty"`
+	// Bucket reports the bucket publisher. It is absent when publishing is off.
+	Bucket *PublicBucketStatus `json:"bucket,omitempty"`
 }
 
 // ApplyFeedDrift records a drift comparison's outcome. Status stays available when

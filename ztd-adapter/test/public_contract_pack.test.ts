@@ -31,15 +31,17 @@ describe('public spectator contract pack', () => {
   it('exposes only anonymous read operations', () => {
     const openapi = readJson('public-read.openapi.json') as { paths: Record<string, Record<string, unknown>> };
     expect(Object.keys(openapi.paths).sort()).toEqual([
-      '/bootstrap',
-      '/history',
-      '/proof-catalog',
-      '/proof-head',
-      '/proof-segments',
+      '/history/{first_sequence}.json.gz',
+      '/live/runs/{run_id}.jsonl.gz',
+      '/live/status.json',
+      '/pointer.json',
+      '/proof-catalog/{proof_catalog_sha256}.json.gz',
+      '/proof-head.json',
+      '/proof-meta/{sha256}.json',
+      '/proof-segments/{first_index}.jsonl.gz',
       '/proofs/{artifact_id}',
-      '/snapshot',
-      '/stream',
-    ]);
+      '/read-model/{read_model_sha256}.json.gz',
+    ].sort());
     for (const methods of Object.values(openapi.paths)) expect(Object.keys(methods)).toEqual(['get']);
     expect(JSON.stringify(openapi)).not.toMatch(/ingest|gateway|passkey|credential|producer/i);
   });
@@ -92,6 +94,8 @@ describe('public spectator contract pack', () => {
     expect(instructions).toContain('verify-proof --segments');
     expect(instructions).toContain('--key-registry');
     expect(instructions).toContain('nonzero `segment_index`');
+    expect(instructions).toContain('--pointer pointer.json');
+    expect(instructions).toContain('gunzip -c');
   });
 
   it('ships structurally valid fixtures with verifiable batch hashes and signatures', () => {

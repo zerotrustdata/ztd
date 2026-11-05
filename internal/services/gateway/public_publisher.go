@@ -149,6 +149,14 @@ func (s *PublicPublisherService) getHTTPClient() *http.Client {
 	}
 }
 
+// SignFeedPointer signs a feed pointer with the source's current key.
+func (s *PublicPublisherService) SignFeedPointer(pointer models.PublicFeedPointer) (models.PublicFeedPointer, error) {
+	s.mu.Lock()
+	key, keyID := s.signingPrivKey, s.signingKeyID
+	s.mu.Unlock()
+	return models.SignPublicFeedPointer(pointer, key, keyID)
+}
+
 // SetMirrorOrigin updates the mirror origin URL.
 func (s *PublicPublisherService) SetMirrorOrigin(origin string) {
 	s.mu.Lock()

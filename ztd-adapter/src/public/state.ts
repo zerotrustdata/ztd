@@ -74,6 +74,63 @@ export interface PublicRecord {
   readonly record_bytes: string;
 }
 
+/** pointer.json: the one mutable object. It names the digest-addressed read model and proof catalog. */
+export interface PublicPointer {
+  readonly schema_version: string;
+  readonly source_id: string;
+  readonly revision: number;
+  readonly read_model_sha256: string;
+  readonly proof_catalog_sha256?: string;
+  readonly proof_root_sha256?: string;
+  readonly proof_segment_head: number;
+  readonly high_water_sequence: number;
+  readonly history_first_sequence: number;
+  readonly feed_chain_hash: string;
+  readonly withdrawal_digest?: string;
+  readonly active: boolean;
+  readonly generated_at: string;
+  readonly signing_key_id?: string;
+  readonly signing_public_key?: string;
+  readonly signature?: string;
+}
+
+export interface PublicProofHead {
+  readonly schema_version: string;
+  readonly source_id: string;
+  readonly segment_index: number;
+  readonly proof_root_sha256: string;
+  readonly campaign_id: string;
+  readonly campaign_revision: string;
+  readonly verified_index_generation_hash: string;
+  readonly verification_ok: boolean;
+  readonly artifact_count: number;
+  readonly verifier_instructions: string;
+  readonly generated_at: string;
+  readonly signing_key_id: string;
+  readonly signing_public_key?: string;
+  readonly signature: string;
+}
+
+export interface PublicLiveRun {
+  readonly dataset_id: string;
+  readonly run_id: string;
+  readonly lifecycle_state: string;
+}
+
+export interface PublicLiveRecord {
+  readonly sequence: number;
+  readonly record_type: string;
+  readonly record_bytes: string;
+}
+
+/** live/status.json: the snapshot, executing runs, and the newest records, oldest first. */
+export interface PublicLiveStatus {
+  readonly schema_version: string;
+  readonly snapshot: PublicSnapshot;
+  readonly active_runs: readonly PublicLiveRun[];
+  readonly tail: readonly PublicLiveRecord[];
+}
+
 export interface PublicMirrorState {
   readonly protocol_version: string;
   readonly source_id: string;

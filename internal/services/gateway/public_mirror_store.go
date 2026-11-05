@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -949,8 +950,14 @@ func (s *PublicMirrorStore) proofSegmentHead(ctx context.Context, sourceID strin
 
 // ProofSegments returns all signed proof manifest segments for one source in order.
 func (s *PublicMirrorStore) ProofSegments(ctx context.Context, sourceID string) ([]models.PublicProofManifestSegment, error) {
-	segments, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT segment_index, previous_root, proof_root_sha256, signing_key_id, signature, generated_at, segment_json FROM proof_manifest_segments WHERE source_id = ? ORDER BY segment_index`,
-		[]interface{}{sourceID}, func(rows *sql.Rows) (models.PublicProofManifestSegment, error) {
+	return s.proofSegmentsInRange(ctx, sourceID, 0, math.MaxInt64)
+}
+
+// proofSegmentsInRange returns the signed segments of one source whose index
+// lies in [first, lastExclusive), in chain order.
+func (s *PublicMirrorStore) proofSegmentsInRange(ctx context.Context, sourceID string, first, lastExclusive int64) ([]models.PublicProofManifestSegment, error) {
+	segments, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT segment_index, previous_root, proof_root_sha256, signing_key_id, signature, generated_at, segment_json FROM proof_manifest_segments WHERE source_id = ? AND segment_index >= ? AND segment_index < ? ORDER BY segment_index`,
+		[]interface{}{sourceID, first, lastExclusive}, func(rows *sql.Rows) (models.PublicProofManifestSegment, error) {
 			var seg models.PublicProofManifestSegment
 			var index int64
 			var previousRoot, root, keyID, signature, generatedAt, raw string
