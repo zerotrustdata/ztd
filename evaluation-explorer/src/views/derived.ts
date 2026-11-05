@@ -388,7 +388,7 @@ export function assignmentLifecycleEvents(
 /** One assignment's row identity in the live stream. Row-attached activity
  *  (Tribunal votes, deterministic grades, judge activity) joins rows by this key
  *  only, never by time. */
-export function assignmentRowKey(event: LiveEvent): string {
+export function assignmentRowKey(event: Pick<LiveEvent, 'dataset_id' | 'run_id' | 'assignment_id'>): string {
   return `${event.dataset_id}:${event.run_id}:${event.assignment_id}`;
 }
 

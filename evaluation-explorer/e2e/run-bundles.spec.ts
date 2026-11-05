@@ -4,6 +4,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { installMirrorLayout } from './mirror-layout';
 import { buildRunBundle, campaignDatasetFor, campaignEvaluationSummary, type RunBundle } from './run-bundle';
+import { FIXTURE_RELEASE } from '../src/fixtures/fixtures';
 
 const mirrorOrigin = process.env.ZTD_PUBLIC_MIRROR_ORIGIN ?? 'http://127.0.0.1:8082';
 const runId = 'run-browser-bundles';
@@ -78,6 +79,60 @@ test('opening a run requests exactly one bundle', async ({ page }) => {
   }
 
   expect(proofRequests).toEqual([`/proofs/${bundle.sha256}`]);
+});
+
+test('Live status settles an invocation when its result bundle arrives without a terminal event', async ({ page }) => {
+  const bundle = buildRunBundle(runId, [assignmentIds[0]!]);
+  let releaseBundle!: () => void;
+  const pendingBundle = new Promise<void>((resolve) => { releaseBundle = resolve; });
+  await installMirror(page, [
+    campaignEvaluationSummary(runId, bundle.sha256),
+    {
+      schema_version: '1.14.0', ...FIXTURE_RELEASE, release_basis: 'PUBLIC_RELEASE_BASIS_RECORDED', kind: 'stage_updated',
+      dataset_id: campaignDatasetFor(runId), run_id: runId, assignment_id: assignmentIds[0],
+      event_id: 'invoked-lite', task_id: 'tool-select-file-read', variant_id: 'model-lite', role: 'lite',
+      quality_state: 'live_in_progress', lifecycle_status: 'running', completed: 0, total: 1,
+      stage_label: 'model role invoked · lite · model-lite · tool-select-file-read',
+      observed_at: '2026-09-20T00:00:00Z',
+    },
+  ], new Map());
+  await page.route(`${mirrorOrigin}/proofs/${bundle.sha256}`, async (route) => {
+    await pendingBundle;
+    await route.fulfill({ body: bundle.body, contentType: 'application/gzip' });
+  });
+  await page.goto('/?release=all');
+  const live = page.getByRole('region', { name: 'Live activity', exact: true });
+  await expect(live.getByRole('button', { name: 'Sort by Status' })).toBeVisible();
+  await expect(live.getByRole('link', { name: /Running:.*View details/ })).toBeVisible();
+  releaseBundle();
+  await expect(live.getByRole('link', { name: /Passed:.*View details/ })).toBeVisible();
+  await expect(live.getByRole('link', { name: /Running:|Invoked:/ })).toHaveCount(0);
+  await expect(live.locator('tbody tr')).toHaveCount(1);
+});
+
+test('Live status uses task-index outcomes when an ended run has no published bundle', async ({ page }) => {
+  const summary = { ...campaignEvaluationSummary(runId), lifecycle_state: 'completed' };
+  await installMirrorLayout(page, {
+    mirrorOrigin, sourceId,
+    records: [summary, ...['lite', 'primary'].map((role) => ({
+      schema_version: '1.14.0', ...FIXTURE_RELEASE, release_basis: 'PUBLIC_RELEASE_BASIS_RECORDED', kind: 'stage_updated',
+      dataset_id: campaignDatasetFor(runId), run_id: runId, assignment_id: assignmentIds[0],
+      event_id: `invoked-${role}`, task_id: 'tool-select-file-read', variant_id: `model-${role}`, role,
+      quality_state: 'live_in_progress', lifecycle_status: 'running', completed: 0, total: 1,
+      stage_label: `model role invoked · ${role} · model-${role} · tool-select-file-read`,
+      observed_at: '2026-09-20T00:00:00Z',
+    }))],
+    taskIndex: [{ task_id: 'tool-select-file-read', results: [{
+      run_id: runId, assignment_id: assignmentIds[0],
+      lifecycle_status: 'EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED',
+      summary_status: 'EVALUATION_VERDICT_STATUS_FAIL', verification_status: 'verified',
+      completed_at: '2026-09-20T00:01:00Z',
+    }] }],
+  });
+  await page.goto('/?release=all');
+  const live = page.getByRole('region', { name: 'Live activity', exact: true });
+  await expect(live.getByRole('link', { name: /Model failed:.*View details/ })).toHaveCount(2);
+  await expect(live.getByRole('link', { name: /Running:|Invoked:|Status unavailable:/ })).toHaveCount(0);
 });
 
 test('loading a run URL directly requests exactly one bundle', async ({ page }) => {

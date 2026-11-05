@@ -205,7 +205,12 @@ test('Live panels fit above the footer and scroll independently through resizing
     const runsOverflow = await runList.evaluate((element) => element.scrollHeight > element.clientHeight);
     await runList.hover();
     await page.mouse.wheel(0, 300);
-    if (runsOverflow) await expect.poll(() => runList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    // WebKit applies wheel input over multiple frames; compare the other panel
+    // only after this wheel has reached its clamped destination.
+    if (runsOverflow) {
+      const target = await runList.evaluate((element) => Math.min(300, element.scrollHeight - element.clientHeight));
+      await expect.poll(() => runList.evaluate((element) => element.scrollTop)).toBe(target);
+    }
     expect(await eventList.evaluate((element) => element.scrollTop)).toBe(0);
     const runScroll = await runList.evaluate((element) => element.scrollTop);
     if (viewport.width <= 768) await page.getByRole('banner').getByRole('button', { name: 'Close navigation drawer' }).click();
@@ -227,7 +232,18 @@ test('Live panels fit above the footer and scroll independently through resizing
     await runList.evaluate((element) => { element.scrollTop = 0; });
     await runList.focus();
     await page.keyboard.press('PageDown');
-    if (runsOverflow) await expect.poll(() => runList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    if (runsOverflow) {
+      await expect.poll(() => runList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      // Finish keyboard scrolling before the next viewport resets the list.
+      let previous = -1;
+      let stationarySamples = 0;
+      await expect.poll(async () => {
+        const current = await runList.evaluate((element) => element.scrollTop);
+        stationarySamples = current === previous ? stationarySamples + 1 : 0;
+        previous = current;
+        return stationarySamples;
+      }, { intervals: [100] }).toBeGreaterThanOrEqual(2);
+    }
   }
 });
 
@@ -355,6 +371,8 @@ for (const viewport of [
       const modelWidth = await live.locator('tbody .stream-model-cell').evaluate((cell) => cell.getBoundingClientRect().width);
       expect(taskWidth).toBeGreaterThan(90);
       expect(modelWidth).toBeGreaterThan(90);
+      const rowHeight = await live.locator('tbody tr').first().evaluate((row) => row.getBoundingClientRect().height);
+      expect(rowHeight).toBeLessThan(180);
       await expect(live.locator('tbody .stream-time')).toBeVisible();
     }
     expect(await live.locator('.stream-scroll').evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);

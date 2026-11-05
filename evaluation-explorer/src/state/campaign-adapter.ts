@@ -291,7 +291,7 @@ export function campaignDatasetId(runId: string): string {
 }
 
 /**
- * Maps one task-index result to the view the task list renders. The wire enums are
+ * Maps one task-index result to its assignment identity and outcome. The wire enums are
  * checked first so an unknown value throws a ValidationError naming its field.
  */
 export function taskResultView(result: FeedTaskResult): {

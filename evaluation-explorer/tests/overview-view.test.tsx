@@ -246,7 +246,7 @@ describe('Live workspace', () => {
     const stream = within(screen.getByRole('region', { name: 'Live activity' }));
     expect(stream.getByRole('link', { name: /Provider Failed:.*View details/ })).toHaveAttribute('data-tone', 'neutral');
     expect(stream.getByRole('link', { name: 'smollm2-135m' })).toBeInTheDocument();
-    expect(stream.getByRole('link', { name: /Stage Updated:.*View details/ })).toBeInTheDocument();
+    expect(stream.getByRole('link', { name: /Running:.*View details/ })).toBeInTheDocument();
   });
 
   it.each(['/', '/?release=v1.1.2'])('shows live activity across releases at %s before summaries arrive', (route) => {

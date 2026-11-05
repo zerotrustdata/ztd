@@ -222,6 +222,12 @@
   min-width: 240px;
 }
 
+/* Names break between words, not inside one, so these columns hold a readable width and the table scrolls. */
+.data-table :is([data-column="formation"], [data-column="suite"], [data-column="primary"], [data-column="assistant"], [data-column="lite"]) {
+  min-width: 120px;
+  overflow-wrap: break-word;
+}
+
 .assignment-table-controls {
   display: flex;
   flex-wrap: wrap;
