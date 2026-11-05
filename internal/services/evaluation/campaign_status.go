@@ -8,10 +8,64 @@
 package evaluation
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	stdfs "io/fs"
 	"strings"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
+
+// RunFeedVerificationDrift compares each active run's stored verification report
+// with the verifier state the feed publishes for it, in run ID order. A run the
+// feed has never carried, a run with no report, and a partial report on an
+// unfinished run have nothing to compare.
+func RunFeedVerificationDrift(ctx context.Context, store *Store, published map[string]string) ([]models.PublicFeedVerificationDrift, error) {
+	runIDs, err := store.ListRunIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: feed verification drift: %w", err)
+	}
+	var drift []models.PublicFeedVerificationDrift
+	for _, runID := range runIDs {
+		feedState, carried := published[runID]
+		if !carried {
+			continue
+		}
+		report, err := store.LoadCampaignVerification(ctx, runID)
+		if errors.Is(err, stdfs.ErrNotExist) || errors.Is(err, constants.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: feed verification drift: %w", err)
+		}
+		if entry, drifted := feedVerificationDriftEntry(runID, report, feedState); drifted {
+			drift = append(drift, entry)
+		}
+	}
+	return drift, nil
+}
+
+func feedVerificationDriftEntry(runID string, report *evalv1.EvaluationVerificationReport, feedState string) (models.PublicFeedVerificationDrift, bool) {
+	if report.GetVerifiedAssignmentCount() != report.GetExpectedAssignmentCount() {
+		return models.PublicFeedVerificationDrift{}, false
+	}
+	var localStatus string
+	switch report.GetStatus() {
+	case evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS:
+		localStatus = "verified"
+	case evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL:
+		localStatus = "verify_failed"
+	default:
+		return models.PublicFeedVerificationDrift{}, false
+	}
+	if feedState == VerifierStateFromVerificationReport(report) {
+		return models.PublicFeedVerificationDrift{}, false
+	}
+	return models.PublicFeedVerificationDrift{RunID: runID, LocalStatus: localStatus, FeedVerifierState: feedState}, true
+}
 
 // CampaignRunStatus derives a human-readable campaign run status from canonical
 // assignment counts, an optional persisted verification report, and whether a

@@ -22,6 +22,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -31,11 +32,13 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 type publicFailOnceFileSvc struct {
@@ -642,4 +645,71 @@ func TestPublicConfigSetCmd_UpdatesOnlyExplicitFields(t *testing.T) {
 	assert.Equal(t, "deployment-a", updated.SourceID)
 	assert.Equal(t, "https://new.example", updated.MirrorOrigin)
 	assert.Equal(t, "key-a", updated.SigningKeyID)
+}
+
+// Each row of a stored verification report against the feed's verifier state. Plain
+// verify stays local by design, so disagreement has to be visible in the status.
+func TestPublicStatusCmd_ReportsFeedDriftForEachDisagreement(t *testing.T) {
+	const pass, fail = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL
+	rows := []struct {
+		runID string
+		local evalv1.EvaluationVerdictStatus
+		feed  string
+		want  string
+	}{
+		{runID: "run-agree-pass", local: pass, feed: "passed"},
+		{runID: "run-agree-fail", local: fail, feed: "failed"},
+		{runID: "run-no-report", feed: "not_run"},
+		{runID: "run-pass-not-run", local: pass, feed: "not_run", want: "verified"},
+		{runID: "run-pass-failed", local: pass, feed: "failed", want: "verified"},
+		{runID: "run-fail-passed", local: fail, feed: "passed", want: "verify_failed"},
+		{runID: "run-fail-not-run", local: fail, feed: "not_run", want: "verify_failed"},
+	}
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	useTestKeystore(t, fileSvc)
+	store := evaluation.NewStore(fileSvc)
+	bootstrap := models.PublicFeedBootstrap{}
+	var want []models.PublicFeedVerificationDrift
+	for _, row := range rows {
+		require.NoError(t, store.SaveRun(t.Context(), &evalv1.EvaluationRun{SchemaVersion: evaluation.CampaignSchemaVersion, RunId: row.runID, CampaignBinding: &evalv1.ModelCampaignBinding{CampaignId: "campaign-a"}}))
+		if row.local != evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSPECIFIED {
+			require.NoError(t, store.SaveCampaignVerification(t.Context(), row.runID, &evalv1.EvaluationVerificationReport{RunId: row.runID, Status: row.local}))
+		}
+		bootstrap.RecentProjections = append(bootstrap.RecentProjections, models.NewPublicFeedObject(map[string]string{"kind": "evaluation_summary", "run_id": row.runID, "verifier_state": row.feed}))
+		if row.want != "" {
+			want = append(want, models.PublicFeedVerificationDrift{RunID: row.runID, LocalStatus: row.want, FeedVerifierState: row.feed})
+		}
+	}
+	sort.Slice(want, func(i, j int) bool { return want[i].RunID < want[j].RunID })
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(bootstrap)
+	}))
+	t.Cleanup(mirror.Close)
+	initCmd := publicInitCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	initCmd.SetArgs([]string{"--source-id", "deployment-a", "--mirror-origin", mirror.URL})
+	require.NoError(t, initCmd.Execute())
+
+	var stdout, stderr bytes.Buffer
+	cmd := publicStatusCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"--mirror-origin", mirror.URL})
+	require.NoError(t, cmd.Execute())
+	var status models.PublicPublisherStatus
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &status))
+	assert.True(t, status.FeedDriftChecked)
+	assert.Equal(t, want, status.FeedDrift)
+	assert.Contains(t, stderr.String(), "run run-fail-passed is verify_failed locally but the feed says passed")
+	assert.NotContains(t, stderr.String(), "run-agree-pass")
+
+	// A mirror that cannot be read must not look like agreement.
+	mirror.Close()
+	stdout.Reset()
+	stderr.Reset()
+	require.NoError(t, cmd.Execute())
+	status = models.PublicPublisherStatus{}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &status))
+	assert.False(t, status.FeedDriftChecked)
+	assert.Empty(t, status.FeedDrift)
+	assert.Contains(t, stderr.String(), "feed drift not checked")
 }

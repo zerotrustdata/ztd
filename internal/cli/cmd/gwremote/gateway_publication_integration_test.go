@@ -19,6 +19,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -192,6 +193,24 @@ func TestGatewayPublisherStatus_ReturnsBootstrapFields(t *testing.T) {
 	assert.Equal(t, bootstrap.Snapshot.FeedChainHash, status.FeedChainHash)
 	assert.Equal(t, 1, status.BatchCount)
 	assert.Equal(t, bootstrap.Snapshot.BatchCount, status.BatchCount)
+}
+
+// A run record the comparison cannot read must not take the rest of the status
+// down, and must not read as agreement.
+func TestGatewayPublisherStatus_UnreadableRunDegradesDriftCheck(t *testing.T) {
+	_, fileSvc, cfg := newPublicMirrorGateway(t)
+	status, err := GatewayPublisherStatus(t.Context(), fileSvc, cfg)
+	require.NoError(t, err)
+	assert.True(t, status.FeedDriftChecked)
+	assert.Empty(t, status.FeedDriftError)
+
+	require.NoError(t, fileSvc.WriteFile(t.Context(), path.Join(constants.EvaluationRunsPath, "run-unreadable", constants.EvaluationRunStateFilename), []byte("not a run"), constants.PermFilePrivate))
+	status, err = GatewayPublisherStatus(t.Context(), fileSvc, cfg)
+	require.NoError(t, err)
+	assert.True(t, status.Enabled)
+	assert.False(t, status.FeedDriftChecked)
+	assert.NotEmpty(t, status.FeedDriftError)
+	assert.Empty(t, status.FeedDrift)
 }
 
 func TestPublishJSONLViaGateway_ExportsRecords(t *testing.T) {

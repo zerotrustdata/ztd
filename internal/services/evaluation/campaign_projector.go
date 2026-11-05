@@ -160,6 +160,12 @@ func AssignmentVerifiedResultIdempotencyKey(runID, assignmentID string) string {
 	return runID + ":" + assignmentID + ":result:verified"
 }
 
+// AssignmentFailedVerificationResultIdempotencyKey returns the publication key
+// for one assignment result republished under a failing verification report.
+func AssignmentFailedVerificationResultIdempotencyKey(runID, assignmentID string) string {
+	return runID + ":" + assignmentID + ":result:verification-failed"
+}
+
 // MarshalCampaignProjectionEnvelope canonicalizes one typed projection record
 // into a public-feed payload envelope.
 func MarshalCampaignProjectionEnvelope(messageType, idempotencyKey string, record proto.Message) ([]byte, error) {

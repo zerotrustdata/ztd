@@ -135,6 +135,8 @@ Scan public responses and proof bytes for credentials, private endpoints, machin
 ./ztd public restore --queue
 ```
 
+`public status` also compares each run's stored verification report with the verifier state the read model publishes, and lists disagreements in `feed_drift`, with a warning per run on stderr. `feed_drift_checked` is `false`, with the cause in `feed_drift_error` and a warning, when the stored reports or the read model behind the comparison cannot be read. Pass `--mirror-origin` when the public mirror is not at the default origin. See [Feed Drift](../devs/troubleshooting.md#feed-drift) to clear a reported run.
+
 `public publish` durably appends records before transmission. `public push` retries outbox delivery and pushes the proof package. When publication is Gateway-owned (no host publisher configuration and a healthy Gateway), `public push` prints that the Gateway-owned public mirror is already synchronized and does nothing. `public restore --queue` republishes completed, passing verified runs from the campaign queue to the mirror.
 
 ## Links out

@@ -227,6 +227,12 @@ func isExecutorFailureResult(result *evalv1.EvaluationAssignmentResult) bool {
 	return len(grades) == 1 && grades[0].GetCriterionId() == executionFailureCriterion
 }
 
+// AssignmentFailedModelNotFound reports a result whose provider did not have the
+// requested model, including one with no trace because nothing was dispatched.
+func AssignmentFailedModelNotFound(result *evalv1.EvaluationAssignmentResult) bool {
+	return result.GetFailureReason() == providerFailureReason(inference.AttemptFailureModelNotFound)
+}
+
 // isProviderFailureReason reports whether reason is one of the fixed
 // providerFailureReason sentences.
 func isProviderFailureReason(reason string) bool {

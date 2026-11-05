@@ -558,6 +558,10 @@ func markRolloutFailure(ctx context.Context, fileSvc fs.RuntimeFileService, entr
 	if errors.As(runErr, &providerFailure) {
 		class += " (" + string(evaluation.ProviderFailureClass(providerFailure)) + ")"
 	}
+	var modelNotFound *runModelNotFoundError
+	if errors.As(runErr, &modelNotFound) {
+		class += " (" + string(evaluation.ProviderFailureClass(modelNotFound)) + ")"
+	}
 	notes := "failed: " + class
 	runID := ""
 	if len(runs) > 0 {

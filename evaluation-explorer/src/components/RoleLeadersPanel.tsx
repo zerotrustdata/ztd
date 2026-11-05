@@ -29,6 +29,7 @@ import type { AssignmentResult, EvaluationSummary, ModelRole, ModelSummary } fro
 import { ModelScoreCoverage } from './evidence';
 import { FormationTable } from './FormationTable';
 import { formationLeaderboardRows } from '../views/formations';
+import { PREF, useUserPref } from '../state/dataset';
 
 export type LeaderboardSortField =
   | 'rank'
@@ -229,7 +230,8 @@ export function RoleLeadersPanel({
   /** Inline summary counts rendered in the panel header row. */
   stats?: { label: string; value: number }[];
 }) {
-  const [category, setCategory] = useState<ModelRole | 'all' | 'formations'>('all');
+  // Only an explicit click is stored; with no stored choice the default is derived from the release's results.
+  const [storedCategory, setStoredCategory] = useUserPref<ModelRole | 'all' | 'formations' | null>(PREF.leaderboardCategory, null);
   const [sortField, setSortField] = useState<LeaderboardSortField>('score');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
@@ -250,6 +252,7 @@ export function RoleLeadersPanel({
     return { primary: forRole('primary'), assistant: forRole('assistant'), lite: forRole('lite') };
   }, [qualifiedRows]);
   const evaluatedRoles = MODEL_ROLE_WIRE_ORDER.filter((role) => rowsByRole[role].length > 0);
+  const category = storedCategory ?? (qualifiedRows.length === 0 && formationRows.length > 0 ? 'formations' : 'all');
   // Declared union: an overall row is structurally a role row, so inference would collapse it.
   const categoryRows: Array<ModelRoleLeaderboardRow | ModelOverallLeaderboardRow> =
     category === 'all' ? allRows : category === 'formations' ? [] : rowsByRole[category];
@@ -272,7 +275,7 @@ export function RoleLeadersPanel({
   };
 
   const handleCategoryChange = (next: ModelRole | 'all' | 'formations') => {
-    setCategory(next);
+    setStoredCategory(next);
     setSortField('score');
     setSortDirection('desc');
   };
@@ -290,7 +293,9 @@ export function RoleLeadersPanel({
         <h2>
           Leaderboard{' '}
           <span className="panel-sub">
-            · {evaluatedRoles.length} of {MODEL_ROLE_WIRE_ORDER.length} roles qualified
+            {formationRows.length > 0 && evaluatedRoles.length === 0
+              ? `· ${formationRows.length} ranked ${formationRows.length === 1 ? 'formation' : 'formations'}`
+              : `· ${evaluatedRoles.length} of ${MODEL_ROLE_WIRE_ORDER.length} roles qualified`}
           </span>
         </h2>
         {stats.length > 0 ? (

@@ -320,6 +320,10 @@ make gw MODEL_STORAGE_ROOT=~/.ollama/models
 
 `runs verify` publishes nothing unless `--publish` is set, so a run started with `--publish=false` stays unpublished until its results are reviewed and `runs publish` (or `runs verify --publish`) sends its completion and verification projections.
 
+`runs verify --publish` publishes the report whatever its outcome. A failing report supersedes an earlier published pass on the evaluation summary, the model summaries, and every assignment row, and a later pass restores them. It refuses `--require-provenance` or `--require-observation` when the flag is stricter than the run's frozen policy, because report applicability does not check policy and such a report could post a public failure for a run that passes at its own policy. A plain `runs verify` stays local, so the feed can fall behind the stored report; `ztd public status` reports that as feed drift.
+
+A rollout stops a run at its first `model_not_found` result and leaves the remaining assignments queued. A provider without the model cannot attest a provenance window for it, so the run cannot verify under the rollout's strict policy.
+
 ### Governance Conformance Suite
 
 The governance conformance suite (`governance-conformance@1.1.0`, `cases.SuiteID` and `cases.SuiteVersion`) submits governed faults through each ingress of a live native stack and checks each outcome against the executing Operator's signed evidence. It runs no models, model judges, campaigns, or schedulers. Each case states one exact expected outcome. The verdict comes from the Operator's receipt, never from the Gateway's response.

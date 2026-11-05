@@ -385,7 +385,9 @@ func (c *CampaignPublicationCoordinator) buildRunAggregatePublishRequests(ctx co
 }
 
 // PublishRunVerification emits the post-verify evaluation_summary revision and
-// republicates terminal assignment results with verification_status=verified.
+// republishes terminal assignment results carrying the report's outcome: an
+// applicable failing report supersedes an earlier published pass, and a later
+// pass restores it.
 func (c *CampaignPublicationCoordinator) PublishRunVerification(ctx context.Context, runID string, report *evalv1.EvaluationVerificationReport) (int, error) {
 	if c == nil || c.store == nil || c.files == nil || c.exporter == nil || runID == "" || report == nil || report.GetRunId() != runID {
 		return 0, fmt.Errorf("evaluation: publish run verification: %w", constants.ErrMissingRequiredField)
@@ -423,114 +425,193 @@ func (c *CampaignPublicationCoordinator) PublishRunVerification(ctx context.Cont
 	if report.GetVerifiedAt() != nil {
 		observedAt = report.GetVerifiedAt().AsTime().UTC()
 	}
-	verifiedRequests := make([]campaignFeedPublishRequest, 0, len(assignments))
-	if verified {
-		artifacts, err := c.store.LoadScenarioArtifacts(ctx, run.GetCampaignBinding().GetCampaignId(), catalog)
-		if err != nil {
-			return 0, fmt.Errorf("evaluation: publish run verification: load scenario artifacts: %w", err)
-		}
-		store, ok := c.store.(*Store)
-		if !ok {
-			return 0, fmt.Errorf("evaluation: publish run verification: resolve scenario context: %w", constants.ErrEvidenceScopeMismatch)
-		}
-		publicationState, err := c.loadPublicationState(ctx, runID)
-		if err != nil {
-			return 0, err
-		}
-		// The republish reuses catalogued proof packages when available, or ingests
-		// missing proofs before any verified record is built.
-		proofs, err := c.republishAuditProofs(ctx, assignments, results, artifacts, publicationState)
-		if err != nil {
-			return 0, err
-		}
-		for _, assignment := range assignments {
-			result := results[assignment.GetAssignmentId()]
-			if result == nil {
-				continue
-			}
-			scenario, scenarioErr := ResolvePublicScenarioContext(ctx, store, run, catalog, assignment, artifacts)
-			if scenarioErr != nil && !errors.Is(scenarioErr, constants.ErrEvidenceArtifactMalformed) {
-				return 0, scenarioErr
-			}
-			benchmark, err := c.buildAssignmentBenchmarkObservations(ctx, result)
-			if err != nil {
-				return 0, err
-			}
-			resources, err := BuildPublicResourceSummary(result)
-			if err != nil {
-				return 0, err
-			}
-			auditBindings := AssignmentAuditEvidenceBindingsFromHashes(proofs[assignment.GetAssignmentId()])
-			key := AssignmentVerifiedResultIdempotencyKey(runID, assignment.GetAssignmentId())
-			transcripts, err := BuildPublicAssignmentTranscripts(ctx, c.store, assignment, result)
-			if err != nil {
-				return 0, err
-			}
-			extensions := PublicAssignmentRecordExtensions{
-				RoleTranscripts:       transcripts,
-				BenchmarkObservations: benchmark,
-				ResourceSummary:       resources,
-			}
-			var record *PublicAssignmentRecord
-			if scenarioErr == nil {
-				record, err = BuildPublicAssignmentProjection(ctx, PublicAssignmentBuildInput{
-					Release:              state.Release,
-					Assignment:           assignment,
-					Result:               result,
-					ScenarioContext:      scenario,
-					EvidenceBindings:     auditBindings,
-					VerificationMetadata: exportVerificationMetadata(report, true),
-					VerificationStatus:   "verified",
-					Extensions:           extensions,
-				})
-			} else {
-				category, categoryErr := ScenarioCategoryForAssignment(catalog, assignment)
-				if categoryErr != nil {
-					return 0, categoryErr
-				}
-				projection, projectionErr := BuildAssignmentResultProjection(assignment, result, category, DerivePublicSummaryStatus(result), "verified", state.Release)
-				if projectionErr != nil {
-					return 0, projectionErr
-				}
-				projection.VerificationMetadata = exportVerificationMetadata(report, true)
-				activity, bindings, evidenceErr := BuildPublicAssignmentEvidence(PublicAssignmentEvidenceInput{
-					Result:       result,
-					PublicProofs: auditBindings,
-				})
-				if evidenceErr != nil {
-					return 0, evidenceErr
-				}
-				projection.ActivitySummary = activity.Summary
-				projection.EvidenceBindings = bindings
-				record = &PublicAssignmentRecord{Projection: projection, Extensions: extensions}
-			}
-			if err != nil {
-				return 0, err
-			}
-			body, err := MarshalAssignmentResultProjectionEnvelope(key, record)
-			if err != nil {
-				return 0, err
-			}
-			verifiedRequests = append(verifiedRequests, campaignFeedPublishRequest{IdempotencyKey: key, RecordType: models.PublicFeedRecordTypeProjection, Body: body})
-		}
+	if err := c.clearOtherVerificationOutcome(ctx, runID, assignments, verified); err != nil {
+		return 0, err
 	}
-	published, err := c.exportFeedRecords(ctx, runID, verifiedRequests)
-	if err != nil {
-		return published, err
-	}
-	if err := c.flushProofCatalog(ctx); err != nil {
-		return published, err
+	published, revisionErr := c.publishVerificationAssignmentRevisions(ctx, run, catalog, assignments, results, state, report, verified)
+	// A failing report must still replace an earlier public pass on the summary
+	// when evidence it rejects also blocks rebuilding its assignment revisions.
+	if revisionErr != nil && verified {
+		return published, revisionErr
 	}
 	records, err := BuildRunVerificationViewRecords(run, state, report, observedAt)
 	if err != nil {
-		return published, err
+		return published, errors.Join(revisionErr, err)
 	}
-	summaryRequests := viewRecordsToPublishRequests(records)
-	summaryCount, err := c.exportFeedRecords(ctx, runID, summaryRequests)
+	summaryCount, err := c.exportFeedRecords(ctx, runID, viewRecordsToPublishRequests(records))
+	return published + summaryCount, errors.Join(revisionErr, err)
+}
+
+// publishVerificationAssignmentRevisions publishes one assignment revision per
+// settled result, carrying the report's outcome, then flushes its proofs.
+func (c *CampaignPublicationCoordinator) publishVerificationAssignmentRevisions(
+	ctx context.Context,
+	run *evalv1.EvaluationRun,
+	catalog *evalv1.EvaluationScenarioCatalog,
+	assignments []*evalv1.EvaluationAssignment,
+	results map[string]*evalv1.EvaluationAssignmentResult,
+	state *runAggregateState,
+	report *evalv1.EvaluationVerificationReport,
+	verified bool,
+) (int, error) {
+	runID := run.GetRunId()
+	requests, err := c.buildVerificationAssignmentRevisions(ctx, run, catalog, assignments, results, state, report, verified)
+	if err != nil {
+		return 0, err
+	}
+	published, err := c.exportFeedRecords(ctx, runID, requests)
 	if err != nil {
 		return published, err
 	}
-	return published + summaryCount, nil
+	return published, c.flushProofCatalog(ctx)
+}
+
+func (c *CampaignPublicationCoordinator) buildVerificationAssignmentRevisions(
+	ctx context.Context,
+	run *evalv1.EvaluationRun,
+	catalog *evalv1.EvaluationScenarioCatalog,
+	assignments []*evalv1.EvaluationAssignment,
+	results map[string]*evalv1.EvaluationAssignmentResult,
+	state *runAggregateState,
+	report *evalv1.EvaluationVerificationReport,
+	verified bool,
+) ([]campaignFeedPublishRequest, error) {
+	runID := run.GetRunId()
+	verificationStatus := "unverified"
+	if verified {
+		verificationStatus = "verified"
+	}
+	requests := make([]campaignFeedPublishRequest, 0, len(assignments))
+	artifacts, err := c.store.LoadScenarioArtifacts(ctx, run.GetCampaignBinding().GetCampaignId(), catalog)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: publish run verification: load scenario artifacts: %w", err)
+	}
+	store, ok := c.store.(*Store)
+	if !ok {
+		return nil, fmt.Errorf("evaluation: publish run verification: resolve scenario context: %w", constants.ErrEvidenceScopeMismatch)
+	}
+	publicationState, err := c.loadPublicationState(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	// The republish reuses catalogued proof packages when available, or ingests
+	// missing proofs before any verified record is built.
+	proofs, err := c.republishAuditProofs(ctx, assignments, results, artifacts, publicationState)
+	if err != nil {
+		return nil, err
+	}
+	for _, assignment := range assignments {
+		result := results[assignment.GetAssignmentId()]
+		if result == nil {
+			continue
+		}
+		scenario, scenarioErr := ResolvePublicScenarioContext(ctx, store, run, catalog, assignment, artifacts)
+		if scenarioErr != nil && !errors.Is(scenarioErr, constants.ErrEvidenceArtifactMalformed) {
+			return nil, scenarioErr
+		}
+		benchmark, err := c.buildAssignmentBenchmarkObservations(ctx, result)
+		if err != nil {
+			return nil, err
+		}
+		resources, err := BuildPublicResourceSummary(result)
+		if err != nil {
+			return nil, err
+		}
+		auditBindings := AssignmentAuditEvidenceBindingsFromHashes(proofs[assignment.GetAssignmentId()])
+		key := verificationOutcomeResultKey(runID, assignment.GetAssignmentId(), verified)
+		transcripts, err := BuildPublicAssignmentTranscripts(ctx, c.store, assignment, result)
+		if err != nil {
+			return nil, err
+		}
+		extensions := PublicAssignmentRecordExtensions{
+			RoleTranscripts:       transcripts,
+			BenchmarkObservations: benchmark,
+			ResourceSummary:       resources,
+		}
+		var record *PublicAssignmentRecord
+		if scenarioErr == nil {
+			record, err = BuildPublicAssignmentProjection(ctx, PublicAssignmentBuildInput{
+				Release:              state.Release,
+				Assignment:           assignment,
+				Result:               result,
+				ScenarioContext:      scenario,
+				EvidenceBindings:     auditBindings,
+				VerificationMetadata: verificationOutcomeMetadata(report),
+				VerificationStatus:   verificationStatus,
+				Extensions:           extensions,
+			})
+		} else {
+			category, categoryErr := ScenarioCategoryForAssignment(catalog, assignment)
+			if categoryErr != nil {
+				return nil, categoryErr
+			}
+			projection, projectionErr := BuildAssignmentResultProjection(assignment, result, category, DerivePublicSummaryStatus(result), verificationStatus, state.Release)
+			if projectionErr != nil {
+				return nil, projectionErr
+			}
+			projection.VerificationMetadata = verificationOutcomeMetadata(report)
+			activity, bindings, evidenceErr := BuildPublicAssignmentEvidence(PublicAssignmentEvidenceInput{
+				Result:       result,
+				PublicProofs: auditBindings,
+			})
+			if evidenceErr != nil {
+				return nil, evidenceErr
+			}
+			projection.ActivitySummary = activity.Summary
+			projection.EvidenceBindings = bindings
+			record = &PublicAssignmentRecord{Projection: projection, Extensions: extensions}
+		}
+		if err != nil {
+			return nil, err
+		}
+		body, err := MarshalAssignmentResultProjectionEnvelope(key, record)
+		if err != nil {
+			return nil, err
+		}
+		requests = append(requests, campaignFeedPublishRequest{IdempotencyKey: key, RecordType: models.PublicFeedRecordTypeProjection, Body: body})
+	}
+	return requests, nil
+}
+
+// clearOtherVerificationOutcome forgets the other outcome's assignment keys, so
+// pass, fail, pass republishes while a repeated outcome stays de-duplicated. It
+// runs before export: a crash afterward can only repeat a revision, never
+// suppress the one that supersedes the feed's current outcome.
+func (c *CampaignPublicationCoordinator) clearOtherVerificationOutcome(ctx context.Context, runID string, assignments []*evalv1.EvaluationAssignment, verified bool) error {
+	state, err := c.loadPublicationState(ctx, runID)
+	if err != nil {
+		return err
+	}
+	other := make(map[string]struct{}, len(assignments))
+	for _, assignment := range assignments {
+		other[verificationOutcomeResultKey(runID, assignment.GetAssignmentId(), !verified)] = struct{}{}
+	}
+	kept := make([]string, 0, len(state.PublishedIdempotency))
+	for _, key := range state.PublishedIdempotency {
+		if _, found := other[key]; !found {
+			kept = append(kept, key)
+		}
+	}
+	if len(kept) == len(state.PublishedIdempotency) {
+		return nil
+	}
+	state.PublishedIdempotency = kept
+	return c.savePublicationState(ctx, state)
+}
+
+func verificationOutcomeResultKey(runID, assignmentID string, verified bool) string {
+	if verified {
+		return AssignmentVerifiedResultIdempotencyKey(runID, assignmentID)
+	}
+	return AssignmentFailedVerificationResultIdempotencyKey(runID, assignmentID)
+}
+
+// verificationOutcomeMetadata binds an assignment revision to an applicable
+// report and carries that report's own verdict.
+func verificationOutcomeMetadata(report *evalv1.EvaluationVerificationReport) *evalv1.PublicVerificationMetadata {
+	metadata := exportVerificationMetadata(report, true)
+	metadata.VerifierState = report.GetStatus()
+	return metadata
 }
 
 // PublishRunCompletion emits the terminal evaluation_summary and completion

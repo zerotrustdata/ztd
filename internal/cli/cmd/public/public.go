@@ -195,7 +195,7 @@ func Cmd() *cobra.Command {
 		publicPushCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
 		publicRepairOutboxCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
 		eval.PublicRestoreCmdWithConfig(shared.LoadConfig, shared.NewEvidenceFileSvc),
-		publicStatusCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
+		publicStatusCmdWithConfig(shared.LoadConfig, shared.NewEvidenceFileSvc),
 		publicRotateKeyCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
 		publicVerifyAssignmentCmd(),
 		publicVerifyAgentTraceCmd(),
@@ -778,6 +778,7 @@ func publicStatusCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory p
 				if err != nil {
 					return err
 				}
+				warnFeedDrift(cmd, status)
 				body, err := json.Marshal(status)
 				if err != nil {
 					return fmt.Errorf("public-feed: encode status: %w", err)
@@ -814,6 +815,8 @@ func publicStatusCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory p
 			} else if !errors.Is(err, constants.ErrPublicFeedSnapshotNotFound) {
 				return err
 			}
+			status.ApplyFeedDrift(gwremote.PublicMirrorFeedDrift(ctx, fileSvc, cfg, mirrorOrigin))
+			warnFeedDrift(cmd, status)
 			body, err := json.Marshal(status)
 			if err != nil {
 				return fmt.Errorf("public-feed: encode status: %w", err)
@@ -824,6 +827,15 @@ func publicStatusCmdWithConfig(configLoader publicConfigLoader, fileSvcFactory p
 	}
 	cmd.Flags().StringVar(&mirrorOrigin, "mirror-origin", "", "Override the public mirror read origin (default: derived from --endpoint or http://127.0.0.1:8082)")
 	return cmd
+}
+
+func warnFeedDrift(cmd *cobra.Command, status models.PublicPublisherStatus) {
+	if status.FeedDriftError != "" {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: feed drift not checked: %s\n", status.FeedDriftError)
+	}
+	for _, entry := range status.FeedDrift {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: feed drift: run %s is %s locally but the feed says %s\n", entry.RunID, entry.LocalStatus, entry.FeedVerifierState)
+	}
 }
 
 // publicKeyRotationBinding binds the sealed rotation key to the key ID its

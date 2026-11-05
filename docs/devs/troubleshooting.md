@@ -244,6 +244,23 @@ curl --fail --show-error http://127.0.0.1:11434/api/version
 
 The explicit endpoint overrides a remote `ZTD_OLLAMA_ENDPOINT` in `.env`; it does not edit that file. Alternatively, run Ollama inside WSL bound to loopback. See [Microsoft's WSL networking documentation](https://learn.microsoft.com/windows/wsl/networking) and [Ollama's FAQ](https://docs.ollama.com/faq).
 
+### Feed Drift
+
+`ztd public status` lists a run in `feed_drift` when its stored verification report disagrees with the verifier state the public read model carries. A plain `ztd eval runs verify` stays local and causes this by design, and a publication failure during `--publish` is only a warning, so drift can recur.
+
+| Local status | Feed `verifier_state` | Fix |
+| --- | --- | --- |
+| `verified` | `not_run` or `failed` | `./ztd eval runs publish <run> --force` |
+| `verify_failed` | `passed` or `not_run` | Read the failure reasons with `./ztd eval runs verify <run>`, then publish with `./ztd eval runs publish <run> --force` |
+
+A `verify_failed` run holding stored `INVALID_EVIDENCE` results from before v1.9.1 needs `./ztd eval runs repair <run> --regrade` and a new verify before it publishes.
+
+`feed_drift_checked: false` means the comparison did not run. `feed_drift_error` gives the cause: a mirror that is not reachable at the origin in use, for which pass `--mirror-origin`, or a locked vault, which the [vault procedure](#vault-validation-and-key-recovery) covers.
+
+### Model Not Found in a Rollout
+
+A run that stops with `the provider does not have the requested model` and a queue note of `provider_failure (model_not_found)` asked the provider for a served tag it does not hold. The results it already recorded cannot verify under strict provenance, so start a new run instead of resuming. Compare the registry and provider with `./ztd eval models diff`, then pull the model with `./ztd eval models pull` or correct the registry entry. A bare tag such as `llama3.2` resolves to `:latest`, so it is missing when only `llama3.2:3b` is installed.
+
 ### CLI Authentication and Session Recovery
 
 ```bash

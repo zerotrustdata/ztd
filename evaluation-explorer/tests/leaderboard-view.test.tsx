@@ -12,6 +12,7 @@ import { MODEL_ROLE_WIRE_ORDER } from '../src/content/roles';
 import { evalStore } from '../src/state/store';
 import { PREF } from '../src/state/dataset';
 import { LeaderboardView } from '../src/views/LeaderboardView';
+import { formationRun } from './formation-fixture';
 
 const currentRelease = readFileSync('../VERSION', 'utf8').trim();
 const currentSeries = currentRelease.replace(/\.\d+$/, '.x');
@@ -20,6 +21,7 @@ const currentPatches = [0, 1, 2, 3].map((patch) => currentRelease.replace(/\.\d+
 describe('LeaderboardView', () => {
   beforeEach(() => {
     localStorage.removeItem(PREF.filters);
+    localStorage.removeItem(PREF.leaderboardCategory);
     evalStore.loadFixtures(allFixtureSnapshotRecords, fixtureLiveEvents);
   });
 
@@ -523,5 +525,49 @@ describe('LeaderboardView', () => {
       render(<MemoryRouter initialEntries={['/leaderboard']}><LeaderboardView /></MemoryRouter>);
       expect(screen.getByRole('combobox', { name: 'Filter by release' })).toHaveValue(currentSeries);
     });
+  });
+  it('opens on Formations when the release has formation results but no model rows', () => {
+    evalStore.loadFixtures([formationRun], []);
+    const { unmount } = render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
+    const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+    expect(panel.getByRole('button', { name: 'Formations 1' })).toHaveAttribute('aria-pressed', 'true');
+    expect(panel.getByRole('button', { name: 'Overall 0' })).toHaveAttribute('aria-pressed', 'false');
+    expect(panel.getByRole('region', { name: 'Formation suite formation-suite' })).toBeInTheDocument();
+    expect(panel.queryByText(/0 of 3 roles qualified/)).not.toBeInTheDocument();
+    expect(localStorage.getItem(PREF.leaderboardCategory)).toBeNull();
+    unmount();
+  });
+
+  it('opens on Overall when the release has model rows, even if formation results also exist', () => {
+    const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
+    evalStore.loadFixtures([
+      ...MODEL_ROLE_WIRE_ORDER.map((role): ModelSummary => ({
+        ...source, role, variant_id: 'overall-default', display_name: 'Overall default model',
+        quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1,
+        parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
+        pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
+        security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 },
+      })),
+      formationRun,
+    ], []);
+    render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
+    const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+    expect(panel.getByRole('button', { name: 'Overall 1' })).toHaveAttribute('aria-pressed', 'true');
+    expect(panel.getByRole('link', { name: 'Overall default model' })).toBeInTheDocument();
+    expect(panel.getByText(/3 of 3 roles qualified/)).toBeInTheDocument();
+  });
+
+  it('keeps an explicit category choice across a reload instead of the derived default', () => {
+    evalStore.loadFixtures([formationRun], []);
+    const first = render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
+    fireEvent.click(within(screen.getByRole('region', { name: 'Leaderboard' })).getByRole('button', { name: 'Overall 0' }));
+    expect(localStorage.getItem(PREF.leaderboardCategory)).not.toBeNull();
+    first.unmount();
+
+    render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
+    const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+    expect(panel.getByRole('button', { name: 'Overall 0' })).toHaveAttribute('aria-pressed', 'true');
+    expect(panel.getByRole('button', { name: 'Formations 1' })).toHaveAttribute('aria-pressed', 'false');
+    expect(panel.getByText('No fully evaluated, verified models across datasets.')).toBeInTheDocument();
   });
 });

@@ -31,6 +31,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	"github.com/zerotrustdata/ztd/test/fixtures"
+	"google.golang.org/protobuf/proto"
 )
 
 // These tests replace the publication tests in internal/services/evaluation that
@@ -72,8 +73,13 @@ var sha256HexPattern = regexp.MustCompile(`[0-9a-f]{64}`)
 // each turn with the scripted replies.
 func newPublicationEnv(t *testing.T, replies []fixtures.OllamaReply) (*runEnv, *realStackRun) {
 	t.Helper()
+	return newPublicationEnvWithOptions(t, fixtures.EvalStackOptions{Posture: constants.PostureDoctrine, Replies: replies, EnablePublicSpectator: true})
+}
+
+func newPublicationEnvWithOptions(t *testing.T, options fixtures.EvalStackOptions) (*runEnv, *realStackRun) {
+	t.Helper()
 	control := newFakeProcessControl()
-	run := newRealStackEnvironment(t, fixtures.EvalStackOptions{Posture: constants.PostureDoctrine, Replies: replies, EnablePublicSpectator: true}, testRunControl(control))
+	run := newRealStackEnvironment(t, options, testRunControl(control))
 	cmd := &cobra.Command{}
 	cmd.SetContext(run.ctx)
 	cmd.Flags().String("project-root", run.root, "")
@@ -1085,4 +1091,273 @@ func verifiedModelSummaries(t *testing.T) int {
 		}
 	}
 	return count
+}
+
+// TestRunsVerifyPublish_FailureSupersedesEarlierPass covers the public downgrade:
+// a stored result the verifier now rejects, with the population count unchanged,
+// must replace an earlier published pass on the summary, every model summary, and
+// every assignment row, and a later pass must restore all of them.
+func TestRunsVerifyPublish_FailureSupersedesEarlierPass(t *testing.T) {
+	env, run := newPublicationEnv(t, severityReplies(3))
+	createPublicationCampaign(t, run, "pub-supersede", 3)
+	executeCampaign(t, env, "pub-supersede")
+	runID := onlyRunID(t, run)
+	assignments := runAssignments(t, run, runID)
+
+	out, err := verifyCLI(t, env, runID)
+	require.NoError(t, err, out)
+	assertPublishedOutcome(t, assignments, "passed", "verified", "exploratory_verified")
+
+	store := evaluation.NewStore(run.fileSvc)
+	results, err := store.LoadAssignmentResults(run.ctx, runID, assignments)
+	require.NoError(t, err)
+	require.NotEmpty(t, results)
+	var original *evalv1.EvaluationAssignmentResult
+	for _, result := range results {
+		original = proto.Clone(result).(*evalv1.EvaluationAssignmentResult)
+		result.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE
+		result.ResultDigest, err = evaluation.ComputeAssignmentResultDigest(result)
+		require.NoError(t, err)
+		require.NoError(t, store.SaveAssignmentResult(run.ctx, result))
+		break
+	}
+
+	out, err = verifyCLI(t, env, runID)
+	require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed, out)
+	assert.NotContains(t, out, "warning:", "the failing verification publishes without a warning")
+	assertPublishedOutcome(t, assignments, "failed", "unverified", "")
+
+	require.NoError(t, store.SaveAssignmentResult(run.ctx, original))
+	out, err = verifyCLI(t, env, runID)
+	require.NoError(t, err, out)
+	assertPublishedOutcome(t, assignments, "passed", "verified", "exploratory_verified")
+
+	_, err = verifyCLI(t, env, runID)
+	require.NoError(t, err)
+	projections := mirrorProjections(t)
+	for _, assignment := range assignments {
+		passKey := evaluation.AssignmentVerifiedResultIdempotencyKey(runID, assignment.GetAssignmentId())
+		assert.Len(t, projectionsWithKey(projections, passKey), 2, "pass, fail, pass republishes once and a repeated pass adds nothing: %s", passKey)
+		failKey := evaluation.AssignmentFailedVerificationResultIdempotencyKey(runID, assignment.GetAssignmentId())
+		assert.Len(t, projectionsWithKey(projections, failKey), 1, "the failure publishes each row once: %s", failKey)
+	}
+}
+
+// The stored report moves ahead of the feed whenever a plain verify stays local,
+// so each drift row must be visible in the status the public status command prints.
+func TestPublicStatus_ReportsFeedDriftForEachDisagreement(t *testing.T) {
+	env, run := newPublicationEnv(t, severityReplies(3))
+	createPublicationCampaign(t, run, "pub-drift", 3)
+	out, err := env.run(t, "runs", "start", "pub-drift", "--verify=false")
+	require.NoError(t, err, out)
+	runID := onlyRunID(t, run)
+	assignments := runAssignments(t, run, runID)
+	store := evaluation.NewStore(run.fileSvc)
+	results, err := store.LoadAssignmentResults(run.ctx, runID, assignments)
+	require.NoError(t, err)
+	require.NotEmpty(t, results)
+	var original, rejected *evalv1.EvaluationAssignmentResult
+	for _, result := range results {
+		original = proto.Clone(result).(*evalv1.EvaluationAssignmentResult)
+		rejected = proto.Clone(result).(*evalv1.EvaluationAssignmentResult)
+		rejected.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE
+		rejected.ResultDigest, err = evaluation.ComputeAssignmentResultDigest(rejected)
+		require.NoError(t, err)
+		break
+	}
+	localVerify := func(result *evalv1.EvaluationAssignmentResult) {
+		t.Helper()
+		require.NoError(t, store.SaveAssignmentResult(run.ctx, result))
+		_, _ = env.run(t, "runs", "verify", runID)
+	}
+	assertDrift := func(want ...models.PublicFeedVerificationDrift) {
+		t.Helper()
+		status, err := gwremote.GatewayPublisherStatus(run.ctx, run.fileSvc, run.cfg)
+		require.NoError(t, err)
+		encoded, err := json.Marshal(status)
+		require.NoError(t, err)
+		var printed models.PublicPublisherStatus
+		require.NoError(t, json.Unmarshal(encoded, &printed))
+		assert.Equal(t, want, printed.FeedDrift)
+	}
+	driftOf := func(local, feed string) models.PublicFeedVerificationDrift {
+		return models.PublicFeedVerificationDrift{RunID: runID, LocalStatus: local, FeedVerifierState: feed}
+	}
+
+	assertDrift() // No report yet: nothing to compare.
+	localVerify(original)
+	assertDrift(driftOf("verified", "not_run"))
+	localVerify(rejected)
+	assertDrift(driftOf("verify_failed", "not_run"))
+
+	require.NoError(t, store.SaveAssignmentResult(run.ctx, original))
+	out, err = verifyCLI(t, env, runID)
+	require.NoError(t, err, out)
+	assertDrift() // verified and passed agree.
+	localVerify(rejected)
+	assertDrift(driftOf("verify_failed", "passed"))
+
+	_, err = verifyCLI(t, env, runID)
+	require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
+	assertDrift() // verify_failed and failed agree.
+	localVerify(original)
+	assertDrift(driftOf("verified", "failed"))
+}
+
+// A witness flag stricter than the run's frozen policy could otherwise post a
+// public failure for a run that passes at its own policy.
+func TestRunsVerifyPublish_RefusesWitnessFlagStricterThanFrozenPolicy(t *testing.T) {
+	env, run := newPublicationEnv(t, severityReplies(3))
+	createPublicationCampaign(t, run, "pub-strict", 3)
+	executeCampaign(t, env, "pub-strict")
+	runID := onlyRunID(t, run)
+	before := mirrorHighWater(t)
+	for _, flag := range []string{"--require-provenance", "--require-observation"} {
+		_, err := env.run(t, "runs", "verify", runID, "--publish", flag)
+		require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid, flag)
+	}
+	assert.Equal(t, before, mirrorHighWater(t), "a refused verify publishes nothing")
+}
+
+// The live false pass was a formation run, and the leaderboard ranks formations from
+// these same summary fields, so the downgrade must hold on the system lane too.
+func TestRunsVerifyPublish_FailureSupersedesEarlierPassOnFormationRun(t *testing.T) {
+	variants := evaluation.FormationCatalogFixtureVariants(func(tag string) string { return fixtures.ScriptedModelDigest(t, tag) })
+	tags := make([]string, 0, len(variants))
+	for _, variant := range variants {
+		tags = append(tags, variant.GetServedModelTag())
+	}
+	replies := make([]fixtures.OllamaReply, 64)
+	for i := range replies {
+		replies[i].Content = "severity: high"
+	}
+	env, run := newPublicationEnvWithOptions(t, fixtures.EvalStackOptions{
+		Posture: constants.PostureDoctrine, EnablePublicSpectator: true, ModelTags: tags, Replies: withScriptedJudgeVerdicts(replies),
+	})
+	suite := evaluation.DefaultScenarioSuite()
+	suite.ID = "pub-formation-suite"
+	suite.Version = evaluation.SuiteSchemaVersion
+	for _, scenario := range evaluation.DefaultScenarioSuite().Scenarios {
+		if scenario.ScenarioID == "instruction-classify-severity" {
+			scenario.EligibleRoles = []string{"primary"}
+			suite.Scenarios = []evaluation.SuiteScenario{scenario}
+			break
+		}
+	}
+	require.Len(t, suite.Scenarios, 1)
+	require.NoError(t, evaluation.NewStore(run.fileSvc).CreateSuite(run.ctx, suite))
+	writeTestFrozenInventory(t, env.root, append(variants, scriptedJudgeVariant(t))...)
+	out, err := env.run(t, "campaigns", "create", "pub-formation", "--formations", "heterogeneous-0000", "--suite", suite.ID)
+	require.NoError(t, err, out)
+	out, err = env.run(t, "runs", "start", "pub-formation", "--verify=false")
+	require.NoError(t, err, out)
+	runID := onlyRunID(t, run)
+	assignments := runAssignments(t, run, runID)
+	require.NotEmpty(t, assignments)
+	for _, assignment := range assignments {
+		require.True(t, evaluation.IsHeterogeneousAssignment(assignment), "the run executes on the system lane")
+	}
+
+	out, err = verifyCLI(t, env, runID)
+	require.NoError(t, err, out)
+	assertFormationSummaryQualifies(t, true)
+
+	store := evaluation.NewStore(run.fileSvc)
+	results, err := store.LoadAssignmentResults(run.ctx, runID, assignments)
+	require.NoError(t, err)
+	var original *evalv1.EvaluationAssignmentResult
+	for _, result := range results {
+		original = proto.Clone(result).(*evalv1.EvaluationAssignmentResult)
+		result.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE
+		result.ResultDigest, err = evaluation.ComputeAssignmentResultDigest(result)
+		require.NoError(t, err)
+		require.NoError(t, store.SaveAssignmentResult(run.ctx, result))
+		break
+	}
+	out, err = verifyCLI(t, env, runID)
+	require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed, out)
+	assertFormationSummaryQualifies(t, false)
+
+	require.NoError(t, store.SaveAssignmentResult(run.ctx, original))
+	out, err = verifyCLI(t, env, runID)
+	require.NoError(t, err, out)
+	assertFormationSummaryQualifies(t, true)
+}
+
+// assertFormationSummaryQualifies reads the fields the leaderboard's formation
+// qualification requires from the latest evaluation summary.
+func assertFormationSummaryQualifies(t *testing.T, qualifies bool) {
+	t.Helper()
+	var latest struct {
+		VerifierState string `json:"verifier_state"`
+		QualityState  string `json:"quality_state"`
+	}
+	for _, projection := range mirrorProjections(t) {
+		var payload struct {
+			Kind string `json:"kind"`
+		}
+		require.NoError(t, json.Unmarshal(projection.record, &payload))
+		if payload.Kind == "evaluation_summary" {
+			require.NoError(t, json.Unmarshal(projection.record, &latest))
+		}
+	}
+	if qualifies {
+		assert.Equal(t, "passed", latest.VerifierState)
+		assert.Equal(t, "exploratory_verified", latest.QualityState)
+		return
+	}
+	assert.Equal(t, "failed", latest.VerifierState)
+	assert.NotEqual(t, "exploratory_verified", latest.QualityState)
+}
+
+// assertPublishedOutcome reads the mirror's latest revision of each record the
+// leaderboard and assignment views read. An empty quality state asserts only that
+// no model summary still claims a verified quality state.
+func assertPublishedOutcome(t *testing.T, assignments []*evalv1.EvaluationAssignment, verifierState, verificationStatus, qualityState string) {
+	t.Helper()
+	rowVerdict := evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL.String()
+	if verifierState == "passed" {
+		rowVerdict = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS.String()
+	}
+	assert.Equal(t, verifierState, latestSummary(t).VerifierState, "summary verifier_state")
+	rows := map[string]publicationAssignmentRow{}
+	modelStates := map[string]string{}
+	for _, projection := range mirrorProjections(t) {
+		var row publicationAssignmentRow
+		require.NoError(t, json.Unmarshal(projection.record, &row))
+		switch {
+		case row.Kind == "model_summary":
+			modelStates[row.VariantID+":"+row.Role] = row.QualityState
+		case row.AssignmentID != "" && row.VerificationStatus != "":
+			rows[row.AssignmentID] = row
+		}
+	}
+	require.NotEmpty(t, modelStates)
+	for key, state := range modelStates {
+		if qualityState == "" {
+			assert.NotEqual(t, "exploratory_verified", state, "model summary %s", key)
+		} else {
+			assert.Equal(t, qualityState, state, "model summary %s", key)
+		}
+	}
+	for _, assignment := range assignments {
+		row, ok := rows[assignment.GetAssignmentId()]
+		require.True(t, ok, "assignment %s has a published row", assignment.GetAssignmentId())
+		assert.Equal(t, verificationStatus, row.VerificationStatus, "assignment %s verification_status", assignment.GetAssignmentId())
+		require.NotNil(t, row.Metadata, "assignment %s verification_metadata", assignment.GetAssignmentId())
+		assert.Equal(t, rowVerdict, row.Metadata.VerifierState, "assignment %s metadata verifier_state", assignment.GetAssignmentId())
+		assert.Equal(t, evalv1.PublicVerificationProvenance_PUBLIC_VERIFICATION_PROVENANCE_BOUND.String(), row.Metadata.Provenance, "assignment %s metadata provenance", assignment.GetAssignmentId())
+	}
+}
+
+// publicationAssignmentRow is the subset of an assignment or model record the
+// outcome assertions read.
+type publicationAssignmentRow struct {
+	Kind               string                       `json:"kind"`
+	VariantID          string                       `json:"variant_id"`
+	Role               string                       `json:"role"`
+	QualityState       string                       `json:"quality_state"`
+	AssignmentID       string                       `json:"assignment_id"`
+	VerificationStatus string                       `json:"verification_status"`
+	Metadata           *publicationVerificationMeta `json:"verification_metadata"`
 }

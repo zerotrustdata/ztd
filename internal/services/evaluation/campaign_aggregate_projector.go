@@ -1054,8 +1054,8 @@ func BuildRunVerificationViewRecords(run *evalv1.EvaluationRun, state *runAggreg
 		return nil, err
 	}
 	summaryKey := RunVerificationIdempotencyKey(run.GetRunId())
-	if verifiedModelSummariesEligible(state, report, run) {
-		summaryKey = BoundVerificationSummaryIdempotencyKey(run.GetRunId(), report.GetReportDigestRef().GetSha256())
+	if digest := report.GetReportDigestRef().GetSha256(); digest != "" {
+		summaryKey = BoundVerificationSummaryIdempotencyKey(run.GetRunId(), digest)
 	}
 	records := []CampaignViewRecord{{
 		IdempotencyKey: summaryKey,

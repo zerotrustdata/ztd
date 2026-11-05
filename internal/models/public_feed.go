@@ -629,6 +629,33 @@ type PublicPublisherStatus struct {
 	HighWaterSequence int64  `json:"high_water_sequence"`
 	FeedChainHash     string `json:"feed_chain_hash"`
 	BatchCount        int    `json:"batch_count"`
+	// FeedDriftChecked is false when the read model could not be fetched, so an
+	// empty FeedDrift never reads as agreement that was not checked.
+	FeedDriftChecked bool `json:"feed_drift_checked"`
+	// FeedDriftError is why the comparison did not run.
+	FeedDriftError string `json:"feed_drift_error,omitempty"`
+	// FeedDrift lists runs whose published verifier state differs from their
+	// stored verification report. It is compared on read, never stored.
+	FeedDrift []PublicFeedVerificationDrift `json:"feed_drift,omitempty"`
+}
+
+// ApplyFeedDrift records a drift comparison's outcome. Status stays available when
+// the comparison cannot run, for example on a locked vault.
+func (s *PublicPublisherStatus) ApplyFeedDrift(drift []PublicFeedVerificationDrift, err error) {
+	if err != nil {
+		s.FeedDriftError = err.Error()
+		return
+	}
+	s.FeedDriftChecked = true
+	s.FeedDrift = drift
+}
+
+// PublicFeedVerificationDrift is one run whose public verifier state disagrees
+// with its stored verification report.
+type PublicFeedVerificationDrift struct {
+	RunID             string `json:"run_id"`
+	LocalStatus       string `json:"local_status"`
+	FeedVerifierState string `json:"feed_verifier_state"`
 }
 
 // PublicOutboxEntry is one entry in the durable ordered outbox.

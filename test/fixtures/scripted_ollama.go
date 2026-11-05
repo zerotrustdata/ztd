@@ -53,6 +53,8 @@ type OllamaReply struct {
 	// Failure makes the turn fail the way an unavailable provider does: HTTP
 	// 500 with an Ollama error body.
 	Failure string `json:"-"`
+	// FailureStatus overrides the failing turn's HTTP status.
+	FailureStatus int `json:"-"`
 	// BeforeReply runs in the request handler before the reply is served, so a
 	// test can drive governed work while the model turn is in flight.
 	BeforeReply func() `json:"-"`
@@ -76,6 +78,7 @@ func (r OllamaReply) withResponse(responded OllamaReply) OllamaReply {
 	}
 	if responded.Failure == "" {
 		responded.Failure = r.Failure
+		responded.FailureStatus = r.FailureStatus
 	}
 	if responded.BeforeReply == nil {
 		responded.BeforeReply = r.BeforeReply
@@ -368,7 +371,11 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 				reply.BeforeReply()
 			}
 			if reply.Failure != "" {
-				w.WriteHeader(http.StatusInternalServerError)
+				status := reply.FailureStatus
+				if status == 0 {
+					status = http.StatusInternalServerError
+				}
+				w.WriteHeader(status)
 				_ = json.NewEncoder(w).Encode(struct {
 					Error string `json:"error"`
 				}{Error: reply.Failure})

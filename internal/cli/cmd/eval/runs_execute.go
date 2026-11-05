@@ -69,6 +69,19 @@ func (e *runProviderFailureError) Error() string {
 
 func (e *runProviderFailureError) Unwrap() error { return constants.ErrInferenceGenerateFailed }
 
+// runModelNotFoundError stops a rollout's run at its first result from a provider
+// without the model: no attestation window can exist for that model, so the run
+// cannot verify under the rollout's strict provenance policy.
+type runModelNotFoundError struct {
+	RunID string
+}
+
+func (e *runModelNotFoundError) Error() string {
+	return fmt.Sprintf("evaluation: run %s stopped: the provider does not have the requested model, so its results cannot verify; remaining assignments stay queued: %v", e.RunID, constants.ErrInferenceModelNotFound)
+}
+
+func (e *runModelNotFoundError) Unwrap() error { return constants.ErrInferenceModelNotFound }
+
 // executeRun executes queued assignments of one run while holding the run's
 // lease. The lease is the durable handle that lets status, cancel, and archive
 // tell a live run from an interrupted one. Command output goes to the caller's
@@ -402,6 +415,9 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 				if trace != nil {
 					class = trace.ProviderFailureClass
 				}
+			}
+			if class == string(inference.AttemptFailureModelNotFound) || evaluation.AssignmentFailedModelNotFound(result) {
+				return executed, errors.Join(append(publicationErrs, &runModelNotFoundError{RunID: opts.RunID})...)
 			}
 			if class == string(inference.AttemptFailureGenerateFailed) {
 				generationFailures++
