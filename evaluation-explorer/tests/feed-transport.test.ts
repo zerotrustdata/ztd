@@ -1,19 +1,14 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-// Feed-transport regression tests. These cover the three real mirror wire
-// shapes (/bootstrap recent_projections, /history items, /stream SSE),
-// the history-backfill boot order, and cross-dataset record keying. They
-// guard against the integration-breaking defects found in the Worker 3
-// review pass: wire-format mismatch, history backfill never running, and
-// cross-dataset collisions from bare-identity keys.
+// Feed-transport regression tests. These cover the two real mirror wire
+// shapes (read-model recent_projections and live/status.json tail records),
+// the current-snapshot boot order, and cross-dataset record keying. They
+// guard against wire-format mismatch and cross-dataset collisions from
+// bare-identity keys.
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  normalizeHistoryItem,
-  normalizeRecentProjection,
-  normalizeStreamRecord,
-} from '../src/state/feed';
+import { normalizeRecentProjection, normalizeStreamRecord } from '../src/state/feed';
 import { campaignDatasetId } from '../src/state/campaign-adapter';
 import { EvalStore, recordKey } from '../src/state/store';
 import { LIVE_EVENT_STORE_LIMIT } from '../src/constants';
@@ -33,12 +28,7 @@ function snapshotRecord(record: object, sequence: number, recordType: Projection
   };
 }
 
-/** Build a /history item: decoded payload + merged `sequence` and `record_type`. */
-function historyItem(record: object, sequence: number, recordType: string = 'projection'): object {
-  return { ...record, sequence, record_type: recordType };
-}
-
-/** Build a /bootstrap recent_projections item: decoded payload + merged `sequence`. */
+/** Build a read-model recent_projections item: decoded payload + merged `sequence`. */
 function bootstrapItem(record: object, sequence: number): object {
   return { ...record, sequence, record_type: 'projection' };
 }
@@ -67,41 +57,9 @@ const SNAP: FeedSnapshot = {
   freshness: 'active',
 };
 
-describe('normalizeHistoryItem', () => {
-  it('strips sequence and record_type and keeps the payload as record_bytes', () => {
-    const payload = { ...fixtureCatalogExploratory };
-    const item = historyItem(payload, 5, 'projection');
-    const record = normalizeHistoryItem(item);
-    expect(record.sequence).toBe(5);
-    expect(record.record_type).toBe('projection');
-    const decoded = JSON.parse(record.record_bytes);
-    expect(decoded.kind).toBe('catalog_snapshot');
-    expect(decoded.dataset_id).toBe(fixtureCatalogExploratory.dataset_id);
-    expect('sequence' in decoded).toBe(false);
-    expect('record_type' in decoded).toBe(false);
-  });
-
-  it('rejects non-object input', () => {
-    expect(() => normalizeHistoryItem('not-an-object')).toThrow();
-    expect(() => normalizeHistoryItem(null)).toThrow();
-  });
-
-  it('defers payload serialization until record_bytes is read', () => {
-    let serializations = 0;
-    const item = historyItem({
-      kind: 'catalog_snapshot',
-      dataset_id: 'lazy-history',
-      payload: { toJSON: () => { serializations++; return 'encoded'; } },
-    }, 5, 'projection') as Record<string, unknown>;
-
-    const record = normalizeHistoryItem(item);
-    expect(serializations).toBe(0);
-    expect(JSON.parse(record.record_bytes).payload).toBe('encoded');
-    expect(serializations).toBe(1);
-  });
-
-  it('preserves a native evaluation payload through mirror history normalization', () => {
-    const record = normalizeHistoryItem(historyItem(nativeEvaluation, 11));
+describe('live tail records', () => {
+  it('preserves a native evaluation payload through live tail normalization', () => {
+    const record = normalizeStreamRecord('projection', '11', JSON.stringify(nativeEvaluation));
     expect(JSON.parse(record.record_bytes)).toEqual(nativeEvaluation);
     const store = new EvalStore();
     store.acceptProjection(record);
@@ -142,7 +100,7 @@ describe('normalizeRecentProjection', () => {
 });
 
 describe('normalizeStreamRecord', () => {
-  it('builds a projection record from SSE id/event/data', () => {
+  it('builds a projection record from a tail record sequence, type, and bytes', () => {
     const data = JSON.stringify(fixtureCatalogExploratory);
     const record = normalizeStreamRecord('projection', '7', data);
     expect(record.sequence).toBe(7);
@@ -173,7 +131,7 @@ describe('current snapshot and live deltas', () => {
   });
 
   it('installs current entities at the snapshot cursor without replay', () => {
-    // Two pages of history: sequences 1-2 then 3-4, high-water 4.
+    // Records at sequences 1 through 4, high-water 4.
     const m0 = fixtureModelSummaries[0]!;
     const m1 = fixtureModelSummaries[1]!;
     const m2 = fixtureModelSummaries[2]!;
@@ -199,7 +157,7 @@ describe('current snapshot and live deltas', () => {
     expect(state.models.size).toBe(3);
   });
 
-  it('bootstrap entities and cursor become visible together', () => {
+  it('read-model entities and cursor become visible together', () => {
     const recent = [snapshotRecord(fixtureCatalogExploratory, 1)];
     const snapshot: FeedSnapshot = { ...SNAP, high_water_sequence: 1, batch_count: 1 };
     store.initBootstrap(snapshot, recent, 0);
@@ -207,7 +165,7 @@ describe('current snapshot and live deltas', () => {
     expect(store.getState().observedSequence).toBe(1);
   });
 
-  it('does not inflate campaign progress when bootstrap and history overlap', () => {
+  it('does not inflate campaign progress when the read model and a live replay overlap', () => {
     const runId = 'run-overlap';
     const datasetId = campaignDatasetId(runId);
     const queuedEnvelope = {

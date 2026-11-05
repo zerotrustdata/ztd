@@ -8,31 +8,13 @@ import { evalStore } from '../src/state/store';
 import { startFeed, stopFeed } from '../src/state/startup';
 import { LEGACY_BOOTSTRAP_STORAGE_KEY } from '../src/state/legacy-cache';
 import { fixtureCatalogExploratory } from '../src/fixtures/fixtures';
-import type { FeedSnapshot, FeedTaskIndexEntry } from '../src/contract/types';
-import type { StreamHandlers } from '../src/state/feed';
+import type { FeedTaskIndexEntry } from '../src/contract/types';
+import { MIRROR_ORIGIN, makeMirror, readModelBody, requestedPaths, serveLayout, sha256 } from './mirror-layout-fixture';
 
-const origin = 'https://mirror.example';
-const snapshot: FeedSnapshot = {
-  protocol_version: '1.0.0', source_id: 'performance-test', high_water_sequence: 100,
-  feed_chain_hash: '1'.repeat(64), withdrawal_digest: '0'.repeat(64), batch_count: 1,
-  generated_at: '2026-10-23T00:00:00Z', freshness: 'active',
-};
-function json(value: unknown) { return new Response(JSON.stringify(value), { status: 200 }); }
-function requestedPaths(fetchImpl: ReturnType<typeof vi.fn>): string[] {
-  return fetchImpl.mock.calls.map(([req]) => new URL(String(req), origin).pathname);
-}
-function fetchMirror(currentSnapshot: FeedSnapshot = snapshot, taskIndex: FeedTaskIndexEntry[] = []) {
-  return vi.fn(async (input: Parameters<typeof fetch>[0]) => {
-    const path = new URL(String(input), origin).pathname;
-    if (path === '/runtime.json') return json({ schema_version: '1.0.0', mirror_origin: origin });
-    if (path === '/snapshot') return json(currentSnapshot);
-    if (path === '/bootstrap') return json({ protocol_version: '1.0.0', snapshot: currentSnapshot, source_freshness: 'active',
-      recent_projections: [{ ...fixtureCatalogExploratory, sequence: 50 }], task_index: taskIndex,
-      proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 }, generated_at: currentSnapshot.generated_at });
-    throw new Error(`Unexpected startup request: ${path}`);
-  });
-}
+const origin = MIRROR_ORIGIN;
+
 function Origin() { return <span>{useMirrorOrigin()}</span>; }
+
 beforeEach(() => {
   localStorage.clear();
   evalStore.loadFixtures([], []);
@@ -40,81 +22,66 @@ beforeEach(() => {
 afterEach(() => { stopFeed(); vi.unstubAllGlobals(); });
 
 describe('current snapshot startup', () => {
-  it('loads current entities in two requests and streams directly after the snapshot cursor', async () => {
-    const fetchImpl = fetchMirror();
-    const streamFactory = vi.fn(() => ({ close() {} }));
-    await startFeed({ fetchImpl, streamFactory });
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  it('loads the pointer and its read model, then polls', async () => {
+    const mirror = makeMirror();
+    const fetchImpl = serveLayout(mirror);
+    await startFeed({ fetchImpl });
+    expect(requestedPaths(fetchImpl)).toEqual([
+      '/runtime.json',
+      '/pointer.json',
+      `/read-model/${sha256(readModelBody(mirror))}.json.gz`,
+    ]);
     expect(evalStore.getState().observedSequence).toBe(100);
-    expect(evalStore.getState().currentSnapshot).toEqual(snapshot);
+    expect(evalStore.getState().currentSnapshot).toEqual(mirror.snapshot);
     expect(evalStore.getState().pendingSnapshot).toBeNull();
     expect(evalStore.getCatalog(fixtureCatalogExploratory.dataset_id)).toEqual(fixtureCatalogExploratory);
-    expect(streamFactory).toHaveBeenCalledWith(origin, snapshot.source_id, 100, expect.any(Object));
+    expect(evalStore.getState().streamConnection).toBe('connected');
   });
 
   it('shares runtime configuration with mounted consumers', async () => {
-    const fetchImpl = fetchMirror(); vi.stubGlobal('fetch', fetchImpl);
-    await startFeed({ fetchImpl, streamFactory: () => ({ close() {} }) });
+    const fetchImpl = serveLayout(makeMirror()); vi.stubGlobal('fetch', fetchImpl);
+    await startFeed({ fetchImpl });
     render(<><Origin /><Origin /><Origin /></>);
     expect(await screen.findAllByText(origin)).toHaveLength(3);
     expect(fetchImpl.mock.calls.filter(([input]) => String(input) === '/runtime.json')).toHaveLength(1);
   });
 
-  it('installs snapshot entities and the cursor in one notification', async () => {
+  it('installs the read model cursor and entities without a cursor-zero notification', async () => {
     const observed: number[] = [];
     const unsubscribe = evalStore.subscribe(() => observed.push(evalStore.getState().observedSequence));
     try {
-      await startFeed({ fetchImpl: fetchMirror(), streamFactory: () => ({ close() {} }) });
-      expect(observed.filter((sequence) => sequence > 0)).toEqual([100]);
+      await startFeed({ fetchImpl: serveLayout(makeMirror()) });
+      expect(observed.find((sequence) => sequence > 0)).toBe(100);
+      expect(evalStore.getState().catalogs.size).toBe(1);
     } finally { unsubscribe(); }
   });
 
-  it('installs the bootstrap task index into the store', async () => {
+  it('installs the read model task index into the store', async () => {
     const results = [{
       run_id: 'run-1', assignment_id: 'assignment-1', lifecycle_status: 'completed',
       summary_status: 'passed', completed_at: '2026-10-23T00:00:00Z',
     }];
-    await startFeed({
-      fetchImpl: fetchMirror(snapshot, [{ task_id: 'task-a', results }]),
-      streamFactory: () => ({ close() {} }),
-    });
+    const taskIndex: FeedTaskIndexEntry[] = [{ task_id: 'task-a', results }];
+    await startFeed({ fetchImpl: serveLayout(makeMirror({ taskIndex })) });
     expect(evalStore.getTaskResults('task-a')).toEqual(results);
   });
 
-  it('fetches the bootstrap again on every start because nothing is cached', async () => {
-    await startFeed({ fetchImpl: fetchMirror(), streamFactory: () => ({ close() {} }) });
-    const second = fetchMirror();
-    await startFeed({ fetchImpl: second, streamFactory: () => ({ close() {} }) });
-    expect(requestedPaths(second)).toEqual(['/runtime.json', '/bootstrap']);
+  it('fetches the read model again on every start because nothing is cached', async () => {
+    await startFeed({ fetchImpl: serveLayout(makeMirror()) });
+    const second = serveLayout(makeMirror());
+    await startFeed({ fetchImpl: second });
+    expect(requestedPaths(second)).toEqual(['/runtime.json', '/pointer.json', expect.stringMatching(/^\/read-model\//u)]);
     expect(evalStore.getState().observedSequence).toBe(100);
   });
 
   it('removes the legacy bootstrap cache key when startup begins', async () => {
     localStorage.setItem(LEGACY_BOOTSTRAP_STORAGE_KEY, 'stale');
-    await startFeed({ fetchImpl: fetchMirror(), streamFactory: () => ({ close() {} }) });
+    await startFeed({ fetchImpl: serveLayout(makeMirror()) });
     expect(localStorage.getItem(LEGACY_BOOTSTRAP_STORAGE_KEY)).toBeNull();
   });
 
-  it('closes the previous stream before waiting for a replacement snapshot', async () => {
-    const close = vi.fn();
-    await startFeed({ fetchImpl: fetchMirror(), streamFactory: () => ({ close }) });
-    let release!: (response: Response) => void;
-    const restarting = startFeed({ fetchImpl: () => new Promise<Response>((resolve) => { release = resolve; }) });
-    try { expect(close).toHaveBeenCalledOnce(); }
-    finally { stopFeed(); release(new Response('', { status: 503 })); await restarting; }
-  });
-
-  it('replaces state from the mirror on replay gaps instead of reconstructing history', async () => {
-    const fetchImpl = fetchMirror(); let handlers!: StreamHandlers;
-    const streamFactory = vi.fn((_origin, _source, _cursor, callbacks: StreamHandlers) => { handlers = callbacks; return { close() {} }; });
-    await startFeed({ fetchImpl, streamFactory });
-    handlers.onTruncated();
-    await vi.waitFor(() => expect(streamFactory).toHaveBeenCalledTimes(2));
-    expect(fetchImpl).toHaveBeenCalledTimes(4);
-  });
-
   it('keeps accepted state visible when a new snapshot is unreachable', async () => {
-    await startFeed({ fetchImpl: fetchMirror(), streamFactory: () => ({ close() {} }) });
+    await startFeed({ fetchImpl: serveLayout(makeMirror()) });
     await startFeed({ fetchImpl: async () => { throw new Error('offline'); } });
     expect(evalStore.getCatalog(fixtureCatalogExploratory.dataset_id)).toEqual(fixtureCatalogExploratory);
     expect(evalStore.getState().connection).toBe('offline');

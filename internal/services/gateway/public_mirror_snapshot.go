@@ -230,6 +230,26 @@ func (s *PublicMirrorStore) snapshotDatasetPresent(ctx context.Context, sourceID
 	return present, nil
 }
 
+// snapshotRecordsOfKind returns the current records of one kind. It seeks the
+// record key prefix that parseSnapshotRecordIdentity writes, so it reads only
+// those rows.
+func (s *PublicMirrorStore) snapshotRecordsOfKind(ctx context.Context, sourceID, kind string) ([]models.PublicFeedRecord, error) {
+	encoded, err := json.Marshal([]string{kind})
+	if err != nil {
+		return nil, fmt.Errorf("mirror snapshot: encode kind key: %w", err)
+	}
+	// `["kind"` followed by the identity's next JSON array separator.
+	prefix := string(encoded[:len(encoded)-1])
+	records, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT sequence, record_type, record_hash, record_bytes FROM snapshot_records r
+		WHERE source_id = ? AND record_key >= ? AND record_key < ?
+		AND NOT EXISTS (SELECT 1 FROM withdrawn_datasets w WHERE w.source_id = r.source_id AND w.dataset_id = r.dataset_id)`,
+		[]interface{}{sourceID, prefix + ",", prefix + "-"}, scanPublicMirrorRecord)
+	if err != nil {
+		return nil, fmt.Errorf("mirror snapshot: read %s records: %w", kind, err)
+	}
+	return records, nil
+}
+
 func (s *PublicMirrorStore) snapshotRecords(ctx context.Context, sourceID string) ([]models.PublicFeedRecord, error) {
 	records, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT sequence, record_type, record_hash, record_bytes FROM snapshot_records r
 		WHERE source_id = ? AND NOT EXISTS (SELECT 1 FROM withdrawn_datasets w WHERE w.source_id = r.source_id AND w.dataset_id = r.dataset_id)

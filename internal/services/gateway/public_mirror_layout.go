@@ -53,6 +53,10 @@ type publicMirrorLayoutCache struct {
 
 	catalogMu sync.Mutex
 	catalogs  map[string]publicLayoutCatalogMemo
+
+	// offlineBootstraps holds the read model of each source with no accepted batch.
+	// The mirror's writeMu guards it.
+	offlineBootstraps map[string]cachedBootstrapSnapshot
 }
 
 // publicLayoutCatalogMemo is the last catalog built for one source and the
@@ -81,14 +85,50 @@ func (m *PublicMirrorServer) SetPointerSigner(sign func(models.PublicFeedPointer
 	m.layout.pointerContent = models.PublicFeedPointer{}
 }
 
+// layoutSource captures one source's summary and freshness coherently. The summary
+// is nil for a source the mirror has never accepted a batch from.
+func (m *PublicMirrorServer) layoutSource(requestedSource string) (string, *PublicMirrorSourceSummary, models.CampaignFreshness, string) {
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	sourceID, summary := m.sourceView(requestedSource)
+	if summary == nil {
+		return sourceID, nil, models.CampaignFreshnessSourceOffline, ""
+	}
+	summaryCopy := *summary
+	return sourceID, &summaryCopy, m.sourceFreshness(summary), mirrorWithdrawalDigest(summary.WithdrawnDatasetIDs)
+}
+
+// LayoutHead reports the current head without building the read model.
+func (m *PublicMirrorServer) LayoutHead(ctx context.Context, requestedSource string) (PublicLayoutHead, error) {
+	sourceID, summary, freshness, withdrawalDigest := m.layoutSource(requestedSource)
+	runs, err := m.activePublicRuns(ctx, sourceID, freshness)
+	if err != nil {
+		return PublicLayoutHead{}, err
+	}
+	head := PublicLayoutHead{FeedChainHash: constants.PublicFeedZeroHashHex, Freshness: freshness, ActiveRuns: runs}
+	if summary != nil {
+		head.HighWaterSequence = summary.HighWaterSequence
+		head.FeedChainHash = summary.FeedChainHash
+		head.WithdrawalDigest = withdrawalDigest
+	}
+	proofHead, found, err := m.store.ProofHead(ctx, sourceID)
+	if err != nil {
+		return PublicLayoutHead{}, fmt.Errorf("mirror layout: read proof head: %w", err)
+	}
+	if found {
+		head.ProofRootSHA256 = proofHead.ProofRootSHA256
+	}
+	return head, nil
+}
+
 // LayoutState composes the current pointer with the read model it names.
 func (m *PublicMirrorServer) LayoutState(ctx context.Context, requestedSource string) (PublicLayoutState, error) {
-	sourceID, summary := m.sourceView(requestedSource)
+	sourceID, summary, _, _ := m.layoutSource(requestedSource)
 	readModel, digest, err := m.layoutReadModel(ctx, sourceID)
 	if err != nil {
 		return PublicLayoutState{}, err
 	}
-	runs, err := m.activePublicRuns(ctx, sourceID)
+	runs, err := m.activePublicRuns(ctx, sourceID, readModel.freshness)
 	if err != nil {
 		return PublicLayoutState{}, err
 	}
@@ -265,12 +305,13 @@ func (m *PublicMirrorServer) LayoutHistoryPage(ctx context.Context, requestedSou
 // LayoutLiveStatus returns live/status.json: the snapshot, the active runs,
 // and the newest non-result records.
 func (m *PublicMirrorServer) LayoutLiveStatus(ctx context.Context, requestedSource string) (models.PublicLiveStatus, error) {
-	sourceID, summary := m.sourceView(requestedSource)
-	bootstrap, err := m.currentBootstrap(ctx, sourceID)
-	if err != nil {
-		return models.PublicLiveStatus{}, err
+	sourceID, summary, freshness, _ := m.layoutSource(requestedSource)
+	snapshot := offlinePublicMirrorSnapshot(sourceID)
+	if summary != nil {
+		snapshot = m.snapshotOf(sourceID, summary)
+		snapshot.Freshness = freshness
 	}
-	runs, err := m.activePublicRuns(ctx, sourceID)
+	runs, err := m.activePublicRuns(ctx, sourceID, freshness)
 	if err != nil {
 		return models.PublicLiveStatus{}, err
 	}
@@ -280,7 +321,7 @@ func (m *PublicMirrorServer) LayoutLiveStatus(ctx context.Context, requestedSour
 	}
 	return models.PublicLiveStatus{
 		SchemaVersion: constants.PublicLiveStatusSchemaVersion,
-		Snapshot:      bootstrap.Snapshot,
+		Snapshot:      snapshot,
 		ActiveRuns:    runs,
 		Tail:          tail,
 	}, nil
@@ -321,12 +362,17 @@ func (m *PublicMirrorServer) layoutReadModel(ctx context.Context, sourceID strin
 }
 
 // activePublicRuns returns the runs whose latest explorer summary is queued or
-// running, one entry per run, sorted by dataset then run. Withdrawn datasets
-// are already absent from the snapshot. The result is never nil.
-func (m *PublicMirrorServer) activePublicRuns(ctx context.Context, sourceID string) ([]models.PublicLiveRun, error) {
-	records, err := m.store.snapshotRecords(ctx, sourceID)
+// running, one entry per run, sorted by dataset then run. A source that stopped
+// publishing is executing nothing, so a run it left unsettled is not active.
+// Withdrawn datasets are already absent. The result is never nil.
+func (m *PublicMirrorServer) activePublicRuns(ctx context.Context, sourceID string, freshness models.CampaignFreshness) ([]models.PublicLiveRun, error) {
+	switch freshness {
+	case models.CampaignFreshnessSourceOffline, models.CampaignFreshnessIntentionallyStopped, models.CampaignFreshnessSafetyStopped:
+		return []models.PublicLiveRun{}, nil
+	}
+	records, err := m.store.snapshotRecordsOfKind(ctx, sourceID, publicEvaluationSummaryKind)
 	if err != nil {
-		return nil, fmt.Errorf("mirror layout: read snapshot records: %w", err)
+		return nil, fmt.Errorf("mirror layout: read summary records: %w", err)
 	}
 	type runKey struct{ dataset, run string }
 	seen := make(map[runKey]bool)
@@ -723,8 +769,8 @@ func (m *PublicMirrorServer) handleLayoutLiveRun(w http.ResponseWriter, r *http.
 		http.NotFound(w, r)
 		return
 	}
-	sourceID, _ := m.sourceView(r.URL.Query().Get("source"))
-	runs, err := m.activePublicRuns(r.Context(), sourceID)
+	sourceID, _, freshness, _ := m.layoutSource(r.URL.Query().Get("source"))
+	runs, err := m.activePublicRuns(r.Context(), sourceID, freshness)
 	if err != nil {
 		m.writeStoreUnavailable(w, "mirror: read layout active runs", err)
 		return

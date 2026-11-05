@@ -24,7 +24,19 @@ type PublicLayoutState struct {
 	// ReadModelGzip is the gzipped read model. Pointer.ReadModelSHA256 is the
 	// SHA-256 of its uncompressed bytes.
 	ReadModelGzip []byte
-	// ActiveRuns are the runs whose latest evaluation summary is queued or running.
+	// ActiveRuns are the runs still executing.
+	ActiveRuns []models.PublicLiveRun
+}
+
+// PublicLayoutHead is the mirror's current head, read without touching the full
+// read model, so the publisher can check it every tick.
+type PublicLayoutHead struct {
+	HighWaterSequence int64
+	FeedChainHash     string
+	WithdrawalDigest  string
+	ProofRootSHA256   string
+	Freshness         models.CampaignFreshness
+	// ActiveRuns are the runs still executing. Never nil.
 	ActiveRuns []models.PublicLiveRun
 }
 
@@ -41,6 +53,10 @@ type PublicLayoutCatalog struct {
 // mirror. The mirror's own layout routes serve the same bytes, so the bucket and
 // the loopback listener share one read path.
 type PublicLayoutSource interface {
+	// LayoutHead is cheap enough to call on every tick.
+	LayoutHead(ctx context.Context, sourceID string) (PublicLayoutHead, error)
+	// LayoutState rebuilds the read model when the head moved, which scans every
+	// current record. Call it only when a pointer write is due.
 	LayoutState(ctx context.Context, sourceID string) (PublicLayoutState, error)
 	// LayoutProofCatalog returns the catalog at the current proof root. Bytes are
 	// stable for one proof root.

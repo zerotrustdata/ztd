@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 )
@@ -63,6 +64,11 @@ type PublicSpectatorRuntime struct {
 	publisher *PublicPublisherService
 	mirror    *PublicMirrorServer
 	store     *PublicMirrorStore
+
+	// bucketCancel and bucketDone stop and join the bucket publisher's loop. Both
+	// are nil when bucket publishing is off.
+	bucketCancel context.CancelFunc
+	bucketDone   chan struct{}
 
 	privateServer  *http.Server
 	publicServer   *http.Server
@@ -217,6 +223,9 @@ func (runtime *PublicSpectatorRuntime) Start(ctx context.Context) error {
 	publisher.SetAssignmentEventSource(store)
 	// Run bundles are built from the same accepted rows.
 	publisher.SetRunBundleSource(store)
+	// The mirror holds no signing key, so its own pointer is signed through the
+	// colocated publisher.
+	mirror.SetPointerSigner(publisher.SignFeedPointer)
 
 	runtime.privateServer = newPublicMirrorHTTPServer(runtime.cfg.PrivateListenAddress, mirror.IngestHandler(), runtime.logger.With("server", "mirror-private"))
 	mirrorOrigin := resolveEvalExplorerMirrorOrigin(runtime.cfg.PublicBaseURL, runtime.cfg.PublicListenAddress)
@@ -285,6 +294,7 @@ func (runtime *PublicSpectatorRuntime) Start(ctx context.Context) error {
 	runtime.mu.Unlock()
 
 	go runtime.runPublisherRetransmitLoop(ctx)
+	runtime.startBucketPublisher(ctx, exportConfig, mirror, publisher)
 
 	go func() {
 		select {
@@ -326,6 +336,12 @@ func (runtime *PublicSpectatorRuntime) Stop(ctx context.Context) error {
 
 	shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
+	// The bucket publisher reads the store, so it stops before the store closes.
+	if runtime.bucketCancel != nil {
+		runtime.bucketCancel()
+		<-runtime.bucketDone
+		runtime.bucketCancel, runtime.bucketDone = nil, nil
+	}
 	// Ending open SSE streams lets Shutdown drain instead of waiting them out.
 	if runtime.mirror != nil {
 		runtime.mirror.CloseAllSubscribers()
@@ -371,6 +387,35 @@ func (runtime *PublicSpectatorRuntime) PublicListenAddress() string {
 		return ""
 	}
 	return runtime.cfg.PublicListenAddress
+}
+
+// startBucketPublisher starts the bucket publisher when the export configuration
+// names a bucket. A failure here leaves the mirror serving and is logged, so a
+// root with missing credentials keeps starting.
+func (runtime *PublicSpectatorRuntime) startBucketPublisher(ctx context.Context, exportConfig models.PublicExportConfig, mirror *PublicMirrorServer, publisher *PublicPublisherService) {
+	if !exportConfig.Enabled || exportConfig.Bucket == nil {
+		return
+	}
+	creds, err := ReadPublicBucketCredentials(ctx, runtime.fileSvc, runtime.keystore)
+	if err != nil {
+		runtime.logger.Error("Public bucket publishing disabled", "error", err)
+		return
+	}
+	bucket, err := newPublicBucketPublisher(ctx, *exportConfig.Bucket, exportConfig.SourceID, mirror, publisher.SignFeedPointer,
+		newPublicBucketHTTPClient(*exportConfig.Bucket, creds), newPublicCloudflarePurger(*exportConfig.Bucket, creds), runtime.fileSvc, runtime.logger)
+	if err != nil {
+		runtime.logger.Error("Public bucket publishing disabled", "error", err)
+		return
+	}
+	loopCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	runtime.mu.Lock()
+	runtime.bucketCancel, runtime.bucketDone = cancel, done
+	runtime.mu.Unlock()
+	go func() {
+		defer close(done)
+		bucket.Run(loopCtx)
+	}()
 }
 
 func shouldServeDedicatedExplorer(cfg PublicSpectatorConfig) bool {

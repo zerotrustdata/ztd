@@ -9,7 +9,6 @@ package gateway
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -88,10 +87,11 @@ type PublicBucketPublisher struct {
 	logger   *slog.Logger
 	now      func() time.Time
 
-	synced      bool
-	lastPointer models.PublicFeedPointer
-	lastSync    time.Time
-	lastSweep   time.Time
+	synced        bool
+	lastPointer   models.PublicFeedPointer
+	lastFreshness models.CampaignFreshness
+	lastSync      time.Time
+	lastSweep     time.Time
 	// present holds proof and proof-meta keys known to be in the bucket.
 	present map[string]bool
 	// active is the artifact set of the last pointer that reached the bucket.
@@ -113,7 +113,7 @@ type PublicBucketPublisher struct {
 	liveRunsKnown bool
 }
 
-// NewPublicBucketPublisher returns a publisher writing through client and purger.
+// newPublicBucketPublisher returns a publisher writing through client and purger.
 func newPublicBucketPublisher(ctx context.Context, cfg models.PublicBucketConfig, sourceID string, source PublicLayoutSource, sign publicPointerSigner, client publicBucketClient, purger publicCachePurger, fileSvc fs.RuntimeFileService, logger *slog.Logger) (*PublicBucketPublisher, error) {
 	if source == nil || sign == nil || client == nil || purger == nil || sourceID == "" {
 		return nil, fmt.Errorf("public-feed: bucket publisher: %w", constants.ErrMissingRequiredField)
@@ -161,27 +161,33 @@ func (p *PublicBucketPublisher) Run(ctx context.Context) {
 // tick publishes what changed since the last one. Live objects update on their
 // own cadence and a failure there does not hold back the pointer.
 func (p *PublicBucketPublisher) tick(ctx context.Context) error {
-	state, err := p.source.LayoutState(ctx, p.sourceID)
+	head, err := p.source.LayoutHead(ctx, p.sourceID)
 	if err != nil {
-		return fmt.Errorf("public-feed: bucket: read layout: %w", err)
+		return fmt.Errorf("public-feed: bucket: read layout head: %w", err)
 	}
 	var errs []error
-	settled := p.synced && p.lastPointer.Active && !state.Pointer.Active
+	settled := p.synced && p.lastPointer.Active && len(head.ActiveRuns) == 0
 	// Across a restart the journal holds the digest of the last pointer written, so
 	// a withdrawal that landed while the publisher was down is still handled as one.
 	lastWithdrawal := p.lastPointer.WithdrawalDigest
 	if !p.synced {
 		lastWithdrawal = p.journal.withdrawal
 	}
-	withdrew := (p.synced || p.journal.revision != 0) && lastWithdrawal != state.Pointer.WithdrawalDigest
+	withdrew := (p.synced || p.journal.revision != 0) && lastWithdrawal != head.WithdrawalDigest
 	force := !p.synced || settled || withdrew
-	if err := p.publishLive(ctx, state, withdrew); err != nil {
+	if err := p.publishLive(ctx, head.ActiveRuns, withdrew); err != nil {
 		errs = append(errs, err)
 	}
-	changed := state.Pointer.ReadModelSHA256 != p.lastPointer.ReadModelSHA256 || state.Pointer.ProofRootSHA256 != p.lastPointer.ProofRootSHA256
+	changed := head.HighWaterSequence != p.lastPointer.HighWaterSequence || head.FeedChainHash != p.lastPointer.FeedChainHash ||
+		head.ProofRootSHA256 != p.lastPointer.ProofRootSHA256 || head.Freshness != p.lastFreshness
 	if force || (changed && p.now().Sub(p.lastSync) >= publicBucketPointerInterval) {
-		if err := p.syncLayout(ctx, state, force, withdrew); err != nil {
+		state, err := p.source.LayoutState(ctx, p.sourceID)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("public-feed: bucket: read layout: %w", err))
+		} else if err := p.syncLayout(ctx, state, force, withdrew); err != nil {
 			errs = append(errs, err)
+		} else {
+			p.lastFreshness = head.Freshness
 		}
 	}
 	if p.withdrawalSweep {
@@ -519,8 +525,8 @@ func (p *PublicBucketPublisher) publishHistory(ctx context.Context, pointer mode
 // publishLive writes live/status.json when it changed and refreshes each active
 // run's mutable bundle at most once a minute. A settled run's bundle is deleted. A
 // withdrawal rewrites the status too, since its tail may name what was withdrawn.
-func (p *PublicBucketPublisher) publishLive(ctx context.Context, state PublicLayoutState, withdrew bool) error {
-	active := len(state.ActiveRuns) > 0
+func (p *PublicBucketPublisher) publishLive(ctx context.Context, runs []models.PublicLiveRun, withdrew bool) error {
+	active := len(runs) > 0
 	if !active && !p.statusActive && !withdrew && len(p.liveRunSHA) == 0 && p.liveRunsKnown {
 		return nil
 	}
@@ -530,7 +536,7 @@ func (p *PublicBucketPublisher) publishLive(ctx context.Context, state PublicLay
 			errs = append(errs, err)
 		}
 	}
-	if err := p.publishLiveRuns(ctx, state); err != nil {
+	if err := p.publishLiveRuns(ctx, runs); err != nil {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
@@ -563,7 +569,7 @@ func (p *PublicBucketPublisher) publishStatus(ctx context.Context, active bool) 
 	return nil
 }
 
-func (p *PublicBucketPublisher) publishLiveRuns(ctx context.Context, state PublicLayoutState) error {
+func (p *PublicBucketPublisher) publishLiveRuns(ctx context.Context, runs []models.PublicLiveRun) error {
 	if !p.liveRunsKnown {
 		objects, err := p.client.List(ctx, constants.PublicLayoutLiveRunsPrefix)
 		if err != nil {
@@ -577,8 +583,8 @@ func (p *PublicBucketPublisher) publishLiveRuns(ctx context.Context, state Publi
 		}
 		p.liveRunsKnown = true
 	}
-	current := make(map[string]bool, len(state.ActiveRuns))
-	for _, run := range state.ActiveRuns {
+	current := make(map[string]bool, len(runs))
+	for _, run := range runs {
 		current[run.RunID] = true
 	}
 	var entries []models.PublicBucketJournalEntry
@@ -595,7 +601,7 @@ func (p *PublicBucketPublisher) publishLiveRuns(ctx context.Context, state Publi
 		return nil
 	}
 	var errs []error
-	for _, run := range state.ActiveRuns {
+	for _, run := range runs {
 		bundle, ok, err := p.source.LayoutLiveRunBundle(ctx, p.sourceID, run.RunID)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("public-feed: bucket: read live run %s: %w", run.RunID, err))
@@ -723,21 +729,4 @@ func (p *PublicBucketPublisher) putBytes(ctx context.Context, key string, body [
 		ContentEncoding: contentEncoding,
 		CacheControl:    cacheControl,
 	})
-}
-
-// gzipLayoutBytes gzips one layout object. The header has no name, comment, or
-// modification time, so the same bytes always produce the same object.
-func gzipLayoutBytes(body []byte) ([]byte, error) {
-	var out bytes.Buffer
-	writer, err := gzip.NewWriterLevel(&out, gzip.BestCompression)
-	if err != nil {
-		return nil, fmt.Errorf("public-feed: layout gzip: %w", err)
-	}
-	if _, err := writer.Write(body); err != nil {
-		return nil, fmt.Errorf("public-feed: layout gzip write: %w", err)
-	}
-	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("public-feed: layout gzip close: %w", err)
-	}
-	return out.Bytes(), nil
 }

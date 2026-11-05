@@ -1398,7 +1398,7 @@ export function isFeedHistoryPage(value: unknown): asserts value is FeedHistoryP
   if (value.cursor !== undefined) assertString(value.cursor, 'feed_history.cursor');
 }
 
-function isProofCatalogEntry(value: unknown): asserts value is ProofCatalogEntry {
+export function isProofCatalogEntry(value: unknown): asserts value is ProofCatalogEntry {
   assertObject(value, 'proof_catalog_entry');
   rejectUnknown(
     value,

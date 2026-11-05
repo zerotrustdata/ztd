@@ -6,7 +6,6 @@ package gateway
 import (
 	"bytes"
 	"cmp"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -66,18 +65,11 @@ func buildRunBundle(records []models.PublicFeedRecord) (runBundle, error) {
 		lines.Write(line)
 		lines.WriteByte('\n')
 	}
-	var out bytes.Buffer
-	writer, err := gzip.NewWriterLevel(&out, gzip.BestCompression)
+	content, err := publicLayoutGzip(lines.Bytes())
 	if err != nil {
-		return runBundle{}, fmt.Errorf("public-feed: run bundle: gzip: %w", err)
+		return runBundle{}, fmt.Errorf("public-feed: run bundle: %w", err)
 	}
-	if _, err := writer.Write(lines.Bytes()); err != nil {
-		return runBundle{}, fmt.Errorf("public-feed: run bundle: gzip write: %w", err)
-	}
-	if err := writer.Close(); err != nil {
-		return runBundle{}, fmt.Errorf("public-feed: run bundle: gzip close: %w", err)
-	}
-	return runBundle{content: out.Bytes(), recordCount: len(ordered)}, nil
+	return runBundle{content: content, recordCount: len(ordered)}, nil
 }
 
 // runBundleFilename names the run's assignment bundle artifact.

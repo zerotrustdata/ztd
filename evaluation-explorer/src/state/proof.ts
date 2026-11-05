@@ -16,7 +16,7 @@ const inflight = new Map<string, Promise<void>>();
 function resolveProofArtifact(origin: string, sourceId: string | null, sha256: string): void {
   const key = `${origin}|${sourceId ?? ''}|${sha256}`;
   if (inflight.has(key)) return;
-  const request = fetchProofCatalogEntry(origin, sourceId ?? undefined, sha256)
+  const request = fetchProofCatalogEntry(origin, sha256)
     .then(
       (entry) => {
         if (evalStore.getState().sourceId === sourceId) evalStore.acceptProofArtifact(sha256, entry);

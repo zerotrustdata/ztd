@@ -1335,7 +1335,12 @@ func (m *PublicMirrorServer) currentBootstrapCached(ctx context.Context, request
 	m.writeMu.Lock()
 	sourceID, summary := m.sourceView(requestedSource)
 	if summary == nil {
-		m.writeMu.Unlock()
+		defer m.writeMu.Unlock()
+		// One read model per source until its first batch, so the digest a pointer
+		// names stays servable.
+		if cached, ok := m.layout.offlineBootstraps[sourceID]; ok {
+			return cached, nil
+		}
 		bootstrap := models.PublicFeedBootstrap{
 			ProtocolVersion:     constants.PublicFeedProtocolVersion,
 			Snapshot:            offlinePublicMirrorSnapshot(sourceID),
@@ -1345,7 +1350,15 @@ func (m *PublicMirrorServer) currentBootstrapCached(ctx context.Context, request
 			ProofCatalogSummary: models.PublicProofCatalogSummary{ArtifactCount: 0, TotalByteSize: 0},
 			GeneratedAt:         time.Now().UTC(),
 		}
-		return buildCachedBootstrap(bootstrap, sourceID, nil, models.CampaignFreshnessSourceOffline, PublicMirrorProofSummary{})
+		cached, err := buildCachedBootstrap(bootstrap, sourceID, nil, models.CampaignFreshnessSourceOffline, PublicMirrorProofSummary{})
+		if err != nil {
+			return cachedBootstrapSnapshot{}, err
+		}
+		if m.layout.offlineBootstraps == nil {
+			m.layout.offlineBootstraps = make(map[string]cachedBootstrapSnapshot)
+		}
+		m.layout.offlineBootstraps[sourceID] = cached
+		return cached, nil
 	}
 
 	withdrawalDigest := mirrorWithdrawalDigest(summary.WithdrawnDatasetIDs)

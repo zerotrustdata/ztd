@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-// Loads one settled run's assignment results from its run bundle: a gzipped
-// JSONL proof artifact addressed by the SHA-256 that the run's evaluation
-// summary publishes. Every byte is verified before anything reaches the store:
-// the bundle digest, then each record's own hash. Loaded runs are kept in a
-// bounded least-recently-used set so the store holds only recent runs' results.
+// Loads one run's assignment results from its run bundle: a gzipped JSONL proof
+// artifact. A settled run names the SHA-256 of its bundle, and every byte is
+// verified against it before anything reaches the store. A queued or running run
+// names no digest; its bundle is the mutable live object for that run, so only
+// each record's own hash is checked and the result is never kept as settled.
+// Settled loaded runs are kept in a bounded least-recently-used set so the store
+// holds only recent runs' results.
 
 import { RUN_BUNDLE_LRU_LIMIT } from '../constants';
 import type { AssignmentResult, ProjectionRecord } from '../contract/types';
@@ -64,8 +66,11 @@ interface BundleLine {
   recordBytes: string;
 }
 
-/** Loaded runs in recency order: the first entry is the least recently used. */
+/** Settled loaded runs in recency order: the first entry is the least recently used. */
 const loadedRuns = new Map<string, RunRef>();
+/** Runs whose results in the store came from the live object. A settled load replaces them. */
+const liveRuns = new Set<string>();
+/** Keyed by run and bundle source, so a live load never answers a settled request or the reverse. */
 const inFlight = new Map<string, Promise<RunAssignmentsLoad>>();
 /** Holder counts for runs a mounted view is using. Pinned runs are never evicted. */
 const pins = new Map<string, { run: RunRef; holders: number }>();
@@ -112,6 +117,7 @@ export function retainRuns(runs: RunRef[]): () => void {
 /** Clears loaded-run and in-flight bookkeeping. Pins belong to mounted views and are kept. */
 export function resetRunBundleCache(): void {
   loadedRuns.clear();
+  liveRuns.clear();
   inFlight.clear();
   generation++;
 }
@@ -157,12 +163,13 @@ function malformed(message: string): RunBundleError {
   return new RunBundleError('malformed', message);
 }
 
-async function fetchBundleBytes(sha256: string, fetchImpl: typeof fetch): Promise<Uint8Array> {
+/** Fetches one bundle object. Resolves to null for a 404, which the caller decides how to read. */
+async function fetchBundleBytes(path: string, fetchImpl: typeof fetch): Promise<Uint8Array | null> {
   const origin = evalStore.getState().mirrorOrigin;
   if (!origin) throw new RunBundleError('fetch_failed', 'mirror origin is not configured');
   let response: Response;
   try {
-    response = await fetchImpl(`${origin}/proofs/${sha256}`, {
+    response = await fetchImpl(`${origin}${path}`, {
       method: 'GET',
       credentials: 'omit',
       headers: { Accept: 'application/gzip' },
@@ -170,6 +177,7 @@ async function fetchBundleBytes(sha256: string, fetchImpl: typeof fetch): Promis
   } catch {
     throw new RunBundleError('fetch_failed', 'run bundle request failed');
   }
+  if (response.status === 404) return null;
   if (!response.ok) throw new RunBundleError('fetch_failed', `run bundle request returned ${response.status}`);
   try {
     return new Uint8Array(await response.arrayBuffer());
@@ -210,12 +218,8 @@ function parseBundleLine(line: string): BundleLine {
   return { sequence, recordHash, recordBytes };
 }
 
-/** Fetches, verifies, and decodes a bundle. Nothing is ingested here. */
-async function readBundleRecords(sha256: string, fetchImpl: typeof fetch): Promise<ProjectionRecord[]> {
-  const bytes = await fetchBundleBytes(sha256, fetchImpl);
-  if ((await sha256Hex(bytes)) !== sha256) {
-    throw new RunBundleError('digest_mismatch', 'run bundle bytes do not match the published digest');
-  }
+/** Decodes gzip JSONL bytes and checks each record's own hash. Nothing is ingested here. */
+async function decodeBundleRecords(bytes: Uint8Array): Promise<ProjectionRecord[]> {
   const text = await gunzipToText(bytes);
   const lines = text.split('\n');
   if (lines[lines.length - 1] === '') lines.pop();
@@ -231,28 +235,70 @@ async function readBundleRecords(sha256: string, fetchImpl: typeof fetch): Promi
   return records;
 }
 
-async function loadBundle(
+/** A settled bundle: the bytes must hash to the digest its summary published. */
+async function readSettledRecords(sha256: string, fetchImpl: typeof fetch): Promise<ProjectionRecord[]> {
+  const bytes = await fetchBundleBytes(`/proofs/${sha256}`, fetchImpl);
+  if (bytes === null) throw new RunBundleError('fetch_failed', 'run bundle request returned 404');
+  if ((await sha256Hex(bytes)) !== sha256) {
+    throw new RunBundleError('digest_mismatch', 'run bundle bytes do not match the published digest');
+  }
+  return decodeBundleRecords(bytes);
+}
+
+/** Ingests verified records for one run. A result whose source changed mid-load is discarded.
+ *  A settled load first drops the live results the run holds, so the settled bundle replaces them. */
+function ingestRecords(
   scope: RunRef,
-  sha256: string,
-  fetchImpl: typeof fetch,
-): Promise<RunAssignmentsLoad> {
+  records: ProjectionRecord[],
+  generationAtStart: number,
+  sourceAtStart: SourceMarker,
+  settled: boolean,
+): void {
   const { datasetId, runId } = scope;
-  const generationAtStart = generation;
-  const sourceAtStart = currentSource();
-  const records = await readBundleRecords(sha256, fetchImpl);
+  const key = runKey(datasetId, runId);
   if (!sameSource(sourceAtStart, currentSource())) {
     throw new RunBundleError('stale_source', 'the source changed while the run bundle was loading');
   }
+  if (settled && liveRuns.delete(key)) evalStore.removeRunAssignments(datasetId, runId);
   try {
     evalStore.acceptRunBundle(records, { datasetId, runId });
   } catch (error) {
     throw new RunBundleError('malformed', error instanceof Error ? error.message : 'run bundle is not valid');
   }
+  if (!settled && generationAtStart === generation) liveRuns.add(key);
+}
+
+async function loadSettledBundle(scope: RunRef, sha256: string, fetchImpl: typeof fetch): Promise<RunAssignmentsLoad> {
+  const { datasetId, runId } = scope;
+  const generationAtStart = generation;
+  const sourceAtStart = currentSource();
+  const records = await readSettledRecords(sha256, fetchImpl);
+  ingestRecords(scope, records, generationAtStart, sourceAtStart, true);
   if (generationAtStart === generation) markLoaded(runKey(datasetId, runId), { datasetId, runId });
   return readyFromStore(datasetId, runId);
 }
 
-/** Loads one run's assignment results from its bundle, once per run until evicted. */
+/** The live object for a queued or running run. Never marked settled, so it is read again on the next request. */
+async function loadLiveBundle(scope: RunRef, fetchImpl: typeof fetch): Promise<RunAssignmentsLoad> {
+  const { datasetId, runId } = scope;
+  const generationAtStart = generation;
+  const sourceAtStart = currentSource();
+  const bytes = await fetchBundleBytes(`/live/runs/${encodeURIComponent(runId)}.jsonl.gz`, fetchImpl);
+  if (bytes === null) return { status: 'no_bundle' };
+  const records = await decodeBundleRecords(bytes);
+  ingestRecords(scope, records, generationAtStart, sourceAtStart, false);
+  return readyFromStore(datasetId, runId);
+}
+
+/** Whether a run's summary says it is still executing, so its bundle is the live object. */
+function isActiveLifecycle(lifecycleState: string | undefined): boolean {
+  return lifecycleState === 'queued' || lifecycleState === 'running';
+}
+
+/**
+ * Loads one run's assignment results from its bundle. A settled run loads once per run
+ * until evicted. A queued or running run loads its live object on every call.
+ */
 export async function loadRunAssignments(
   datasetId: string,
   runId: string,
@@ -261,26 +307,32 @@ export async function loadRunAssignments(
   ensureSubscribed();
   syncWithSource();
   const key = runKey(datasetId, runId);
-  const pending = inFlight.get(key);
+  const summary = evalStore.getEvaluation(datasetId, runId);
+  const sha256 = summary?.assignment_bundle_sha256;
+  const live = sha256 === undefined && isActiveLifecycle(summary?.lifecycle_state);
+  if (sha256 === undefined && !live) return { status: 'no_bundle' };
+  const flightKey = `${key}|${sha256 ?? 'live'}`;
+  const pending = inFlight.get(flightKey);
   if (pending) return pending;
   // The store is the authority on residency. A same-source bootstrap empties it
   // without a source change, so a tracked run with no stored results drops its
-  // bookkeeping and is loaded again. A bundle with no results also reloads here.
-  if (loadedRuns.has(key)) {
+  // bookkeeping and is loaded again.
+  if (sha256 !== undefined && loadedRuns.has(key)) {
     if (evalStore.getAssignments(runId, datasetId).length > 0) {
       touchLoaded(key, { datasetId, runId });
       return readyFromStore(datasetId, runId);
     }
     loadedRuns.delete(key);
   }
-  const sha256 = evalStore.getEvaluation(datasetId, runId)?.assignment_bundle_sha256;
-  if (sha256 === undefined) return { status: 'no_bundle' };
   const fetchImpl = options.fetchImpl ?? fetch.bind(globalThis);
-  const load = loadBundle({ datasetId, runId }, sha256, fetchImpl);
-  inFlight.set(key, load);
+  const load =
+    sha256 !== undefined
+      ? loadSettledBundle({ datasetId, runId }, sha256, fetchImpl)
+      : loadLiveBundle({ datasetId, runId }, fetchImpl);
+  inFlight.set(flightKey, load);
   try {
     return await load;
   } finally {
-    if (inFlight.get(key) === load) inFlight.delete(key);
+    if (inFlight.get(flightKey) === load) inFlight.delete(flightKey);
   }
 }
