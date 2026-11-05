@@ -424,9 +424,10 @@ type remoteGatewayCampaignProofPublisher struct {
 	client authcmd.APIClient
 }
 
-// IngestAssignmentAuditSlices publishes the assignment audit proofs and returns
-// the Gateway's answer for each one, in request order. Each answer's database
-// digest is the digest of the database the Gateway built or reused.
+// IngestAssignmentAuditSlices resolves assignment evidence digests and publishes
+// scenario fixtures, returning the Gateway's answer for each one in request order.
+// Each answer's database digest is the digest the Gateway built or reused;
+// database and trace bodies are not public artifacts.
 func (p *remoteGatewayCampaignProofPublisher) IngestAssignmentAuditSlices(ctx context.Context, inputs []evaluation.AssignmentAuditProofInput, deferMirrorPush bool) ([]models.PublicAssignmentAuditProofPublishResponse, error) {
 	if p == nil || p.client == nil {
 		return nil, fmt.Errorf("campaign publication: publish assignment audit proof: %w", constants.ErrMissingRequiredField)

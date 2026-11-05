@@ -328,9 +328,9 @@ type PublicProofSegmentsResponse struct {
 }
 
 // PublicAssignmentAuditProofPublishRequest asks the gateway-owned public
-// publisher to publish one assignment's audit database. The gateway builds the
-// database itself from the signed event records it stores for the run and
-// assignment; the request carries no database bytes and no key.
+// publisher for one assignment's evidence digests and public scenario fixtures.
+// The gateway builds the database itself from the signed event records it stores
+// for the run and assignment; the request carries no database bytes and no key.
 type PublicAssignmentAuditProofPublishRequest struct {
 	CampaignID string `json:"campaign_id"`
 	// CampaignRevision and IndexDigest are required.
@@ -339,7 +339,7 @@ type PublicAssignmentAuditProofPublishRequest struct {
 	AssignmentID     string `json:"assignment_id"`
 	IndexDigest      string `json:"index_digest"`
 	// AgentTrace is the exact sealed agent trace body for agent assignments.
-	// It is published unredacted as a content-addressed proof artifact.
+	// The gateway hashes it without exporting it as a public proof artifact.
 	AgentTrace []byte `json:"agent_trace,omitempty"`
 	// ScenarioID names the assignment's scenario. ScenarioInput and
 	// ScenarioGold are its frozen canonical input fixture and gold criteria
@@ -415,8 +415,9 @@ type PublicProofMirrorSyncState struct {
 }
 
 // PublicAssignmentAuditProofPublishResponse reports the digests of one
-// published assignment. DatabaseSHA256 is the SHA-256 of the assignment audit
-// database the gateway built; the proof segment signature covers it.
+// assignment. DatabaseSHA256 is the SHA-256 of the assignment audit database the
+// gateway built or reused. Result evidence bindings carry the database and trace
+// digests; the proof segment lists only the public scenario fixtures.
 type PublicAssignmentAuditProofPublishResponse struct {
 	Accepted            bool   `json:"accepted"`
 	AssignmentID        string `json:"assignment_id,omitempty"`

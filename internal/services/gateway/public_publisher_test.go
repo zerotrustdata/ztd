@@ -1141,7 +1141,50 @@ func assignmentAuditRequest(assignmentID string) models.PublicAssignmentAuditPro
 	}
 }
 
-func TestAssignmentAuditProofPlan_AddsAgentTraceOnlyWhenCaptured(t *testing.T) {
+func TestAssignmentAuditProof_KeepsPrivateEvidenceOutOfPublicArtifacts(t *testing.T) {
+	publisher := newProofBuilderTestEnv(t)
+	store, _ := newProofPushTestMirror(t, publisher)
+	ctx := context.Background()
+	seedAssignmentEvents(t, publisher, assignmentSeed{runID: "run-1", assignmentID: "assignment-1", events: 2})
+	request := assignmentAuditRequest("assignment-1")
+	request.AgentTrace = []byte(`{"final_output":"private trace body"}`)
+	request.ScenarioID = "scenario-1"
+	request.ScenarioInput = []byte(`{"user_prompt":"Summarize the incident."}`)
+	request.ScenarioGold = []byte(`{"exact_token":"ZTD-OK"}`)
+
+	response, err := publisher.PublishAssignmentAuditProof(ctx, request)
+	require.NoError(t, err)
+	assert.True(t, response.Accepted)
+	database, err := publisher.buildAssignmentDatabase(ctx, request)
+	require.NoError(t, err)
+	assert.Equal(t, models.SHA256Hex(database), response.DatabaseSHA256)
+	assert.Equal(t, models.SHA256Hex(request.AgentTrace), response.AgentTraceSHA256)
+	assert.Equal(t, models.SHA256Hex(request.ScenarioInput), response.ScenarioInputSHA256)
+	assert.Equal(t, models.SHA256Hex(request.ScenarioGold), response.ScenarioGoldSHA256)
+
+	// Digests still bind delivered evidence, but neither private body is written
+	// to the export directory, listed in a signed segment, or sent to the mirror.
+	for _, digest := range []string{response.DatabaseSHA256, response.AgentTraceSHA256} {
+		exists, err := publisher.fileSvc.FileExists(ctx, filepath.Join(constants.PublicProofsDirname, digest))
+		require.NoError(t, err)
+		assert.False(t, exists, "private evidence must not enter the public artifact store")
+	}
+	catalog, err := publisher.GetProofCatalog(ctx)
+	require.NoError(t, err)
+	require.Len(t, catalog.Entries, 2, "only the scenario fixture bodies are public artifacts")
+	for _, entry := range catalog.Entries {
+		assert.Contains(t, []string{response.ScenarioInputSHA256, response.ScenarioGoldSHA256}, entry.ArtifactID)
+	}
+	segments := requireLinearProofChain(t, publisher)
+	require.Len(t, segments, 1)
+	assert.Equal(t, catalog.Entries, segments[0].Entries)
+	mirrored, found, err := store.ProofManifest(ctx, publisher.cfg.SourceID)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, catalog.Entries, mirrored.Artifacts)
+}
+
+func TestAssignmentAuditProofPlan_HashesPrivateEvidenceWithoutArtifacts(t *testing.T) {
 	publisher := newProofBuilderTestEnv(t)
 	newProofPushTestMirror(t, publisher)
 	seedAssignmentEvents(t, publisher, assignmentSeed{runID: "run-1", assignmentID: "assignment-1", events: 1})
@@ -1150,22 +1193,16 @@ func TestAssignmentAuditProofPlan_AddsAgentTraceOnlyWhenCaptured(t *testing.T) {
 
 	plan, err := publisher.planAssignmentAuditProof(ctx, request)
 	require.NoError(t, err)
-	require.Len(t, plan.artifacts, 1, "the database alone: no vault key is published")
-	database := plan.artifacts[0]
-	assert.Equal(t, "assignment-assignment-1.db", database.Filename)
-	assert.Equal(t, models.PublicAssignmentAuditVerificationCommand("assignment-assignment-1.db"), database.VerificationCommand)
+	assert.Empty(t, plan.artifacts)
+	require.NotEmpty(t, plan.response.DatabaseSHA256)
+	databaseSHA256 := plan.response.DatabaseSHA256
 	assert.Empty(t, plan.response.AgentTraceSHA256)
 
 	request.AgentTrace = []byte(`{"evidence_digest":"x","final_output":"spiffe://ztd.local/operator/x"}`)
 	plan, err = publisher.planAssignmentAuditProof(ctx, request)
 	require.NoError(t, err)
-	require.Len(t, plan.artifacts, 2)
-	trace := plan.artifacts[1]
-	assert.Equal(t, "assignment-assignment-1.agent-trace.json", trace.Filename)
-	assert.Equal(t, constants.MediaTypeJSON, trace.MediaType)
-	assert.Equal(t, request.AgentTrace, trace.Content, "the trace is published byte for byte, never screened")
-	assert.Equal(t, "run-1", trace.SourceRunID)
-	assert.Equal(t, "ztd public verify-agent-trace --trace assignment-assignment-1.agent-trace.json", trace.VerificationCommand)
+	assert.Empty(t, plan.artifacts)
+	assert.Equal(t, databaseSHA256, plan.response.DatabaseSHA256)
 	assert.Equal(t, hashBytes(request.AgentTrace), plan.response.AgentTraceSHA256)
 }
 
@@ -1181,8 +1218,8 @@ func TestAssignmentAuditProofPlan_PublishesScenarioFixtureCampaignScoped(t *test
 	plan, err := publisher.planAssignmentAuditProof(context.Background(), request)
 
 	require.NoError(t, err)
-	require.Len(t, plan.artifacts, 3)
-	input, gold := plan.artifacts[1], plan.artifacts[2]
+	require.Len(t, plan.artifacts, 2)
+	input, gold := plan.artifacts[0], plan.artifacts[1]
 	assert.Equal(t, "scenario-scenario-1.input.json", input.Filename)
 	assert.Equal(t, "scenario-scenario-1.gold.json", gold.Filename)
 	for _, fixture := range []ProofArtifactInput{input, gold} {
@@ -1249,7 +1286,7 @@ func TestAssignmentAuditProof_MissingEventsFailsClosed(t *testing.T) {
 	})
 }
 
-func TestAssignmentAuditProof_RepublishReturnsSameDigestWithoutRebuild(t *testing.T) {
+func TestAssignmentAuditProof_RepublishReturnsSameDigestWithoutExport(t *testing.T) {
 	publisher := newProofBuilderTestEnv(t)
 	store, _ := newProofPushTestMirror(t, publisher)
 	ctx := context.Background()
@@ -1266,11 +1303,49 @@ func TestAssignmentAuditProof_RepublishReturnsSameDigestWithoutRebuild(t *testin
 	second, err := publisher.PublishAssignmentAuditProof(ctx, request)
 	require.NoError(t, err)
 	assert.Equal(t, first.DatabaseSHA256, second.DatabaseSHA256)
-	assert.Equal(t, 1, counter.calls, "a republish reuses the active database and never reads the events again")
+	assert.Equal(t, 2, counter.calls, "the database is rebuilt from retained events, without a public artifact cache")
 
 	catalog, err := publisher.GetProofCatalog(ctx)
 	require.NoError(t, err)
-	assert.Len(t, catalog.Entries, 1, "the republish lists no second copy of the database")
+	assert.Empty(t, catalog.Entries)
+}
+
+func TestAssignmentAuditProof_ExistingRootReusesDatabaseDigestWithoutExport(t *testing.T) {
+	publisher := newProofBuilderTestEnv(t)
+	store, _ := newProofPushTestMirror(t, publisher)
+	ctx := context.Background()
+	seedAssignmentEvents(t, publisher, assignmentSeed{runID: "run-1", assignmentID: "assignment-1", events: 2})
+	request := assignmentAuditRequest("assignment-1")
+	request.AgentTrace = []byte(`{"final_output":"previously published trace"}`)
+	request.DeferMirrorPush = true
+	database, err := publisher.buildAssignmentDatabase(ctx, request)
+	require.NoError(t, err)
+	// Model the public artifacts an older binary left in this runtime root.
+	old, err := publisher.BuildProofPackage(ctx, request.CampaignID, request.CampaignRevision, request.IndexDigest, true, []ProofArtifactInput{
+		{Filename: "assignment-assignment-1.db", MediaType: "application/vnd.sqlite3", Content: database, SourceRunID: request.RunID},
+		{Filename: "assignment-assignment-1.agent-trace.json", MediaType: constants.MediaTypeJSON, Content: request.AgentTrace, SourceRunID: request.RunID},
+	})
+	require.NoError(t, err)
+	restarted := newSharedLogPublisher(publisher)
+	counter := &countingEventSource{inner: store}
+	restarted.SetAssignmentEventSource(counter)
+
+	response, err := restarted.PublishAssignmentAuditProof(ctx, request)
+	require.NoError(t, err)
+	assert.Equal(t, hashBytes(database), response.DatabaseSHA256)
+	assert.Equal(t, hashBytes(request.AgentTrace), response.AgentTraceSHA256)
+	assert.Zero(t, counter.calls, "an existing database digest needs no reconstruction")
+	segments := requireLinearProofChain(t, restarted)
+	require.Len(t, segments, 2)
+	assert.Empty(t, segments[1].Entries, "neither private artifact is exported again")
+	catalog, err := restarted.GetProofCatalog(ctx)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, old.Artifacts, catalog.Entries, "old catalog state remains readable")
+	for _, artifact := range old.Artifacts {
+		exists, err := restarted.fileSvc.FileExists(ctx, filepath.Join(constants.PublicProofsDirname, artifact.ArtifactID))
+		require.NoError(t, err)
+		assert.True(t, exists, "publication does not delete historical evidence")
+	}
 }
 
 func TestAssignmentAuditProof_BuiltDatabasePassesVerifyDatabase(t *testing.T) {
@@ -1286,7 +1361,8 @@ func TestAssignmentAuditProof_BuiltDatabasePassesVerifyDatabase(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "assignment-1", response.AssignmentID)
 
-	image, err := publisher.fileSvc.ReadFile(ctx, filepath.Join(constants.PublicProofsDirname, response.DatabaseSHA256))
+	// The same retained events reproduce the digest for delivery under agreement.
+	image, err := publisher.buildAssignmentDatabase(ctx, assignmentAuditRequest("assignment-1"))
 	require.NoError(t, err)
 	assert.Equal(t, response.DatabaseSHA256, models.SHA256Hex(image))
 	header, records, err := assignmentaudit.VerifyDatabase(ctx, image)
@@ -1302,15 +1378,13 @@ func TestAssignmentAuditProof_BuiltDatabasePassesVerifyDatabase(t *testing.T) {
 
 	catalog, err := publisher.GetProofCatalog(ctx)
 	require.NoError(t, err)
-	require.Len(t, catalog.Entries, 1, "the assignment publishes its database alone")
-	assert.Equal(t, response.DatabaseSHA256, catalog.Entries[0].ArtifactID)
-	assert.Equal(t, "assignment-assignment-1.db", catalog.Entries[0].Filename)
+	assert.Empty(t, catalog.Entries)
 
-	// The signed segment lists the artifact, so its signature covers the digest.
+	// The result's evidence binding carries the database digest; the artifact
+	// log does not list the database.
 	segments := requireLinearProofChain(t, publisher)
 	last := segments[len(segments)-1]
-	require.Len(t, last.Entries, 1)
-	assert.Equal(t, response.DatabaseSHA256, last.Entries[0].ArtifactID)
+	assert.Empty(t, last.Entries)
 }
 
 func TestAssignmentAuditProofBatch_ReturnsEachProofsDigestsInRequestOrder(t *testing.T) {
@@ -1338,13 +1412,10 @@ func TestAssignmentAuditProofBatch_ReturnsEachProofsDigestsInRequestOrder(t *tes
 	assert.NotEqual(t, response.Proofs[0].DatabaseSHA256, response.Proofs[1].DatabaseSHA256)
 	catalog, err := publisher.GetProofCatalog(ctx)
 	require.NoError(t, err)
-	listed := map[string]bool{}
-	for _, entry := range catalog.Entries {
-		listed[entry.ArtifactID] = true
-	}
+	assert.Empty(t, catalog.Entries)
 	for _, proof := range response.Proofs {
 		assert.True(t, proof.Accepted)
 		assert.Equal(t, response.ProofRootSHA256, proof.ProofRootSHA256)
-		assert.True(t, listed[proof.DatabaseSHA256], "each digest names the database the catalog lists")
+		assert.NotEmpty(t, proof.DatabaseSHA256)
 	}
 }

@@ -131,7 +131,7 @@ func (c *PublicFeedController) handlePublicFeedBatches(w http.ResponseWriter, r 
 }
 
 // @Summary		Publish assignment audit proof
-// @Description	Builds one assignment's audit database from the gateway's stored signed event records and publishes it to the gateway-owned public proof catalog (mTLS owner CLI only). The request names the run and assignment; it carries no database or key.
+// @Description	Returns one assignment's evidence digests and publishes its scenario fixtures (mTLS owner CLI only). The gateway builds the audit database from its stored signed event records; database and trace bytes are not exported as public artifacts. The request carries no database or key.
 // @Tags			public-feed
 // @Accept			json
 // @Produce		json
@@ -176,7 +176,7 @@ func (c *PublicFeedController) handlePublicFeedProofs(w http.ResponseWriter, r *
 }
 
 // @Summary		Publish assignment audit proof batch
-// @Description	Builds many assignments' audit databases from the gateway's stored signed event records and publishes them in one request (mTLS owner CLI only). The response carries each proof's digests in request order.
+// @Description	Returns many assignments' evidence digests and publishes their scenario fixtures in one request (mTLS owner CLI only). Database and trace bytes are not exported as public artifacts. The response carries each assignment's digests in request order.
 // @Tags			public-feed
 // @Accept			json
 // @Produce		json

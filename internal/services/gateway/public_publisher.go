@@ -1476,19 +1476,17 @@ func (s *PublicPublisherService) BuildProofPackage(ctx context.Context, campaign
 }
 
 // assignmentAuditProofPlan is one request's publication: the artifacts that
-// still have to be written, the already-active catalog entries it reuses, and
-// the digests reported back to the caller.
+// still have to be written and the digests reported back to the caller.
 type assignmentAuditProofPlan struct {
 	artifacts []ProofArtifactInput
-	reused    []models.PublicProofCatalogEntry
 	response  models.PublicAssignmentAuditProofPublishResponse
 }
 
 // planAssignmentAuditProof validates one assignment audit request and plans its
 // artifacts. An active assignment database already published for the same run
 // is reused by digest and not rebuilt. Otherwise the database is built from the
-// gateway's own signed event records. The trace and scenario fixtures are
-// published as given.
+// gateway's own signed event records and hashed without exporting its bytes.
+// The trace is also hashed only; scenario fixtures are published as given.
 func (s *PublicPublisherService) planAssignmentAuditProof(ctx context.Context, request models.PublicAssignmentAuditProofPublishRequest) (assignmentAuditProofPlan, error) {
 	if request.CampaignID == "" || request.CampaignRevision == "" || request.RunID == "" || request.AssignmentID == "" || request.IndexDigest == "" {
 		return assignmentAuditProofPlan{}, fmt.Errorf("public-feed: publish assignment audit proof: %w", constants.ErrMissingRequiredField)
@@ -1505,35 +1503,15 @@ func (s *PublicPublisherService) planAssignmentAuditProof(ctx context.Context, r
 		return assignmentAuditProofPlan{}, err
 	}
 	if found {
-		plan.reused = append(plan.reused, active)
 		plan.response.DatabaseSHA256 = active.ArtifactID
 	} else {
 		database, err := s.buildAssignmentDatabase(ctx, request)
 		if err != nil {
 			return assignmentAuditProofPlan{}, err
 		}
-		plan.artifacts = append(plan.artifacts, ProofArtifactInput{
-			Filename:            dbFilename,
-			MediaType:           "application/vnd.sqlite3",
-			Content:             database,
-			CampaignID:          request.CampaignID,
-			SourceRunID:         request.RunID,
-			VerificationCommand: models.PublicAssignmentAuditVerificationCommand(dbFilename),
-		})
 		plan.response.DatabaseSHA256 = hashBytes(database)
 	}
 
-	if len(request.AgentTrace) > 0 {
-		traceFilename := fmt.Sprintf("assignment-%s.agent-trace.json", request.AssignmentID)
-		plan.artifacts = append(plan.artifacts, ProofArtifactInput{
-			Filename:            traceFilename,
-			MediaType:           constants.MediaTypeJSON,
-			Content:             request.AgentTrace,
-			CampaignID:          request.CampaignID,
-			SourceRunID:         request.RunID,
-			VerificationCommand: fmt.Sprintf("ztd public verify-agent-trace --trace %s", traceFilename),
-		})
-	}
 	plan.response.AgentTraceSHA256 = optionalSHA256(request.AgentTrace)
 
 	if len(request.ScenarioInput) > 0 {
@@ -1634,8 +1612,8 @@ func optionalSHA256(body []byte) string {
 	return hashBytes(body)
 }
 
-// PublishAssignmentAuditProof publishes one assignment audit database and
-// returns its digests.
+// PublishAssignmentAuditProof returns one assignment's evidence digests and
+// publishes its scenario fixtures. Trace and database bytes are not exported.
 func (s *PublicPublisherService) PublishAssignmentAuditProof(ctx context.Context, request models.PublicAssignmentAuditProofPublishRequest) (models.PublicAssignmentAuditProofPublishResponse, error) {
 	batch, err := s.PublishAssignmentAuditProofBatch(ctx, models.PublicAssignmentAuditProofBatchPublishRequest{
 		Proofs:          []models.PublicAssignmentAuditProofPublishRequest{request},
@@ -1647,36 +1625,35 @@ func (s *PublicPublisherService) PublishAssignmentAuditProof(ctx context.Context
 	return batch.Proofs[0], nil
 }
 
-// PublishAssignmentAuditProofBatch publishes many assignment audit databases in
-// one catalog update and one signed segment. It returns each proof's digests in
-// request order. An assignment whose database is already active for its run is
-// reused by digest and not rebuilt.
+// PublishAssignmentAuditProofBatch publishes many assignments' scenario fixtures
+// in one catalog update and one signed segment. It returns each assignment's
+// evidence digests in request order without exporting trace or database bytes.
+// An assignment whose database is already active for its run is reused by digest
+// and not rebuilt.
 func (s *PublicPublisherService) PublishAssignmentAuditProofBatch(ctx context.Context, request models.PublicAssignmentAuditProofBatchPublishRequest) (models.PublicAssignmentAuditProofBatchPublishResponse, error) {
 	response := models.PublicAssignmentAuditProofBatchPublishResponse{Accepted: true, Proofs: []models.PublicAssignmentAuditProofPublishResponse{}}
 	if len(request.Proofs) == 0 {
 		return response, nil
 	}
 	var artifacts []ProofArtifactInput
-	var reused []models.PublicProofCatalogEntry
 	for _, proof := range request.Proofs {
 		plan, err := s.planAssignmentAuditProof(ctx, proof)
 		if err != nil {
 			return models.PublicAssignmentAuditProofBatchPublishResponse{}, err
 		}
 		artifacts = append(artifacts, plan.artifacts...)
-		reused = append(reused, plan.reused...)
 		response.Proofs = append(response.Proofs, plan.response)
 	}
 	campaignID := request.Proofs[0].CampaignID
 	campaignRevision := request.Proofs[0].CampaignRevision
 	verifiedIndexGenHash := request.Proofs[len(request.Proofs)-1].IndexDigest
-	entries := reused
+	var entries []models.PublicProofCatalogEntry
 	if len(artifacts) > 0 {
 		written, err := s.writeProofArtifacts(ctx, campaignID, artifacts)
 		if err != nil {
 			return models.PublicAssignmentAuditProofBatchPublishResponse{}, err
 		}
-		entries = append(written, reused...)
+		entries = written
 	}
 	manifest, err := s.finalizeProofManifest(ctx, campaignID, campaignRevision, verifiedIndexGenHash, true, entries)
 	if err != nil {

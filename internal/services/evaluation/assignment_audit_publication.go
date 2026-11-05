@@ -58,10 +58,11 @@ type AssignmentAuditProofArtifacts struct {
 	ScenarioGoldSHA256  string
 }
 
-// CampaignProofPublisher ingests assignment audit proofs into the public proof
-// catalog. Nil publishers skip proof publication. IngestAssignmentAuditSlices
-// answers with one response per input, in input order; each response's
-// DatabaseSHA256 is the digest of the database the Gateway built or reused.
+// CampaignProofPublisher resolves assignment evidence digests and publishes the
+// public scenario fixtures. Nil publishers skip proof publication.
+// IngestAssignmentAuditSlices answers with one response per input, in input order;
+// each response's DatabaseSHA256 is the digest of the database the Gateway built
+// or reused. Database and trace bodies are not public artifacts.
 type CampaignProofPublisher interface {
 	IngestAssignmentAuditSlices(ctx context.Context, inputs []AssignmentAuditProofInput, deferMirrorPush bool) ([]models.PublicAssignmentAuditProofPublishResponse, error)
 	PruneRunProofCatalog(ctx context.Context, runID string) error

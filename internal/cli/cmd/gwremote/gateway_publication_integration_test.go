@@ -342,7 +342,7 @@ func publishedSingleAssignmentRun(t *testing.T) (*evalRunStack, *evalv1.Evaluati
 	return e, result, proofs
 }
 
-func TestCampaignProofPublisherRealStack_SingleProofRouteReturnsDatabaseDigestAndMirrorServesFlushedProof(t *testing.T) {
+func TestCampaignProofPublisherRealStack_SingleProofRouteKeepsDigestsWithoutPublicBodies(t *testing.T) {
 	ctx := t.Context()
 	e, result, proofs := publishedSingleAssignmentRun(t)
 	assignmentID := result.GetAssignmentId()
@@ -374,6 +374,18 @@ func TestCampaignProofPublisherRealStack_SingleProofRouteReturnsDatabaseDigestAn
 	bootstrap, err := FetchPublicMirrorBootstrap(ctx)
 	require.NoError(t, err)
 	assert.Positive(t, bootstrap.ProofCatalogSummary.ArtifactCount, "the flushed proof catalog is served by the mirror")
+	traceDigest := recorded.PublishedProofArtifacts[assignmentID].AgentTraceSHA256
+	require.NotEmpty(t, traceDigest)
+	catalogResponse := httptest.NewRecorder()
+	e.stack.Gateway.Service.GetPublicMirror().PublicHandler().ServeHTTP(catalogResponse, httptest.NewRequest(http.MethodGet, "/proof-catalog", nil))
+	require.Equal(t, http.StatusOK, catalogResponse.Code)
+	var catalog models.PublicProofCatalog
+	require.NoError(t, json.Unmarshal(catalogResponse.Body.Bytes(), &catalog))
+	require.NotEmpty(t, catalog.Entries, "fixtures and the run bundle remain public")
+	for _, entry := range catalog.Entries {
+		assert.NotEqual(t, want, entry.ArtifactID, "the result's audit digest does not export a database")
+		assert.NotEqual(t, traceDigest, entry.ArtifactID, "the result's trace digest does not export a trace")
+	}
 }
 
 func TestCampaignProofPublisherRealStack_PruneRunProofCatalogRemovesRunProofsFromMirror(t *testing.T) {
