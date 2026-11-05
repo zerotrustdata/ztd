@@ -76,7 +76,7 @@ func buildFormationSummaryRecords(state *runAggregateState) []formationSummaryRe
 			StackID: formation.Stack.GetStackId(), StackDigest: formation.Stack.GetStackDigest(),
 			ModelRoleMapping: buildModelRoleMapping(s), AssignmentTotal: s.Scheduled,
 			TerminalOutcomes: aggregateTerminalOutcomes(s),
-			PassRate:         formationPassRate(s.Passed, s.Judged), SecurityPassRate: formationPassRate(s.SecurityPassed, s.SecurityJudged),
+			PassRate:         judgedPassRate(s.Passed, s.Judged), SecurityPassRate: judgedPassRate(s.SecurityPassed, s.SecurityJudged),
 			LatencyP50MS:        modelMetricFromRunMetric(s.Headline.LatencyP50MS),
 			OutputTokens:        modelMetricFromRunMetric(s.Headline.OutputTokensP50),
 			OutputThroughputP50: modelMetricFromRunMetric(s.Headline.OutputThroughputP50), RunSeconds: s.RunSeconds,
@@ -107,7 +107,7 @@ func buildFormationSummaryRecords(state *runAggregateState) []formationSummaryRe
 	return records
 }
 
-func formationPassRate(passed, judged uint32) *modelPassRateRecord {
+func judgedPassRate(passed, judged uint32) *modelPassRateRecord {
 	if judged == 0 {
 		return nil
 	}

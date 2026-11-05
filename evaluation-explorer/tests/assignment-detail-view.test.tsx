@@ -71,6 +71,16 @@ describe('AssignmentDetailView', () => {
     evalStore.loadFixtures([], []);
   });
 
+  it('explains that a probe-excluded security task was skipped', () => {
+    renderAssignment([assignmentResult({
+      terminal_status: 'invalid_evidence',
+      failure_reason: 'capability_unsupported: provider rejected tool calling (tools_unsupported)',
+      benchmark_observations: { unavailable_reasons: [], grade_summaries: [{ criterion_id: 'tool-calling-capability', status: 'unavailable', explanation_code: 'evidence_unavailable' }] },
+    })]);
+    expect(within(screen.getByLabelText('Assignment verdict')).getByText('Skipped: tool capability')).toBeInTheDocument();
+    expect(within(screen.getByRole('alert')).getByText(/provider rejected tool calling/)).toBeInTheDocument();
+  });
+
   it('omits an empty scores panel when every published tool dimension is not applicable', () => {
     renderAssignment([{ ...fixtureEnrichedAssignmentResult, dataset_id: DATASET_ID, run_id: RUN_ID, assignment_id: ASSIGNMENT_ID }]);
     expect(screen.queryByRole('heading', { name: 'Scores' })).not.toBeInTheDocument();

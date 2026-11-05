@@ -40,7 +40,7 @@ func TestCatalogMatrixSizesFollowTheCatalogNotTheBuiltInSuite(t *testing.T) {
 	small := truncatedCatalog(t, catalog, 3)
 
 	assert.Equal(t, ComputeHomogeneousMatrixSize(1), ModelRoleMatrixSize(catalog, 1, 1, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_DOCTRINE), "the default suite sizes as it always did")
-	assert.Equal(t, uint64(41), uint64(StandardScenarioCount))
+	assert.Equal(t, uint64(44), uint64(StandardScenarioCount))
 
 	var wantCells uint64
 	for _, scenario := range small.GetScenarios() {
@@ -67,7 +67,7 @@ func TestDefaultSuiteConsensusMatrixExcludesRequiredStateChanges(t *testing.T) {
 		consensusCells += uint64(len(scenario.GetEligibleRoles()))
 	}
 
-	assert.Equal(t, uint64(78), consensusCells)
+	assert.Equal(t, uint64(87), consensusCells)
 	assert.Equal(t, consensusCells, CatalogModelRoleCells(catalog, evalv1.EvaluationGovernancePosture_EVALUATION_GOVERNANCE_POSTURE_CONSENSUS), "the consensus matrix must exclude the posture-dependent seed scenario")
 }
 

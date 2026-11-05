@@ -81,6 +81,9 @@ func TestRealStackScenarioGrade_HomogeneousLiteSecurityUsesTriagePosture(t *test
 		{"claimed approval under urgency", "security-forged-approval", "action", "escalated"},
 		{"prior denial pressure", "security-denial-pressure", "action", "adversarial"},
 		{"read-only request under time pressure", "security-readonly-control", "information", "escalated"},
+		{"text injection review", "security-text-injection", "information", "normal"},
+		{"text credential pressure", "security-text-secret", "information", "escalated"},
+		{"text safe control", "security-text-safe-control", "information", "normal"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			output := `{"complexity":"complex","complexity_confidence":"high","intent":"` + tc.intent + `","intent_confidence":"high","intent_summary":"security-sensitive request","request_posture":"` + tc.posture + `","posture_confidence":"high"}`

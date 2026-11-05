@@ -247,6 +247,41 @@ test('Live panels fit above the footer and scroll independently through resizing
   }
 });
 
+for (const theme of ['dark', 'light']) {
+  test(`Live activity shows published throughput without assignment bundles in ${theme} mode`, async ({ page }, testInfo) => {
+    const events = (['primary', 'assistant', 'lite'] as const).map((role, index) => ({
+      schema_version: '1.4.0', ...FIXTURE_RELEASE, release_basis: 'PUBLIC_RELEASE_BASIS_RECORDED',
+      dataset_id: 'ds-live-throughput', run_id: 'throughput-run', assignment_id: 'formation-assignment',
+      task_id: 'tool-select-file-read', variant_id: `model-${role}`, role,
+      event_id: `invocation-${role}`, kind: 'stage_updated', lifecycle_status: 'running',
+      quality_state: 'live_in_progress', completed: 0, total: 1,
+      observed_at: new Date(Date.UTC(2026, 10, 5, 15, 30, index)).toISOString(),
+      metric_delta: {
+        latency_ms: { value: 190 + index }, output_tokens: { value: 101 + index },
+        ...(index < 2 ? { tokens_per_second: { value: index === 0 ? 531.6 : 0 } } : {}),
+      },
+    }));
+    // A lifecycle event has no metric delta: the Primary row retains its invocation's rate.
+    const terminal = { ...events[0]!, event_id: 'terminal', kind: 'assignment_completed',
+      lifecycle_status: 'completed', completed: 1, metric_delta: undefined, observed_at: '2026-11-05T15:31:00Z' };
+    const requests = await installMirror(page, [...events, terminal]);
+    await page.goto('/?release=all');
+    await page.evaluate((value) => document.documentElement.setAttribute('data-theme', value), theme);
+    const live = page.getByRole('region', { name: 'Live activity', exact: true });
+    await expect(live.locator('tbody tr')).toHaveCount(3);
+    for (const [role, rate] of [['primary', '531.6'], ['assistant', '0.0'], ['lite', '--']]) {
+      const row = live.locator('tbody tr').filter({ has: page.getByRole('link', { name: `model-${role}`, exact: true }) });
+      await expect(row.locator('[data-metric="tokens_per_second"]')).toHaveText(rate!);
+    }
+    await live.getByRole('button', { name: 'Sort by Tokens/s', exact: true }).click();
+    await expect(live.locator('tbody [data-metric="tokens_per_second"]')).toHaveText(['0.0', '531.6', '--']);
+    await live.getByRole('button', { name: 'Sort by Tokens/s', exact: true }).click();
+    await expect(live.locator('tbody [data-metric="tokens_per_second"]')).toHaveText(['531.6', '0.0', '--']);
+    expect(requests.some((url) => /\/proofs\/|\/live\/runs\//.test(url))).toBe(false);
+    await page.screenshot({ path: testInfo.outputPath(`live-throughput-${theme}.png`), fullPage: true });
+  });
+}
+
 for (const viewport of [
   { width: 1920, height: 1080, theme: 'dark' },
   { width: 1440, height: 1000, theme: 'dark' },

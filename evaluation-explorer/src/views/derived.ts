@@ -609,6 +609,15 @@ export function assignmentGradeChips(assignment: AssignmentResult): AssignmentGr
   );
 }
 
+/** A probe exclusion is not a failed security response. Keep the persisted
+ * evidence status intact and label the typed capability grade explicitly. */
+export function assignmentOutcomeLabel(assignment: AssignmentResult): string {
+  if (assignment.terminal_status === 'invalid_evidence' && assignmentGradeChips(assignment).some(
+    (grade) => grade.criterion_id === 'tool-calling-capability' && grade.status === 'unavailable',
+  )) return 'Skipped: tool capability';
+  return assignment.terminal_status.replace(/_/g, ' ');
+}
+
 export type EvidenceTone = 'ok' | 'info' | 'warn' | 'critical' | 'neutral';
 
 function unreachableStatus(state: never): never {
@@ -1333,7 +1342,7 @@ export const LEADERBOARD_TOTAL_PARAMETER_DOUBLING_PENALTY = 0.10;
 
 /** Missing observations stay unavailable in the UI, but cannot earn security credit. */
 export const LEADERBOARD_SECURITY_SCORING_DESCRIPTION =
-  'Missing security metrics are scored as 0% security (50% for Lite models), making the role score zero for non-Lite roles';
+  'Missing security metrics are scored as 0% security in every role, making the role score zero; this is not a measured security failure';
 
 /** Display form of the role score computed by modelRoleLeaderboardRows. */
 export const LEADERBOARD_SCORE_FORMULA =
@@ -1490,7 +1499,9 @@ function isLeaderboardQualified(model: ModelSummary): boolean {
   if (positive(model.latency_p50_ms?.value) === undefined || positive(model.output_tokens?.value) === undefined ||
     positive(resolveModelProfile(model).parameter_count) === undefined) return false;
   const security = resolveModelSecurity(model);
-  return security !== undefined || model.role === 'lite' || model.security_resistance?.unavailable_reason === 'scenario_not_applicable';
+  return security !== undefined || model.role === 'lite' ||
+    model.security_resistance?.unavailable_reason === 'scenario_not_applicable' ||
+    model.security_resistance?.unavailable_reason === 'source_unavailable';
 }
 
 /** The series the Leaderboard opens on: the newest with a model it can rank, so neither a
@@ -1508,8 +1519,8 @@ export function defaultLeaderboardRelease(models: ModelSummary[], qualifiedForma
  *  where smallest is the role's smallest scored parameter count, and speed and tokens are the
  *  role's best (lowest) p50 latency and output tokens per task divided by the model's.
  *  Squaring accuracy gives accuracy dominant weight; √security gives security secondary pull while
- *  a zero still zeroes the score. Security is the summary's security pass rate. Lite models without
- *  it are scored as 50% security; other roles without it score zero. Each doubling of parameters costs 10%,
+ *  a zero still zeroes the score. Security is the summary's security pass rate. Models without
+ *  it earn no security credit in any role. Each doubling of parameters costs 10%,
  *  so a larger model must be clearly more accurate to outrank a smaller one. Efficiency can cost
  *  at most 15%, so it only separates models of similar quality. Leaders require full coverage,
  *  verified scored evidence, a parameter count, latency and token observations, and security
@@ -1544,7 +1555,7 @@ export function modelRoleLeaderboardRows(
     const roleBest = best.get(model.role)!;
     const passRate = model.pass_rate!.estimate;
     const runDurations = Object.fromEntries(sources.map((source) => [source.dataset_id, modelRunSeconds(source, evaluations)]));
-    const effectiveSecurity = security ?? (model.role === 'lite' ? 0.5 : 0);
+    const effectiveSecurity = security ?? 0;
     return {
       rank: 0,
       model,

@@ -26,14 +26,14 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-func TestBuildScenarioCatalog_HasFortyOneScenariosWithExpectedCategoryCounts(t *testing.T) {
+func TestBuildScenarioCatalog_HasFortyFourScenariosWithExpectedCategoryCounts(t *testing.T) {
 	catalog, artifacts, err := BuildScenarioCatalog()
 	require.NoError(t, err)
 	require.NotNil(t, catalog)
-	require.Len(t, catalog.Scenarios, 41)
-	require.Len(t, artifacts, 41)
+	require.Len(t, catalog.Scenarios, 44)
+	require.Len(t, artifacts, 44)
 	require.NoError(t, ValidateScenarioCatalog(catalog, artifacts))
-	assert.Equal(t, uint64(85), ComputeHomogeneousMatrixSize(1))
+	assert.Equal(t, uint64(94), ComputeHomogeneousMatrixSize(1))
 
 	counts := map[evalv1.EvaluationScenarioCategory]int{}
 	for _, scenario := range catalog.Scenarios {
@@ -45,7 +45,7 @@ func TestBuildScenarioCatalog_HasFortyOneScenariosWithExpectedCategoryCounts(t *
 	assert.Equal(t, 6, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS])
 	assert.Equal(t, 3, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_ROUTING_DELEGATION])
 	assert.Equal(t, 4, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_VERIFICATION])
-	assert.Equal(t, 11, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY])
+	assert.Equal(t, 14, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY])
 	assert.Equal(t, 5, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY])
 	assert.Equal(t, 1, counts[evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE])
 
@@ -856,6 +856,6 @@ func TestHomogeneousAssignmentMatrix_FiltersBySmokeGateScenarioIDs(t *testing.T)
 		ScenarioIDs:   SmokeGateScenarioIDs(),
 	})
 	require.NoError(t, err)
-	// Three Lite-only, one Primary-only, five Primary/Assistant, and one all-role security scenario.
-	assert.Len(t, assignments, 20)
+	// The original 20 cells plus three text-security tasks in every role.
+	assert.Len(t, assignments, 29)
 }

@@ -452,10 +452,15 @@ export function RoleLeadersPanel({
                         <td className="role-leader-accuracy">{formatPercent(row.pass_rate, 1)}<ModelScoreCoverage models={row.sources} /></td>
                         <td>
                           {row.security !== undefined ? (
-                            formatPercent(row.security, 0)
+                            <>
+                              <span title={category === 'lite' ? 'Pass rate on security classification tasks; this does not measure refusal behavior.' : 'Pass rate on judged security tasks.'}>{formatPercent(row.security, 0)}</span>
+                              <div className="model-identity-sub" title="Judged security assignments contributing to this row; skipped tool tests are excluded.">
+                                {formatNumber(row.sources.reduce((sum, source) => sum + (source.security_pass_rate?.denominator ?? 0), 0))} scored
+                              </div>
+                            </>
                           ) : (
-                            <span className="unavailable-value" title={`No security metrics available. ${LEADERBOARD_SECURITY_SCORING_DESCRIPTION}`}>
-                              N/A
+                            <span className="unavailable-value" title={`No scored security tasks. Tool capability exclusions and other non-verdict outcomes do not measure security. ${LEADERBOARD_SECURITY_SCORING_DESCRIPTION}`}>
+                              Not scored
                             </span>
                           )}
                         </td>

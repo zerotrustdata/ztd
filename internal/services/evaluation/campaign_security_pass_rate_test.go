@@ -96,7 +96,7 @@ func TestAttachScenarioCatalogSecurityPassRate(t *testing.T) {
 			want:    map[string]*modelPassRateRecord{"gemma:primary": rate(1, 1)},
 		},
 		{
-			name: "lite role with a bound triage persona has no rate",
+			name: "lite role grades security classification without claiming refusal",
 			assignments: []*evalv1.EvaluationAssignment{
 				securityPassRateAssignment("safe", "lite-model", lite),
 				securityPassRateAssignment("unsafe", "lite-model", lite),
@@ -110,7 +110,7 @@ func TestAttachScenarioCatalogSecurityPassRate(t *testing.T) {
 				catalog.Personas = testCatalogPersonas(t)
 				return catalog
 			},
-			want: map[string]*modelPassRateRecord{},
+			want: map[string]*modelPassRateRecord{"lite-model:lite": rate(0.5, 2)},
 		},
 		{
 			name: "role without security scenarios has no rate",

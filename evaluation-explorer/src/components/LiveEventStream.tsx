@@ -12,6 +12,7 @@ import { taskResultView } from '../state/campaign-adapter';
 import { ValidationError } from '../contract/validators';
 import {
   assignmentRowKey,
+  assignmentOutputThroughput,
   criterionLabels,
   deterministicGradesByAssignment,
   isDeterministicGradingEvent,
@@ -362,11 +363,14 @@ function assignmentTokensPerSecond(
   event: LiveEvent,
   assignment: AssignmentResult | undefined,
 ): MetricValue | undefined {
-  const values = assignmentMetricValues(event, assignment);
-  const output = values.output_tokens?.value;
-  const generationMs = assignment?.benchmark_observations?.timing?.generation_ms?.value;
-  if (output === undefined || generationMs === undefined || generationMs <= 0) return undefined;
-  return { value: output / (generationMs / 1000) };
+  // Invocation deltas already carry observed generation throughput. Preserve
+  // that role/model's measurement even before its run bundle has loaded.
+  const published = event.metric_delta?.tokens_per_second;
+  if (published) return published;
+  if (!assignment || (event.variant_id && event.variant_id !== assignment.variant_id)
+    || (event.role && event.role !== assignment.role)) return undefined;
+  const throughput = assignmentOutputThroughput(assignment);
+  return throughput === undefined ? undefined : { value: throughput };
 }
 
 function assignmentMetric(event: LiveEvent, assignment: AssignmentResult | undefined, key: AssignmentMetricColumn): MetricValue | undefined {

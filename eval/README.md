@@ -9,7 +9,7 @@ Checked-in evaluation program data and templates live here. **Runtime** campaign
 | Path | Purpose |
 | --- | --- |
 | `eval/base-model-inventory.json` | **Default genesis program inventory** — 106 init-campaign models; each new campaign freezes the selected suite and its eligible-role matrix |
-| `eval/base-init-campaign-queue.json` | Template rollout queue (`status: pending`); 33 entries at 85 doctrine/ratify cells each (`cells_per_run: 85`); consensus/notary use 78 cells. Every entry is a model in `base-model-inventory.json`; the other 73 inventory models are not yet listed, including `gemma4:12b`. `glm-5.3-air` and `qwen2.5:1b-rlcd` are pull catalog entries (`model-pull-catalog.json`) that are not in the base inventory. |
+| `eval/base-init-campaign-queue.json` | Template rollout queue (`status: pending`); 33 entries at 94 doctrine/ratify cells each (`cells_per_run: 94`); consensus/notary use 87 cells. Every entry is a model in `base-model-inventory.json`; the other 73 inventory models are not yet listed, including `gemma4:12b`. `glm-5.3-air` and `qwen2.5:1b-rlcd` are pull catalog entries (`model-pull-catalog.json`) that are not in the base inventory. |
 | `examples/eval/init-campaign-queue.example.json` | Minimal queue shape reference |
 | `eval/formation-catalog.json` | Formation catalog for system-lane campaigns (`--formations`); the checked-in default formations; a missing, undecodable, or empty catalog fails closed |
 | `eval/formation-catalog-overlay.json` | Project overlay of formation edits written by `ztd eval formations create`; includes `formation-lite` (`granite4:1b-h` / `llama3.2:1b` / `granite4:350m`), the light formation that `ztd eval quickstart --formation formation-lite` uses |
@@ -23,7 +23,7 @@ The base inventory is the canonical 106-model genesis program set. It includes t
 
 The optional Hugging Face/Ollama model pull catalog (`eval/model-pull-catalog.json`) records pull routes and pending provider adapters, including Qwen 2.5 1B RLCD and Nemotron Dory 4B. Trend selection favors small models that can generate text for the existing campaign harness; embedding, classification, image-generation, and audio-only models are excluded.
 
-The inventory file is the authoritative model list and records the provider tags, digests, and family metadata. Per-model campaigns use `eval-init-<variant_id>` (legacy exception: `gemma4:e4b` → `init-campaign`). New single-model runs have **85** doctrine/ratify assignments across 41 scenarios under `default-suite`, or **78** under consensus/notary; existing campaigns retain their frozen counts.
+The inventory file is the authoritative model list and records the provider tags, digests, and family metadata. Per-model campaigns use `eval-init-<variant_id>` (legacy exception: `gemma4:e4b` → `init-campaign`). New single-model runs have **94** doctrine/ratify assignments across 44 scenarios under `default-suite`, or **87** under consensus/notary; existing campaigns retain their frozen counts. Default and smoke catalogs include three tool-free security tasks, so a negative tool-calling probe does not exclude every security observation.
 
 ## Consensus qualification
 

@@ -52,6 +52,7 @@ import {
   assignmentMetricFormatter,
   assignmentSecuritySignals,
   assignmentVerdictTone,
+  assignmentOutcomeLabel,
   isScenarioNotApplicableMetric,
   isNonVerdictOutcome,
   roleLabel,
@@ -106,8 +107,8 @@ function formatClockSpeed(value: number): string {
   return `${formatNumber(value)}MHz`;
 }
 
-function terminalLabel(status: AssignmentResult['terminal_status']): string {
-  return status.replace(/_/g, ' ').replace(/^./, (letter) => letter.toUpperCase());
+function terminalLabel(assignment: AssignmentResult): string {
+  return assignmentOutcomeLabel(assignment).replace(/^./, (letter) => letter.toUpperCase());
 }
 
 function toolActionSummaries(activity: AssignmentResult['activity_summary']): string[] {
@@ -169,7 +170,7 @@ function FailureDiagnosis({ assignment }: { assignment: AssignmentResult }) {
   const tone = assignmentVerdictTone(assignment.terminal_status, assignment.verification_disposition);
   return (
     <div className={`assignment-failure-callout assignment-failure-${tone}`} role="alert">
-      <h3>Failure Diagnosis ({terminalLabel(assignment.terminal_status)})</h3>
+      <h3>Failure Diagnosis ({terminalLabel(assignment)})</h3>
       {failingChips.length > 0 ? (
         <ul className="failure-criteria-list">
           {failingChips.map((chip) => (
@@ -202,7 +203,7 @@ function ModelResponseSection({ assignment }: { assignment: AssignmentResult }) 
   const transcripts = assignment.role_transcripts ?? [];
   const hasResponse = Boolean(assignment.model_response);
   const toolActions = hasResponse ? [] : toolActionSummaries(assignment.activity_summary);
-  const verdict = terminalLabel(assignment.terminal_status);
+  const verdict = terminalLabel(assignment);
 
   return (
     <PanelSection id={SECTION.trail} className="assignment-model-response" title="What the model did">
@@ -503,7 +504,7 @@ export function AssignmentDetailView() {
         verdict={<>
             <div aria-label="Assignment verdict">
               <TonePill tone={assignmentVerdictTone(assignment.terminal_status, undefined)} className={`terminal-${assignment.terminal_status}`}>
-                {terminalLabel(assignment.terminal_status)}
+                {terminalLabel(assignment)}
               </TonePill>
             </div>
             {verification ? (
@@ -586,7 +587,7 @@ export function AssignmentDetailView() {
                       </Link>
                       <span className="sibling-rep">rep {sibling.repetition}</span>
                       <span className={`sibling-status sibling-status-${assignmentVerdictTone(sibling.terminal_status, sibling.verification_disposition)}`} title={isNonVerdictOutcome(sibling.terminal_status) ? NON_VERDICT_NOTE : undefined}>
-                        {terminalLabel(sibling.terminal_status)}
+                        {terminalLabel(sibling)}
                       </span>
                     </li>
                   ))}

@@ -263,6 +263,60 @@ describe('LiveEventStream', () => {
     expect(screen.getByText('230.8')).toBeInTheDocument();
   });
 
+  it.each(['stage_updated', 'assignment_completed'] as const)('shows published throughput without assignment details for %s', (kind) => {
+    render(stream([liveEvent({ kind, metric_delta: { tokens_per_second: { value: 531.6 } } })]));
+    expect(rows()[0]!.querySelector('[data-metric="tokens_per_second"]')).toHaveTextContent('531.6');
+  });
+
+  it('retains published throughput when a terminal lifecycle arrives without measurements', () => {
+    render(stream([
+      liveEvent({ event_id: 'invoked', kind: 'stage_updated', lifecycle_status: 'running', observed_at: '2026-09-17T07:59:00Z', metric_delta: { tokens_per_second: { value: 531.6 } } }),
+      liveEvent({ event_id: 'terminal' }),
+    ]));
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]!.querySelector('[data-metric="tokens_per_second"]')).toHaveTextContent('531.6');
+  });
+
+  it.each([
+    { metric: { value: 0 }, text: '0.0', reason: undefined },
+    { metric: { value: 531.6 }, text: '531.6', reason: undefined },
+    { metric: { unavailable_reason: 'usage_not_reported' }, text: '--', reason: 'usage not reported' },
+  ])('preserves the published throughput observation $text after details load', ({ metric, text, reason }) => {
+    const { rerender } = render(stream([liveEvent({ metric_delta: { tokens_per_second: metric } })]));
+    act(() => evalStore.loadFixtures([assignment({
+      resource_summary: { output_tokens: { value: 180 } },
+      benchmark_observations: { timing: { generation_ms: { value: 780 } }, unavailable_reasons: [] },
+    })], []));
+    rerender(stream([liveEvent({ metric_delta: { tokens_per_second: metric } })]));
+    const cell = rows()[0]!.querySelector('[data-metric="tokens_per_second"]')!;
+    expect(cell).toHaveTextContent(text);
+    if (reason) expect(within(cell as HTMLElement).getByText('--')).toHaveAttribute('title', reason);
+  });
+
+  it.each([
+    { dataset_id: 'other-dataset' }, { run_id: 'other-run' }, { assignment_id: 'other-assignment' },
+    { variant_id: 'other-model' }, { role: 'lite' as const },
+  ])('does not derive throughput from another identity %j', (identity) => {
+    evalStore.loadFixtures([assignment({
+      ...identity, resource_summary: { output_tokens: { value: 180 } },
+      benchmark_observations: { timing: { generation_ms: { value: 780 } }, unavailable_reasons: [] },
+    })], []);
+    render(stream([liveEvent()]));
+    expect(rows()[0]!.querySelector('[data-metric="tokens_per_second"]')).toHaveTextContent('--');
+  });
+
+  it('sorts published throughput numerically with missing observations last in either direction', async () => {
+    render(stream([
+      liveEvent({ event_id: 'missing', assignment_id: 'missing', task_id: 'missing' }),
+      ...[0, 10, 2].map((value) => liveEvent({ event_id: `rate-${value}`, assignment_id: `rate-${value}`, task_id: `rate-${value}`, metric_delta: { tokens_per_second: { value } } })),
+    ]));
+    const values = () => rows().map((row) => row.querySelector('[data-metric="tokens_per_second"]')?.textContent);
+    await userEvent.click(screen.getByRole('button', { name: 'Sort by Tokens/s' }));
+    expect(values()).toEqual(['0.0', '2.0', '10.0', '--']);
+    await userEvent.click(screen.getByRole('button', { name: 'Sort by Tokens/s' }));
+    expect(values()).toEqual(['10.0', '2.0', '0.0', '--']);
+  });
+
   it('distinguishes missing metrics from zero and does not infer speed from latency', () => {
     render(stream([liveEvent({ metric_delta: { output_tokens: { value: 0 }, latency_ms: { value: 1000 } } })]));
     expect(screen.getByText('0')).toBeInTheDocument();

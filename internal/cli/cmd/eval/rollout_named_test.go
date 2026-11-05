@@ -414,7 +414,7 @@ func TestNamedRollout_CreateWithModelSelector(t *testing.T) {
 	// Verify the campaign was actually created and can be shown
 	var campaignShow campaignShowJSON
 	require.NoError(t, env.runJSON(t, &campaignShow, "campaigns", "show", rollout.Campaigns[0]))
-	assert.Equal(t, "smoke-suite@1.30.0", campaignShow.Suite)
+	assert.Equal(t, "smoke-suite@"+evaluation.SmokeSuiteVersion, campaignShow.Suite)
 	assert.Equal(t, "qwen3:4b", campaignShow.Judge)
 
 	// Repeating create updates/reuses existing campaigns without error
