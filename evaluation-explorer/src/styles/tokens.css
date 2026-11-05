@@ -1,0 +1,102 @@
+/* Copyright (c) 2026 Lateralus Labs, LLC.
+   Licensed under the Business Source License 1.1 — see LICENSE for details. */
+
+@font-face {
+  font-family: 'IBM Plex Sans';
+  src: url('../../node_modules/@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2') format('woff2');
+  font-weight: 100 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('../../node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('../../node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('../../node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-600-normal.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Hierarchy comes from hairlines, surface contrast, and type. Corners stay square,
+   nothing floats on a shadow, and color carries status rather than decoration. */
+:root {
+  --radius: 0;
+  --radius-control: 2px;
+  --gap: 16px;
+  --font: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --text-2xs: 11px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 14px;
+  --fs-label: 11px; /* uppercase field labels */
+  --fs-body: 13px;  /* tables, notes, secondary copy */
+  --fs-lede: 14px;  /* primary reading text */
+  --fs-title: 15px; /* section headings */
+  --measure: 65ch;
+  --tracking-label: 0.04em;
+}
+
+/* Carbon. Every text tone holds 4.5:1 on every surface. */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0c0c0b;
+  --bg-elev: #111110;
+  --bg-elev2: #181817;
+  --bg-elev3: #20201e;
+  --fg: #ecebe6;
+  --fg-muted: #aba9a1;
+  --fg-dim: #908e87;
+  --accent: #7cc5d2;
+  --accent-dim: #a6dce5;
+  --on-accent: #0c0c0b;
+  --border: #2a2926;
+  --border-strong: #5a5851;
+  --accent-surface: #181817;
+  --accent-surface-border: #5a5851;
+  --tone-ok: #4cb782;
+  --tone-info: #7cc5d2;
+  --tone-warn: #d9a441;
+  --tone-critical: #ec6a57;
+  --tone-neutral: #aba9a1;
+}
+
+/* Technical paper. */
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f6f2;
+  --bg-elev: #fbfaf7;
+  --bg-elev2: #f0eee8;
+  --bg-elev3: #e7e4dc;
+  --fg: #151513;
+  --fg-muted: #55534d;
+  --fg-dim: #67655e;
+  --accent: #0a6272;
+  --accent-dim: #084e5b;
+  --on-accent: #ffffff;
+  --border: #dcd9d0;
+  --border-strong: #8f8c82;
+  --accent-surface: #f0eee8;
+  --accent-surface-border: #8f8c82;
+  --tone-ok: #17703f;
+  --tone-info: #0a6272;
+  --tone-warn: #8a5300;
+  --tone-critical: #b3261e;
+  --tone-neutral: #5f5d56;
+}
+

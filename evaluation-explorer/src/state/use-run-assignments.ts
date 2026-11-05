@@ -3,8 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import type { AssignmentResult } from '../contract/types';
-import { LIVE_RUN_BUNDLE_RELOAD_MS } from '../constants';
-import { loadRunAssignments, retainRuns, RunBundleError } from './run-bundles';
+import { isLiveBundleRun, loadRunAssignments, retainRuns, RunBundleError, startLiveBundleReload } from './run-bundles';
 import { evalStore, useStoreState } from './store';
 
 export type RunAssignmentsStatus = 'idle' | 'loading' | 'ready' | 'no_bundle' | 'error';
@@ -36,7 +35,7 @@ export function useRunAssignments(datasetId: string | undefined, runId: string |
   const lifecycleState = useStoreState(
     () => (datasetId !== undefined && runId !== undefined ? evalStore.getEvaluation(datasetId, runId)?.lifecycle_state : undefined),
   );
-  const isLive = bundleSha256 === undefined && (lifecycleState === 'queued' || lifecycleState === 'running');
+  const isLive = lifecycleState !== undefined && isLiveBundleRun({ assignment_bundle_sha256: bundleSha256, lifecycle_state: lifecycleState });
   const key = datasetId !== undefined && runId !== undefined
     ? JSON.stringify([datasetId, runId, bundleSha256 ?? null, lifecycleState ?? null])
     : undefined;
@@ -64,10 +63,10 @@ export function useRunAssignments(datasetId: string | undefined, runId: string |
       );
     };
     load();
-    const reload = isLive ? setInterval(load, LIVE_RUN_BUNDLE_RELOAD_MS) : undefined;
+    const stopReload = isLive ? startLiveBundleReload(load) : undefined;
     return () => {
       active = false;
-      if (reload !== undefined) clearInterval(reload);
+      stopReload?.();
     };
   }, [datasetId, runId, key, isLive]);
 

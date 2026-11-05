@@ -179,6 +179,99 @@ describe('pointer changes', () => {
   });
 });
 
+describe('failed start', () => {
+  it('keeps retrying on the pointer cadence after a restart for a withdrawal change fails', async () => {
+    const mirror = makeMirror();
+    const base = serveLayout(mirror);
+    let failing = false;
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      if (failing && String(input).endsWith('/runtime.json')) throw new Error('offline');
+      return base(input);
+    });
+    await startFeed({ fetchImpl });
+
+    mirror.snapshot = { ...mirror.snapshot, withdrawal_digest: 'b'.repeat(64) };
+    failing = true;
+    await vi.advanceTimersByTimeAsync(POINTER_POLL_MS);
+    await flush();
+    expect(evalStore.getState().connection).toBe('offline');
+    expect(evalStore.getState().currentSnapshot?.withdrawal_digest).not.toBe('b'.repeat(64));
+
+    failing = false;
+    await vi.advanceTimersByTimeAsync(POINTER_POLL_MS);
+    await vi.waitFor(() => expect(evalStore.getState().currentSnapshot?.withdrawal_digest).toBe('b'.repeat(64)));
+    expect(evalStore.getState().connection).toBe('live');
+
+    // The recovered feed polls normally again, with one poller.
+    const pointerPolls = count(fetchImpl, '/pointer.json');
+    await vi.advanceTimersByTimeAsync(POINTER_POLL_MS);
+    await flush();
+    expect(count(fetchImpl, '/pointer.json')).toBe(pointerPolls + 1);
+  });
+
+  it('recovers when the mirror was unreachable at first load', async () => {
+    const base = serveLayout(makeMirror());
+    let failing = true;
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      if (failing) throw new Error('offline');
+      return base(input);
+    });
+    await startFeed({ fetchImpl });
+    expect(evalStore.getState().connection).toBe('offline');
+
+    failing = false;
+    await vi.advanceTimersByTimeAsync(POINTER_POLL_MS);
+    await vi.waitFor(() => expect(evalStore.getState().connection).toBe('live'));
+    expect(evalStore.getState().observedSequence).toBe(100);
+  });
+
+  it('restores freshness when a retried start finds the same snapshot', async () => {
+    const base = serveLayout(makeMirror());
+    await startFeed({ fetchImpl: base });
+    const freshness = evalStore.getState().feedStatus?.freshness;
+    expect(freshness).not.toBe('source_offline');
+
+    let failing = true;
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      if (failing) throw new Error('offline');
+      return base(input);
+    });
+    await startFeed({ fetchImpl });
+    expect(evalStore.getState().feedStatus?.freshness).toBe('source_offline');
+
+    failing = false;
+    await vi.advanceTimersByTimeAsync(POINTER_POLL_MS);
+    await vi.waitFor(() => expect(evalStore.getState().connection).toBe('live'));
+    expect(evalStore.getState().feedStatus?.freshness).toBe(freshness);
+  });
+
+  it('does not retry while hidden, and retries at once when the tab becomes visible', async () => {
+    const fetchImpl = vi.fn(async () => { throw new Error('offline'); });
+    await startFeed({ fetchImpl });
+    const attempts = fetchImpl.mock.calls.length;
+
+    setVisibility('hidden');
+    await vi.advanceTimersByTimeAsync(POINTER_POLL_MS * 3);
+    await flush();
+    expect(fetchImpl.mock.calls.length).toBe(attempts);
+
+    setVisibility('visible');
+    await flush();
+    expect(fetchImpl.mock.calls.length).toBeGreaterThan(attempts);
+  });
+
+  it('stops retrying after stopFeed', async () => {
+    const fetchImpl = vi.fn(async () => { throw new Error('offline'); });
+    await startFeed({ fetchImpl });
+    stopFeed();
+    const attempts = fetchImpl.mock.calls.length;
+
+    await vi.advanceTimersByTimeAsync(POINTER_POLL_MS * 3);
+    await flush();
+    expect(fetchImpl.mock.calls.length).toBe(attempts);
+  });
+});
+
 describe('read model retry', () => {
   it('re-reads the pointer once and retries the read model when it fails', async () => {
     const mirror = makeMirror();

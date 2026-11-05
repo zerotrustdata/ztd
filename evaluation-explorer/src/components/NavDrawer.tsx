@@ -54,11 +54,7 @@ export function NavDrawer({ isOpen, onClose }: NavDrawerProps) {
             title={item.description}
             className={({ isActive }) => `nav-drawer-item${isActive ? ' active' : ''}`}
           >
-            <div className="nav-drawer-item-content">
-              <span className="nav-drawer-item-label">{item.label}</span>
-              <span className="nav-drawer-item-desc">{item.description}</span>
-            </div>
-            <span className="nav-drawer-item-arrow" aria-hidden="true">→</span>
+            <span className="nav-drawer-item-label">{item.label}</span>
           </NavLink>
         ))}
       </nav>

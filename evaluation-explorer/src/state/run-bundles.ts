@@ -290,9 +290,18 @@ async function loadLiveBundle(scope: RunRef, fetchImpl: typeof fetch): Promise<R
   return readyFromStore(datasetId, runId);
 }
 
-/** Whether a run's summary says it is still executing, so its bundle is the live object. */
-function isActiveLifecycle(lifecycleState: string | undefined): boolean {
-  return lifecycleState === 'queued' || lifecycleState === 'running';
+/** Whether a run is still executing with no published bundle, so its results are the live object. */
+export function isLiveBundleRun(summary: Pick<EvaluationSummary, 'assignment_bundle_sha256' | 'lifecycle_state'> | undefined): boolean {
+  if (summary === undefined || summary.assignment_bundle_sha256 !== undefined) return false;
+  return summary.lifecycle_state === 'queued' || summary.lifecycle_state === 'running';
+}
+
+/** Calls `reload` every live bundle interval while the tab is visible. Returns the cancel. */
+export function startLiveBundleReload(reload: () => void): () => void {
+  const timer = setInterval(() => {
+    if (document.visibilityState === 'visible') reload();
+  }, LIVE_RUN_BUNDLE_RELOAD_MS);
+  return () => clearInterval(timer);
 }
 
 /**
@@ -309,7 +318,7 @@ export async function loadRunAssignments(
   const key = runKey(datasetId, runId);
   const summary = evalStore.getEvaluation(datasetId, runId);
   const sha256 = summary?.assignment_bundle_sha256;
-  const live = sha256 === undefined && isActiveLifecycle(summary?.lifecycle_state);
+  const live = isLiveBundleRun(summary);
   if (sha256 === undefined && !live) return { status: 'no_bundle' };
   const flightKey = `${key}|${sha256 ?? 'live'}`;
   const pending = inFlight.get(flightKey);

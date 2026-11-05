@@ -19,6 +19,7 @@ import {
   normalizeRecentProjection,
   normalizeStreamRecord,
 } from './feed';
+import { POINTER_POLL_MS } from '../constants';
 import { liveStatusIntervalFor, startFeedPolling, type FeedPoller } from './feed-poll';
 import { purgeLegacyBootstrapCaches } from './legacy-cache';
 
@@ -120,7 +121,7 @@ function markReachable(): void {
   const state = evalStore.getState();
   if (state.connection !== 'live') {
     // Re-accept the held snapshot so its freshness is derived again rather than left at source_offline.
-    if (state.connection === 'offline' && state.currentSnapshot && state.pendingSnapshot === null) {
+    if (state.feedStatus?.freshness === 'source_offline' && state.currentSnapshot && state.pendingSnapshot === null) {
       evalStore.acceptSnapshot(state.currentSnapshot);
     }
     evalStore.setConnection('live', UPDATING_MESSAGE);
@@ -221,6 +222,12 @@ export async function startFeed(opts: StartOptions = {}): Promise<void> {
     if (gen !== generation) return;
     const message = error instanceof Error ? error.message : 'public mirror is unreachable';
     evalStore.setOffline(`The public mirror is unreachable: ${message}. Last accepted data remains visible.`);
+    // No read model means nothing to poll yet, so the pointer cadence retries the whole start.
+    poller = startFeedPolling({
+      pollPointer: () => startFeed(opts),
+      pollLiveStatus: () => Promise.resolve(),
+      liveIntervalMs: POINTER_POLL_MS,
+    });
   }
 }
 

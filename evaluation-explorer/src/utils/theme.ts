@@ -29,7 +29,7 @@ function writeCookie(theme: Theme): void {
 function updateThemeColorMeta(theme: Theme): void {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) {
-    meta.setAttribute('content', theme === 'dark' ? '#0d1117' : '#f5f7fb');
+    meta.setAttribute('content', theme === 'dark' ? '#0c0c0b' : '#f7f6f2');
   }
 }
 

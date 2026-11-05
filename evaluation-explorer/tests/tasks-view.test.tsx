@@ -63,7 +63,7 @@ describe('TasksView', () => {
     expect(screen.getAllByRole('link', { name: 'View full definition' })).toHaveLength(SCENARIO_TASKS.length);
     expect(screen.getByRole('heading', { name: /Instruction adherence/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Security & policy/i })).toBeInTheDocument();
-    expect(screen.getByText(/Cards show a prompt excerpt/i)).toBeInTheDocument();
+    expect(screen.getByText(/Rows show a prompt excerpt/i)).toBeInTheDocument();
   });
 
   it('shows a detailed definition for a selected task with ztd source links', () => {

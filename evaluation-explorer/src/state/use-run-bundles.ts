@@ -2,8 +2,9 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { useEffect, useMemo, useState } from 'react';
-import { loadRunAssignments, retainRuns, RunBundleError } from './run-bundles';
+import { isLiveBundleRun, loadRunAssignments, retainRuns, RunBundleError, startLiveBundleReload } from './run-bundles';
 import { loadRunsBounded, type RunLoader, type RunRef } from './load-runs-bounded';
+import { evalStore, useStoreState } from './store';
 
 export interface RunBundlesProgress {
   /** Runs whose bundle loaded or needed no bundle. */
@@ -32,26 +33,46 @@ function runsFromKey(key: string): RunRef[] {
   });
 }
 
+/** What each run's load depends on, so the load runs again when a summary arrives, names a bundle, or settles. */
+function runSummariesKey(runs: RunRef[]): string {
+  return JSON.stringify(
+    runs.map((run) => {
+      const summary = evalStore.getEvaluation(run.datasetId, run.runId);
+      return [summary?.assignment_bundle_sha256 ?? null, summary?.lifecycle_state ?? null];
+    }),
+  );
+}
+
 /**
  * Loads the assignment bundles of the given runs, a few at a time, and pins them
  * while the caller uses them: the pin is released on change or unmount. Callers may
  * pass a new array with the same runs on every render; the load is keyed on content.
+ * A queued or running run has no digest yet, so its live object is read again every
+ * minute while the tab is visible.
  */
 export function useRunBundles(runs: RunRef[], concurrency: number): RunBundlesProgress {
   const key = runsKey(runs);
   const stableRuns = useMemo(() => runsFromKey(key), [key]);
+  const summariesKey = useStoreState(() => runSummariesKey(stableRuns));
   const [progress, setProgress] = useState<Progress | null>(null);
+
+  // Every run stays loaded while the caller uses it.
+  useEffect(() => {
+    if (stableRuns.length === 0) return;
+    return retainRuns(stableRuns);
+  }, [stableRuns]);
 
   useEffect(() => {
     if (stableRuns.length === 0) return;
-    // Every run stays loaded while the caller uses it.
-    const releaseRuns = retainRuns(stableRuns);
     let active = true;
     let loaded = 0;
     const countLoaded: RunLoader = (datasetId, runId) =>
       loadRunAssignments(datasetId, runId).then((result) => {
         loaded++;
-        if (active) setProgress({ key, loaded, failures: [] });
+        // A repeat load of the same runs keeps the count it already reached until its outcome is known.
+        if (active) {
+          setProgress((previous) => (previous?.key === key && previous.loaded >= loaded ? previous : { key, loaded, failures: previous?.key === key ? previous.failures : [] }));
+        }
         return result;
       });
     loadRunsBounded(stableRuns, concurrency, countLoaded).then((outcomes) => {
@@ -61,11 +82,13 @@ export function useRunBundles(runs: RunRef[], concurrency: number): RunBundlesPr
       );
       setProgress({ key, loaded: stableRuns.length - failures.length, failures });
     });
+    const liveRuns = stableRuns.filter((run) => isLiveBundleRun(evalStore.getEvaluation(run.datasetId, run.runId)));
+    const stopReload = liveRuns.length > 0 ? startLiveBundleReload(() => void loadRunsBounded(liveRuns, concurrency)) : undefined;
     return () => {
       active = false;
-      releaseRuns();
+      stopReload?.();
     };
-  }, [key, stableRuns, concurrency]);
+  }, [key, summariesKey, stableRuns, concurrency]);
 
   const current = progress?.key === key ? progress : null;
   return {

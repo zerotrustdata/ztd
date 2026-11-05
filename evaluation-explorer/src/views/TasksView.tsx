@@ -34,8 +34,8 @@ function categoryAnchor(category: ScenarioCategory): string {
   return `category-${category}`;
 }
 
-function TaskFlag({ children }: { children: ReactNode }) {
-  return <span className="task-flag">{children}</span>;
+function TaskFlag({ children, title }: { children: ReactNode; title?: string }) {
+  return <span className="task-flag" title={title}>{children}</span>;
 }
 
 function TaskFlagNotes({ task }: { task: ScenarioTaskDefinition }) {
@@ -123,43 +123,42 @@ function TaskDetailPanel({ task }: { task: ScenarioTaskDefinition }) {
   );
 }
 
-function TaskCard({ task }: { task: ScenarioTaskDefinition }) {
+function TaskRow({ task }: { task: ScenarioTaskDefinition }) {
   return (
-    <article className={`task-card task-card-${task.category}`} id={task.id}>
-      <header className="task-card-head">
-        <h3>
-          <Link to={`/tasks/${task.id}`}>{task.id}</Link>
-        </h3>
-        <span
-          className="task-card-grading"
-          title={
-            task.gradingMethod === 'semantic_judge'
-              ? 'Graded by an LLM rubric over the interaction trace'
-              : 'Graded by fixed rules over trace evidence'
-          }
-        >
-          {formatGradingMethod(task.gradingMethod)}
-        </span>
-      </header>
-      <p className="task-card-description">{task.publicDescription}</p>
-      <div className="task-detail-meta">
-        <TaskFlag>{TRAJECTORY_POLICY_META[task.trajectoryPolicy].label}</TaskFlag>
-        {task.allowedTools ? <TaskFlag>{task.allowedTools.length} allowed tools</TaskFlag> : null}
+    <article className="task-row" id={task.id}>
+      <h3 className="task-row-id">
+        <Link to={`/tasks/${task.id}`}>{task.id}</Link>
+      </h3>
+      <div className="task-row-body">
+        <p className="task-row-description">{task.publicDescription}</p>
+        <div className="task-detail-meta">
+          <TaskFlag
+            title={
+              task.gradingMethod === 'semantic_judge'
+                ? 'Graded by an LLM rubric over the interaction trace'
+                : 'Graded by fixed rules over trace evidence'
+            }
+          >
+            {formatGradingMethod(task.gradingMethod)}
+          </TaskFlag>
+          <TaskFlag>{TRAJECTORY_POLICY_META[task.trajectoryPolicy].label}</TaskFlag>
+          {task.allowedTools ? <TaskFlag>{task.allowedTools.length} allowed tools</TaskFlag> : null}
+        </div>
+        <p className="task-row-prompt" title={task.userPrompt}>{task.userPrompt}</p>
       </div>
-      <p className="task-card-prompt">{task.userPrompt}</p>
-      <footer className="task-card-foot">
-        <Link to={`/tasks/${task.id}`} className="task-card-detail-link">
+      <div className="task-row-actions">
+        <Link to={`/tasks/${task.id}`} className="task-row-detail">
           View full definition
         </Link>
         <a
           href={scenarioTaskSourceUrl(task)}
           target="_blank"
           rel="noopener noreferrer"
-          className="task-card-source-link"
+          className="task-row-source"
         >
           ztd source
         </a>
-      </footer>
+      </div>
     </article>
   );
 }
@@ -176,12 +175,12 @@ function CategorySection({ category }: { category: ScenarioCategory }) {
     >
       <h2 id={`${category}-title`} className="docs-section-title">
         {meta.label}
-        <span className="tasks-category-count">{tasks.length}</span>
+        <span className="tasks-category-count">{String(tasks.length).padStart(2, '0')}</span>
       </h2>
       <p className="docs-section-intro">{meta.blurb}</p>
-      <div className="tasks-card-grid">
+      <div className="task-ledger">
         {tasks.map((task) => (
-          <TaskCard key={task.id} task={task} />
+          <TaskRow key={task.id} task={task} />
         ))}
       </div>
     </section>
@@ -269,7 +268,7 @@ export function TasksView() {
                 <Link to="/">live event stream</Link> to jump here, or browse by category below.
               </p>
               <p className="task-section-note tasks-hero-note">
-                Cards show a prompt excerpt. Open a task for pass criteria, tool boundaries, and
+                Rows show a prompt excerpt. Open a task for pass criteria, tool boundaries, and
                 grading tags. Deterministic tasks use fixed trace rules; semantic-judge tasks use an
                 LLM rubric.
               </p>

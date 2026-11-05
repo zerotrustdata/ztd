@@ -152,7 +152,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | `eval/` | Evaluation campaign inputs and evaluation data layout. Go evaluator resides in `internal/services/evaluation/`, exposed via `internal/cli/cmd/eval/`. |
 | `console/` | Gateway-embedded browser console (React + TypeScript). Docs: [Console Architecture & Development](../architecture/console.md). |
 | `ztd-adapter/` | Audited browser adapter and deterministic contract pack for generated observe frontends. |
-| `evaluation-explorer/` | Evaluation explorer SPA; build artifacts embedded in `internal/services/gateway/explorer/static`. |
+| `evaluation-explorer/` | Evaluation explorer SPA; build artifacts embedded in `internal/services/gateway/explorer/static`. Styles live in `src/styles/` by concern: `tokens.css` owns every color and the self-hosted fonts, and `tests/design-system.test.ts` guards the visual rules. |
 | `examples/` | Runnable Go platform examples, external console app, and MCP client configuration templates. |
 | `demos/` | End-to-end multi-agent scenario demonstrations (e.g. `demos/zero-trust-paper-company/`). |
 | `deploy/` | Reference infrastructure deployment configurations (e.g. `deploy/cloud_gateway/`). |

@@ -101,7 +101,7 @@ export function SponsorsView({
             target="_blank"
             rel="noopener noreferrer"
           >
-            Sponsor via Stripe →
+            Sponsor via Stripe
           </a>
           <a
             className="sponsors-cta-secondary"
@@ -142,7 +142,7 @@ export function SponsorsView({
               target="_blank"
               rel="noopener noreferrer"
             >
-              Claim #1 →
+              Claim #1
             </a>
           </div>
         </div>

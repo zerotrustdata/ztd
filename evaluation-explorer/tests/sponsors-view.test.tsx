@@ -37,7 +37,7 @@ describe('SponsorsView', () => {
     // First-sponsor CTA
     const firstCta = within(view.getByRole('region', { name: 'First sponsor call to action' }));
     expect(firstCta.getByRole('heading', { name: 'Be the first sponsor on the board' })).toBeInTheDocument();
-    expect(firstCta.getByRole('link', { name: 'Claim #1 →' })).toHaveAttribute('href', SPONSOR_URL);
+    expect(firstCta.getByRole('link', { name: 'Claim #1' })).toHaveAttribute('href', SPONSOR_URL);
 
     // Leaderboard (open podium state)
     const table = view.getByRole('table', { name: 'Top sponsors leaderboard' });
@@ -52,7 +52,7 @@ describe('SponsorsView', () => {
     expect(view.getByText(/Danny Barbour/i)).toBeInTheDocument();
 
     // Payment & contact links
-    expect(view.getByRole('link', { name: 'Sponsor via Stripe →' })).toHaveAttribute('href', SPONSOR_URL);
+    expect(view.getByRole('link', { name: 'Sponsor via Stripe' })).toHaveAttribute('href', SPONSOR_URL);
     expect(view.getByRole('link', { name: 'Email me' })).toHaveAttribute('href', expect.stringMatching(/^mailto:/));
     expect(view.getByRole('link', { name: 'Book a call' })).toHaveAttribute('href', PLATFORM_CONTACT_CALENDLY);
     expect(view.getByRole('link', { name: 'LinkedIn' })).toHaveAttribute('href', PLATFORM_CONTACT_LINKEDIN);

@@ -32,7 +32,7 @@ export function RunsPanel() {
           <h2>Runs</h2>
         </div>
         <Link to="/evaluations" className="panel-link">
-          Explore all →
+          Explore all
         </Link>
       </div>
       <ul className="campaign-legend" aria-label="Assignment outcome legend">

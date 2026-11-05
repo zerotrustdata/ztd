@@ -160,6 +160,10 @@ export function ModelDetailView() {
     return Array.from(versions.values());
   }, [versionSources]);
   const connection = useStoreState((state) => state.connection);
+  const modelVariantId = model?.variant_id;
+  const modelFormations = useMemo(() => formationGroups(allEvaluations).flatMap((formation) =>
+    (['primary', 'assistant', 'lite'] as const).filter((role) => formation.summary.model_role_mapping[role] === modelVariantId)
+      .map((role) => ({ formation, role }))), [modelVariantId, allEvaluations]);
 
   if (!variantId) {
     return <ErrorState message="No model selected." />;
@@ -170,10 +174,6 @@ export function ModelDetailView() {
 
   const profile = resolveModelProfile(model);
   const suiteRows = modelSuiteRows(model.variant_id, assignments, evaluations, suites);
-
-  const modelFormations = useMemo(() => formationGroups(allEvaluations).flatMap((formation) =>
-    (['primary', 'assistant', 'lite'] as const).filter((role) => formation.summary.model_role_mapping[role] === model.variant_id)
-      .map((role) => ({ formation, role }))), [model.variant_id, allEvaluations]);
 
   return (
     <div className="model-detail">
@@ -198,7 +198,7 @@ export function ModelDetailView() {
           </>
         }
         verdict={
-          <TonePill tone={model.pass_rate ? 'info' : 'neutral'}>
+          <TonePill tone={model.pass_rate ? 'info' : 'neutral'} className="terminal-pill-value">
             {model.pass_rate
               ? `${formatPercent(model.pass_rate.estimate)} · n=${formatNumber(model.pass_rate.denominator)}`
               : 'Not evaluated'}

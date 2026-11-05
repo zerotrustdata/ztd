@@ -1,0 +1,166 @@
+/* Copyright (c) 2026 Lateralus Labs, LLC.
+   Licensed under the Business Source License 1.1 — see LICENSE for details. */
+
+.sponsors-view {
+  padding-bottom: 40px;
+}
+
+.sponsors-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  margin-top: 6px;
+}
+
+.sponsors-cta-primary,
+.sys-platform-links a.sponsors-cta-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 14px;
+  border: 1px solid var(--fg);
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: opacity 100ms;
+}
+
+.sponsors-cta-primary:hover,
+.sys-platform-links a.sponsors-cta-primary:hover {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: var(--bg);
+  opacity: 0.85;
+  text-decoration: none;
+}
+
+.sponsors-cta-secondary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.sponsors-cta-secondary:hover {
+  border-color: var(--border-strong);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.sponsors-first-cta-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 24px;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+}
+
+.sponsors-first-cta-copy {
+  flex: 1 1 380px;
+  min-width: 0;
+}
+
+.sponsors-first-cta-kicker {
+  display: inline-block;
+  margin-bottom: 4px;
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+  color: var(--fg-dim);
+  text-transform: uppercase;
+}
+
+.sponsors-first-cta-copy h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--fg);
+}
+
+.sponsors-first-cta-copy p {
+  margin: 0;
+  max-width: var(--measure);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--fg-muted);
+}
+
+.sponsors-first-cta-action {
+  flex-shrink: 0;
+}
+
+.sponsors-leaderboard-table {
+  margin-top: 8px;
+}
+
+.sponsors-placeholder-row td {
+  color: var(--fg-muted);
+}
+
+.sponsors-placeholder-first {
+  background: transparent;
+}
+
+.sponsors-placeholder-first .role-leader-name {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.sponsor-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+  color: var(--fg-muted);
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.sponsor-tier-founding {
+  color: var(--fg);
+}
+
+.sponsor-tier-principal {
+  color: var(--fg-muted);
+}
+
+.sponsor-tier-supporter {
+  color: var(--fg-muted);
+}
+
+.sponsors-cadence-label {
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  color: var(--fg-dim);
+}
+
+.sponsors-automation-note {
+  margin-top: 14px;
+}
+
+.sponsors-view { max-width: 860px; }
+.sponsors-view .evidence-title { font-family: var(--font); font-size: 22px; letter-spacing: -0.005em; }
+.sponsors-view .evidence-panel > p,
+.sponsors-view .evidence-hero p { max-width: var(--measure); }
