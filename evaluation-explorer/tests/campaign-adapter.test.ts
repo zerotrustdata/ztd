@@ -91,6 +91,17 @@ describe('isCampaignProjectionEnvelope', () => {
 });
 
 describe('adaptCampaignProjectionEnvelope', () => {
+  it('preserves scenario identity for frozen fixture verification', () => {
+    const records = adaptCampaignProjectionEnvelope({
+      ...fixtureCampaignResultEnvelope,
+      record: { ...fixtureCampaignResultEnvelope.record, scenario_id: 'security-denial-memory' },
+    }, createCampaignAdaptContext());
+    expect(records.find((record) => record.kind === 'assignment_result')).toMatchObject({
+      scenario_id: 'security-denial-memory',
+      task_id: 'security-denial-memory',
+    });
+  });
+
   it('maps lifecycle queued records to stage updates without synthesizing evaluation summaries', () => {
     const context = createCampaignAdaptContext();
     const records = adaptCampaignProjectionEnvelope(

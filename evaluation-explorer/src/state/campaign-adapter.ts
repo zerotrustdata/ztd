@@ -408,6 +408,7 @@ function adaptResultProjection(
   const datasetId = campaignDatasetId(runId);
   const observedAt = new Date(record.completed_at).toISOString();
   const meta = context.assignmentMeta.get(metaKey(runId, assignmentId));
+  const scenarioId = meta?.scenarioId ?? record.scenario_id;
   const lifecycle = mapLifecycleStatus(record.lifecycle_status);
   const terminalStatus = mapTerminalStatus(record.lifecycle_status, record.summary_status);
   const qualityState: QualityState = terminalStatus === 'completed' ? 'live_in_progress' : 'terminal_failed';
@@ -427,7 +428,8 @@ function adaptResultProjection(
     ...mapCampaignRelease(record),
     assignment_id: assignmentId,
     run_id: runId,
-    task_id: meta?.scenarioId ?? record.scenario_id,
+    scenario_id: scenarioId,
+    task_id: scenarioId,
     variant_id: variantId,
     role,
     repetition: meta?.repetition ?? 1,

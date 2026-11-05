@@ -105,17 +105,18 @@ type PublicMirrorServer struct {
 }
 
 type cachedBootstrapSnapshot struct {
-	sequence         int64
-	feedChainHash    string
-	withdrawalDigest string
-	freshness        models.CampaignFreshness
-	proofCount       int
-	proofByteSize    int64
-	proofRoot        string
-	proofGeneratedAt time.Time
-	etag             string
-	jsonBytes        []byte
-	gzipBytes        []byte
+	withdrawalVersion uint64
+	sequence          int64
+	feedChainHash     string
+	withdrawalDigest  string
+	freshness         models.CampaignFreshness
+	proofCount        int
+	proofByteSize     int64
+	proofRoot         string
+	proofGeneratedAt  time.Time
+	etag              string
+	jsonBytes         []byte
+	gzipBytes         []byte
 }
 
 type publicMirrorRateWindow struct {
@@ -1036,7 +1037,12 @@ func (m *PublicMirrorServer) storeProofPackage(ctx context.Context, request mode
 	if err := validatePublicProofEntryList(manifest.Artifacts, request.Artifacts, storedSizes); err != nil {
 		return err
 	}
-	return m.store.putProofPackage(ctx, request.SourceID, manifest, request.Artifacts, storedSizes)
+	if err := m.store.putProofPackage(ctx, request.SourceID, manifest, request.Artifacts, storedSizes); err != nil {
+		return err
+	}
+	// A full manifest can remove artifacts without a withdrawal segment.
+	m.discardLayoutReadModels()
+	return nil
 }
 
 func (m *PublicMirrorServer) storeProofSegment(ctx context.Context, sourceID string, segment models.PublicProofManifestSegment, artifacts []models.PublicProofIngestArtifact) error {
@@ -1082,7 +1088,13 @@ func (m *PublicMirrorServer) storeProofSegment(ctx context.Context, sourceID str
 	if err := validatePublicProofEntryList(segment.Entries, artifacts, storedSizes); err != nil {
 		return err
 	}
-	return m.store.putProofSegment(ctx, sourceID, segment, artifacts, storedSizes)
+	if err := m.store.putProofSegment(ctx, sourceID, segment, artifacts, storedSizes); err != nil {
+		return err
+	}
+	if len(segment.WithdrawnArtifactIDs) > 0 {
+		m.discardLayoutReadModels()
+	}
+	return nil
 }
 
 func validatePublicProofSegment(sourceID string, segment models.PublicProofManifestSegment, keys PublicMirrorKeys, rejectRevoked bool) error {
@@ -1255,6 +1267,7 @@ func (m *PublicMirrorServer) currentBootstrapCached(ctx context.Context, request
 		// One read model per source until its first batch, so the digest a pointer
 		// names stays servable.
 		if cached, ok := m.layout.offlineBootstraps[sourceID]; ok {
+			cached.withdrawalVersion = m.layout.readModelWithdrawalVersion
 			return cached, nil
 		}
 		bootstrap := models.PublicFeedBootstrap{
@@ -1274,6 +1287,7 @@ func (m *PublicMirrorServer) currentBootstrapCached(ctx context.Context, request
 			m.layout.offlineBootstraps = make(map[string]cachedBootstrapSnapshot)
 		}
 		m.layout.offlineBootstraps[sourceID] = cached
+		cached.withdrawalVersion = m.layout.readModelWithdrawalVersion
 		return cached, nil
 	}
 
@@ -1293,7 +1307,7 @@ func (m *PublicMirrorServer) currentBootstrapCached(ctx context.Context, request
 	}
 
 	freshness := m.sourceFreshness(summary)
-	if cached, ok := m.bootstrapCache[sourceID]; ok &&
+	if cached, ok := m.bootstrapCache[sourceID]; ok && cached.withdrawalVersion == m.layout.readModelWithdrawalVersion &&
 		cached.sequence == summary.HighWaterSequence &&
 		cached.feedChainHash == summary.FeedChainHash &&
 		cached.withdrawalDigest == withdrawalDigest &&
@@ -1311,6 +1325,7 @@ func (m *PublicMirrorServer) currentBootstrapCached(ctx context.Context, request
 		return cachedBootstrapSnapshot{}, err
 	}
 	summaryCopy := *summary
+	withdrawalVersion := m.layout.readModelWithdrawalVersion
 	m.writeMu.Unlock()
 
 	// Preserve the transport's newest-first ordering. Unlike a history tail,
@@ -1353,6 +1368,7 @@ func (m *PublicMirrorServer) currentBootstrapCached(ctx context.Context, request
 	if err != nil {
 		return cachedBootstrapSnapshot{}, err
 	}
+	cachedResult.withdrawalVersion = withdrawalVersion
 
 	m.writeMu.Lock()
 	currentID, currentSummary := m.sourceView(sourceID)
@@ -1365,7 +1381,7 @@ func (m *PublicMirrorServer) currentBootstrapCached(ctx context.Context, request
 	if currentProofErr == nil && currentHasProof && currentProofSummary.ArtifactCount > 0 {
 		currentProofRoot, currentProofGeneratedAt = currentProofSummary.ProofRootSHA256, currentProofSummary.GeneratedAt
 	}
-	if currentProofErr == nil && currentID == sourceID && currentSummary != nil &&
+	if currentProofErr == nil && currentID == sourceID && currentSummary != nil && withdrawalVersion == m.layout.readModelWithdrawalVersion &&
 		currentSummary.HighWaterSequence == cachedResult.sequence && currentSummary.FeedChainHash == cachedResult.feedChainHash &&
 		mirrorWithdrawalDigest(currentSummary.WithdrawnDatasetIDs) == cachedResult.withdrawalDigest &&
 		m.sourceFreshness(currentSummary) == cachedResult.freshness && currentProofCount == cachedResult.proofCount &&

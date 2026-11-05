@@ -138,6 +138,7 @@ func (m *PublicMirrorServer) WithdrawCampaignDataset(ctx context.Context, runID 
 	m.mu.Lock()
 	m.sources[sourceID] = &next
 	m.mu.Unlock()
+	m.discardLayoutReadModels()
 	return nil
 }
 

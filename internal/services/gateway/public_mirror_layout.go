@@ -38,6 +38,14 @@ var _ PublicLayoutSource = (*PublicMirrorServer)(nil)
 // record that names a run's lifecycle.
 const publicEvaluationSummaryKind = "evaluation_summary"
 
+const (
+	// Keep advertised objects beyond the pointer's 30-second HTTP cache. The
+	// count and compressed byte limits bound memory during a busy republish.
+	publicMirrorReadModelRetention  = time.Minute
+	publicMirrorReadModelMaxEntries = 128
+	publicMirrorReadModelMaxBytes   = 64 << 20
+)
+
 // publicMirrorLayoutCache is the layout state one mirror keeps: the signer
 // and last served pointer, and the memoized proof catalog per source. The zero
 // value is ready to use.
@@ -57,6 +65,17 @@ type publicMirrorLayoutCache struct {
 	// offlineBootstraps holds the read model of each source with no accepted batch.
 	// The mirror's writeMu guards it.
 	offlineBootstraps map[string]cachedBootstrapSnapshot
+	// readModels retains only compressed bodies. writeMu guards these fields,
+	// and withdrawals invalidate every retained body and any in-flight build.
+	readModels                 []publicLayoutReadModel
+	readModelWithdrawalVersion uint64
+}
+
+type publicLayoutReadModel struct {
+	sourceID  string
+	digest    string
+	gzipBytes []byte
+	expiresAt time.Time
 }
 
 // publicLayoutCatalogMemo is the last catalog built for one source and the
@@ -363,7 +382,59 @@ func (m *PublicMirrorServer) layoutReadModel(ctx context.Context, sourceID strin
 		return cachedBootstrapSnapshot{}, "", fmt.Errorf("mirror layout: read model: %w", err)
 	}
 	sum := sha256.Sum256(cached.jsonBytes)
-	return cached, hex.EncodeToString(sum[:]), nil
+	digest := hex.EncodeToString(sum[:])
+	m.writeMu.Lock()
+	defer m.writeMu.Unlock()
+	if cached.withdrawalVersion != m.layout.readModelWithdrawalVersion {
+		return cachedBootstrapSnapshot{}, "", fmt.Errorf("mirror layout: withdrawal during read model build: %w", constants.ErrPublicFeedPointerInvalid)
+	}
+	if err := m.retainLayoutReadModel(sourceID, digest, cached.gzipBytes); err != nil {
+		return cachedBootstrapSnapshot{}, "", err
+	}
+	return cached, digest, nil
+}
+
+// retainLayoutReadModel remembers a body before advertising its digest. The
+// caller holds writeMu. Retention is bounded globally across all sources.
+func (m *PublicMirrorServer) retainLayoutReadModel(sourceID, digest string, body []byte) error {
+	if len(body) > publicMirrorReadModelMaxBytes {
+		return fmt.Errorf("mirror layout: compressed read model exceeds retention budget: %w", constants.ErrEvidenceArtifactTooLarge)
+	}
+	now := m.now()
+	m.pruneLayoutReadModels(now)
+	for i, entry := range m.layout.readModels {
+		if entry.sourceID == sourceID && entry.digest == digest {
+			m.layout.readModels = slices.Delete(m.layout.readModels, i, i+1)
+			break
+		}
+	}
+	m.layout.readModels = append(m.layout.readModels, publicLayoutReadModel{
+		sourceID: sourceID, digest: digest, gzipBytes: body,
+		expiresAt: now.Add(publicMirrorReadModelRetention),
+	})
+	byteSize := 0
+	for _, entry := range m.layout.readModels {
+		byteSize += len(entry.gzipBytes)
+	}
+	for len(m.layout.readModels) > publicMirrorReadModelMaxEntries || byteSize > publicMirrorReadModelMaxBytes {
+		byteSize -= len(m.layout.readModels[0].gzipBytes)
+		m.layout.readModels = slices.Delete(m.layout.readModels, 0, 1)
+	}
+	return nil
+}
+
+// pruneLayoutReadModels drops expired bodies. The caller holds writeMu.
+func (m *PublicMirrorServer) pruneLayoutReadModels(now time.Time) {
+	m.layout.readModels = slices.DeleteFunc(m.layout.readModels, func(entry publicLayoutReadModel) bool {
+		return !now.Before(entry.expiresAt)
+	})
+}
+
+// discardLayoutReadModels invalidates retained bodies and builds that started
+// before a committed withdrawal. The caller holds writeMu.
+func (m *PublicMirrorServer) discardLayoutReadModels() {
+	m.layout.readModels = nil
+	m.layout.readModelWithdrawalVersion++
 }
 
 // activePublicRuns returns the runs whose latest explorer summary is queued or
@@ -589,13 +660,31 @@ func (m *PublicMirrorServer) handleLayoutPointer(w http.ResponseWriter, r *http.
 	m.writeJSON(w, http.StatusOK, m.layout.pointer)
 }
 
-// handleLayoutReadModel serves read-model/<sha>.json.gz for the current digest.
+// handleLayoutReadModel serves the current and recently advertised read models.
 func (m *PublicMirrorServer) handleLayoutReadModel(w http.ResponseWriter, r *http.Request) {
 	if !publicLayoutGET(w, r) {
 		return
 	}
 	name, ok := publicLayoutName(r.URL.Path, "/"+constants.PublicLayoutReadModelPrefix, constants.PublicLayoutJSONGzipSuffix)
+	if !ok || !validPublicProofArtifactID(name) {
+		http.NotFound(w, r)
+		return
+	}
 	sourceID, _ := m.sourceView(r.URL.Query().Get("source"))
+	m.writeMu.Lock()
+	m.pruneLayoutReadModels(m.now())
+	var retained []byte
+	for _, entry := range m.layout.readModels {
+		if entry.sourceID == sourceID && entry.digest == name {
+			retained = entry.gzipBytes
+			break
+		}
+	}
+	m.writeMu.Unlock()
+	if retained != nil {
+		m.writePublicLayoutBody(w, constants.HeaderValueApplicationJSON, "gzip", constants.PublicLayoutCacheImmutable, retained)
+		return
+	}
 	cached, digest, err := m.layoutReadModel(r.Context(), sourceID)
 	if err != nil {
 		m.writeStoreUnavailable(w, "mirror: read layout read model", err)

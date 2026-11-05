@@ -114,6 +114,81 @@ func TestPublicMirrorLayout_PointerNamesServedReadModel(t *testing.T) {
 	assert.Equal(t, bootstrapBody, plain, "the read model is the bootstrap bytes")
 }
 
+func TestPublicMirrorLayout_AdvertisedReadModelSurvivesIngest(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	client := layoutClient(t)
+	first := env.buildBatch([]models.PublicFeedRecord{layoutProjection(env, 1)}, constants.PublicFeedZeroHashHex)
+	_, accepted := env.sendIngest(first)
+	require.True(t, accepted.Accepted)
+	_, body := layoutGet(t, client, env.publicServer.URL, "/pointer.json")
+	var pointer models.PublicFeedPointer
+	require.NoError(t, json.Unmarshal(body, &pointer))
+
+	// A publisher can accept another batch between the browser's pointer and
+	// read-model requests. The advertised digest must still be downloadable.
+	second := env.buildBatch([]models.PublicFeedRecord{layoutProjection(env, 2)}, first.ContentHash)
+	_, accepted = env.sendIngest(second)
+	require.True(t, accepted.Accepted)
+	path := "/read-model/" + pointer.ReadModelSHA256 + ".json.gz"
+	response, body := layoutGet(t, client, env.publicServer.URL, path)
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	assert.Equal(t, pointer.ReadModelSHA256, models.SHA256Hex(gunzipLayout(t, body)))
+	original := bytes.Clone(body)
+
+	_, body = layoutGet(t, client, env.publicServer.URL, "/pointer.json")
+	var current models.PublicFeedPointer
+	require.NoError(t, json.Unmarshal(body, &current))
+	require.NotEqual(t, pointer.ReadModelSHA256, current.ReadModelSHA256)
+	response, body = layoutGet(t, client, env.publicServer.URL, path)
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	assert.Equal(t, original, body, "another reader's newer pointer must not invalidate an in-flight download")
+
+	response, _ = layoutGet(t, client, env.publicServer.URL, path+"?source=another-source")
+	assert.Equal(t, http.StatusNotFound, response.StatusCode, "retained objects stay source-scoped")
+}
+
+func TestPublicMirrorLayout_WithdrawalInvalidatesRetainedReadModels(t *testing.T) {
+	for _, kind := range []string{"dataset", "artifact"} {
+		t.Run(kind, func(t *testing.T) {
+			env := newMirrorTestEnv(t)
+			client := layoutClient(t)
+			ctx := t.Context()
+			batch := env.buildBatch([]models.PublicFeedRecord{env.makeRecord(1, models.NewPublicFeedObject(map[string]string{
+				"kind": "evaluation_summary", "dataset_id": campaignMirrorDatasetID("run-1"),
+				"run_id": "run-1", "schema_version": "1.5.0",
+			}))}, constants.PublicFeedZeroHashHex)
+			_, accepted := env.sendIngest(batch)
+			require.True(t, accepted.Accepted)
+			content := []byte("fixture")
+			entry := makeTestCatalogEntry("scenario-test.input.json", content)
+			segment := makeTestSegment(env, 1, constants.PublicFeedZeroHashHex, []models.PublicProofCatalogEntry{entry}, nil)
+			require.NoError(t, env.mirror.storeProofPackage(ctx, models.PublicProofIngestRequest{
+				SourceID: env.sourceID, Segment: &segment,
+				Artifacts: []models.PublicProofIngestArtifact{{ArtifactID: entry.ArtifactID, Content: content}},
+			}))
+			_, body := layoutGet(t, client, env.publicServer.URL, "/pointer.json")
+			var pointer models.PublicFeedPointer
+			require.NoError(t, json.Unmarshal(body, &pointer))
+
+			if kind == "dataset" {
+				require.NoError(t, env.mirror.WithdrawCampaignDataset(ctx, "run-1"))
+			} else {
+				withdrawal := makeTestSegment(env, 2, segment.ProofRootSHA256, nil, []string{entry.ArtifactID})
+				require.NoError(t, env.mirror.storeProofPackage(ctx, models.PublicProofIngestRequest{SourceID: env.sourceID, Segment: &withdrawal}))
+			}
+			response, _ := layoutGet(t, client, env.publicServer.URL, "/read-model/"+pointer.ReadModelSHA256+".json.gz")
+			assert.Equal(t, http.StatusNotFound, response.StatusCode, "withdrawals leave no retention grace")
+			_, body = layoutGet(t, client, env.publicServer.URL, "/pointer.json")
+			var current models.PublicFeedPointer
+			require.NoError(t, json.Unmarshal(body, &current))
+			require.NotEqual(t, pointer.ReadModelSHA256, current.ReadModelSHA256)
+			response, body = layoutGet(t, client, env.publicServer.URL, "/read-model/"+current.ReadModelSHA256+".json.gz")
+			require.Equal(t, http.StatusOK, response.StatusCode)
+			assert.Equal(t, current.ReadModelSHA256, models.SHA256Hex(gunzipLayout(t, body)))
+		})
+	}
+}
+
 func TestPublicMirrorLayout_ProofMetaMissesWithdrawnArtifact(t *testing.T) {
 	env := newMirrorTestEnv(t)
 	client := layoutClient(t)
