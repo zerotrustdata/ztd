@@ -14,9 +14,8 @@ import { scrollToAnchor, scrollToAnchorOnClick } from '../utils/scroll';
 import { TOOL_SCORE_DIMENSIONS } from '../contract/types';
 import { AssignmentEvidenceData } from '../components/AssignmentEvidenceData';
 import { AssignmentActivitySummary } from '../components/AssignmentActivitySummary';
-import { AgentTraceSection, agentTraceBinding } from '../components/AgentTraceSection';
 import { ScenarioFixtureSection, scenarioFixtureBindings } from '../components/ScenarioFixtureSection';
-import { AssignmentAuditProofRow, filterNonAuditEvidenceBindings } from '../components/AssignmentAuditProofRow';
+import { EvidenceAccessOffer, filterNonAuditEvidenceBindings, offeredEvidence } from '../components/EvidenceAccessOffer';
 import { EvidenceBindingsPanel } from '../components/EvidenceBindingsPanel';
 import { RoleTranscripts } from '../components/RoleTranscripts';
 import { ScenarioContextCard } from '../components/ScenarioContextCard';
@@ -64,7 +63,6 @@ const SECTION = {
   task: 'assignment-task',
   trail: 'assignment-trail',
   fixture: 'assignment-scenario-fixture',
-  agentTrace: 'assignment-agent-trace',
   governance: 'assignment-governance',
   criteria: 'assignment-criteria',
   scores: 'assignment-scores',
@@ -450,7 +448,6 @@ export function AssignmentDetailView() {
   const verification = evidenceChain.find((step) => step.key === 'verified');
   const publishedActivity = Boolean(assignment.activity_summary);
   const transcripts = assignment.role_transcripts ?? [];
-  const hasAgentTrace = Boolean(agentTraceBinding(assignment.evidence_bindings));
   const fixtureBindings = scenarioFixtureBindings(assignment.evidence_bindings);
   const hasFixture = Boolean(assignment.scenario_id && fixtureBindings.input && fixtureBindings.gold);
   const hasScores = visibleToolScoreDimensions(assignment).length > 0 || decomposedScores(assignment).length > 0;
@@ -458,7 +455,7 @@ export function AssignmentDetailView() {
   const otherEvidenceBindings = filterNonAuditEvidenceBindings(assignment.evidence_bindings);
   const hasEvidence = Boolean(otherEvidenceBindings?.length || assignment.verification_metadata);
   const hasAuditSlice = assignmentHasAuditSlice(assignment);
-  const hasProof = hasEvidence || hasAuditSlice;
+  const hasProof = hasEvidence || offeredEvidence(assignment.evidence_bindings).length > 0;
   const hasSignals = assignmentSecuritySignals(assignment).length > 0;
   const hasAside =
     hasProof || hasSignals || assignment.stage_summary.length > 0 || lifecycleEvents.length > 0 || siblingAssignments.length > 0;
@@ -468,8 +465,8 @@ export function AssignmentDetailView() {
 
   const chainTargets: Partial<Record<EvidenceChainStep['key'], string>> = {
     scenario: hasFixture ? SECTION.fixture : task ? SECTION.task : undefined,
-    model: hasAgentTrace ? SECTION.agentTrace : SECTION.trail,
-    tool_calls: hasAgentTrace ? SECTION.agentTrace : transcripts.length > 0 ? SECTION.trail : publishedActivity ? SECTION.governance : undefined,
+    model: SECTION.trail,
+    tool_calls: transcripts.length > 0 ? SECTION.trail : publishedActivity ? SECTION.governance : undefined,
     policy: publishedActivity ? SECTION.governance : undefined,
     governed_actions: publishedActivity ? SECTION.governance : undefined,
     graded: hasScores ? SECTION.scores : task ? SECTION.criteria : undefined,
@@ -538,7 +535,7 @@ export function AssignmentDetailView() {
       <DetailLayout asideLabel="Proof and measurements" aside={hasAside ? <>
             {hasProof ? (
               <div id={SECTION.proof} className="assignment-proof">
-                <AssignmentAuditProofRow bindings={assignment.evidence_bindings} />
+                <EvidenceAccessOffer bindings={assignment.evidence_bindings} runId={runId} assignmentId={assignment.assignment_id} />
                 {hasEvidence ? (
                   <EvidenceBindingsPanel bindings={otherEvidenceBindings} verification={assignment.verification_metadata} />
                 ) : null}
@@ -601,7 +598,6 @@ export function AssignmentDetailView() {
         </Anchor> : null}
         <ScenarioFixtureSection id={SECTION.fixture} bindings={assignment.evidence_bindings} scenarioId={assignment.scenario_id} />
         <ModelResponseSection assignment={assignment} />
-        <AgentTraceSection id={SECTION.agentTrace} bindings={assignment.evidence_bindings} runId={runId} assignmentId={assignment.assignment_id} />
         <Anchor id={SECTION.governance}><AssignmentActivitySummary activity={assignment.activity_summary} /></Anchor>
         {task ? <Anchor id={SECTION.criteria}><TaskExpectationSection task={task} className="assignment-task-expected" fold showRoleCriteria={false} /></Anchor> : null}
         <ScoresSection assignment={assignment} />

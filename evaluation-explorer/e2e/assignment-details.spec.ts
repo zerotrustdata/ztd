@@ -152,3 +152,29 @@ test('rejects a malicious assignment record before rendering it', async ({ page 
   await expect(page.getByRole('alert')).toContainText('Feed validation errors');
   expectPublicOnly(requests);
 });
+
+test('offers the full agent trace and audit database by email without fetching either', async ({ page }) => {
+  const traceSha = 'c'.repeat(64);
+  const sliceSha = '9b'.repeat(32);
+  const requests = await installMirror(page, [
+    evaluation(),
+    assignment({
+      evidence_bindings: [
+        ...(fixtureEnrichedAssignmentResult.evidence_bindings ?? []),
+        { kind: 'assignment_agent_trace', sha256: traceSha, schema_ref: 'ztd.eval.v1.PublicAssignmentAgentTrace' },
+        { kind: 'assignment_audit_slice', sha256: sliceSha, schema_ref: 'ztd.eval.v1.PublicAssignmentAuditSlice' },
+      ],
+    }),
+  ]);
+
+  await page.goto(`/evaluations/${datasetId}/${runId}/assignments/assignment-1`);
+  const offer = page.getByRole('region', { name: 'Full evidence' });
+  await expect(offer).toContainText('available under a custom agreement');
+  const href = await offer.getByRole('link', { name: 'Request access' }).getAttribute('href');
+  const body = new URL(href ?? '').searchParams.get('body') ?? '';
+  expect(body).toContain(`Agent trace SHA-256: ${traceSha}`);
+  expect(body).toContain(`Audit database SHA-256: ${sliceSha}`);
+  await expect(page.getByRole('heading', { name: 'Full agent trace' })).toHaveCount(0);
+  expect(requests.some((request) => request.includes(traceSha) || request.includes(sliceSha))).toBe(false);
+  expectPublicOnly(requests);
+});

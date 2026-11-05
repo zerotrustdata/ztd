@@ -110,67 +110,54 @@
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
 }
-.assignment-audit-proof {
-  padding: 12px;
-  border: 1px solid var(--border-strong);
-  background: transparent;
-}
-.assignment-audit-proof-row {
+.evidence-offer {
   display: grid;
   gap: 8px;
-  font-size: var(--fs-body);
-}
-.assignment-audit-proof-label {
-  color: var(--fg);
+  padding: 12px;
+  border: 1px solid var(--border);
   font-size: var(--fs-label);
+}
+.evidence-offer-label {
+  color: var(--fg);
+  font-family: var(--mono);
   font-weight: 500;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  font-family: var(--mono);
 }
-.assignment-audit-proof-meta {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
+.evidence-offer-note {
+  margin: 0;
   color: var(--fg-dim);
+  line-height: 1.5;
 }
-.assignment-audit-proof-meta code {
-  font-family: var(--mono);
-  font-size: var(--fs-label);
+.evidence-offer-digests {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.assignment-audit-proof-actions {
+.evidence-offer-digests li {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+  color: var(--fg-dim);
 }
-.assignment-audit-proof-actions a,
-.assignment-audit-proof-actions button.copy-verify-command {
+.evidence-offer-digests code {
+  font-family: var(--mono);
+}
+.evidence-offer-action {
+  justify-self: start;
   padding: 3px 8px;
   border: 1px solid var(--border);
-  background: transparent;
   color: var(--fg);
-  font: inherit;
-  font-size: var(--fs-label);
-  font-weight: 400;
-  text-decoration: none;
-  cursor: pointer;
   font-family: var(--mono);
+  text-decoration: none;
   transition: border-color 100ms;
 }
-.assignment-audit-proof-actions a:hover,
-.assignment-audit-proof-actions button.copy-verify-command:hover,
-.assignment-audit-proof-actions a:focus-visible,
-.assignment-audit-proof-actions button.copy-verify-command:focus-visible {
+.evidence-offer-action:hover,
+.evidence-offer-action:focus-visible {
   border-color: var(--border-strong);
-  color: var(--fg);
-}
-.assignment-audit-proof-note {
-  margin: 10px 0 0;
-  color: var(--fg-dim);
-  font-size: var(--fs-label);
-  line-height: 1.5;
 }
 .signal-list {
   display: grid;

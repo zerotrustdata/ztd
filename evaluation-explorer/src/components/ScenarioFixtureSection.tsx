@@ -20,9 +20,21 @@ import { ValidationError } from '../contract/validators';
 import { runnableVerifyCommand } from '../verifyCommand';
 import { useMirrorOrigin } from '../state/mirror';
 import { useProofArtifact } from '../state/proof';
-import { TextBlock } from './AgentTraceSection';
 import { PanelSection } from './evidence';
+import { prettyJSON } from './RoleTranscripts';
 import { CopyButton } from './shared';
+
+function TextBlock({ title, text, copyLabel, json = false }: { title: string; text: string; copyLabel: string; json?: boolean }) {
+  return (
+    <div className="transcript-field">
+      <div className="transcript-field-label">
+        {title}
+        <CopyButton text={text} label={copyLabel} />
+      </div>
+      <pre className="model-response-text"><code>{json ? prettyJSON(text) : text}</code></pre>
+    </div>
+  );
+}
 
 type Verified<T> = { status: 'loading' } | { status: 'verified'; value: T } | { status: 'failed'; reason: string };
 

@@ -861,14 +861,14 @@ function verifiedChainValue(assignment: AssignmentResult): ChainValue {
   }
 }
 
-/** True when the assignment publishes its offline audit database. */
+/** True when the record commits to the assignment's signed audit database. */
 export function assignmentHasAuditSlice(assignment: AssignmentResult): boolean {
   return (assignment.evidence_bindings ?? []).some((binding) => binding.kind === 'assignment_audit_slice');
 }
 
 /** The assignment's evidence chain in execution order: what was asked, what
  *  the model did, what governance decided and recorded, how it was graded and
- *  verified, and whether the signed audit slice can be checked offline. */
+ *  verified, and whether the signed audit slice was recorded. */
 export function assignmentEvidenceChain(assignment: AssignmentResult): EvidenceChainStep[] {
   const activity = assignment.activity_summary;
   const scenario = assignment.scenario_summary;
@@ -879,7 +879,7 @@ export function assignmentEvidenceChain(assignment: AssignmentResult): EvidenceC
       ? { value: SCENARIO_CATEGORY_COPY[category].label, tone: 'info' }
       : { value: 'Uncatalogued', tone: 'neutral' };
   const audit: ChainValue = assignmentHasAuditSlice(assignment)
-    ? { value: 'Published', tone: 'ok', detail: 'SQLite, segment-signed' }
+    ? { value: 'Recorded', tone: 'ok', detail: 'available under agreement' }
     : { value: 'Not published', tone: 'neutral' };
   return [
     { key: 'scenario', label: 'Scenario', ...scenarioValue },

@@ -196,7 +196,7 @@ describe('assignmentEvidenceChain', () => {
       ],
     });
     expect(step(assignment, 'verified')).toMatchObject({ value: 'Verified', tone: 'ok' });
-    expect(step(assignment, 'audit_slice')).toMatchObject({ value: 'Published', tone: 'ok' });
+    expect(step(assignment, 'audit_slice')).toMatchObject({ value: 'Recorded', tone: 'ok', detail: 'available under agreement' });
   });
 });
 

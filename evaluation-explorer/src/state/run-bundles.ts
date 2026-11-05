@@ -11,7 +11,7 @@
 
 import { LIVE_RUN_BUNDLE_RELOAD_MS, RUN_BUNDLE_LRU_LIMIT } from '../constants';
 import type { AssignmentResult, EvaluationSummary, ProjectionRecord } from '../contract/types';
-import { sha256Hex } from '../contract/agent-trace';
+import { sha256Hex } from '../contract/digest';
 import { evalStore } from './store';
 import { normalizeStreamRecord } from './feed';
 
