@@ -6,12 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ScenarioFixtureSection } from '../src/components/ScenarioFixtureSection';
 import { verifyScenarioGoldArtifact, verifyScenarioInputArtifact } from '../src/contract/scenario-fixture';
-import type { ProofCatalogEntry, PublicEvidenceBinding } from '../src/contract/types';
+import type { PublicEvidenceBinding } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
-
-vi.mock('../src/state/feed', () => ({
-  fetchProofCatalogEntry: vi.fn().mockResolvedValue(null),
-}));
 
 const sha256 = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');
 const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
@@ -85,25 +81,12 @@ describe('ScenarioFixtureSection', () => {
     { kind: 'scenario_input_fixture', sha256: sha256(inputBody), schema_ref: 'ztd.eval.v1.PublicScenarioInputFixture' },
     { kind: 'scenario_gold_criteria', sha256: sha256(goldBody), schema_ref: 'ztd.eval.v1.PublicScenarioGoldCriteria' },
   ];
-  const entry = (body: Uint8Array, filename: string): ProofCatalogEntry => ({
-    artifact_id: sha256(body),
-    filename,
-    media_type: 'application/json',
-    byte_size: body.byteLength,
-    sha256: sha256(body),
-    classification: 'public_safe',
-    campaign_id: 'campaign-1',
-    generated_at: '2026-10-15T00:00:00Z',
-    verification_command: `sha256sum ${filename}`,
-    immutable_url: `/proofs/${sha256(body)}`,
-  });
   const serve = (input: Uint8Array, gold: Uint8Array) =>
     vi.fn((url: string) => Promise.resolve(new Response((url.endsWith(sha256(inputBody)) ? input : gold).slice())));
 
   beforeEach(() => {
     evalStore.loadFixtures([], []);
     evalStore.setMirrorOrigin('http://127.0.0.1:8082');
-    evalStore.loadProofCatalog([entry(inputBody, 'scenario-scenario-1.input.json'), entry(goldBody, 'scenario-scenario-1.gold.json')]);
   });
 
   afterEach(() => {
@@ -111,7 +94,8 @@ describe('ScenarioFixtureSection', () => {
   });
 
   it('renders the verified prompt, workspace files, gold criteria, and downloads', async () => {
-    vi.stubGlobal('fetch', serve(inputBody, goldBody));
+    const fetchMock = serve(inputBody, goldBody);
+    vi.stubGlobal('fetch', fetchMock);
 
     render(<ScenarioFixtureSection id="fixture" bindings={bindings} scenarioId="scenario-1" />);
 
@@ -120,6 +104,7 @@ describe('ScenarioFixtureSection', () => {
     expect(screen.getByText('logs/old.log · decoy')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Download input' })).toHaveAttribute('download', 'scenario-scenario-1.input.json');
     expect(screen.getByRole('link', { name: 'Download gold criteria' })).toHaveAttribute('download', 'scenario-scenario-1.gold.json');
+    expect(fetchMock.mock.calls.map(([url]) => url).sort()).toEqual(bindings.map((binding) => `http://127.0.0.1:8082/fixtures/${binding.sha256}`).sort());
   });
 
   it('shows nothing from a body that fails verification', async () => {

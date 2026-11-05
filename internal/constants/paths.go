@@ -949,6 +949,8 @@ const (
 	PublicLayoutPointerKey          = "pointer.json"
 	PublicLayoutReadModelPrefix     = "read-model/"
 	PublicLayoutProofPrefix         = "proofs/"
+	PublicLayoutRunsPrefix          = "runs/"
+	PublicLayoutFixturesPrefix      = "fixtures/"
 	PublicLayoutProofMetaPrefix     = "proof-meta/"
 	PublicLayoutProofCatalogPrefix  = "proof-catalog/"
 	PublicLayoutProofHeadKey        = "proof-head.json"

@@ -26,7 +26,6 @@ import type {
   ModelRole,
   ModelSummary,
   ProjectionRecord,
-  ProofCatalogEntry,
   SnapshotRecord,
   SuiteSummary,
 } from '../contract/types';
@@ -142,9 +141,6 @@ export interface StoreState {
   errors: string[];
   lastAcceptedAt: string | undefined;
   proofArtifactCount: number;
-  /** Catalog entries resolved on demand by content address; null is a
-   *  resolved absence (unknown or withdrawn on the mirror). */
-  proofArtifacts: Map<string, ProofCatalogEntry | null>;
 }
 
 function snapshotPinnedFreshness(freshness: FeedSnapshot['freshness']): FreshnessState | undefined {
@@ -194,7 +190,6 @@ function emptyState(): StoreState {
     errors: [],
     lastAcceptedAt: undefined,
     proofArtifactCount: 0,
-    proofArtifacts: new Map(),
   };
 }
 
@@ -286,7 +281,6 @@ export class EvalStore {
     if (refresh) {
       state.assignments = this.state.assignments;
       state.assignmentSources = this.state.assignmentSources;
-      state.proofArtifacts = this.state.proofArtifacts;
     }
     state.connection = 'live';
     state.mirrorOrigin = this.state.mirrorOrigin;
@@ -311,14 +305,6 @@ export class EvalStore {
     }
     this.state = state;
     this.emitIfNotBatching();
-  }
-
-  /** Record one on-demand catalog lookup for a content address. */
-  acceptProofArtifact(sha256: string, entry: ProofCatalogEntry | null): void {
-    this.setState((state) => ({
-      ...state,
-      proofArtifacts: new Map(state.proofArtifacts).set(sha256, entry),
-    }));
   }
 
   acceptSnapshot(snapshot: FeedSnapshot): void {
@@ -631,14 +617,6 @@ export class EvalStore {
             lastAcceptedAt: undefined,
             message,
           },
-    }));
-  }
-
-  /** Load deterministic fixtures supplied by test code. */
-  loadProofCatalog(entries: ProofCatalogEntry[]): void {
-    this.setState((state) => ({
-      ...state,
-      proofArtifacts: new Map(entries.map((entry) => [entry.sha256, entry])),
     }));
   }
 

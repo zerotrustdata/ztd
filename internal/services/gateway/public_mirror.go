@@ -593,6 +593,8 @@ func (m *PublicMirrorServer) publicReadMux() *http.ServeMux {
 	mux.Handle("/proof-head", m.withGzip(http.HandlerFunc(m.handleProofHead)))
 	mux.Handle("/proof-segments", m.withGzip(http.HandlerFunc(m.handleProofSegments)))
 	mux.HandleFunc("/proofs/", m.handleProofDownload)
+	mux.HandleFunc("/"+constants.PublicLayoutRunsPrefix, m.handleLayoutArtifact)
+	mux.HandleFunc("/"+constants.PublicLayoutFixturesPrefix, m.handleLayoutArtifact)
 	mux.HandleFunc("/"+constants.PublicLayoutPointerKey, m.handleLayoutPointer)
 	mux.HandleFunc("/"+constants.PublicLayoutReadModelPrefix, m.handleLayoutReadModel)
 	mux.HandleFunc("/"+constants.PublicLayoutProofCatalogPrefix, m.handleLayoutProofCatalog)
@@ -1805,6 +1807,12 @@ func (m *PublicMirrorServer) handleProofDownload(w http.ResponseWriter, r *http.
 		http.Error(w, "proof not found", http.StatusNotFound)
 		return
 	}
+	m.serveProofArtifact(w, r, artifactID)
+}
+
+// serveProofArtifact rehashes the stored bytes before sending them verbatim.
+// Gzipped bundles have no Content-Encoding: the digest covers the compressed bytes.
+func (m *PublicMirrorServer) serveProofArtifact(w http.ResponseWriter, r *http.Request, artifactID string) {
 	artifact, found, err := m.store.proofArtifact(r.Context(), artifactID)
 	if err != nil {
 		m.writeStoreUnavailable(w, "mirror: read proof artifact", err)

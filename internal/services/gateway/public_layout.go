@@ -10,8 +10,10 @@ package gateway
 import (
 	"context"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 )
 
@@ -87,4 +89,27 @@ type PublicLayoutSource interface {
 // above any revision written before a restart that lost last.
 func nextPublicFeedPointerRevision(last int64, now time.Time) int64 {
 	return max(last+1, now.UnixMilli())
+}
+
+// publicLayoutArtifactKey selects the UI artifacts from the internal proof log.
+// Historical traces and audit databases remain stored, but have no layout key.
+func publicLayoutArtifactKey(entry models.PublicProofCatalogEntry) (string, bool) {
+	if !validPublicProofArtifactID(entry.ArtifactID) {
+		return "", false
+	}
+	if strings.HasSuffix(entry.Filename, constants.PublicRunBundleFilenameSuffix) {
+		return constants.PublicLayoutRunsPrefix + entry.ArtifactID + constants.PublicLayoutJSONLGzipSuffix, true
+	}
+	if strings.HasPrefix(entry.Filename, "scenario-") && (strings.HasSuffix(entry.Filename, ".input.json") || strings.HasSuffix(entry.Filename, ".gold.json")) {
+		return constants.PublicLayoutFixturesPrefix + entry.ArtifactID, true
+	}
+	return "", false
+}
+
+// publicLayoutArtifactID extracts the digest from a selected artifact's layout key.
+func publicLayoutArtifactID(key string) string {
+	if digest, ok := strings.CutPrefix(key, constants.PublicLayoutRunsPrefix); ok {
+		return strings.TrimSuffix(digest, constants.PublicLayoutJSONLGzipSuffix)
+	}
+	return strings.TrimPrefix(key, constants.PublicLayoutFixturesPrefix)
 }

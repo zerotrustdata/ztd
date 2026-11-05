@@ -44,7 +44,7 @@ func newBucketIntegrationEnv(t *testing.T) *bucketIntegrationEnv {
 	require.True(t, accepted.Accepted)
 
 	content := []byte(`{"proof":"bucket-integration"}`)
-	entry := makeTestCatalogEntry("bucket.json", content)
+	entry := makeTestCatalogEntry("scenario-bucket.input.json", content)
 	segment := makeTestSegment(env, 1, constants.PublicFeedZeroHashHex, []models.PublicProofCatalogEntry{entry}, nil)
 	require.NoError(t, env.mirror.storeProofPackage(ctx, models.PublicProofIngestRequest{
 		SourceID: env.sourceID, Segment: &segment,
@@ -91,7 +91,7 @@ func TestBucketPublisher_PartialSyncNeverMovesPointer(t *testing.T) {
 	ctx := t.Context()
 	creds := b.fixture.credentials()
 	publisher := b.publisher(t, creds)
-	b.fixture.failPut(constants.PublicLayoutProofPrefix+b.proof.ArtifactID, 1)
+	b.fixture.failPut(bucketArtifactKey(b.proof), 1)
 
 	err := publisher.tick(ctx)
 	require.ErrorIs(t, err, constants.ErrPublicBucketRequestFailed)
@@ -101,7 +101,7 @@ func TestBucketPublisher_PartialSyncNeverMovesPointer(t *testing.T) {
 	require.NoError(t, publisher.tick(ctx))
 	pointer := b.pointer(t)
 	requireBucketObject(t, b.fixture, constants.PublicLayoutReadModelPrefix+pointer.ReadModelSHA256+constants.PublicLayoutJSONGzipSuffix)
-	requireBucketObject(t, b.fixture, constants.PublicLayoutProofPrefix+b.proof.ArtifactID)
+	requireBucketObject(t, b.fixture, bucketArtifactKey(b.proof))
 	requireBucketObject(t, b.fixture, constants.PublicLayoutProofMetaPrefix+b.proof.ArtifactID+constants.PublicLayoutJSONSuffix)
 	requireBucketObject(t, b.fixture, constants.PublicLayoutProofCatalogPrefix+pointer.ProofCatalogSHA256+constants.PublicLayoutJSONGzipSuffix)
 	requireBucketObject(t, b.fixture, bucketFakeSegmentKey(1))
@@ -141,7 +141,7 @@ func TestBucketPublisher_ObjectHeaders(t *testing.T) {
 	catalog, err := b.env.mirror.LayoutProofCatalog(ctx, b.env.sourceID)
 	require.NoError(t, err)
 	require.Len(t, catalog.Entries, 1)
-	proof := requireBucketObject(t, b.fixture, constants.PublicLayoutProofPrefix+b.proof.ArtifactID)
+	proof := requireBucketObject(t, b.fixture, bucketArtifactKey(b.proof))
 	assert.Equal(t, catalog.Entries[0].MediaType, proof.contentType, "a proof is served with its catalog media type")
 	assert.Empty(t, proof.contentEncoding, "a proof is stored as is, without Content-Encoding")
 }
@@ -196,7 +196,7 @@ func TestBucketPublisher_DownloadedFilesVerify(t *testing.T) {
 	require.Len(t, metaKeys, 1)
 	var entry models.PublicProofCatalogEntry
 	require.NoError(t, json.Unmarshal(requireBucketObject(t, b.fixture, metaKeys[0]).body, &entry))
-	proof := requireBucketObject(t, b.fixture, constants.PublicLayoutProofPrefix+entry.ArtifactID)
+	proof := requireBucketObject(t, b.fixture, bucketArtifactKey(entry))
 	proofDigest := sha256.Sum256(proof.body)
 	assert.Equal(t, entry.ArtifactID, hex.EncodeToString(proofDigest[:]))
 }
@@ -218,7 +218,7 @@ func TestBucketPublisher_WithdrawalFlowRetriesFailingPurge(t *testing.T) {
 	b.fixture.setPurgeFail(true)
 	err := publisher.tick(ctx)
 	require.ErrorIs(t, err, constants.ErrPublicBucketPurgeFailed)
-	assert.Empty(t, b.fixture.keys(constants.PublicLayoutProofPrefix+b.proof.ArtifactID), "the withdrawn artifact is deleted before the purge")
+	assert.Empty(t, b.fixture.keys(bucketArtifactKey(b.proof)), "the withdrawn artifact is deleted before the purge")
 	pending, err := ReadPublicBucketStatus(ctx, b.env.fileSvc, models.PublicExportConfig{Bucket: ptrTo(b.fixture.bucketConfig())})
 	require.NoError(t, err)
 	require.NotZero(t, pending.PendingPurges, "the failed purge stays owed in the journal")

@@ -39,7 +39,8 @@ describe('public spectator contract pack', () => {
       '/proof-head.json',
       '/proof-meta/{sha256}.json',
       '/proof-segments/{first_index}.jsonl.gz',
-      '/proofs/{artifact_id}',
+      '/runs/{sha256}.jsonl.gz',
+      '/fixtures/{sha256}',
       '/read-model/{read_model_sha256}.json.gz',
     ].sort());
     for (const methods of Object.values(openapi.paths)) expect(Object.keys(methods)).toEqual(['get']);

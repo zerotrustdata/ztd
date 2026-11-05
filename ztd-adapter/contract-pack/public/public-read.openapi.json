@@ -52,6 +52,48 @@
   },
   "openapi": "3.0.3",
   "paths": {
+    "/fixtures/{sha256}": {
+      "get": {
+        "operationId": "public_scenario_fixture",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sha256",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Campaign-frozen scenario input or gold criteria, selected from the internal proof log. Check bytes against the evidence binding digest and scenario identity.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "enum": [
+                    "public, max-age=31536000, immutable"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown, withdrawn, or not a scenario fixture"
+          }
+        }
+      }
+    },
     "/history/{first_sequence}.json.gz": {
       "get": {
         "operationId": "public_history",
@@ -370,35 +412,6 @@
         }
       }
     },
-    "/proofs/{artifact_id}": {
-      "get": {
-        "operationId": "public_proof_download",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "artifact_id",
-            "required": true,
-            "schema": {
-              "pattern": "^[0-9a-f]{64}$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/octet-stream": {
-                "schema": {
-                  "format": "binary",
-                  "type": "string"
-                }
-              }
-            },
-            "description": "Content-addressed public-safe proof bytes"
-          }
-        }
-      }
-    },
     "/read-model/{read_model_sha256}.json.gz": {
       "get": {
         "operationId": "public_read_model",
@@ -444,6 +457,48 @@
           },
           "404": {
             "description": "Unknown digest"
+          }
+        }
+      }
+    },
+    "/runs/{sha256}.jsonl.gz": {
+      "get": {
+        "operationId": "public_run_bundle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sha256",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/gzip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Selected settled run bundle. The SHA-256 covers stored gzip bytes; no Content-Encoding is set.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "enum": [
+                    "public, max-age=31536000, immutable"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown, withdrawn, or not a run bundle"
           }
         }
       }

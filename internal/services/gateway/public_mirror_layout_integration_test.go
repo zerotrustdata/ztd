@@ -371,6 +371,8 @@ func TestPublicMirrorLayout_IngestListenerServesNoLayoutRoutes(t *testing.T) {
 	paths := []string{
 		"/pointer.json",
 		"/read-model/" + zeroDigest + ".json.gz",
+		"/runs/" + zeroDigest + ".jsonl.gz",
+		"/fixtures/" + zeroDigest,
 		"/proof-catalog/" + zeroDigest + ".json.gz",
 		"/proof-meta/" + zeroDigest + ".json",
 		"/proof-head.json",
@@ -390,5 +392,69 @@ func TestPublicMirrorLayout_IngestListenerServesNoLayoutRoutes(t *testing.T) {
 			assert.Equal(t, http.StatusNotFound, response.StatusCode)
 			assert.Empty(t, response.Header.Get(constants.HeaderAccessControlAllowOrigin))
 		})
+	}
+}
+
+func TestPublicMirrorLayout_UIArtifactsAreSelectedAndWithdrawn(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	client := layoutClient(t)
+	ctx := t.Context()
+	bundleBody := []byte("gzipped assignment bundle")
+	fixtureBody := []byte(`{"scenario_id":"old"}`)
+	traceBody := []byte("historical private trace")
+	databaseBody := []byte("historical private database")
+	bundle := makeTestCatalogEntry("old"+constants.PublicRunBundleFilenameSuffix, bundleBody)
+	fixture := makeTestCatalogEntry("scenario-old.input.json", fixtureBody)
+	trace := makeTestCatalogEntry("old.agent-trace.json", traceBody)
+	database := makeTestCatalogEntry("old.audit.db", databaseBody)
+	segment := makeTestSegment(env, 1, constants.PublicFeedZeroHashHex, []models.PublicProofCatalogEntry{bundle, fixture, trace, database}, nil)
+	require.NoError(t, env.mirror.storeProofPackage(ctx, models.PublicProofIngestRequest{
+		SourceID: env.sourceID, Segment: &segment,
+		Artifacts: []models.PublicProofIngestArtifact{
+			{ArtifactID: bundle.ArtifactID, Content: bundleBody},
+			{ArtifactID: fixture.ArtifactID, Content: fixtureBody},
+			{ArtifactID: trace.ArtifactID, Content: traceBody},
+			{ArtifactID: database.ArtifactID, Content: databaseBody},
+		},
+	}))
+	bundlePath := "/runs/" + bundle.ArtifactID + ".jsonl.gz"
+	fixturePath := "/fixtures/" + fixture.ArtifactID
+	for _, tc := range []struct {
+		path string
+		body []byte
+	}{{bundlePath, bundleBody}, {fixturePath, fixtureBody}} {
+		response, body := layoutGet(t, client, env.publicServer.URL, tc.path)
+		require.Equal(t, http.StatusOK, response.StatusCode, string(body))
+		assert.Equal(t, tc.body, body)
+		assert.Empty(t, response.Header.Get("Content-Encoding"), "artifact digests cover the stored bytes, without transport decoding")
+		assert.Equal(t, constants.PublicLayoutCacheImmutable, response.Header.Get(constants.HeaderCacheControl))
+		assert.Equal(t, "*", response.Header.Get(constants.HeaderAccessControlAllowOrigin))
+	}
+	for _, path := range []string{
+		"/fixtures/" + bundle.ArtifactID,
+		"/runs/" + fixture.ArtifactID + ".jsonl.gz",
+		"/runs/" + bundle.ArtifactID,
+		"/runs/" + strings.ToUpper(bundle.ArtifactID) + ".jsonl.gz",
+		"/fixtures/invalid",
+		"/fixtures/" + strings.Repeat("0", 64),
+		"/fixtures/" + trace.ArtifactID,
+		"/runs/" + trace.ArtifactID + ".jsonl.gz",
+		"/fixtures/" + database.ArtifactID,
+		"/runs/" + database.ArtifactID + ".jsonl.gz",
+	} {
+		response, _ := layoutGet(t, client, env.publicServer.URL, path)
+		assert.Equal(t, http.StatusNotFound, response.StatusCode, path)
+	}
+	withdrawal := makeTestSegment(env, 2, segment.ProofRootSHA256, nil, []string{bundle.ArtifactID, fixture.ArtifactID})
+	require.NoError(t, env.mirror.storeProofPackage(ctx, models.PublicProofIngestRequest{SourceID: env.sourceID, Segment: &withdrawal}))
+	for _, path := range []string{bundlePath, fixturePath} {
+		response, _ := layoutGet(t, client, env.publicServer.URL, path)
+		assert.Equal(t, http.StatusNotFound, response.StatusCode, path)
+	}
+	// Layout withdrawal leaves the historical private artifacts in the store.
+	for _, entry := range []models.PublicProofCatalogEntry{trace, database} {
+		_, found, err := env.store.proofArtifact(ctx, entry.ArtifactID)
+		require.NoError(t, err)
+		assert.True(t, found)
 	}
 }

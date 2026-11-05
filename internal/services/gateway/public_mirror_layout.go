@@ -479,6 +479,8 @@ func publicPointerContent(pointer models.PublicFeedPointer) models.PublicFeedPoi
 // Exact layout routes are named in publicMirrorLayoutReadPath.
 var publicMirrorLayoutReadPrefixes = []string{
 	"/" + constants.PublicLayoutReadModelPrefix,
+	"/" + constants.PublicLayoutRunsPrefix,
+	"/" + constants.PublicLayoutFixturesPrefix,
 	"/" + constants.PublicLayoutProofCatalogPrefix,
 	"/" + constants.PublicLayoutProofMetaPrefix,
 	"/" + constants.PublicLayoutProofSegmentsPrefix,
@@ -794,4 +796,39 @@ func (m *PublicMirrorServer) handleLayoutLiveRun(w http.ResponseWriter, r *http.
 		return
 	}
 	m.writePublicLayoutBody(w, constants.MediaTypeGzip, "", constants.PublicLayoutCacheLiveRun, body)
+}
+
+// handleLayoutArtifact serves only active run bundles and scenario fixtures.
+// The source catalog determines both eligibility and the exact path, so a
+// historical private artifact cannot be fetched by placing its digest here.
+func (m *PublicMirrorServer) handleLayoutArtifact(w http.ResponseWriter, r *http.Request) {
+	if !publicLayoutGET(w, r) {
+		return
+	}
+	key := strings.TrimPrefix(r.URL.Path, "/")
+	artifactID := publicLayoutArtifactID(key)
+	if !validPublicProofArtifactID(artifactID) {
+		http.NotFound(w, r)
+		return
+	}
+	sourceID, hasManifest, err := m.resolveProofManifestSource(r.Context(), r.URL.Query().Get("source"))
+	if err != nil {
+		m.writeStoreUnavailable(w, "mirror: resolve layout artifact source", err)
+		return
+	}
+	if !hasManifest {
+		http.NotFound(w, r)
+		return
+	}
+	entry, found, err := m.store.proofCatalogEntry(r.Context(), sourceID, artifactID)
+	if err != nil {
+		m.writeStoreUnavailable(w, "mirror: read layout artifact", err)
+		return
+	}
+	allowedKey, allowed := publicLayoutArtifactKey(entry)
+	if !found || !allowed || key != allowedKey {
+		http.NotFound(w, r)
+		return
+	}
+	m.serveProofArtifact(w, r, artifactID)
 }

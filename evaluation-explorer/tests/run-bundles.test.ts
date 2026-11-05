@@ -86,7 +86,7 @@ function seedRuns(runs: Array<{ runId: string; sha256?: string }>, withdrawalDig
 
 /** Serves bundles by their content address; any other URL is a 404. */
 function servingFetch(bundles: BundleFixture[]) {
-  const byPath = new Map(bundles.map((bundle) => [`${ORIGIN}/proofs/${bundle.sha256}`, bundle.bytes]));
+  const byPath = new Map(bundles.map((bundle) => [`${ORIGIN}/runs/${bundle.sha256}.jsonl.gz`, bundle.bytes]));
   return vi.fn(async (url: string) => {
     const bytes = byPath.get(url);
     return {
@@ -253,7 +253,7 @@ describe('loadRunAssignments', () => {
   it('a bundle that arrives after the source changed is discarded as stale_source', async () => {
     const bundle = buildBundle('run-one', ['assign-1']);
     seedRuns([{ runId: 'run-one', sha256: bundle.sha256 }]);
-    const byPath = new Map([[`${ORIGIN}/proofs/${bundle.sha256}`, bundle.bytes]]);
+    const byPath = new Map([[`${ORIGIN}/runs/${bundle.sha256}.jsonl.gz`, bundle.bytes]]);
     const fetchImpl = vi.fn(async (url: string) => {
       evalStore.acceptSnapshot(snapshot('c'.repeat(64), 1));
       const bytes = byPath.get(url);

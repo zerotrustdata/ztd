@@ -54,6 +54,10 @@ describe('public spectator runtime boundary', () => {
 
     await publicFetch({ endpoint: 'pointer' });
     expect(fetchImpl).toHaveBeenLastCalledWith('https://feed.example.com/pointer.json', expect.objectContaining({ method: 'GET', credentials: 'omit' }));
+    await publicFetch({ endpoint: 'runBundle', digest: 'a'.repeat(64) });
+    expect(fetchImpl).toHaveBeenLastCalledWith(`https://feed.example.com/runs/${'a'.repeat(64)}.jsonl.gz`, expect.objectContaining({ method: 'GET', credentials: 'omit' }));
+    await publicFetch({ endpoint: 'fixture', digest: 'b'.repeat(64) });
+    expect(fetchImpl).toHaveBeenLastCalledWith(`https://feed.example.com/fixtures/${'b'.repeat(64)}`, expect.objectContaining({ method: 'GET', credentials: 'omit' }));
     await publicFetch({ endpoint: 'proofHead' });
     expect(fetchImpl).toHaveBeenLastCalledWith('https://feed.example.com/proof-head.json', expect.objectContaining({ method: 'GET', credentials: 'omit' }));
     await publicFetch({ endpoint: 'proofSegments', first: 1001 });
@@ -72,6 +76,8 @@ describe('public spectator runtime boundary', () => {
     const digest = 'a'.repeat(64);
     const refused = [
       { endpoint: 'readModel', digest: 'A'.repeat(64) },
+      { endpoint: 'runBundle', digest: `${digest}.jsonl.gz` },
+      { endpoint: 'fixture', digest: `${digest}?source=x` },
       { endpoint: 'readModel', digest: `${'a'.repeat(63)}/` },
       { endpoint: 'proofMeta', digest: `../${'a'.repeat(61)}` },
       { endpoint: 'proofCatalog', digest: `${digest}?source=x` },

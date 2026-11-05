@@ -38,7 +38,7 @@
     },
     {
       "path": "offline-verifier.md",
-      "sha256": "d0a584c5668f9e029ce37841f5bdb77296958115e184550ed2f1044be9a823de"
+      "sha256": "f7b29476144c8a792bd00c9aeee217743926a39007aac69148c8f4e2d7315803"
     },
     {
       "path": "proof-schemas.json",
@@ -46,7 +46,7 @@
     },
     {
       "path": "public-read.openapi.json",
-      "sha256": "0ccdd5a0fb9f13d890456245563a1cd52560842f49edcbeb5c34507d24d73bb1"
+      "sha256": "d360591f00250aab2eadf6751d5bb1f60aa16152d858926d25e794490f37c8aa"
     },
     {
       "path": "README.md",

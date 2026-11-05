@@ -15,11 +15,10 @@ import {
   type PublicPointer,
   type PublicRuntimeConfig,
 } from '../../../ztd-adapter/src/public';
-import type { FeedBootstrap, ProofCatalogEntry, ProjectionRecord } from '../contract/types';
+import type { FeedBootstrap, ProjectionRecord } from '../contract/types';
 import {
   isFeedBootstrap,
   isProjectionRecord,
-  isProofCatalogEntry,
   createLazyProjectionRecord,
 } from '../contract/validators';
 
@@ -89,17 +88,4 @@ export async function fetchLiveStatus(
   fetchImpl: typeof fetch = fetch.bind(globalThis),
 ): Promise<PublicLiveStatus> {
   return client(mirrorOrigin, fetchImpl).liveStatus();
-}
-
-/** Resolve one evidence binding's active catalog entry by content address, or null when the
- *  mirror holds none (unknown or withdrawn). */
-export async function fetchProofCatalogEntry(
-  mirrorOrigin: string,
-  sha256: string,
-  fetchImpl: typeof fetch = fetch.bind(globalThis),
-): Promise<ProofCatalogEntry | null> {
-  const entry: unknown = await client(mirrorOrigin, fetchImpl).proofCatalogEntry(sha256);
-  if (entry === null) return null;
-  isProofCatalogEntry(entry);
-  return entry;
 }

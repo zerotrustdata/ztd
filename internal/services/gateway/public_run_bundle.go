@@ -109,7 +109,7 @@ func (s *PublicPublisherService) PublishRunBundle(ctx context.Context, request m
 	if err := s.commitRunBundle(ctx, request, runBundleFilename(request.RunID), bundle.content); err != nil {
 		return models.PublicRunBundleResponse{}, err
 	}
-	// The mirror serves /proofs/<sha256> only after the artifact's segment is delivered.
+	// The mirror serves runs/<sha256>.jsonl.gz only after the artifact's segment is delivered.
 	if err := s.PushProofPackage(ctx); err != nil {
 		return models.PublicRunBundleResponse{}, err
 	}

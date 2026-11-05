@@ -23,7 +23,7 @@ function run(runId: string) {
 
 /** Holds every bundle request until released, and tracks how many are in flight at once. */
 function deferredResponses(bundles: BundleFixture[]) {
-  const byUrl = new Map(bundles.map((bundle) => [`${BUNDLE_ORIGIN}/proofs/${bundle.sha256}`, bundle.bytes]));
+  const byUrl = new Map(bundles.map((bundle) => [`${BUNDLE_ORIGIN}/runs/${bundle.sha256}.jsonl.gz`, bundle.bytes]));
   const released: Array<() => void> = [];
   let inFlight = 0;
   let maxInFlight = 0;
@@ -211,7 +211,7 @@ describe('useRunBundles', () => {
       const live = buildRunBundle('run-live', ['live-1']);
       loadBundleFixtures([settledRunRecord('run-done', settled.sha256), liveRecord('run-live')]);
       const byUrl = new Map([
-        [`${BUNDLE_ORIGIN}/proofs/${settled.sha256}`, settled.bytes],
+        [`${BUNDLE_ORIGIN}/runs/${settled.sha256}.jsonl.gz`, settled.bytes],
         [LIVE_URL, live.bytes],
       ]);
       const mock = stubUrls(byUrl);
@@ -228,7 +228,7 @@ describe('useRunBundles', () => {
 
       await waitFor(() => expect(evalStore.getAssignments('run-live', 'ds-live-run-live')).toHaveLength(2));
       expect(callsTo(mock, LIVE_URL)).toBe(2);
-      expect(callsTo(mock, `${BUNDLE_ORIGIN}/proofs/${settled.sha256}`)).toBe(1);
+      expect(callsTo(mock, `${BUNDLE_ORIGIN}/runs/${settled.sha256}.jsonl.gz`)).toBe(1);
       expect(result.current.loaded).toBe(2);
       unmount();
       setIntervalSpy.mockRestore();
@@ -271,8 +271,8 @@ describe('useRunBundles', () => {
       loadBundleFixtures([liveRecord('run-live'), otherRecord]);
       const mock = stubUrls(new Map([
         [LIVE_URL, live.bytes],
-        [`${BUNDLE_ORIGIN}/proofs/${settled.sha256}`, settled.bytes],
-        [`${BUNDLE_ORIGIN}/proofs/${other.sha256}`, other.bytes],
+        [`${BUNDLE_ORIGIN}/runs/${settled.sha256}.jsonl.gz`, settled.bytes],
+        [`${BUNDLE_ORIGIN}/runs/${other.sha256}.jsonl.gz`, other.bytes],
       ]));
 
       const seen: number[] = [];
@@ -288,7 +288,7 @@ describe('useRunBundles', () => {
       act(() => loadBundleFixtures([settledRunRecord('run-live', settled.sha256), otherRecord]));
 
       await waitFor(() => expect(evalStore.getAssignments('run-live', 'ds-live-run-live')).toHaveLength(2));
-      expect(callsTo(mock, `${BUNDLE_ORIGIN}/proofs/${settled.sha256}`)).toBe(1);
+      expect(callsTo(mock, `${BUNDLE_ORIGIN}/runs/${settled.sha256}.jsonl.gz`)).toBe(1);
       await waitFor(() => expect(result.current.loaded).toBe(2));
       expect(seen.filter((loaded) => loaded < 2 && loaded !== 0)).toEqual([]);
     });

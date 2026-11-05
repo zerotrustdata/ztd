@@ -18,8 +18,8 @@ async function installMirror(page: Page, records: object[], proofs: Map<string, 
     sourceId,
     records,
     extra: async (url, route) => {
-      if (!url.pathname.startsWith('/proofs/')) return false;
-      const body = proofs.get(url.pathname.slice('/proofs/'.length));
+      if (!url.pathname.startsWith('/runs/')) return false;
+      const body = proofs.get(url.pathname.slice('/runs/'.length, -'.jsonl.gz'.length));
       if (body === undefined) {
         await route.fulfill({ status: 404, body: 'not found' });
         return true;
@@ -35,7 +35,7 @@ function observeProofRequests(page: Page): string[] {
   const paths: string[] = [];
   page.on('request', (request) => {
     const { pathname } = new URL(request.url());
-    if (pathname.startsWith('/proofs/')) paths.push(pathname);
+    if (pathname.startsWith('/runs/')) paths.push(pathname);
   });
   return paths;
 }
@@ -65,7 +65,7 @@ test('a cold leaderboard load requests no run bundle', async ({ page }) => {
   await readModelResponse;
   await expect(page.getByRole('region', { name: 'Leaderboard' }).getByRole('table')).toBeVisible();
 
-  expect(proofRequests.filter((path) => path.startsWith('/proofs/'))).toEqual([]);
+  expect(proofRequests.filter((path) => path.startsWith('/runs/'))).toEqual([]);
 });
 
 test('opening a run requests exactly one bundle', async ({ page }) => {
@@ -78,7 +78,7 @@ test('opening a run requests exactly one bundle', async ({ page }) => {
     await expect(page.getByRole('link', { name: assignmentId, exact: true })).toBeVisible();
   }
 
-  expect(proofRequests).toEqual([`/proofs/${bundle.sha256}`]);
+  expect(proofRequests).toEqual([`/runs/${bundle.sha256}.jsonl.gz`]);
 });
 
 test('Live status settles an invocation when its result bundle arrives without a terminal event', async ({ page }) => {
@@ -96,7 +96,7 @@ test('Live status settles an invocation when its result bundle arrives without a
       observed_at: '2026-09-20T00:00:00Z',
     },
   ], new Map());
-  await page.route(`${mirrorOrigin}/proofs/${bundle.sha256}`, async (route) => {
+  await page.route(`${mirrorOrigin}/runs/${bundle.sha256}.jsonl.gz`, async (route) => {
     await pendingBundle;
     await route.fulfill({ body: bundle.body, contentType: 'application/gzip' });
   });
@@ -145,7 +145,7 @@ test('loading a run URL directly requests exactly one bundle', async ({ page }) 
     await expect(page.getByRole('link', { name: assignmentId, exact: true })).toBeVisible();
   }
 
-  expect(proofRequests).toEqual([`/proofs/${bundle.sha256}`]);
+  expect(proofRequests).toEqual([`/runs/${bundle.sha256}.jsonl.gz`]);
 });
 
 test('opening an assignment of the same run requests no further bundle', async ({ page }) => {
@@ -159,7 +159,7 @@ test('opening an assignment of the same run requests no further bundle', async (
   await expect(page.getByRole('navigation', { name: 'Breadcrumb' }).getByRole('link', { name: runId, exact: true })).toBeVisible();
   await expect(page.getByTestId('reconcile-placeholder')).toHaveCount(0);
 
-  expect(proofRequests).toEqual([`/proofs/${bundle.sha256}`]);
+  expect(proofRequests).toEqual([`/runs/${bundle.sha256}.jsonl.gz`]);
 });
 
 test('a bundle that does not match its published digest shows an error and no rows', async ({ page }) => {

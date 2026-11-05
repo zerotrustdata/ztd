@@ -237,7 +237,7 @@ async function decodeBundleRecords(bytes: Uint8Array): Promise<ProjectionRecord[
 
 /** A settled bundle: the bytes must hash to the digest its summary published. */
 async function readSettledRecords(sha256: string, fetchImpl: typeof fetch): Promise<ProjectionRecord[]> {
-  const bytes = await fetchBundleBytes(`/proofs/${sha256}`, fetchImpl);
+  const bytes = await fetchBundleBytes(`/runs/${sha256}.jsonl.gz`, fetchImpl);
   if (bytes === null) throw new RunBundleError('fetch_failed', 'run bundle request returned 404');
   if ((await sha256Hex(bytes)) !== sha256) {
     throw new RunBundleError('digest_mismatch', 'run bundle bytes do not match the published digest');

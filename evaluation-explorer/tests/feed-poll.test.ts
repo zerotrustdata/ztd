@@ -468,7 +468,7 @@ describe('live status sealing', () => {
 });
 
 describe('read model refresh keeps on-demand state', () => {
-  it('keeps assignments loaded on demand and proof artifacts across a refresh', async () => {
+  it('keeps assignments loaded on demand across a refresh', async () => {
     const runId = 'run-keep-assignments';
     const datasetId = `ds-live-${runId}`;
     const mirror = makeMirror({ active: true });
@@ -476,7 +476,6 @@ describe('read model refresh keeps on-demand state', () => {
     await startFeed({ fetchImpl });
 
     evalStore.acceptRunBundle([resultRecord(1, runId, 'assign-1'), resultRecord(2, runId, 'assign-2')], { datasetId, runId });
-    evalStore.acceptProofArtifact('a'.repeat(64), null);
     const loaded = evalStore.getAssignments(runId, datasetId);
     expect(loaded).toHaveLength(2);
 
@@ -486,7 +485,6 @@ describe('read model refresh keeps on-demand state', () => {
     await vi.waitFor(() => expect(evalStore.getEvaluation(summary.dataset_id, summary.run_id)).toBeDefined());
 
     expect(evalStore.getAssignments(runId, datasetId)).toEqual(loaded);
-    expect(evalStore.getState().proofArtifacts.has('a'.repeat(64))).toBe(true);
     expect(evalStore.getState().errors).toEqual([]);
   });
 

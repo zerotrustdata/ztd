@@ -21,7 +21,6 @@ describe('proof catalog bootstrap', () => {
     const paths = requestedPaths(fetchImpl);
     expect(paths.some((path) => path.startsWith('/proof-catalog'))).toBe(false);
     expect(paths.some((path) => path.startsWith('/history'))).toBe(false);
-    expect(evalStore.getState().proofArtifacts.size).toBe(0);
     expect(evalStore.getState().proofArtifactCount).toBe(1);
   });
 });

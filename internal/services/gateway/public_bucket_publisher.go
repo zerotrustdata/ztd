@@ -102,9 +102,9 @@ type PublicBucketPublisher struct {
 	// pointer holds advance it ahead of proofsRoot.
 	activeRoot     string
 	lastHeldProofs time.Time
-	// present holds proof and proof-meta keys known to be in the bucket.
+	// present holds UI artifact and proof-meta keys known to be in the bucket.
 	present map[string]bool
-	// active is the artifact set of the last pointer that reached the bucket.
+	// active holds layout keys, including artifacts uploaded during a pointer hold.
 	active       map[string]bool
 	proofsRoot   string
 	catalogRoot  string
@@ -301,10 +301,12 @@ func (p *PublicBucketPublisher) uploadHeldProofs(ctx context.Context, root strin
 	}
 	listed := make(map[string]bool, len(catalog.Entries))
 	for _, entry := range catalog.Entries {
-		listed[entry.ArtifactID] = true
+		if key, ok := publicLayoutArtifactKey(entry); ok {
+			listed[key] = true
+		}
 	}
-	for artifactID := range p.active {
-		if !listed[artifactID] {
+	for key := range p.active {
+		if !listed[key] {
 			return true, nil
 		}
 	}
@@ -314,8 +316,8 @@ func (p *PublicBucketPublisher) uploadHeldProofs(ctx context.Context, root strin
 	// Uploaded artifacts join the active set, so one withdrawn before the next
 	// pointer is still found leaving the catalog and deleted.
 	active := maps.Clone(p.active)
-	for artifactID := range listed {
-		active[artifactID] = true
+	for key := range listed {
+		active[key] = true
 	}
 	p.active = active
 	p.activeRoot, p.lastHeldProofs = root, p.now()
@@ -348,7 +350,9 @@ func (p *PublicBucketPublisher) syncLayout(ctx context.Context, state PublicLayo
 		}
 		nextActive = make(map[string]bool, len(catalog.Entries))
 		for _, entry := range catalog.Entries {
-			nextActive[entry.ArtifactID] = true
+			if key, ok := publicLayoutArtifactKey(entry); ok {
+				nextActive[key] = true
+			}
 		}
 		if err := p.uploadProofs(ctx, catalog.Entries); err != nil {
 			return err
@@ -407,8 +411,9 @@ func (p *PublicBucketPublisher) syncLayout(ctx context.Context, state PublicLayo
 
 	// Nothing names the withdrawn objects from here on, so they can go.
 	entries := []models.PublicBucketJournalEntry{{Kind: models.PublicBucketJournalPointer, Revision: signed.Revision, Sequence: signed.HighWaterSequence, WithdrawalDigest: signed.WithdrawalDigest}}
-	for _, artifactID := range withdrawn {
-		entries = append(entries, p.deleteEntries(constants.PublicLayoutProofPrefix+artifactID)...)
+	for _, key := range withdrawn {
+		artifactID := publicLayoutArtifactID(key)
+		entries = append(entries, p.deleteEntries(key)...)
 		entries = append(entries, p.deleteEntries(constants.PublicLayoutProofMetaPrefix+artifactID+constants.PublicLayoutJSONSuffix)...)
 	}
 	for _, key := range historyPages.deleted {
@@ -428,8 +433,9 @@ func (p *PublicBucketPublisher) syncLayout(ctx context.Context, state PublicLayo
 	if err := p.journal.record(ctx, entries...); err != nil {
 		return err
 	}
-	for _, artifactID := range withdrawn {
-		delete(p.present, constants.PublicLayoutProofPrefix+artifactID)
+	for _, key := range withdrawn {
+		artifactID := publicLayoutArtifactID(key)
+		delete(p.present, key)
 		delete(p.present, constants.PublicLayoutProofMetaPrefix+artifactID+constants.PublicLayoutJSONSuffix)
 	}
 	p.active = nextActive
@@ -447,9 +453,9 @@ func (p *PublicBucketPublisher) syncLayout(ctx context.Context, state PublicLayo
 	return nil
 }
 
-// loadPresent lists uploaded proofs, so an interrupted first sync resumes where it stopped.
+// loadPresent lists UI artifact keys, so an interrupted sync resumes without listing historical private proofs.
 func (p *PublicBucketPublisher) loadPresent(ctx context.Context) error {
-	for _, prefix := range []string{constants.PublicLayoutProofPrefix, constants.PublicLayoutProofMetaPrefix} {
+	for _, prefix := range []string{constants.PublicLayoutRunsPrefix, constants.PublicLayoutFixturesPrefix, constants.PublicLayoutProofMetaPrefix} {
 		objects, err := p.client.List(ctx, prefix)
 		if err != nil {
 			return fmt.Errorf("public-feed: bucket: list %s: %w", prefix, err)
@@ -468,15 +474,14 @@ func (p *PublicBucketPublisher) withdrawnArtifacts(next map[string]bool, first b
 	var withdrawn []string
 	if first {
 		for key := range p.present {
-			artifactID, ok := strings.CutPrefix(key, constants.PublicLayoutProofPrefix)
-			if ok && !next[artifactID] {
-				withdrawn = append(withdrawn, artifactID)
+			if (strings.HasPrefix(key, constants.PublicLayoutRunsPrefix) || strings.HasPrefix(key, constants.PublicLayoutFixturesPrefix)) && !next[key] {
+				withdrawn = append(withdrawn, key)
 			}
 		}
 	} else {
-		for artifactID := range p.active {
-			if !next[artifactID] {
-				withdrawn = append(withdrawn, artifactID)
+		for key := range p.active {
+			if !next[key] {
+				withdrawn = append(withdrawn, key)
 			}
 		}
 	}
@@ -512,8 +517,12 @@ func (p *PublicBucketPublisher) uploadProofs(ctx context.Context, entries []mode
 	}
 feed:
 	for _, entry := range entries {
+		key, allowed := publicLayoutArtifactKey(entry)
+		if !allowed {
+			continue
+		}
 		mu.Lock()
-		missing := !p.present[constants.PublicLayoutProofPrefix+entry.ArtifactID] || !p.present[constants.PublicLayoutProofMetaPrefix+entry.ArtifactID+constants.PublicLayoutJSONSuffix]
+		missing := !p.present[key] || !p.present[constants.PublicLayoutProofMetaPrefix+entry.ArtifactID+constants.PublicLayoutJSONSuffix]
 		mu.Unlock()
 		if !missing {
 			continue
@@ -535,7 +544,10 @@ feed:
 // uploadProof uploads the artifact and then its catalog entry. The entry going
 // second means a proof-meta hit always has its artifact.
 func (p *PublicBucketPublisher) uploadProof(ctx context.Context, entry models.PublicProofCatalogEntry, mu *sync.Mutex) error {
-	proofKey := constants.PublicLayoutProofPrefix + entry.ArtifactID
+	proofKey, allowed := publicLayoutArtifactKey(entry)
+	if !allowed {
+		return nil
+	}
 	mu.Lock()
 	proofPresent := p.present[proofKey]
 	mu.Unlock()

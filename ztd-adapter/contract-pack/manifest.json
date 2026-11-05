@@ -94,7 +94,7 @@
     },
     {
       "path": "public/manifest.json",
-      "sha256": "d2571e4f22bffc14544398d4f3591cdf1cb7d8db2e7ff35a65acb247fea60d73"
+      "sha256": "0db0e106809945614a1bc1c874d9c8f6b7525866386ac303a36da2f664fdd280"
     },
     {
       "path": "public/models.ts",
@@ -102,7 +102,7 @@
     },
     {
       "path": "public/offline-verifier.md",
-      "sha256": "d0a584c5668f9e029ce37841f5bdb77296958115e184550ed2f1044be9a823de"
+      "sha256": "f7b29476144c8a792bd00c9aeee217743926a39007aac69148c8f4e2d7315803"
     },
     {
       "path": "public/proof-schemas.json",
@@ -110,7 +110,7 @@
     },
     {
       "path": "public/public-read.openapi.json",
-      "sha256": "0ccdd5a0fb9f13d890456245563a1cd52560842f49edcbeb5c34507d24d73bb1"
+      "sha256": "d360591f00250aab2eadf6751d5bb1f60aa16152d858926d25e794490f37c8aa"
     },
     {
       "path": "public/README.md",

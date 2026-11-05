@@ -39,7 +39,7 @@ export function buildRunBundle(runId: string, assignmentIds: string[]): BundleFi
 
 /** Serves bundles by content address; any other URL is a 404. Returns the mock so tests can count requests. */
 export function stubBundleFetch(bundles: BundleFixture[]) {
-  const byUrl = new Map(bundles.map((bundle) => [`${BUNDLE_ORIGIN}/proofs/${bundle.sha256}`, bundle.bytes]));
+  const byUrl = new Map(bundles.map((bundle) => [`${BUNDLE_ORIGIN}/runs/${bundle.sha256}.jsonl.gz`, bundle.bytes]));
   const mock = vi.fn(async (url: string) => {
     const bytes = byUrl.get(url);
     return {

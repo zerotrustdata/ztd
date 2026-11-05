@@ -71,7 +71,7 @@ describe('ModelDetailView run bundles', () => {
 
     await waitFor(() => expect(screen.getByText('1 of 1 runs loaded')).toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${BUNDLE_ORIGIN}/proofs/${ownRun.sha256}`);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${BUNDLE_ORIGIN}/runs/${ownRun.sha256}.jsonl.gz`);
   });
 
   it('keeps every run of a variant loaded when the variant has more runs than the bundle limit', async () => {

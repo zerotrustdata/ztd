@@ -55,7 +55,7 @@ describe('EvaluationDetailView assignments', () => {
     const first = renderRun();
     expect(await screen.findByRole('link', { name: /assign-1/ })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${BUNDLE_ORIGIN}/proofs/${bundle.sha256}`);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`${BUNDLE_ORIGIN}/runs/${bundle.sha256}.jsonl.gz`);
     first.unmount();
 
     renderRun();

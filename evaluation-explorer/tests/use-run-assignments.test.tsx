@@ -65,7 +65,7 @@ function stubFetch(body: Uint8Array): void {
 }
 
 function stubBundles(bundles: BundleFixture[]): void {
-  const byUrl = new Map(bundles.map((bundle) => [`https://mirror.example/proofs/${bundle.sha256}`, bundle.bytes]));
+  const byUrl = new Map(bundles.map((bundle) => [`https://mirror.example/runs/${bundle.sha256}.jsonl.gz`, bundle.bytes]));
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => {

@@ -172,8 +172,10 @@ func TestRunBundle_RecordBytesMatchAcceptedSnapshotRows(t *testing.T) {
 	require.Len(t, response.BundleSHA256, 64)
 
 	served := httptest.NewRecorder()
-	runtime.Mirror().PublicHandler().ServeHTTP(served, httptest.NewRequest(http.MethodGet, "/proofs/"+response.BundleSHA256, nil))
+	runtime.Mirror().PublicHandler().ServeHTTP(served, httptest.NewRequest(http.MethodGet, "/runs/"+response.BundleSHA256+".jsonl.gz", nil))
 	require.Equal(t, http.StatusOK, served.Code)
+	assert.Empty(t, served.Header().Get("Content-Encoding"))
+	assert.Equal(t, constants.MediaTypeGzip, served.Header().Get(constants.HeaderContentType))
 	digest := sha256.Sum256(served.Body.Bytes())
 	assert.Equal(t, response.BundleSHA256, hex.EncodeToString(digest[:]))
 	assert.Equal(t, response.ByteSize, int64(served.Body.Len()))
