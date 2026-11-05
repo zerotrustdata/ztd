@@ -157,6 +157,11 @@ func (m *PublicMirrorServer) LayoutState(ctx context.Context, requestedSource st
 	return PublicLayoutState{Pointer: pointer, ReadModelGzip: readModel.gzipBytes, ActiveRuns: runs}, nil
 }
 
+// LayoutDatasetsSince returns the datasets of current records accepted after sequence.
+func (m *PublicMirrorServer) LayoutDatasetsSince(ctx context.Context, sourceID string, after int64) ([]string, error) {
+	return m.store.snapshotDatasetsSince(ctx, sourceID, after)
+}
+
 // LayoutProofCatalog returns the proof catalog at the current proof root. The
 // bytes are memoized per source and rebuilt only when the root changes.
 func (m *PublicMirrorServer) LayoutProofCatalog(ctx context.Context, sourceID string) (PublicLayoutCatalog, error) {
@@ -536,7 +541,7 @@ func (m *PublicMirrorServer) writePublicLayoutBody(w http.ResponseWriter, conten
 	w.Header().Set(constants.HeaderCacheControl, cacheControl)
 	w.Header().Set(constants.HeaderContentLength, strconv.Itoa(len(body)))
 	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write(body); err != nil {
+	if _, err := w.Write(body); err != nil { //nolint:gosec // G705: stored public layout objects served with a fixed Content-Type, not reflected request input
 		m.logResponseError("mirror: write layout response", err)
 	}
 }

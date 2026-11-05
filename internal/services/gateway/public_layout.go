@@ -58,6 +58,10 @@ type PublicLayoutSource interface {
 	// LayoutState rebuilds the read model when the head moved, which scans every
 	// current record. Call it only when a pointer write is due.
 	LayoutState(ctx context.Context, sourceID string) (PublicLayoutState, error)
+	// LayoutDatasetsSince returns the distinct non-empty dataset IDs of current
+	// records accepted after sequence, so a held pointer moves for records of a run
+	// that is not executing.
+	LayoutDatasetsSince(ctx context.Context, sourceID string, after int64) ([]string, error)
 	// LayoutProofCatalog returns the catalog at the current proof root. Bytes are
 	// stable for one proof root.
 	LayoutProofCatalog(ctx context.Context, sourceID string) (PublicLayoutCatalog, error)

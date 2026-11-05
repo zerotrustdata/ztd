@@ -119,11 +119,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
-	result, err := run(context.Background(), opts)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	result := run(context.Background(), opts)
 	encoded, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("capacity: encode summary: %w", err))
@@ -202,7 +198,7 @@ func syntheticClientAddress(shardIndex, shardCount, clientIndex int) string {
 	return net.IPv4(198, 18, byte(globalIndex/254), byte(globalIndex%254+1)).String()
 }
 
-func run(ctx context.Context, opts options) (summary, error) {
+func run(ctx context.Context, opts options) summary {
 	origin := strings.TrimSuffix(opts.target, "/")
 	started := time.Now()
 	results := make(chan clientResult, opts.clients)
@@ -229,7 +225,7 @@ func run(ctx context.Context, opts options) (summary, error) {
 	for result := range results {
 		all = append(all, result)
 	}
-	return summarize(opts, time.Since(started), all), nil
+	return summarize(opts, time.Since(started), all)
 }
 
 func runColdClient(ctx context.Context, opts options, origin, clientIP string) clientResult {

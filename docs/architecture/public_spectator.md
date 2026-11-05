@@ -304,8 +304,9 @@ Only after the pointer is written does the publisher record the new pointer in i
 
 - The publisher checks the mirror's head every 10 seconds.
 - `live/status.json` is written only when its content changes. The `generated_at` field does not count as a change.
-- A sync runs at once on the first sync, when a run starts or settles, and when a withdrawal lands. Otherwise it runs at most once a minute and only when the head has changed.
-- The pointer and the read model follow the sync cadence. Proof artifacts and proof metadata are uploaded in the same sync.
+- A sync runs at once on the first sync, when the set of active runs changes, and when a withdrawal lands. A run starting, a run ending while another continues, and the last run settling each change the set. A run moving from `queued` to `running` does not.
+- While a run is active, the pointer and the read model hold still, so open pages do not download the read model again. Otherwise a sync runs at most once a minute, and only when the head has changed. During a run that means records of a dataset that is not executing, such as a republished verification. Records with no dataset wait for the next sync.
+- Proof artifacts and proof metadata are uploaded in each sync. While the pointer holds, proofs that joined the catalog are uploaded at most once a minute without a sync, so a live assignment's proofs resolve before the run settles. An artifact leaving the catalog during a run counts as a withdrawal and syncs.
 - The proof catalog and history pages are rewritten only when no run is active or a withdrawal lands. While a run is active, proof-meta objects serve lookups, and the catalog can lag the proof root.
 - Live run objects are refreshed at most once a minute, for each active run, and a settled run's object is deleted.
 
@@ -313,7 +314,7 @@ A run is active when its latest summary is `queued` or `running` and its source 
 
 ### Explorer Lag
 
-The Explorer polls `pointer.json` about once a minute while the tab is visible. It polls `live/status.json` about every 10 seconds, only while the pointer reports `active`. Once a run is active, live activity reaches a visitor up to about 30 seconds after the mirror accepts it: up to 10 seconds for the publisher's head check, up to 10 seconds of status cache, and up to 10 seconds of Explorer poll. When a run starts, the first live poll waits for a pointer that reports `active`. The publisher writes that pointer within 10 seconds of the run's first record, so it reaches a visitor after up to 30 seconds of cache and up to a minute of pointer polling. The live run object can lag the mirror by up to a minute, plus its 60-second cache.
+The Explorer polls `pointer.json` about once a minute while the tab is visible. During a run the pointer holds still, so the poll costs one small request and the read model is not downloaded again until the active run set changes. A repeat visit loads the read model from the browser's HTTP cache, because its path is digest-named and immutable. It polls `live/status.json` about every 10 seconds, only while the pointer reports `active`. Once a run is active, live activity reaches a visitor up to about 30 seconds after the mirror accepts it: up to 10 seconds for the publisher's head check, up to 10 seconds of status cache, and up to 10 seconds of Explorer poll. When a run starts, the first live poll waits for a pointer that reports `active`. The publisher writes that pointer within 10 seconds of the run's first record, so it reaches a visitor after up to 30 seconds of cache and up to a minute of pointer polling. The live run object can lag the mirror by up to a minute, plus its 60-second cache.
 
 ### Withdrawal
 

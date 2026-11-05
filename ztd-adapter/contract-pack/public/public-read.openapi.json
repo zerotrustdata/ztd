@@ -735,7 +735,7 @@
       "type": "object"
     },
     "public_pointer": {
-      "description": "Mutable mirror pointer. It names the current digest-addressed read model and proof catalog. It is written last, so a partial publish never goes live.",
+      "description": "Mutable mirror pointer. It names the current digest-addressed read model and proof catalog. It is written last, so a partial publish never goes live. While a run is active the publisher holds it and moves it only when the active run set changes, a withdrawal lands, or records of a dataset that is not executing arrive; live/status.json carries the run in between. generated_at is when the pointer was composed, not a freshness signal.",
       "properties": {
         "active": {
           "description": "True while a run is executing; poll live/status.json",

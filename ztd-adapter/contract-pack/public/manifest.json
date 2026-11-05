@@ -6,7 +6,7 @@
     },
     {
       "path": "event-schemas.json",
-      "sha256": "9f6ad93b4f661193f7f20073279a8e3f751d474800910ede97618a1662d18d6d"
+      "sha256": "d96b02d4c5b84ae1642eb2cfe01451b312a3abd342d6952c96b97116ab646658"
     },
     {
       "path": "fixtures/active.json",
@@ -42,11 +42,11 @@
     },
     {
       "path": "proof-schemas.json",
-      "sha256": "ab6283b0b7466ce8e4f3e1a783f955115ec5b35267bb6f371b41ef3eb5c98df7"
+      "sha256": "9a6266e4d4c03730946732645516f699e93689898a84ca38ae1e025a5a86682f"
     },
     {
       "path": "public-read.openapi.json",
-      "sha256": "16cbb916f04c672fa0eeee33fc266254fc17c8f0bbb07a938bbc1265642a232d"
+      "sha256": "0ccdd5a0fb9f13d890456245563a1cd52560842f49edcbeb5c34507d24d73bb1"
     },
     {
       "path": "README.md",

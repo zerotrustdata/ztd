@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -92,6 +93,15 @@ type PublicBucketPublisher struct {
 	lastFreshness models.CampaignFreshness
 	lastSync      time.Time
 	lastSweep     time.Time
+	// lastActiveRuns is the active run set the last pointer was written with.
+	lastActiveRuns map[publicLiveRunKey]bool
+	// heldThrough is the highest sequence checked for records outside the active
+	// runs while the pointer held.
+	heldThrough int64
+	// activeRoot is the proof root whose catalog active reflects. Uploads while the
+	// pointer holds advance it ahead of proofsRoot.
+	activeRoot     string
+	lastHeldProofs time.Time
 	// present holds proof and proof-meta keys known to be in the bucket.
 	present map[string]bool
 	// active is the artifact set of the last pointer that reached the bucket.
@@ -158,15 +168,32 @@ func (p *PublicBucketPublisher) Run(ctx context.Context) {
 	}
 }
 
+// publicLiveRunKey identifies one active run independent of its lifecycle state.
+type publicLiveRunKey struct{ dataset, run string }
+
+// liveRunSet returns the identities of runs.
+func liveRunSet(runs []models.PublicLiveRun) map[publicLiveRunKey]bool {
+	set := make(map[publicLiveRunKey]bool, len(runs))
+	for _, run := range runs {
+		set[publicLiveRunKey{dataset: run.DatasetID, run: run.RunID}] = true
+	}
+	return set
+}
+
 // tick publishes what changed since the last one. Live objects update on their
 // own cadence and a failure there does not hold back the pointer.
+//
+// While runs are active the pointer, and with it the read model browsers load,
+// holds still: live/status.json carries the run. The pointer moves at once when
+// the active run set changes or a withdrawal lands, and at most once a minute for
+// records of runs that are not executing, such as a republished verification.
+// With no run active it moves at most once a minute for any change.
 func (p *PublicBucketPublisher) tick(ctx context.Context) error {
 	head, err := p.source.LayoutHead(ctx, p.sourceID)
 	if err != nil {
 		return fmt.Errorf("public-feed: bucket: read layout head: %w", err)
 	}
 	var errs []error
-	settled := p.synced && p.lastPointer.Active && len(head.ActiveRuns) == 0
 	// Across a restart the journal holds the digest of the last pointer written, so
 	// a withdrawal that landed while the publisher was down is still handled as one.
 	lastWithdrawal := p.lastPointer.WithdrawalDigest
@@ -174,20 +201,41 @@ func (p *PublicBucketPublisher) tick(ctx context.Context) error {
 		lastWithdrawal = p.journal.withdrawal
 	}
 	withdrew := (p.synced || p.journal.revision != 0) && lastWithdrawal != head.WithdrawalDigest
-	// A run starting is written at once too, because browsers poll the live status
-	// only after the pointer says a run is active.
-	started := p.synced && !p.lastPointer.Active && len(head.ActiveRuns) > 0
-	force := !p.synced || settled || started || withdrew
+	// A run starting is written at once, because browsers poll the live status only
+	// after the pointer says a run is active, and a run ending is written at once so
+	// its settled results reach the read model.
+	runSetChanged := p.synced && !maps.Equal(liveRunSet(head.ActiveRuns), p.lastActiveRuns)
+	force := !p.synced || runSetChanged || withdrew
 	if err := p.publishLive(ctx, head.ActiveRuns, withdrew); err != nil {
 		errs = append(errs, err)
 	}
 	changed := head.HighWaterSequence != p.lastPointer.HighWaterSequence || head.FeedChainHash != p.lastPointer.FeedChainHash ||
 		head.ProofRootSHA256 != p.lastPointer.ProofRootSHA256 || head.Freshness != p.lastFreshness
-	if force || (changed && p.now().Sub(p.lastSync) >= publicBucketPointerInterval) {
+	held := len(head.ActiveRuns) > 0
+	due := force
+	if !force && changed && p.now().Sub(p.lastSync) >= publicBucketPointerInterval {
+		due = true
+		if held {
+			outside, err := p.recordsOutsideActiveRuns(ctx, head)
+			if err != nil {
+				errs = append(errs, err)
+			}
+			due = outside
+		}
+	}
+	if !due && held && p.synced && head.ProofRootSHA256 != "" && head.ProofRootSHA256 != p.activeRoot {
+		withdrawn, err := p.uploadHeldProofs(ctx, head.ProofRootSHA256)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		// An artifact leaving the catalog is a withdrawal, which moves the pointer.
+		due = withdrawn
+	}
+	if due {
 		state, err := p.source.LayoutState(ctx, p.sourceID)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("public-feed: bucket: read layout: %w", err))
-		} else if err := p.syncLayout(ctx, state, force, withdrew); err != nil {
+		} else if err := p.syncLayout(ctx, state, head.ActiveRuns, force, withdrew); err != nil {
 			errs = append(errs, err)
 		} else {
 			p.lastFreshness = head.Freshness
@@ -212,9 +260,75 @@ func (p *PublicBucketPublisher) tick(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+// recordsOutsideActiveRuns reports whether a record accepted since the last check
+// belongs to a dataset that is not executing. A record with no dataset does not
+// count, and waits for the next pointer.
+func (p *PublicBucketPublisher) recordsOutsideActiveRuns(ctx context.Context, head PublicLayoutHead) (bool, error) {
+	after := max(p.lastPointer.HighWaterSequence, p.heldThrough)
+	if head.HighWaterSequence <= after {
+		return false, nil
+	}
+	datasets, err := p.source.LayoutDatasetsSince(ctx, p.sourceID, after)
+	if err != nil {
+		return false, fmt.Errorf("public-feed: bucket: read changed datasets: %w", err)
+	}
+	active := make(map[string]bool, 2*len(head.ActiveRuns))
+	for _, run := range head.ActiveRuns {
+		active[run.DatasetID] = true
+		// Assignment results carry the run's mirror dataset.
+		active[campaignMirrorDatasetID(run.RunID)] = true
+	}
+	for _, datasetID := range datasets {
+		if !active[datasetID] {
+			return true, nil
+		}
+	}
+	p.heldThrough = head.HighWaterSequence
+	return false, nil
+}
+
+// uploadHeldProofs uploads proofs that joined the catalog while the pointer held,
+// at most once a minute, so a live assignment's proofs resolve before the run
+// settles. It uploads nothing and reports true when an artifact left the catalog,
+// because that is a withdrawal the next pointer must carry.
+func (p *PublicBucketPublisher) uploadHeldProofs(ctx context.Context, root string) (bool, error) {
+	if p.now().Sub(p.lastHeldProofs) < publicBucketPointerInterval {
+		return false, nil
+	}
+	catalog, err := p.source.LayoutProofCatalog(ctx, p.sourceID)
+	if err != nil {
+		return false, fmt.Errorf("public-feed: bucket: read catalog: %w", err)
+	}
+	listed := make(map[string]bool, len(catalog.Entries))
+	for _, entry := range catalog.Entries {
+		listed[entry.ArtifactID] = true
+	}
+	for artifactID := range p.active {
+		if !listed[artifactID] {
+			return true, nil
+		}
+	}
+	if err := p.uploadProofs(ctx, catalog.Entries); err != nil {
+		return false, err
+	}
+	// Uploaded artifacts join the active set, so one withdrawn before the next
+	// pointer is still found leaving the catalog and deleted.
+	active := maps.Clone(p.active)
+	for artifactID := range listed {
+		active[artifactID] = true
+	}
+	p.active = active
+	p.activeRoot, p.lastHeldProofs = root, p.now()
+	return false, nil
+}
+
 // syncLayout uploads every object the next pointer names and then writes it. The
 // in-memory state only advances once the pointer reached the bucket.
-func (p *PublicBucketPublisher) syncLayout(ctx context.Context, state PublicLayoutState, force, withdrew bool) error {
+//
+// activeRuns is the set the write was decided on. The pointer reports it and the
+// next tick compares against it, so a state read that races the head check
+// cannot leave the two disagreeing and force a write on every tick.
+func (p *PublicBucketPublisher) syncLayout(ctx context.Context, state PublicLayoutState, activeRuns []models.PublicLiveRun, force, withdrew bool) error {
 	first := !p.synced
 	if first {
 		if err := p.loadPresent(ctx); err != nil {
@@ -222,11 +336,12 @@ func (p *PublicBucketPublisher) syncLayout(ctx context.Context, state PublicLayo
 		}
 	}
 	pointer := state.Pointer
+	pointer.Active = len(activeRuns) > 0
 	root := pointer.ProofRootSHA256
 
 	nextActive := p.active
 	var withdrawn []string
-	if root != "" && (first || root != p.proofsRoot) {
+	if root != "" && (first || root != p.proofsRoot || root != p.activeRoot) {
 		catalog, err := p.source.LayoutProofCatalog(ctx, p.sourceID)
 		if err != nil {
 			return fmt.Errorf("public-feed: bucket: read catalog: %w", err)
@@ -319,13 +434,14 @@ func (p *PublicBucketPublisher) syncLayout(ctx context.Context, state PublicLayo
 	}
 	p.active = nextActive
 	if root != "" {
-		p.proofsRoot = root
+		p.proofsRoot, p.activeRoot = root, root
 	}
 	p.segmentsHead = max(p.segmentsHead, pointer.ProofSegmentHead)
 	if historyPages.high > 0 {
 		p.historyHigh = historyPages.high
 	}
 	p.lastPointer = signed
+	p.lastActiveRuns = liveRunSet(activeRuns)
 	p.lastSync = p.now()
 	p.synced = true
 	return nil

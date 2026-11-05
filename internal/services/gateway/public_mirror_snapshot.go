@@ -250,6 +250,22 @@ func (s *PublicMirrorStore) snapshotRecordsOfKind(ctx context.Context, sourceID,
 	return records, nil
 }
 
+// snapshotDatasetsSince returns the distinct non-empty dataset IDs of current
+// records with a sequence above after. It reads only the sequence index.
+func (s *PublicMirrorStore) snapshotDatasetsSince(ctx context.Context, sourceID string, after int64) ([]string, error) {
+	datasets, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT DISTINCT dataset_id FROM snapshot_records
+		WHERE source_id = ? AND sequence > ? AND dataset_id != '' ORDER BY dataset_id`,
+		[]interface{}{sourceID, after}, func(rows *sql.Rows) (string, error) {
+			var datasetID string
+			err := rows.Scan(&datasetID)
+			return datasetID, err
+		})
+	if err != nil {
+		return nil, fmt.Errorf("mirror snapshot: read datasets since %d: %w", after, err)
+	}
+	return datasets, nil
+}
+
 func (s *PublicMirrorStore) snapshotRecords(ctx context.Context, sourceID string) ([]models.PublicFeedRecord, error) {
 	records, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT sequence, record_type, record_hash, record_bytes FROM snapshot_records r
 		WHERE source_id = ? AND NOT EXISTS (SELECT 1 FROM withdrawn_datasets w WHERE w.source_id = r.source_id AND w.dataset_id = r.dataset_id)

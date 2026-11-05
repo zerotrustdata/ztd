@@ -90,6 +90,10 @@ type bucketFakeSource struct {
 	liveStatus   models.PublicLiveStatus
 	liveBundles  map[string][]byte
 	proofFiles   map[string]string
+	// datasets maps a current record's sequence to its dataset ID.
+	datasets map[int64]string
+	// stateRuns, when set, is what LayoutState reports in place of the head's runs.
+	stateRuns []models.PublicLiveRun
 
 	layoutStateCalls int
 	liveBundleCalls  int
@@ -104,6 +108,7 @@ func newBucketFakeSource() *bucketFakeSource {
 		history:      map[int64][]byte{},
 		liveBundles:  map[string][]byte{},
 		proofFiles:   map[string]string{},
+		datasets:     map[int64]string{},
 	}
 }
 
@@ -122,6 +127,10 @@ func (s *bucketFakeSource) LayoutState(_ context.Context, _ string) (PublicLayou
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.layoutStateCalls++
+	runs := s.head.ActiveRuns
+	if s.stateRuns != nil {
+		runs = s.stateRuns
+	}
 	pointer := models.PublicFeedPointer{
 		SchemaVersion:        constants.PublicFeedPointerSchemaVersion,
 		SourceID:             bucketFakeSourceID,
@@ -132,13 +141,13 @@ func (s *bucketFakeSource) LayoutState(_ context.Context, _ string) (PublicLayou
 		HistoryFirstSequence: s.historyFirst,
 		FeedChainHash:        s.head.FeedChainHash,
 		WithdrawalDigest:     s.head.WithdrawalDigest,
-		Active:               len(s.head.ActiveRuns) > 0,
+		Active:               len(runs) > 0,
 		GeneratedAt:          time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC),
 	}
 	return PublicLayoutState{
 		Pointer:       pointer,
 		ReadModelGzip: slices.Clone(s.readModel),
-		ActiveRuns:    slices.Clone(s.head.ActiveRuns),
+		ActiveRuns:    slices.Clone(runs),
 	}, nil
 }
 
@@ -148,6 +157,19 @@ func (s *bucketFakeSource) LayoutProofCatalog(_ context.Context, _ string) (Publ
 	catalog := s.catalog
 	catalog.Entries = slices.Clone(s.catalog.Entries)
 	return catalog, nil
+}
+
+func (s *bucketFakeSource) LayoutDatasetsSince(_ context.Context, _ string, after int64) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var datasets []string
+	for sequence, datasetID := range s.datasets {
+		if sequence > after && !slices.Contains(datasets, datasetID) {
+			datasets = append(datasets, datasetID)
+		}
+	}
+	slices.Sort(datasets)
+	return datasets, nil
 }
 
 func (s *bucketFakeSource) LayoutProofHead(_ context.Context, _ string) ([]byte, bool, error) {
@@ -457,6 +479,14 @@ func (h *bucketHarness) setHead(highWater int64) {
 	h.source.head.FeedChainHash = hashBytes([]byte(strconv.FormatInt(highWater, 10)))
 }
 
+// record advances the head to sequence with a current record of datasetID.
+func (h *bucketHarness) record(sequence int64, datasetID string) {
+	h.setHead(sequence)
+	h.source.mu.Lock()
+	defer h.source.mu.Unlock()
+	h.source.datasets[sequence] = datasetID
+}
+
 func (h *bucketHarness) setWithdrawalDigest(digest string) {
 	h.source.mu.Lock()
 	defer h.source.mu.Unlock()
@@ -631,27 +661,180 @@ func TestBucketPublisher_RevisionAdvancesAcrossRestart(t *testing.T) {
 	assert.Greater(t, restarted, journaled, "a restarted publisher must write a revision above the journal's, even with the clock behind")
 }
 
-func TestBucketPublisher_CoalescesPointerDuringRun(t *testing.T) {
+func TestBucketPublisher_HoldsReadModelDuringRun(t *testing.T) {
 	h := newBucketHarness(t)
 	ctx := t.Context()
 	run := models.PublicLiveRun{DatasetID: "ds-1", RunID: "run-1", LifecycleState: "running"}
 	h.setActiveRuns(run)
 	publisher := h.newPublisher()
+	require.NoError(t, publisher.tick(ctx))
+	mark := h.client.logMark()
 
-	const ticks = 7 // one per 10 seconds, spanning exactly one minute after the first
-	for index := range ticks {
-		h.setHead(int64(index + 1))
+	// Ten minutes of the run's own records and proofs, one tick per 10 seconds.
+	var proofs []models.PublicProofCatalogEntry
+	for index := range 60 {
+		h.clock.Advance(publicBucketTickInterval)
+		h.record(int64(index+1), run.DatasetID)
+		if index%6 == 0 {
+			proofs = append(proofs, h.proof(fmt.Sprintf("p%d.json", index), []byte(fmt.Sprintf(`{"p":%d}`, index))))
+			h.setProofRoot(proofs...)
+		}
+		h.setReadModel(fmt.Sprintf(`{"read":"model-%d"}`, index+1))
+		require.NoError(t, publisher.tick(ctx))
+	}
+
+	calls := h.client.logSince(mark)
+	assert.Zero(t, countPuts(calls, constants.PublicLayoutPointerKey), "the pointer holds while only the active run's records arrive")
+	assert.Zero(t, countPuts(calls, constants.PublicLayoutReadModelPrefix), "no read model is uploaded during the run")
+	assert.Zero(t, countPuts(calls, constants.PublicLayoutProofCatalogPrefix), "the catalog is not rewritten during the run")
+	for _, entry := range proofs {
+		assert.True(t, h.client.has(constants.PublicLayoutProofPrefix+entry.ArtifactID), "a proof is uploaded during the run")
+		assert.True(t, h.client.has(constants.PublicLayoutProofMetaPrefix+entry.ArtifactID+constants.PublicLayoutJSONSuffix), "a proof-meta object is uploaded during the run")
+	}
+	h.source.mu.Lock()
+	stateCalls := h.source.layoutStateCalls
+	h.source.mu.Unlock()
+	assert.Equal(t, 1, stateCalls, "the read model is rebuilt only for the first pointer")
+}
+
+func TestBucketPublisher_ActiveSetChangeWritesPointerOnce(t *testing.T) {
+	h := newBucketHarness(t)
+	ctx := t.Context()
+	first := models.PublicLiveRun{DatasetID: "ds-1", RunID: "run-1", LifecycleState: "running"}
+	second := models.PublicLiveRun{DatasetID: "ds-2", RunID: "run-2", LifecycleState: "queued"}
+	h.setActiveRuns(first)
+	publisher := h.newPublisher()
+	require.NoError(t, publisher.tick(ctx))
+
+	step := func(runs ...models.PublicLiveRun) []string {
+		h.clock.Advance(publicBucketTickInterval)
+		h.setActiveRuns(runs...)
+		mark := h.client.logMark()
+		require.NoError(t, publisher.tick(ctx))
+		h.clock.Advance(publicBucketTickInterval)
+		require.NoError(t, publisher.tick(ctx))
+		return h.client.logSince(mark)
+	}
+
+	assert.Equal(t, 1, countPuts(step(first, second), constants.PublicLayoutPointerKey), "a second run starting writes the pointer once")
+	second.LifecycleState = "running"
+	assert.Zero(t, countPuts(step(first, second), constants.PublicLayoutPointerKey), "a run moving from queued to running keeps the same set")
+	assert.Equal(t, 1, countPuts(step(second), constants.PublicLayoutPointerKey), "one of two runs ending writes the pointer once")
+	assert.True(t, h.pointerInBucket().Active)
+	assert.Equal(t, 1, countPuts(step(), constants.PublicLayoutPointerKey), "the last run settling writes the pointer once")
+	assert.False(t, h.pointerInBucket().Active)
+}
+
+func TestBucketPublisher_SettledRunRecordMovesPointerDuringRun(t *testing.T) {
+	h := newBucketHarness(t)
+	ctx := t.Context()
+	run := models.PublicLiveRun{DatasetID: "ds-1", RunID: "run-1", LifecycleState: "running"}
+	h.setActiveRuns(run)
+	publisher := h.newPublisher()
+	require.NoError(t, publisher.tick(ctx))
+	mark := h.client.logMark()
+
+	h.clock.Advance(publicBucketTickInterval)
+	h.record(1, "ds-settled")
+	h.setReadModel(`{"read":"republished"}`)
+	require.NoError(t, publisher.tick(ctx))
+	assert.Zero(t, countPuts(h.client.logSince(mark), constants.PublicLayoutPointerKey), "a write within the minute is coalesced")
+
+	h.clock.Advance(time.Minute)
+	h.record(2, run.DatasetID)
+	require.NoError(t, publisher.tick(ctx))
+	calls := h.client.logSince(mark)
+	assert.Equal(t, 1, countPuts(calls, constants.PublicLayoutPointerKey), "a settled run's record moves the pointer within a minute")
+	assert.Equal(t, hashBytes([]byte(`{"read":"republished"}`)), h.pointerInBucket().ReadModelSHA256)
+	assert.True(t, h.pointerInBucket().Active)
+
+	mark = h.client.logMark()
+	h.clock.Advance(time.Minute)
+	h.record(3, run.DatasetID)
+	require.NoError(t, publisher.tick(ctx))
+	assert.Zero(t, countPuts(h.client.logSince(mark), constants.PublicLayoutPointerKey), "after it the pointer holds again")
+}
+
+func TestBucketPublisher_WithdrawalDuringRunWritesPointer(t *testing.T) {
+	h := newBucketHarness(t)
+	ctx := t.Context()
+	h.setActiveRuns(models.PublicLiveRun{DatasetID: "ds-1", RunID: "run-1", LifecycleState: "running"})
+	publisher := h.newPublisher()
+	withdrawal := bucketWithdrawalSetup(t, h, publisher)
+	h.clock.Set(h.clock.Now().Add(-time.Minute + publicBucketTickInterval))
+	mark := h.client.logMark()
+
+	require.NoError(t, publisher.tick(ctx))
+
+	assert.Equal(t, 1, countPuts(h.client.logSince(mark), constants.PublicLayoutPointerKey), "a withdrawal writes the pointer at once during a run")
+	assert.Equal(t, hashBytes([]byte("withdrawal-1")), h.pointerInBucket().WithdrawalDigest)
+	assert.False(t, h.client.has(constants.PublicLayoutProofPrefix+withdrawal.artifactID))
+}
+
+func TestBucketPublisher_ArtifactWithdrawnDuringRunWritesPointer(t *testing.T) {
+	h := newBucketHarness(t)
+	ctx := t.Context()
+	h.setActiveRuns(models.PublicLiveRun{DatasetID: "ds-1", RunID: "run-1", LifecycleState: "running"})
+	replaced := h.proof("bundle-v1.json", []byte(`{"bundle":1}`))
+	kept := h.proof("kept.json", []byte(`{"kept":true}`))
+	h.setProofRoot(replaced, kept)
+	publisher := h.newPublisher()
+	require.NoError(t, publisher.tick(ctx))
+	require.True(t, h.client.has(constants.PublicLayoutProofPrefix+replaced.ArtifactID))
+
+	h.clock.Advance(time.Minute)
+	next := h.proof("bundle-v2.json", []byte(`{"bundle":2}`))
+	h.setProofRoot(kept, next)
+	mark := h.client.logMark()
+	require.NoError(t, publisher.tick(ctx))
+
+	assert.Equal(t, 1, countPuts(h.client.logSince(mark), constants.PublicLayoutPointerKey), "an artifact leaving the catalog is a withdrawal and moves the pointer")
+	assert.False(t, h.client.has(constants.PublicLayoutProofPrefix+replaced.ArtifactID), "the replaced artifact is deleted")
+	assert.True(t, h.client.has(constants.PublicLayoutProofPrefix+next.ArtifactID))
+}
+
+func TestBucketPublisher_StateDisagreeingWithHeadWritesOnce(t *testing.T) {
+	h := newBucketHarness(t)
+	ctx := t.Context()
+	run := models.PublicLiveRun{DatasetID: "ds-1", RunID: "run-1", LifecycleState: "running"}
+	h.setActiveRuns(run)
+	h.source.mu.Lock()
+	h.source.stateRuns = []models.PublicLiveRun{}
+	h.source.mu.Unlock()
+	publisher := h.newPublisher()
+
+	for range 6 {
 		require.NoError(t, publisher.tick(ctx))
 		h.clock.Advance(publicBucketTickInterval)
 	}
 
-	calls := h.client.logSince(0)
-	pointerPuts := countPuts(calls, constants.PublicLayoutPointerKey)
-	assert.Equal(t, 2, pointerPuts, "a pointer is written at the first tick and once more a minute later")
-	h.source.mu.Lock()
-	stateCalls := h.source.layoutStateCalls
-	h.source.mu.Unlock()
-	assert.Equal(t, pointerPuts, stateCalls, "LayoutState runs only when a pointer write is due")
+	assert.Equal(t, 1, countPuts(h.client.logSince(0), constants.PublicLayoutPointerKey), "a state read that disagrees with the head does not force a write on every tick")
+	assert.True(t, h.pointerInBucket().Active, "the pointer reports the active set the write was decided on")
+}
+
+func TestBucketPublisher_HeldUploadWithdrawnBeforeNextPointerIsDeleted(t *testing.T) {
+	h := newBucketHarness(t)
+	ctx := t.Context()
+	h.setActiveRuns(models.PublicLiveRun{DatasetID: "ds-1", RunID: "run-1", LifecycleState: "running"})
+	kept := h.proof("kept.json", []byte(`{"kept":true}`))
+	h.setProofRoot(kept)
+	publisher := h.newPublisher()
+	require.NoError(t, publisher.tick(ctx))
+
+	h.clock.Advance(time.Minute)
+	brief := h.proof("bundle-v1.json", []byte(`{"bundle":1}`))
+	h.setProofRoot(kept, brief)
+	require.NoError(t, publisher.tick(ctx))
+	require.True(t, h.client.has(constants.PublicLayoutProofPrefix+brief.ArtifactID), "the held upload reaches the bucket")
+	require.Zero(t, countPuts(h.client.logSince(0), constants.PublicLayoutPointerKey)-1, "the pointer held")
+
+	h.clock.Advance(time.Minute)
+	h.setProofRoot(kept)
+	require.NoError(t, publisher.tick(ctx))
+
+	assert.False(t, h.client.has(constants.PublicLayoutProofPrefix+brief.ArtifactID), "an artifact uploaded during the hold and withdrawn before the next pointer is deleted")
+	assert.False(t, h.client.has(constants.PublicLayoutProofMetaPrefix+brief.ArtifactID+constants.PublicLayoutJSONSuffix))
+	assert.True(t, h.client.has(constants.PublicLayoutProofPrefix+kept.ArtifactID))
 }
 
 func TestBucketPublisher_SettleWritesImmediatelyAndRewritesCatalog(t *testing.T) {
@@ -673,7 +856,8 @@ func TestBucketPublisher_SettleWritesImmediatelyAndRewritesCatalog(t *testing.T)
 	require.NoError(t, publisher.tick(ctx))
 	duringRun := h.client.logSince(mark)
 	assert.Zero(t, countPuts(duringRun, constants.PublicLayoutProofCatalogPrefix), "a catalog is not rewritten while a run is active")
-	assert.Equal(t, constants.PublicLayoutPointerKey, putsIn(duringRun)[len(putsIn(duringRun))-1], "the pointer still moves during the run")
+	assert.Zero(t, countPuts(duringRun, constants.PublicLayoutPointerKey), "the pointer holds during the run")
+	assert.Contains(t, putsIn(duringRun), constants.PublicLayoutProofPrefix+second.ArtifactID, "the run's new proof is uploaded without the pointer")
 
 	h.clock.Advance(publicBucketTickInterval)
 	h.setActiveRuns()
@@ -830,7 +1014,7 @@ func TestBucketPublisher_LiveBundleRefreshesAtMostOncePerMinute(t *testing.T) {
 	h.source.mu.Unlock()
 	object, ok := h.client.object(liveRunKey(run.RunID))
 	require.True(t, ok)
-	assert.Equal(t, []byte(`{"bundle":"v2"}`), object.body, "the refreshed bundle replaces the earlier one")
+	assert.JSONEq(t, `{"bundle":"v2"}`, string(object.body), "the refreshed bundle replaces the earlier one")
 	assert.Equal(t, 2, countPuts(h.client.logSince(0), liveRunKey(run.RunID)))
 }
 

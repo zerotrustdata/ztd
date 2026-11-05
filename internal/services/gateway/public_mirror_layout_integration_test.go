@@ -25,16 +25,22 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 )
 
+// layoutResponse is the status and headers of one layout GET; the body is already read and closed.
+type layoutResponse struct {
+	StatusCode int
+	Header     http.Header
+}
+
 // layoutGet performs an anonymous GET and returns the stored response bytes.
 // Transparent decompression is off, so Content-Encoding bodies stay gzipped.
-func layoutGet(t *testing.T, client *http.Client, baseURL, path string) (*http.Response, []byte) {
+func layoutGet(t *testing.T, client *http.Client, baseURL, path string) (layoutResponse, []byte) {
 	t.Helper()
 	response, err := client.Get(baseURL + path)
 	require.NoError(t, err)
 	body, err := io.ReadAll(response.Body)
 	require.NoError(t, err)
 	require.NoError(t, response.Body.Close())
-	return response, body
+	return layoutResponse{StatusCode: response.StatusCode, Header: response.Header}, body
 }
 
 // layoutClient returns a client that never adds Accept-Encoding or unpacks a
@@ -326,6 +332,37 @@ func TestPublicMirrorLayout_LiveRunBundleServedWhileActive(t *testing.T) {
 	assert.Equal(t, constants.PublicLayoutCacheLiveRun, response.Header.Get(constants.HeaderCacheControl))
 	lines := strings.Split(strings.TrimSpace(string(gunzipLayout(t, body))), "\n")
 	assert.Len(t, lines, len(results))
+}
+
+func TestPublicMirrorLayout_DatasetsSinceReportsDatasetsAboveSequence(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	ctx := t.Context()
+	runID := "run-1"
+	records := []models.PublicFeedRecord{
+		env.makeRecord(1, models.NewPublicFeedObject(map[string]string{
+			"kind":            "evaluation_summary",
+			"dataset_id":      campaignMirrorDatasetID(runID),
+			"run_id":          runID,
+			"lifecycle_state": string(models.RunLifecycleStatusRunning),
+			"schema_version":  "1.5.0",
+		})),
+		taskIndexTestResultRecord(t, 2, "assignment-a", "task-alpha@1.0.0", "2026-09-01T00:00:00Z"),
+		layoutProjection(env, 3),
+	}
+	_, accepted := env.sendIngest(env.buildBatch(records, constants.PublicFeedZeroHashHex))
+	require.True(t, accepted.Accepted)
+
+	all, err := env.mirror.LayoutDatasetsSince(ctx, env.sourceID, 0)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"ds-layout-3", campaignMirrorDatasetID(runID)}, all, "datasets come back sorted")
+
+	afterRun, err := env.mirror.LayoutDatasetsSince(ctx, env.sourceID, 2)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"ds-layout-3"}, afterRun, "only records above the sequence count")
+
+	none, err := env.mirror.LayoutDatasetsSince(ctx, env.sourceID, 3)
+	require.NoError(t, err)
+	assert.Empty(t, none)
 }
 
 func TestPublicMirrorLayout_IngestListenerServesNoLayoutRoutes(t *testing.T) {

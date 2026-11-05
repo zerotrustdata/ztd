@@ -1132,7 +1132,7 @@ const PUBLIC_CACHE = {
 function publicPointerSchema() {
   return {
     type: 'object',
-    description: 'Mutable mirror pointer. It names the current digest-addressed read model and proof catalog. It is written last, so a partial publish never goes live.',
+    description: 'Mutable mirror pointer. It names the current digest-addressed read model and proof catalog. It is written last, so a partial publish never goes live. While a run is active the publisher holds it and moves it only when the active run set changes, a withdrawal lands, or records of a dataset that is not executing arrive; live/status.json carries the run in between. generated_at is when the pointer was composed, not a freshness signal.',
     required: ['schema_version', 'source_id', 'revision', 'read_model_sha256', 'proof_segment_head', 'high_water_sequence', 'history_first_sequence', 'feed_chain_hash', 'active', 'generated_at'],
     properties: {
       schema_version: { type: 'string', const: '1.0.0' },
@@ -1241,14 +1241,11 @@ function generatePublicEventSchemas() {
     schema_version: '1.0.0',
     event_types: {
       snapshot: { payload_model: 'public_feed_snapshot', sequence_source: 'payload.high_water_sequence' },
-      projection: { payload_model: 'public_safe_object', sequence_source: 'sse.id' },
-      event: { payload_model: 'public_safe_object', sequence_source: 'sse.id' },
-      proof_manifest: { payload_model: 'public_proof_manifest', sequence_source: 'sse.id' },
-      key_revocation: { payload_model: 'public_key_revocation_record', sequence_source: 'sse.id' },
-      truncated: { payload_model: 'public_stream_sentinel' },
-      error: { payload_model: 'public_stream_sentinel' },
+      projection: { payload_model: 'public_safe_object', sequence_source: 'tail.sequence' },
+      event: { payload_model: 'public_safe_object', sequence_source: 'tail.sequence' },
+      proof_manifest: { payload_model: 'public_proof_manifest', sequence_source: 'tail.sequence' },
+      key_revocation: { payload_model: 'public_key_revocation_record', sequence_source: 'tail.sequence' },
     },
-    sentinel_models: { public_stream_sentinel: { reason: { type: 'string', required: true } } },
     assignment_record_schemas: {
       envelope_versions: ['1.0.0', '1.1.0'],
       message_types: ['PublicAssignmentLifecycleRecord', 'PublicAssignmentResultProjection'],

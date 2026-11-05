@@ -29,40 +29,26 @@
     ]
   },
   "event_types": {
-    "error": {
-      "payload_model": "public_stream_sentinel"
-    },
     "event": {
       "payload_model": "public_safe_object",
-      "sequence_source": "sse.id"
+      "sequence_source": "tail.sequence"
     },
     "key_revocation": {
       "payload_model": "public_key_revocation_record",
-      "sequence_source": "sse.id"
+      "sequence_source": "tail.sequence"
     },
     "projection": {
       "payload_model": "public_safe_object",
-      "sequence_source": "sse.id"
+      "sequence_source": "tail.sequence"
     },
     "proof_manifest": {
       "payload_model": "public_proof_manifest",
-      "sequence_source": "sse.id"
+      "sequence_source": "tail.sequence"
     },
     "snapshot": {
       "payload_model": "public_feed_snapshot",
       "sequence_source": "payload.high_water_sequence"
-    },
-    "truncated": {
-      "payload_model": "public_stream_sentinel"
     }
   },
-  "schema_version": "1.0.0",
-  "sentinel_models": {
-    "public_stream_sentinel": {
-      "reason": {
-        "required": true,
-        "type": "string"
-      }
-    }
-  }
+  "schema_version": "1.0.0"
 }
