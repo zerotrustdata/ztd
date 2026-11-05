@@ -673,14 +673,14 @@ binding, then verifies database event hashes and run, assignment, and source ide
 				}
 			}
 			if assignmentID == "" {
-				return fmt.Errorf("%w: sha256 %s", constants.ErrPublicAssignmentAuditNotInProof, digest)
+				return fmt.Errorf("%w: sha256 %s", constants.ErrPublicAssignmentAuditNotBound, digest)
 			}
 			header, records, err := assignmentaudit.VerifyDatabase(shared.CommandContext(cmd), dbBytes)
 			if err != nil {
 				return fmt.Errorf("public-feed: verify assignment audit db: %w", err)
 			}
 			if header.RunID != runID || header.AssignmentID != assignmentID || header.SourceID != root.Pointer.SourceID {
-				return fmt.Errorf("%w: database identity differs from bound assignment", constants.ErrPublicAssignmentAuditNotInProof)
+				return fmt.Errorf("%w: database identity differs from bound assignment", constants.ErrPublicAssignmentAuditNotBound)
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Assignment audit verified (run %s, assignment %s, %d events, sha256 %s)\n", header.RunID, header.AssignmentID, len(records), digest)
 			return err

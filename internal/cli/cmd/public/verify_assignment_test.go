@@ -136,7 +136,7 @@ func TestVerifyAssignmentCmd_RejectsUnboundAndWrongAssignmentDatabases(t *testin
 			cmd.SetOut(&bytes.Buffer{})
 			cmd.SetErr(&bytes.Buffer{})
 			cmd.SetArgs(append(f.args(), "--db", dbPath))
-			require.ErrorIs(t, cmd.Execute(), constants.ErrPublicAssignmentAuditNotInProof)
+			require.ErrorIs(t, cmd.Execute(), constants.ErrPublicAssignmentAuditNotBound)
 		})
 	}
 }

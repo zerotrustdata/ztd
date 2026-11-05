@@ -26,12 +26,27 @@ export interface PublicRecentProjection {
   readonly [field: string]: unknown;
 }
 
+export interface PublicTaskResult {
+  readonly run_id: string;
+  readonly assignment_id: string;
+  readonly lifecycle_status: string;
+  readonly summary_status: string;
+  readonly verification_status?: string;
+  readonly completed_at: string;
+}
+
+export interface PublicTaskIndexEntry {
+  readonly task_id: string;
+  readonly results: readonly PublicTaskResult[];
+}
+
 export interface PublicBootstrap {
   readonly schema_version: '2.0.0';
   readonly protocol_version: string;
   readonly snapshot: PublicSnapshot;
   readonly source_freshness: string;
   readonly recent_projections: readonly PublicRecentProjection[];
+  readonly task_index: readonly PublicTaskIndexEntry[];
   readonly generated_at: string;
 }
 

@@ -73,6 +73,14 @@ function recentProjection(value: unknown): value is PublicRecentProjection {
   return candidate !== null && integer(candidate.sequence) && candidate.record_type === undefined;
 }
 
+function taskIndexEntry(value: unknown): boolean {
+ const entry=object(value);
+ return entry!==null && string(entry.task_id) && Array.isArray(entry.results) && entry.results.length<=10 && entry.results.every((value: unknown)=>{
+ const result=object(value);
+ return result!==null && ['run_id','assignment_id','lifecycle_status','summary_status','completed_at'].every((field)=>string(result[field])) && optional(string)(result.verification_status);
+ });
+}
+
 function bootstrap(value: unknown): value is PublicBootstrap {
   const candidate = object(value);
   return candidate !== null
@@ -82,12 +90,15 @@ function bootstrap(value: unknown): value is PublicBootstrap {
     && string(candidate.source_freshness)
     && Array.isArray(candidate.recent_projections)
     && candidate.recent_projections.every(recentProjection)
+    && Array.isArray(candidate.task_index)
+    && candidate.task_index.every(taskIndexEntry)
     && string(candidate.generated_at);
 }
 
 function pointer(value: unknown): value is PublicPointer {
   const candidate = object(value);
   return candidate !== null
+    && Object.keys(candidate).every((key) => ['schema_version', 'source_id', 'revision', 'read_model_sha256', 'high_water_sequence', 'history_first_sequence', 'feed_chain_hash', 'withdrawal_digest', 'active', 'generated_at', 'signing_key_id', 'signing_public_key', 'signature'].includes(key))
     && candidate.schema_version === '2.0.0'
     && string(candidate.source_id)
     && candidate.source_id !== ''

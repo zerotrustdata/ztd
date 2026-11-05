@@ -80,16 +80,13 @@ func assertSingleActiveBundle(t *testing.T, run *realStackRun, runID, digest str
 	assert.Equal(t, constants.MediaTypeGzip, entries[0].MediaType)
 }
 
-// runAuditProofIDs maps the active assignment database and agent trace artifact
-// ids of runID to their filenames.
-func runAuditProofIDs(t *testing.T, run *realStackRun, runID string) map[string]string {
+// nonBundleProofIDs maps every active catalog artifact id that is not a run
+// bundle, such as the campaign's scenario fixtures, to its filename.
+func nonBundleProofIDs(t *testing.T, run *realStackRun) map[string]string {
 	t.Helper()
 	ids := map[string]string{}
 	for _, entry := range mirrorProofCatalogEntries(t, run) {
-		if entry.SourceRunID != runID {
-			continue
-		}
-		if strings.HasSuffix(entry.Filename, ".db") || strings.HasSuffix(entry.Filename, ".agent-trace.json") {
+		if !strings.HasSuffix(entry.Filename, constants.PublicRunBundleFilenameSuffix) {
 			ids[entry.ArtifactID] = entry.Filename
 		}
 	}
@@ -243,8 +240,8 @@ func TestPublicationRealStack_RepeatPublishKeepsTheSameBundleAndForcedRepublishR
 	assert.Equal(t, first, latestSummaryBundleDigest(t), "a repeat publish keeps the summary digest")
 	assertSingleActiveBundle(t, run, runID, first)
 
-	audit := runAuditProofIDs(t, run, runID)
-	require.NotEmpty(t, audit, "the run has active audit database and agent trace entries")
+	retained := nonBundleProofIDs(t, run)
+	require.NotEmpty(t, retained, "the campaign has active scenario fixture entries")
 
 	out, err = env.run(t, "runs", "publish", runID, "--force")
 	require.NoError(t, err, out)
@@ -257,8 +254,8 @@ func TestPublicationRealStack_RepeatPublishKeepsTheSameBundleAndForcedRepublishR
 	for _, entry := range active {
 		activeIDs[entry.ArtifactID] = true
 	}
-	for id, filename := range audit {
-		assert.True(t, activeIDs[id], "the forced republish keeps the audit artifact active: %s", filename)
+	for id, filename := range retained {
+		assert.True(t, activeIDs[id], "the forced republish keeps the non-bundle artifact active: %s", filename)
 	}
 
 	if second == first {

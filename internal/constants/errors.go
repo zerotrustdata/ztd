@@ -1370,7 +1370,7 @@ var (
 	ErrPublicBucketPurgeFailed                = errors.New("public-feed: cache purge failed")
 	ErrPublicBucketJournalCorrupt             = errors.New("public-feed: bucket journal is corrupt")
 	ErrPublicFeedProofIDRequired              = errors.New("public-feed: proof_id is required")
-	ErrPublicAssignmentAuditNotInProof        = errors.New("public-feed: assignment audit database is not an active proof artifact")
+	ErrPublicAssignmentAuditNotBound          = errors.New("public-feed: assignment audit database does not match an authenticated assignment binding")
 	ErrPublicFeedRecordTypeInvalid            = errors.New("public-feed: invalid record type")
 	ErrPublicFeedRecordSchemaInvalid          = errors.New("public-feed: invalid record schema")
 	ErrPublicFeedKeyGenFailed                 = errors.New("public-feed: failed to generate signing key")

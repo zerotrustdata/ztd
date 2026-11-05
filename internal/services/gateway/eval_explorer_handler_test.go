@@ -132,3 +132,16 @@ func TestEvalExplorerHandler_DedicatedPortUsesConfiguredMirrorOrigin(t *testing.
 	require.NoError(t, json.Unmarshal(runtimeRes.Body.Bytes(), &payload))
 	assert.Equal(t, "http://127.0.0.1:8082", payload["mirror_origin"])
 }
+
+func TestCombinePublicSpectatorHandler_RemovedProofRoutesReturn404(t *testing.T) {
+	explorer, err := NewEvalExplorerHandler("", "https://feed.example", false)
+	require.NoError(t, err)
+	handler := combinePublicSpectatorHandler(http.NotFoundHandler(), explorer)
+	for _, path := range []string{"/proofs/abc", "/proof-catalog", "/proof-head", "/proof-segments", "/proof-head.json", "/proof-catalog/abc.json.gz", "/proof-meta/abc.json", "/proof-segments/1.jsonl.gz"} {
+		t.Run(path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+			assert.Equal(t, http.StatusNotFound, response.Code)
+		})
+	}
+}

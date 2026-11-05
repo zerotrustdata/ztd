@@ -56,8 +56,23 @@ export interface PublicFeedBootstrap {
   protocol_version: string;
   snapshot: PublicFeedSnapshot;
   source_freshness: CampaignFreshness;
+  task_index: PublicTaskIndexEntry[];
   recent_projections: unknown[];
   generated_at: string;
+}
+
+export interface PublicTaskIndexEntry {
+  task_id: string;
+  results: PublicTaskResult[];
+}
+
+export interface PublicTaskResult {
+  run_id: string;
+  assignment_id: string;
+  lifecycle_status: string;
+  summary_status: string;
+  verification_status?: string;
+  completed_at: string;
 }
 
 export interface PublicFeedCursorPage {
@@ -147,12 +162,6 @@ export interface PublicProofCatalog {
   generated_at: string;
 }
 
-export interface PublicProofCatalogSummary {
-  artifact_count: number;
-  total_byte_size: number;
-  last_generated_at?: string;
-}
-
 export function isPublicFeedRecord(value: unknown): value is PublicFeedRecord {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
@@ -202,8 +211,29 @@ export function isPublicFeedBootstrap(value: unknown): value is PublicFeedBootst
   if (!(typeof v.protocol_version === 'string')) return false; /* protocol_version */
   if (!(isPublicFeedSnapshot(v.snapshot))) return false; /* snapshot */
   if (!(typeof v.source_freshness === 'string' && (CAMPAIGN_FRESHNESS_VALUES as readonly string[]).includes(v.source_freshness))) return false; /* source_freshness */
+  if (!(Array.isArray(v.task_index) && v.task_index.every((x) => isPublicTaskIndexEntry(x)))) return false; /* task_index */
   if (!(Array.isArray(v.recent_projections))) return false; /* recent_projections */
   if (!(typeof v.generated_at === 'string')) return false; /* generated_at */
+  return true;
+}
+
+export function isPublicTaskIndexEntry(value: unknown): value is PublicTaskIndexEntry {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  if (!(typeof v.task_id === 'string')) return false; /* task_id */
+  if (!(Array.isArray(v.results) && v.results.every((x) => isPublicTaskResult(x)))) return false; /* results */
+  return true;
+}
+
+export function isPublicTaskResult(value: unknown): value is PublicTaskResult {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  if (!(typeof v.run_id === 'string')) return false; /* run_id */
+  if (!(typeof v.assignment_id === 'string')) return false; /* assignment_id */
+  if (!(typeof v.lifecycle_status === 'string')) return false; /* lifecycle_status */
+  if (!(typeof v.summary_status === 'string')) return false; /* summary_status */
+  if (v.verification_status !== undefined && !(typeof v.verification_status === 'string')) return false; /* verification_status */
+  if (!(typeof v.completed_at === 'string')) return false; /* completed_at */
   return true;
 }
 
@@ -312,15 +342,6 @@ export function isPublicProofCatalog(value: unknown): value is PublicProofCatalo
   if (!(typeof v.schema_version === 'string')) return false; /* schema_version */
   if (!(Array.isArray(v.entries) && v.entries.every((x) => isPublicProofCatalogEntry(x)))) return false; /* entries */
   if (!(typeof v.generated_at === 'string')) return false; /* generated_at */
-  return true;
-}
-
-export function isPublicProofCatalogSummary(value: unknown): value is PublicProofCatalogSummary {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const v = value as Record<string, unknown>;
-  if (!(typeof v.artifact_count === 'number' && Number.isInteger(v.artifact_count))) return false; /* artifact_count */
-  if (!(typeof v.total_byte_size === 'number' && Number.isInteger(v.total_byte_size))) return false; /* total_byte_size */
-  if (v.last_generated_at !== undefined && !(typeof v.last_generated_at === 'string')) return false; /* last_generated_at */
   return true;
 }
 

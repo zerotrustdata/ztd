@@ -25,7 +25,7 @@ const readModelText = JSON.stringify({
   snapshot,
   source_freshness: 'source_offline',
   recent_projections: [{ sequence: 1, kind: 'catalog_snapshot' }],
-  schema_version: '2.0.0',
+  schema_version: '2.0.0', task_index: [],
   generated_at: generatedAt,
 });
 

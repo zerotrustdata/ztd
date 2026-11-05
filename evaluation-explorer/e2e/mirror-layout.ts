@@ -52,7 +52,7 @@ export async function installMirrorLayout(page: Page, options: MirrorLayoutOptio
   const readModelSha256 = sha256(readModel);
   // Quiet pointer: the live poll stays off, so the page's requests are only the feed's own.
   const pointer = {
-    schema_version: '1.0.0',
+    schema_version: '2.0.0',
     source_id: sourceId,
     revision: 1,
     read_model_sha256: readModelSha256,
@@ -81,7 +81,7 @@ export async function installMirrorLayout(page: Page, options: MirrorLayoutOptio
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify(liveStatus) });
       return;
     }
-    if (url.pathname.startsWith('/proof-meta/') || url.pathname.startsWith('/live/runs/')) {
+    if (url.pathname.startsWith('/live/runs/')) {
       await route.fulfill({ status: 404, body: 'not found' });
       return;
     }

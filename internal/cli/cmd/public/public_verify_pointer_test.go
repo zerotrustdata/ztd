@@ -15,7 +15,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -43,7 +42,7 @@ func newPointerBundleFixture(t *testing.T, files fs.RuntimeFileService, assignme
 	}
 	var lines bytes.Buffer
 	for i, assignment := range assignments {
-		record, err := protojson.Marshal(assignment)
+		record, err := evalv1.MarshalCanonical(assignment)
 		require.NoError(t, err)
 		envelope, err := json.Marshal(evaluation.CampaignProjectionEnvelope{SchemaVersion: "1.0.0", MessageType: "PublicAssignmentResultProjection", IdempotencyKey: assignment.GetAssignmentId(), Record: record})
 		require.NoError(t, err)
@@ -121,19 +120,32 @@ func TestVerifyProofCmd_RejectsBrokenPointerTrustChain(t *testing.T) {
 		change func(*testing.T, *pointerBundleFixture)
 		want   error
 	}{
-		{"untrusted self published key", func(t *testing.T, f *pointerBundleFixture) { f.write(t, "keys.json", []byte(`{}`)) }, constants.ErrPublicFeedSignatureInvalid},
+		{"untrusted self published key", func(t *testing.T, f *pointerBundleFixture) { t.Helper(); f.write(t, "keys.json", []byte(`{}`)) }, constants.ErrPublicFeedSignatureInvalid},
 		{"unsigned pointer", func(t *testing.T, f *pointerBundleFixture) {
+			t.Helper()
 			f.pointer.Signature = ""
 			body, err := json.Marshal(f.pointer)
 			require.NoError(t, err)
 			f.write(t, "pointer.json", body)
 		}, constants.ErrPublicFeedSignatureInvalid},
-		{"unknown pointer field", func(t *testing.T, f *pointerBundleFixture) { f.write(t, "pointer.json", []byte(`{"bogus":true}`)) }, constants.ErrPublicFeedPointerInvalid},
-		{"read model tampering", func(t *testing.T, f *pointerBundleFixture) { f.write(t, "read-model.json", []byte(`{}`)) }, constants.ErrPublicFeedProofHashMismatch},
-		{"bundle tampering", func(t *testing.T, f *pointerBundleFixture) { f.write(t, "bundle.jsonl.gz", []byte(`{}`)) }, constants.ErrPublicFeedProofHashMismatch},
-		{"read model source mismatch", func(t *testing.T, f *pointerBundleFixture) { f.readModel.Snapshot.SourceID = "other"; f.save(t) }, constants.ErrPublicReadModelInvalid},
-		{"run absent or withdrawn", func(t *testing.T, f *pointerBundleFixture) { f.readModel.RecentProjections = nil; f.save(t) }, constants.ErrPublicRunBundleInvalid},
+		{"unknown pointer field", func(t *testing.T, f *pointerBundleFixture) {
+			t.Helper()
+			f.write(t, "pointer.json", []byte(`{"bogus":true}`))
+		}, constants.ErrPublicFeedPointerInvalid},
+		{"read model tampering", func(t *testing.T, f *pointerBundleFixture) { t.Helper(); f.write(t, "read-model.json", []byte(`{}`)) }, constants.ErrPublicFeedProofHashMismatch},
+		{"bundle tampering", func(t *testing.T, f *pointerBundleFixture) { t.Helper(); f.write(t, "bundle.jsonl.gz", []byte(`{}`)) }, constants.ErrPublicFeedProofHashMismatch},
+		{"read model source mismatch", func(t *testing.T, f *pointerBundleFixture) {
+			t.Helper()
+			f.readModel.Snapshot.SourceID = "other"
+			f.save(t)
+		}, constants.ErrPublicReadModelInvalid},
+		{"run absent or withdrawn", func(t *testing.T, f *pointerBundleFixture) {
+			t.Helper()
+			f.readModel.RecentProjections = nil
+			f.save(t)
+		}, constants.ErrPublicRunBundleInvalid},
 		{"summary has no settled bundle", func(t *testing.T, f *pointerBundleFixture) {
+			t.Helper()
 			delete(f.readModel.RecentProjections[0], "assignment_bundle_sha256")
 			f.save(t)
 		}, constants.ErrPublicRunBundleInvalid},
@@ -168,4 +180,25 @@ func TestVerifyProofCmd_RejectsBundleIdentityAndRecordTampering(t *testing.T) {
 	}
 	_, err := verifyBundleRecords([]byte(`{"sequence":1,"record_hash":"bad","record_bytes":"{}"}`), assignmentTestRunID, 10)
 	require.ErrorIs(t, err, constants.ErrPublicFeedRecordHashMismatch)
+}
+
+func TestVerifyProofCmd_EnrichedAssignmentBundle(t *testing.T) {
+	f := newPointerBundleFixture(t, assignmentTestFiles(t))
+	// Production envelopes use schema 1.2.0, canonical snake_case protobuf
+	// fields, and named extensions that are not fields of the protobuf itself.
+	record, err := evaluation.MarshalAssignmentResultProjectionEnvelope("result", &evaluation.PublicAssignmentRecord{Projection: &evalv1.PublicAssignmentResultProjection{RunId: assignmentTestRunID, AssignmentId: assignmentTestAssignID, ScenarioId: "scenario-1"}, Extensions: evaluation.PublicAssignmentRecordExtensions{ResourceSummary: &evaluation.PublicResourceSummary{}}})
+	require.NoError(t, err)
+	line, err := json.Marshal(models.PublicRunBundleLine{Sequence: 1, RecordHash: models.SHA256Hex(record), RecordBytes: string(record)})
+	require.NoError(t, err)
+	var compressed bytes.Buffer
+	writer := gzip.NewWriter(&compressed)
+	_, err = writer.Write(append(line, '\n'))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+	f.bundle = compressed.Bytes()
+	f.readModel.RecentProjections[0]["assignment_bundle_sha256"] = json.RawMessage(`"` + models.SHA256Hex(f.bundle) + `"`)
+	f.save(t)
+	out, err := runPointerProof(t, f)
+	require.NoError(t, err)
+	assert.Contains(t, out, "1 assignments")
 }

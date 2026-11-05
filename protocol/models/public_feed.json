@@ -46,12 +46,51 @@
 
   "public_feed_bootstrap": {
     "schema_version": {"type":"string", "required":true, "const":"2.0.0", "description":"Read model schema version, independent of the signed feed batch protocol"},
-    "_description": "One bounded initial snapshot for public first paint. Contains the feed snapshot, current source freshness, recent projections, and proof catalog summary. SSE provides incremental change notifications after the snapshot.",
+    "_description": "Schema 2.0.0 current read model: feed snapshot, source freshness, summary projections, and the bounded task index. Assignment results are loaded from per-run bundles; live/status.json supplies updates between pointer revisions.",
     "protocol_version": {"type": "string", "required": true, "description": "Public feed protocol version"},
     "snapshot": {"type": "object", "required": true, "model": "public_feed_snapshot", "description": "Current feed snapshot with high-water sequence and feed-chain hash"},
     "source_freshness": {"type": "string", "required": true, "description": "Source freshness label", "enum": ["active", "delayed", "stale", "intentionally_stopped", "safety_stopped", "source_offline"]},
+    "task_index": {"type":"array", "items":"public_task_index_entry", "required":true, "description":"Up to ten newest result identities per task"},
     "recent_projections": {"type": "array", "required": true, "description": "Bounded list of recent public projections (JSON objects). Each carries only allowlisted fields."},
     "generated_at": {"type": "string", "format": "iso8601", "required": true, "description": "UTC timestamp when the bootstrap was produced"}
+  },
+
+  "public_task_index_entry": {
+    "task_id": {
+      "type": "string",
+      "required": true
+    },
+    "results": {
+      "type": "array",
+      "items": "public_task_result",
+      "required": true
+    }
+  },
+  "public_task_result": {
+    "run_id": {
+      "type": "string",
+      "required": true
+    },
+    "assignment_id": {
+      "type": "string",
+      "required": true
+    },
+    "lifecycle_status": {
+      "type": "string",
+      "required": true
+    },
+    "summary_status": {
+      "type": "string",
+      "required": true
+    },
+    "verification_status": {
+      "type": "string",
+      "required": false
+    },
+    "completed_at": {
+      "type": "string",
+      "required": true
+    }
   },
 
   "public_feed_cursor_page": {
@@ -178,18 +217,13 @@
   },
 
   "public_proof_catalog": {
-    "_description": "The full public proof catalog listing every available proof package artifact. Served as a bounded anonymous read. Public retention uses append-only tombstones rather than rewriting history.",
+    "_description": "Internal active proof catalog. It authorizes selected run bundles and fixtures but has no anonymous endpoint or bucket projection.",
     "schema_version": {"type": "string", "required": true, "description": "Proof catalog schema version"},
     "entries": {"type": "array", "items": "public_proof_catalog_entry", "required": true, "description": "Catalog entries for every available proof artifact"},
     "generated_at": {"type": "string", "format": "iso8601", "required": true, "description": "UTC timestamp when the catalog was generated"}
   },
 
-  "public_proof_catalog_summary": {
-    "_description": "Summary of the public proof catalog for bootstrap responses. Carries the total artifact count, total byte size, and the most recent generation time.",
-    "artifact_count": {"type": "integer", "required": true, "description": "Total number of proof artifacts in the catalog"},
-    "total_byte_size": {"type": "integer", "required": true, "description": "Total byte size of all proof artifacts"},
-    "last_generated_at": {"type": "string", "format": "iso8601", "required": false, "description": "UTC timestamp of the most recently generated proof artifact. Omitted when the catalog is empty."}
-  },
+
 
   "public_export_config": {
     "_description": "Owner-only export configuration for the outbound publisher. Carries the allowlisted HTTPS origin, signing key ID, pseudonymous source ID, batch size limit, and retry policy. Secrets never appear in frontend runtime JSON, logs, events, reports, proofs, or contract packs. The private key is stored in the Gateway runtime tree, not in this configuration.",

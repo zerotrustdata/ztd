@@ -106,3 +106,18 @@ func TestVerifyPublicFeedPointer_Rejections(t *testing.T) {
 		})
 	}
 }
+
+func TestVerifyPublicFeedPointer_RequiresKeyIdentityWithoutPublishedKey(t *testing.T) {
+	pub, key, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	other, _, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	pointer := testPublicFeedPointer()
+	pointer.SigningKeyID = PublicProofSigningKeyID(other)
+	// A key pin authenticates its own digest identity even when the pointer has
+	// no embedded signing_public_key to compare with it.
+	digest, err := PublicFeedPointerSigningDigest(pointer)
+	require.NoError(t, err)
+	pointer.Signature = hex.EncodeToString(ed25519.Sign(key, digest))
+	require.ErrorIs(t, VerifyPublicFeedPointer(pointer, pub), constants.ErrPublicFeedSignatureInvalid)
+}

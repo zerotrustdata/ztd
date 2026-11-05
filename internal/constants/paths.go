@@ -994,6 +994,7 @@ const (
 	PublicProofMirrorSyncSchemaVersion = "2.0.0"
 	PublicFeedBatchMaxRecords          = 100
 	PublicFeedBatchMaxBytes            = 4 << 20
+	PublicFeedRecordMaxBytes           = 512 << 10
 	PublicFeedRetryMaxAttempts         = 5
 	PublicFeedRetryInitialBackoff      = 1
 	PublicFeedRetryMaxBackoff          = 60

@@ -11,13 +11,15 @@
     ],
     "envelope_versions": [
       "1.0.0",
-      "1.1.0"
+      "1.1.0",
+      "1.2.0"
     ],
     "limits": {
       "max_activity_records": 128,
       "max_evidence_bindings": 32,
-      "max_record_bytes": 262144,
-      "max_text_bytes": 512
+      "max_record_bytes": 524288,
+      "max_text_bytes": 512,
+      "max_tool_loop_records": 1024
     },
     "message_types": [
       "PublicAssignmentLifecycleRecord",

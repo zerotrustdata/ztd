@@ -3811,27 +3811,6 @@
                 "ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE"
             ]
         },
-        "models.AgentLifecycleStatus": {
-            "type": "string",
-            "enum": [
-                "idle",
-                "queued",
-                "running",
-                "waiting",
-                "completed",
-                "failed",
-                "offline"
-            ],
-            "x-enum-varnames": [
-                "AgentLifecycleStatusIdle",
-                "AgentLifecycleStatusQueued",
-                "AgentLifecycleStatusRunning",
-                "AgentLifecycleStatusWaiting",
-                "AgentLifecycleStatusCompleted",
-                "AgentLifecycleStatusFailed",
-                "AgentLifecycleStatusOffline"
-            ]
-        },
         "models.AgentStateProjection": {
             "type": "object",
             "properties": {
@@ -3842,7 +3821,7 @@
                     "type": "string"
                 },
                 "freshness": {
-                    "$ref": "#/definitions/models.SnapshotFreshness"
+                    "type": "string"
                 },
                 "model": {
                     "type": "string"
@@ -3860,7 +3839,7 @@
                     "type": "string"
                 },
                 "status": {
-                    "$ref": "#/definitions/models.AgentLifecycleStatus"
+                    "type": "string"
                 },
                 "task_id": {
                     "type": "string"
@@ -3918,25 +3897,6 @@
                 }
             }
         },
-        "models.CampaignFreshness": {
-            "type": "string",
-            "enum": [
-                "active",
-                "delayed",
-                "stale",
-                "intentionally_stopped",
-                "safety_stopped",
-                "source_offline"
-            ],
-            "x-enum-varnames": [
-                "CampaignFreshnessActive",
-                "CampaignFreshnessDelayed",
-                "CampaignFreshnessStale",
-                "CampaignFreshnessIntentionallyStopped",
-                "CampaignFreshnessSafetyStopped",
-                "CampaignFreshnessSourceOffline"
-            ]
-        },
         "models.ConsensusDecisionEvidence": {
             "type": "object",
             "properties": {
@@ -3956,19 +3916,6 @@
                     "type": "number"
                 }
             }
-        },
-        "models.ConsensusVoteOutcome": {
-            "type": "string",
-            "enum": [
-                "approve",
-                "deny",
-                "no_vote"
-            ],
-            "x-enum-varnames": [
-                "ConsensusVoteOutcomeApprove",
-                "ConsensusVoteOutcomeDeny",
-                "ConsensusVoteOutcomeNoVote"
-            ]
         },
         "models.ConsensusVoteRecord": {
             "type": "object",
@@ -3997,7 +3944,7 @@
                     "type": "string"
                 },
                 "outcome": {
-                    "$ref": "#/definitions/models.ConsensusVoteOutcome"
+                    "type": "string"
                 },
                 "provider_attempt_id": {
                     "type": "string"
@@ -4097,7 +4044,7 @@
                     "type": "string"
                 },
                 "privacy_classification": {
-                    "$ref": "#/definitions/models.DownloadPrivacyClassification"
+                    "type": "string"
                 },
                 "schema_version": {
                     "type": "string"
@@ -4109,17 +4056,6 @@
                     "type": "string"
                 }
             }
-        },
-        "models.DownloadPrivacyClassification": {
-            "type": "string",
-            "enum": [
-                "public_safe",
-                "restricted"
-            ],
-            "x-enum-varnames": [
-                "DownloadPrivacyPublicSafe",
-                "DownloadPrivacyRestricted"
-            ]
         },
         "models.EvalDetail": {
             "type": "object",
@@ -4206,7 +4142,7 @@
                     "type": "string"
                 },
                 "status": {
-                    "$ref": "#/definitions/models.RunLifecycleStatus"
+                    "type": "string"
                 },
                 "suite_id": {
                     "type": "string"
@@ -4224,7 +4160,7 @@
                     "type": "integer"
                 },
                 "verification_status": {
-                    "$ref": "#/definitions/models.EvalVerificationStatus"
+                    "type": "string"
                 }
             }
         },
@@ -4262,7 +4198,7 @@
                     "type": "number"
                 },
                 "verification_status": {
-                    "$ref": "#/definitions/models.EvalVerificationStatus"
+                    "type": "string"
                 }
             }
         },
@@ -4306,7 +4242,7 @@
                     "type": "string"
                 },
                 "status": {
-                    "$ref": "#/definitions/models.RunLifecycleStatus"
+                    "type": "string"
                 },
                 "suite_id": {
                     "type": "string"
@@ -4315,22 +4251,9 @@
                     "type": "string"
                 },
                 "verification_status": {
-                    "$ref": "#/definitions/models.EvalVerificationStatus"
+                    "type": "string"
                 }
             }
-        },
-        "models.EvalVerificationStatus": {
-            "type": "string",
-            "enum": [
-                "projection_validated",
-                "receipt_verification_not_applicable",
-                "verified"
-            ],
-            "x-enum-varnames": [
-                "EvalVerificationProjectionValidated",
-                "EvalVerificationReceiptVerificationNotApplicable",
-                "EvalVerificationVerified"
-            ]
         },
         "models.EventReceiptRecord": {
             "type": "object",
@@ -4502,34 +4425,6 @@
                 }
             }
         },
-        "models.MeasurementScope": {
-            "type": "string",
-            "enum": [
-                "process",
-                "system",
-                "accelerator"
-            ],
-            "x-enum-varnames": [
-                "MeasurementScopeProcess",
-                "MeasurementScopeSystem",
-                "MeasurementScopeAccelerator"
-            ]
-        },
-        "models.MeasurementStatus": {
-            "type": "string",
-            "enum": [
-                "observed",
-                "stale",
-                "unavailable",
-                "unsupported"
-            ],
-            "x-enum-varnames": [
-                "MeasurementStatusObserved",
-                "MeasurementStatusStale",
-                "MeasurementStatusUnavailable",
-                "MeasurementStatusUnsupported"
-            ]
-        },
         "models.ModelProvenanceResponse": {
             "type": "object",
             "properties": {
@@ -4636,7 +4531,7 @@
                     "type": "string"
                 },
                 "status": {
-                    "$ref": "#/definitions/models.AgentLifecycleStatus"
+                    "type": "string"
                 },
                 "task_id": {
                     "type": "string"
@@ -4650,7 +4545,7 @@
             "type": "object",
             "properties": {
                 "code": {
-                    "$ref": "#/definitions/models.ObserveProducerRejectionCode"
+                    "type": "string"
                 },
                 "error": {
                     "type": "string"
@@ -4662,63 +4557,6 @@
                     "$ref": "#/definitions/models.ObserveTransitionError"
                 }
             }
-        },
-        "models.ObserveProducerRejectionCode": {
-            "type": "string",
-            "enum": [
-                "body_unreadable",
-                "body_too_large",
-                "invalid_json",
-                "unsupported_schema_version",
-                "agent_id_required",
-                "run_id_required",
-                "campaign_id_required",
-                "observed_at_required",
-                "agent_display_name_required",
-                "agent_role_required",
-                "run_display_name_required",
-                "run_kind_invalid",
-                "status_invalid",
-                "negative_task_count",
-                "completed_exceeds_total",
-                "end_before_start",
-                "stop_reason_invalid",
-                "stop_scope_invalid",
-                "route_user_required",
-                "route_session_required",
-                "route_session_ambiguous",
-                "invalid_transition",
-                "stale_update",
-                "forbidden",
-                "internal"
-            ],
-            "x-enum-varnames": [
-                "ObserveProducerRejectionBodyUnreadable",
-                "ObserveProducerRejectionBodyTooLarge",
-                "ObserveProducerRejectionInvalidJSON",
-                "ObserveProducerRejectionUnsupportedSchema",
-                "ObserveProducerRejectionAgentIDRequired",
-                "ObserveProducerRejectionRunIDRequired",
-                "ObserveProducerRejectionCampaignIDRequired",
-                "ObserveProducerRejectionObservedAtRequired",
-                "ObserveProducerRejectionAgentDisplayNameMissing",
-                "ObserveProducerRejectionAgentRoleMissing",
-                "ObserveProducerRejectionRunDisplayNameMissing",
-                "ObserveProducerRejectionRunKindInvalid",
-                "ObserveProducerRejectionStatusInvalid",
-                "ObserveProducerRejectionNegativeTaskCount",
-                "ObserveProducerRejectionCompletedExceedsTotal",
-                "ObserveProducerRejectionEndBeforeStart",
-                "ObserveProducerRejectionStopReasonInvalid",
-                "ObserveProducerRejectionStopScopeInvalid",
-                "ObserveProducerRejectionRouteUserRequired",
-                "ObserveProducerRejectionRouteSessionRequired",
-                "ObserveProducerRejectionRouteSessionAmbiguous",
-                "ObserveProducerRejectionInvalidTransition",
-                "ObserveProducerRejectionStaleUpdate",
-                "ObserveProducerRejectionForbidden",
-                "ObserveProducerRejectionInternal"
-            ]
         },
         "models.ObserveProducerResponse": {
             "type": "object",
@@ -4751,17 +4589,13 @@
                 },
                 "reopens": {
                     "description": "Reopens names the terminal status a repair replaces because the\nproducer's authoritative local store contradicts it. The Gateway applies\nit only while the projection holds exactly this status and only toward a\nnon-terminal status; otherwise the normal transition rules decide.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/models.RunLifecycleStatus"
-                        }
-                    ]
+                    "type": "string"
                 },
                 "run_id": {
                     "type": "string"
                 },
                 "run_kind": {
-                    "$ref": "#/definitions/models.RunKind"
+                    "type": "string"
                 },
                 "schema_version": {
                     "type": "string"
@@ -4770,7 +4604,7 @@
                     "type": "string"
                 },
                 "status": {
-                    "$ref": "#/definitions/models.RunLifecycleStatus"
+                    "type": "string"
                 },
                 "total_tasks": {
                     "type": "integer"
@@ -4796,26 +4630,15 @@
                     "type": "string"
                 },
                 "stop_reason": {
-                    "$ref": "#/definitions/models.StopReason"
+                    "type": "string"
                 },
                 "stop_scope": {
-                    "$ref": "#/definitions/models.StopScope"
+                    "type": "string"
                 },
                 "web_session_id": {
                     "type": "string"
                 }
             }
-        },
-        "models.ObserveProjectionKind": {
-            "type": "string",
-            "enum": [
-                "agent",
-                "run"
-            ],
-            "x-enum-varnames": [
-                "ObserveProjectionKindAgent",
-                "ObserveProjectionKindRun"
-            ]
         },
         "models.ObserveStaleUpdateError": {
             "type": "object",
@@ -4824,7 +4647,7 @@
                     "type": "string"
                 },
                 "kind": {
-                    "$ref": "#/definitions/models.ObserveProjectionKind"
+                    "type": "string"
                 },
                 "observed_at": {
                     "type": "string"
@@ -4844,7 +4667,7 @@
                     "type": "string"
                 },
                 "kind": {
-                    "$ref": "#/definitions/models.ObserveProjectionKind"
+                    "type": "string"
                 },
                 "to": {
                     "type": "string"
@@ -4870,13 +4693,13 @@
                     "type": "string"
                 },
                 "scope": {
-                    "$ref": "#/definitions/models.MeasurementScope"
+                    "type": "string"
                 },
                 "source_component": {
                     "type": "string"
                 },
                 "status": {
-                    "$ref": "#/definitions/models.MeasurementStatus"
+                    "type": "string"
                 },
                 "unit": {
                     "type": "string"
@@ -5011,7 +4834,7 @@
                     "type": "integer"
                 },
                 "agents_running_freshness": {
-                    "$ref": "#/definitions/models.SnapshotFreshness"
+                    "type": "string"
                 },
                 "generated_at": {
                     "type": "string"
@@ -5026,7 +4849,7 @@
                     "type": "integer"
                 },
                 "tasks_in_queue_freshness": {
-                    "$ref": "#/definitions/models.SnapshotFreshness"
+                    "type": "string"
                 }
             }
         },
@@ -5210,19 +5033,6 @@
                 }
             }
         },
-        "models.PlatformComponentKind": {
-            "type": "string",
-            "enum": [
-                "dashboard",
-                "operator",
-                "application"
-            ],
-            "x-enum-varnames": [
-                "PlatformComponentDashboard",
-                "PlatformComponentOperator",
-                "PlatformComponentApplication"
-            ]
-        },
         "models.PlatformEnrollmentCSRFingerprints": {
             "type": "object",
             "properties": {
@@ -5256,7 +5066,7 @@
                     "type": "string"
                 },
                 "component_kind": {
-                    "$ref": "#/definitions/models.PlatformComponentKind"
+                    "type": "string"
                 },
                 "deployment_id": {
                     "type": "string"
@@ -5286,7 +5096,7 @@
                     "type": "string"
                 },
                 "component_kind": {
-                    "$ref": "#/definitions/models.PlatformComponentKind"
+                    "type": "string"
                 },
                 "component_name": {
                     "type": "string"
@@ -5475,27 +5285,12 @@
                     "type": "string"
                 },
                 "record_type": {
-                    "$ref": "#/definitions/models.PublicFeedRecordType"
+                    "type": "string"
                 },
                 "sequence": {
                     "type": "integer"
                 }
             }
-        },
-        "models.PublicFeedRecordType": {
-            "type": "string",
-            "enum": [
-                "projection",
-                "event",
-                "proof_manifest",
-                "key_revocation"
-            ],
-            "x-enum-varnames": [
-                "PublicFeedRecordTypeProjection",
-                "PublicFeedRecordTypeEvent",
-                "PublicFeedRecordTypeProofManifest",
-                "PublicFeedRecordTypeKeyRevocation"
-            ]
         },
         "models.PublicFeedSnapshot": {
             "type": "object",
@@ -5511,7 +5306,7 @@
                     "type": "string"
                 },
                 "freshness": {
-                    "$ref": "#/definitions/models.CampaignFreshness"
+                    "type": "string"
                 },
                 "generated_at": {
                     "type": "string"
@@ -5629,7 +5424,7 @@
                     "type": "string"
                 },
                 "run_kind": {
-                    "$ref": "#/definitions/models.RunKind"
+                    "type": "string"
                 },
                 "schema_version": {
                     "type": "string"
@@ -5638,7 +5433,7 @@
                     "type": "string"
                 },
                 "status": {
-                    "$ref": "#/definitions/models.RunLifecycleStatus"
+                    "type": "string"
                 },
                 "tasks": {
                     "type": "array",
@@ -5650,40 +5445,6 @@
                     "type": "integer"
                 }
             }
-        },
-        "models.RunKind": {
-            "type": "string",
-            "enum": [
-                "investigation",
-                "eval",
-                "demo",
-                "workflow"
-            ],
-            "x-enum-varnames": [
-                "RunKindInvestigation",
-                "RunKindEval",
-                "RunKindDemo",
-                "RunKindWorkflow"
-            ]
-        },
-        "models.RunLifecycleStatus": {
-            "type": "string",
-            "enum": [
-                "queued",
-                "running",
-                "waiting",
-                "completed",
-                "failed",
-                "cancelled"
-            ],
-            "x-enum-varnames": [
-                "RunLifecycleStatusQueued",
-                "RunLifecycleStatusRunning",
-                "RunLifecycleStatusWaiting",
-                "RunLifecycleStatusCompleted",
-                "RunLifecycleStatusFailed",
-                "RunLifecycleStatusCancelled"
-            ]
         },
         "models.RunSummary": {
             "type": "object",
@@ -5713,7 +5474,7 @@
                     "type": "string"
                 },
                 "run_kind": {
-                    "$ref": "#/definitions/models.RunKind"
+                    "type": "string"
                 },
                 "schema_version": {
                     "type": "string"
@@ -5722,7 +5483,7 @@
                     "type": "string"
                 },
                 "status": {
-                    "$ref": "#/definitions/models.RunLifecycleStatus"
+                    "type": "string"
                 },
                 "total_tasks": {
                     "type": "integer"
@@ -5751,7 +5512,7 @@
                     "type": "string"
                 },
                 "status": {
-                    "$ref": "#/definitions/models.RunLifecycleStatus"
+                    "type": "string"
                 },
                 "task_id": {
                     "type": "string"
@@ -5798,19 +5559,6 @@
                 }
             }
         },
-        "models.SnapshotFreshness": {
-            "type": "string",
-            "enum": [
-                "observed",
-                "stale",
-                "unavailable"
-            ],
-            "x-enum-varnames": [
-                "SnapshotFreshnessObserved",
-                "SnapshotFreshnessStale",
-                "SnapshotFreshnessUnavailable"
-            ]
-        },
         "models.StateResponse": {
             "type": "object",
             "properties": {
@@ -5826,40 +5574,6 @@
                     "$ref": "#/definitions/constants.GatewayMode"
                 }
             }
-        },
-        "models.StopReason": {
-            "type": "string",
-            "enum": [
-                "graceful",
-                "safety_budget",
-                "safety_disk",
-                "safety_hardware_drift",
-                "safety_credential",
-                "safety_verifier",
-                "safety_disclosure",
-                "safety_publication"
-            ],
-            "x-enum-varnames": [
-                "StopReasonGraceful",
-                "StopReasonSafetyBudget",
-                "StopReasonSafetyDisk",
-                "StopReasonSafetyHardwareDrift",
-                "StopReasonSafetyCredential",
-                "StopReasonSafetyVerifier",
-                "StopReasonSafetyDisclosure",
-                "StopReasonSafetyPublication"
-            ]
-        },
-        "models.StopScope": {
-            "type": "string",
-            "enum": [
-                "cycle",
-                "supervisor"
-            ],
-            "x-enum-varnames": [
-                "StopScopeCycle",
-                "StopScopeSupervisor"
-            ]
         },
         "models.SuccessRateMeasurement": {
             "type": "object",
@@ -5880,7 +5594,7 @@
                     "type": "number"
                 },
                 "verification_status": {
-                    "$ref": "#/definitions/models.EvalVerificationStatus"
+                    "type": "string"
                 }
             }
         },

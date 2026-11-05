@@ -28,9 +28,6 @@
       "PublicProofCatalogEntry": {
         "$ref": "#/x-models/public_proof_catalog_entry"
       },
-      "PublicProofCatalogSummary": {
-        "$ref": "#/x-models/public_proof_catalog_summary"
-      },
       "PublicProofHead": {
         "$ref": "#/x-models/public_proof_head"
       },
@@ -42,6 +39,12 @@
       },
       "PublicProofSegmentsResponse": {
         "$ref": "#/x-models/public_proof_segments_response"
+      },
+      "PublicTaskIndexEntry": {
+        "$ref": "#/x-models/public_task_index_entry"
+      },
+      "PublicTaskResult": {
+        "$ref": "#/x-models/public_task_result"
       }
     }
   },
@@ -440,6 +443,12 @@
         ],
         "required": true,
         "type": "string"
+      },
+      "task_index": {
+        "description": "Up to ten newest result identities per task",
+        "items": "public_task_index_entry",
+        "required": true,
+        "type": "array"
       }
     },
     "public_feed_cursor_page": {
@@ -619,6 +628,7 @@
       "type": "object"
     },
     "public_pointer": {
+      "additionalProperties": false,
       "description": "Mutable mirror pointer. It names the current digest-addressed read model. It is written last, so a partial publish never goes live. While a run is active the publisher holds it and moves it only when the active run set changes, a withdrawal lands, or records of a dataset that is not executing arrive; live/status.json carries the run in between. generated_at is when the pointer was composed, not a freshness signal.",
       "properties": {
         "active": {
@@ -769,24 +779,6 @@
         "description": "Offline verification command for this artifact",
         "required": true,
         "type": "string"
-      }
-    },
-    "public_proof_catalog_summary": {
-      "artifact_count": {
-        "description": "Total number of proof artifacts in the catalog",
-        "required": true,
-        "type": "integer"
-      },
-      "last_generated_at": {
-        "description": "UTC timestamp of the most recently generated proof artifact. Omitted when the catalog is empty.",
-        "format": "iso8601",
-        "required": false,
-        "type": "string"
-      },
-      "total_byte_size": {
-        "description": "Total byte size of all proof artifacts",
-        "required": true,
-        "type": "integer"
       }
     },
     "public_proof_head": {
@@ -1025,6 +1017,43 @@
       },
       "source_id": {
         "required": true,
+        "type": "string"
+      }
+    },
+    "public_task_index_entry": {
+      "results": {
+        "items": "public_task_result",
+        "required": true,
+        "type": "array"
+      },
+      "task_id": {
+        "required": true,
+        "type": "string"
+      }
+    },
+    "public_task_result": {
+      "assignment_id": {
+        "required": true,
+        "type": "string"
+      },
+      "completed_at": {
+        "required": true,
+        "type": "string"
+      },
+      "lifecycle_status": {
+        "required": true,
+        "type": "string"
+      },
+      "run_id": {
+        "required": true,
+        "type": "string"
+      },
+      "summary_status": {
+        "required": true,
+        "type": "string"
+      },
+      "verification_status": {
+        "required": false,
         "type": "string"
       }
     }

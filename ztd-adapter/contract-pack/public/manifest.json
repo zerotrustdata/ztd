@@ -6,35 +6,35 @@
     },
     {
       "path": "event-schemas.json",
-      "sha256": "d96b02d4c5b84ae1642eb2cfe01451b312a3abd342d6952c96b97116ab646658"
+      "sha256": "dd7a4f779ac55c688562519d006ff06ca5fb055b295aaf6ef1d21bd73fc69e7d"
     },
     {
       "path": "fixtures/active.json",
-      "sha256": "f837b07204fa22d8be6505c2ebe9c31bf9497711b194e251577bfeb895d65855"
+      "sha256": "58e4e10d7f2bb679072d0a9ecc589bdf3a20b1100ee3d9d476987e70b3623755"
     },
     {
       "path": "fixtures/delayed.json",
-      "sha256": "45e1770896283c81cb667f53f364ecd39c044e78c249694ed235ae4bcf243c75"
+      "sha256": "08fdf349e2c0783f7be53977c6f0a54f4658be9af4d132ecb846cfd94b5d97ad"
     },
     {
       "path": "fixtures/intentionally-stopped.json",
-      "sha256": "171045076d5f9b9b819429f3352f83736b5817061326e5fd0651dca57d3df19d"
+      "sha256": "12dd41ad5f98cec07e5d6f0932365133166ccd4c899e9717029c52dca434756c"
     },
     {
       "path": "fixtures/safety-stopped.json",
-      "sha256": "7aff9cf4c8251cb77ff04e86324ce45d7a412e84ffdde9c62bac98949e23a315"
+      "sha256": "cd8564e7342050d85a210bf61363ffecd0313548068cd32da3d68e8036122c4b"
     },
     {
       "path": "fixtures/source-offline.json",
-      "sha256": "f26c49cb55010f43b095c85513c501199ec7ceccd6d17fc3c6dbc62ba690b39f"
+      "sha256": "098bcecf6bb35e51da893d0eff2deac6f71ec34837e282fd61bf8ddebefab19b"
     },
     {
       "path": "fixtures/stale.json",
-      "sha256": "28a6b3978432868438ace865287b7d682c44f694a87676a95eac8c2040051ef7"
+      "sha256": "93f2ee6939332f35739bfd0fdbf272abd4fabc8f36efbda2124f3e7214e5fa84"
     },
     {
       "path": "models.ts",
-      "sha256": "c6f0cf4a7a47f8519877900e35043d2fd4102878676306490ae95968c14f5b83"
+      "sha256": "871f4c399f9fc64d5a090e58505f4c26b2e0644c3a3c6e9fa133813b46f41cca"
     },
     {
       "path": "offline-verifier.md",
@@ -42,11 +42,11 @@
     },
     {
       "path": "proof-schemas.json",
-      "sha256": "76c04a85fea8f4773bdd7b4766a0c168e6970e181190d02903950c4badd597d3"
+      "sha256": "e67967faa06d7a6cfad0968daa863c40cd5525212614460a28bbcb9348c73265"
     },
     {
       "path": "public-read.openapi.json",
-      "sha256": "1392613ae41c33f0e54d1ca5e58774d1c7859f3cf9098d2f967a8e6fe4d1cbd0"
+      "sha256": "2e345239500930097e08e4045a3aaa8880ddb968c4a039562a89617b9ea83d30"
     },
     {
       "path": "README.md",

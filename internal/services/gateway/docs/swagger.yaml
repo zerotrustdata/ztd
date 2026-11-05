@@ -922,24 +922,6 @@ definitions:
     - ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
     - ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT
     - ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
-  models.AgentLifecycleStatus:
-    enum:
-    - idle
-    - queued
-    - running
-    - waiting
-    - completed
-    - failed
-    - offline
-    type: string
-    x-enum-varnames:
-    - AgentLifecycleStatusIdle
-    - AgentLifecycleStatusQueued
-    - AgentLifecycleStatusRunning
-    - AgentLifecycleStatusWaiting
-    - AgentLifecycleStatusCompleted
-    - AgentLifecycleStatusFailed
-    - AgentLifecycleStatusOffline
   models.AgentStateProjection:
     properties:
       agent_id:
@@ -947,7 +929,7 @@ definitions:
       display_name:
         type: string
       freshness:
-        $ref: '#/definitions/models.SnapshotFreshness'
+        type: string
       model:
         type: string
       observed_at:
@@ -959,7 +941,7 @@ definitions:
       schema_version:
         type: string
       status:
-        $ref: '#/definitions/models.AgentLifecycleStatus'
+        type: string
       task_id:
         type: string
       throughput:
@@ -996,22 +978,6 @@ definitions:
       sign_count:
         type: integer
     type: object
-  models.CampaignFreshness:
-    enum:
-    - active
-    - delayed
-    - stale
-    - intentionally_stopped
-    - safety_stopped
-    - source_offline
-    type: string
-    x-enum-varnames:
-    - CampaignFreshnessActive
-    - CampaignFreshnessDelayed
-    - CampaignFreshnessStale
-    - CampaignFreshnessIntentionallyStopped
-    - CampaignFreshnessSafetyStopped
-    - CampaignFreshnessSourceOffline
   models.ConsensusDecisionEvidence:
     properties:
       approval_probability:
@@ -1025,16 +991,6 @@ definitions:
       threshold:
         type: number
     type: object
-  models.ConsensusVoteOutcome:
-    enum:
-    - approve
-    - deny
-    - no_vote
-    type: string
-    x-enum-varnames:
-    - ConsensusVoteOutcomeApprove
-    - ConsensusVoteOutcomeDeny
-    - ConsensusVoteOutcomeNoVote
   models.ConsensusVoteRecord:
     properties:
       consensus_set_id:
@@ -1055,7 +1011,7 @@ definitions:
       model_tag:
         type: string
       outcome:
-        $ref: '#/definitions/models.ConsensusVoteOutcome'
+        type: string
       provider_attempt_id:
         type: string
       quorum:
@@ -1121,7 +1077,7 @@ definitions:
       media_type:
         type: string
       privacy_classification:
-        $ref: '#/definitions/models.DownloadPrivacyClassification'
+        type: string
       schema_version:
         type: string
       sha256:
@@ -1129,14 +1085,6 @@ definitions:
       source_run_id:
         type: string
     type: object
-  models.DownloadPrivacyClassification:
-    enum:
-    - public_safe
-    - restricted
-    type: string
-    x-enum-varnames:
-    - DownloadPrivacyPublicSafe
-    - DownloadPrivacyRestricted
   models.EvalDetail:
     properties:
       arm_ids:
@@ -1194,7 +1142,7 @@ definitions:
       schema_version:
         type: string
       status:
-        $ref: '#/definitions/models.RunLifecycleStatus'
+        type: string
       suite_id:
         type: string
       suite_version:
@@ -1206,7 +1154,7 @@ definitions:
       unavailable_count:
         type: integer
       verification_status:
-        $ref: '#/definitions/models.EvalVerificationStatus'
+        type: string
     type: object
   models.EvalMetricSummary:
     properties:
@@ -1231,7 +1179,7 @@ definitions:
       value:
         type: number
       verification_status:
-        $ref: '#/definitions/models.EvalVerificationStatus'
+        type: string
     type: object
   models.EvalSummary:
     properties:
@@ -1260,24 +1208,14 @@ definitions:
       schema_version:
         type: string
       status:
-        $ref: '#/definitions/models.RunLifecycleStatus'
+        type: string
       suite_id:
         type: string
       suite_version:
         type: string
       verification_status:
-        $ref: '#/definitions/models.EvalVerificationStatus'
+        type: string
     type: object
-  models.EvalVerificationStatus:
-    enum:
-    - projection_validated
-    - receipt_verification_not_applicable
-    - verified
-    type: string
-    x-enum-varnames:
-    - EvalVerificationProjectionValidated
-    - EvalVerificationReceiptVerificationNotApplicable
-    - EvalVerificationVerified
   models.EventReceiptRecord:
     properties:
       acting_app_id:
@@ -1393,28 +1331,6 @@ definitions:
       username:
         type: string
     type: object
-  models.MeasurementScope:
-    enum:
-    - process
-    - system
-    - accelerator
-    type: string
-    x-enum-varnames:
-    - MeasurementScopeProcess
-    - MeasurementScopeSystem
-    - MeasurementScopeAccelerator
-  models.MeasurementStatus:
-    enum:
-    - observed
-    - stale
-    - unavailable
-    - unsupported
-    type: string
-    x-enum-varnames:
-    - MeasurementStatusObserved
-    - MeasurementStatusStale
-    - MeasurementStatusUnavailable
-    - MeasurementStatusUnsupported
   models.ModelProvenanceResponse:
     properties:
       window:
@@ -1485,7 +1401,7 @@ definitions:
       schema_version:
         type: string
       status:
-        $ref: '#/definitions/models.AgentLifecycleStatus'
+        type: string
       task_id:
         type: string
       web_session_id:
@@ -1494,7 +1410,7 @@ definitions:
   models.ObserveProducerRejection:
     properties:
       code:
-        $ref: '#/definitions/models.ObserveProducerRejectionCode'
+        type: string
       error:
         type: string
       stale:
@@ -1502,60 +1418,6 @@ definitions:
       transition:
         $ref: '#/definitions/models.ObserveTransitionError'
     type: object
-  models.ObserveProducerRejectionCode:
-    enum:
-    - body_unreadable
-    - body_too_large
-    - invalid_json
-    - unsupported_schema_version
-    - agent_id_required
-    - run_id_required
-    - campaign_id_required
-    - observed_at_required
-    - agent_display_name_required
-    - agent_role_required
-    - run_display_name_required
-    - run_kind_invalid
-    - status_invalid
-    - negative_task_count
-    - completed_exceeds_total
-    - end_before_start
-    - stop_reason_invalid
-    - stop_scope_invalid
-    - route_user_required
-    - route_session_required
-    - route_session_ambiguous
-    - invalid_transition
-    - stale_update
-    - forbidden
-    - internal
-    type: string
-    x-enum-varnames:
-    - ObserveProducerRejectionBodyUnreadable
-    - ObserveProducerRejectionBodyTooLarge
-    - ObserveProducerRejectionInvalidJSON
-    - ObserveProducerRejectionUnsupportedSchema
-    - ObserveProducerRejectionAgentIDRequired
-    - ObserveProducerRejectionRunIDRequired
-    - ObserveProducerRejectionCampaignIDRequired
-    - ObserveProducerRejectionObservedAtRequired
-    - ObserveProducerRejectionAgentDisplayNameMissing
-    - ObserveProducerRejectionAgentRoleMissing
-    - ObserveProducerRejectionRunDisplayNameMissing
-    - ObserveProducerRejectionRunKindInvalid
-    - ObserveProducerRejectionStatusInvalid
-    - ObserveProducerRejectionNegativeTaskCount
-    - ObserveProducerRejectionCompletedExceedsTotal
-    - ObserveProducerRejectionEndBeforeStart
-    - ObserveProducerRejectionStopReasonInvalid
-    - ObserveProducerRejectionStopScopeInvalid
-    - ObserveProducerRejectionRouteUserRequired
-    - ObserveProducerRejectionRouteSessionRequired
-    - ObserveProducerRejectionRouteSessionAmbiguous
-    - ObserveProducerRejectionInvalidTransition
-    - ObserveProducerRejectionStaleUpdate
-    - ObserveProducerRejectionForbidden
-    - ObserveProducerRejectionInternal
   models.ObserveProducerResponse:
     properties:
       accepted:
@@ -1576,23 +1438,22 @@ definitions:
       observed_at:
         type: string
       reopens:
-        allOf:
-        - $ref: '#/definitions/models.RunLifecycleStatus'
         description: |-
           Reopens names the terminal status a repair replaces because the
           producer's authoritative local store contradicts it. The Gateway applies
           it only while the projection holds exactly this status and only toward a
           non-terminal status; otherwise the normal transition rules decide.
+        type: string
       run_id:
         type: string
       run_kind:
-        $ref: '#/definitions/models.RunKind'
+        type: string
       schema_version:
         type: string
       started_at:
         type: string
       status:
-        $ref: '#/definitions/models.RunLifecycleStatus'
+        type: string
       total_tasks:
         type: integer
       web_session_id:
@@ -1609,26 +1470,18 @@ definitions:
       schema_version:
         type: string
       stop_reason:
-        $ref: '#/definitions/models.StopReason'
+        type: string
       stop_scope:
-        $ref: '#/definitions/models.StopScope'
+        type: string
       web_session_id:
         type: string
     type: object
-  models.ObserveProjectionKind:
-    enum:
-    - agent
-    - run
-    type: string
-    x-enum-varnames:
-    - ObserveProjectionKindAgent
-    - ObserveProjectionKindRun
   models.ObserveStaleUpdateError:
     properties:
       id:
         type: string
       kind:
-        $ref: '#/definitions/models.ObserveProjectionKind'
+        type: string
       observed_at:
         type: string
       projected_at:
@@ -1641,7 +1494,7 @@ definitions:
       id:
         type: string
       kind:
-        $ref: '#/definitions/models.ObserveProjectionKind'
+        type: string
       to:
         type: string
     type: object
@@ -1658,11 +1511,11 @@ definitions:
       schema_version:
         type: string
       scope:
-        $ref: '#/definitions/models.MeasurementScope'
+        type: string
       source_component:
         type: string
       status:
-        $ref: '#/definitions/models.MeasurementStatus'
+        type: string
       unit:
         type: string
       value:
@@ -1750,7 +1603,7 @@ definitions:
       agents_running:
         type: integer
       agents_running_freshness:
-        $ref: '#/definitions/models.SnapshotFreshness'
+        type: string
       generated_at:
         type: string
       schema_version:
@@ -1760,7 +1613,7 @@ definitions:
       tasks_in_queue:
         type: integer
       tasks_in_queue_freshness:
-        $ref: '#/definitions/models.SnapshotFreshness'
+        type: string
     type: object
   models.OverviewMeasurements:
     properties:
@@ -1881,16 +1734,6 @@ definitions:
           P-256 transport CSR. Completion proves possession of both keys.
         type: string
     type: object
-  models.PlatformComponentKind:
-    enum:
-    - dashboard
-    - operator
-    - application
-    type: string
-    x-enum-varnames:
-    - PlatformComponentDashboard
-    - PlatformComponentOperator
-    - PlatformComponentApplication
   models.PlatformEnrollmentCSRFingerprints:
     properties:
       app:
@@ -1911,7 +1754,7 @@ definitions:
       app_name:
         type: string
       component_kind:
-        $ref: '#/definitions/models.PlatformComponentKind'
+        type: string
       deployment_id:
         type: string
       hostname:
@@ -1933,7 +1776,7 @@ definitions:
       approval_url:
         type: string
       component_kind:
-        $ref: '#/definitions/models.PlatformComponentKind'
+        type: string
       component_name:
         type: string
       expires_at:
@@ -2065,22 +1908,10 @@ definitions:
       record_hash:
         type: string
       record_type:
-        $ref: '#/definitions/models.PublicFeedRecordType'
+        type: string
       sequence:
         type: integer
     type: object
-  models.PublicFeedRecordType:
-    enum:
-    - projection
-    - event
-    - proof_manifest
-    - key_revocation
-    type: string
-    x-enum-varnames:
-    - PublicFeedRecordTypeProjection
-    - PublicFeedRecordTypeEvent
-    - PublicFeedRecordTypeProofManifest
-    - PublicFeedRecordTypeKeyRevocation
   models.PublicFeedSnapshot:
     properties:
       batch_count:
@@ -2093,7 +1924,7 @@ definitions:
       feed_chain_hash:
         type: string
       freshness:
-        $ref: '#/definitions/models.CampaignFreshness'
+        type: string
       generated_at:
         type: string
       high_water_sequence:
@@ -2171,13 +2002,13 @@ definitions:
       run_id:
         type: string
       run_kind:
-        $ref: '#/definitions/models.RunKind'
+        type: string
       schema_version:
         type: string
       started_at:
         type: string
       status:
-        $ref: '#/definitions/models.RunLifecycleStatus'
+        type: string
       tasks:
         items:
           $ref: '#/definitions/models.RunTask'
@@ -2185,34 +2016,6 @@ definitions:
       total_tasks:
         type: integer
     type: object
-  models.RunKind:
-    enum:
-    - investigation
-    - eval
-    - demo
-    - workflow
-    type: string
-    x-enum-varnames:
-    - RunKindInvestigation
-    - RunKindEval
-    - RunKindDemo
-    - RunKindWorkflow
-  models.RunLifecycleStatus:
-    enum:
-    - queued
-    - running
-    - waiting
-    - completed
-    - failed
-    - cancelled
-    type: string
-    x-enum-varnames:
-    - RunLifecycleStatusQueued
-    - RunLifecycleStatusRunning
-    - RunLifecycleStatusWaiting
-    - RunLifecycleStatusCompleted
-    - RunLifecycleStatusFailed
-    - RunLifecycleStatusCancelled
   models.RunSummary:
     properties:
       active_task_id:
@@ -2232,13 +2035,13 @@ definitions:
       run_id:
         type: string
       run_kind:
-        $ref: '#/definitions/models.RunKind'
+        type: string
       schema_version:
         type: string
       started_at:
         type: string
       status:
-        $ref: '#/definitions/models.RunLifecycleStatus'
+        type: string
       total_tasks:
         type: integer
     type: object
@@ -2257,7 +2060,7 @@ definitions:
       started_at:
         type: string
       status:
-        $ref: '#/definitions/models.RunLifecycleStatus'
+        type: string
       task_id:
         type: string
     type: object
@@ -2287,16 +2090,6 @@ definitions:
           $ref: '#/definitions/models.SSEEventRow'
         type: array
     type: object
-  models.SnapshotFreshness:
-    enum:
-    - observed
-    - stale
-    - unavailable
-    type: string
-    x-enum-varnames:
-    - SnapshotFreshnessObserved
-    - SnapshotFreshnessStale
-    - SnapshotFreshnessUnavailable
   models.StateResponse:
     properties:
       state_merkle_root:
@@ -2307,34 +2100,6 @@ definitions:
       status:
         $ref: '#/definitions/constants.GatewayMode'
     type: object
-  models.StopReason:
-    enum:
-    - graceful
-    - safety_budget
-    - safety_disk
-    - safety_hardware_drift
-    - safety_credential
-    - safety_verifier
-    - safety_disclosure
-    - safety_publication
-    type: string
-    x-enum-varnames:
-    - StopReasonGraceful
-    - StopReasonSafetyBudget
-    - StopReasonSafetyDisk
-    - StopReasonSafetyHardwareDrift
-    - StopReasonSafetyCredential
-    - StopReasonSafetyVerifier
-    - StopReasonSafetyDisclosure
-    - StopReasonSafetyPublication
-  models.StopScope:
-    enum:
-    - cycle
-    - supervisor
-    type: string
-    x-enum-varnames:
-    - StopScopeCycle
-    - StopScopeSupervisor
   models.SuccessRateMeasurement:
     properties:
       denominator:
@@ -2348,7 +2113,7 @@ definitions:
       value:
         type: number
       verification_status:
-        $ref: '#/definitions/models.EvalVerificationStatus'
+        type: string
     type: object
   models.SuspendedTransactionsResponse:
     properties:

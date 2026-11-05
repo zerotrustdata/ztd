@@ -1001,6 +1001,8 @@ const PUBLIC_MODELS = [
   'public_feed_batch',
   'public_feed_snapshot',
   'public_feed_bootstrap',
+  'public_task_index_entry',
+  'public_task_result',
   'public_feed_cursor_page',
   'public_proof_manifest',
   'public_proof_head',
@@ -1008,7 +1010,6 @@ const PUBLIC_MODELS = [
   'public_proof_segments_response',
   'public_proof_catalog_entry',
   'public_proof_catalog',
-  'public_proof_catalog_summary',
 ];
 
 const PUBLIC_ENUMS = [
@@ -1132,6 +1133,7 @@ const PUBLIC_CACHE = {
 function publicPointerSchema() {
   return {
     type: 'object',
+    additionalProperties: false,
     description: 'Mutable mirror pointer. It names the current digest-addressed read model. It is written last, so a partial publish never goes live. While a run is active the publisher holds it and moves it only when the active run set changes, a withdrawal lands, or records of a dataset that is not executing arrive; live/status.json carries the run in between. generated_at is when the pointer was composed, not a freshness signal.',
     required: ['schema_version', 'source_id', 'revision', 'read_model_sha256', 'high_water_sequence', 'history_first_sequence', 'feed_chain_hash', 'active', 'generated_at'],
     properties: {
@@ -1241,10 +1243,10 @@ function generatePublicEventSchemas() {
       key_revocation: { payload_model: 'public_key_revocation_record', sequence_source: 'tail.sequence' },
     },
     assignment_record_schemas: {
-      envelope_versions: ['1.0.0', '1.1.0'],
+      envelope_versions: ['1.0.0', '1.1.0', '1.2.0'],
       message_types: ['PublicAssignmentLifecycleRecord', 'PublicAssignmentResultProjection'],
       enriched_fields: ['scenario_summary', 'semantic_grade_summaries', 'activity_summary', 'evidence_bindings', 'verification_metadata', 'benchmark_observations', 'resource_summary'],
-      limits: { max_record_bytes: 262144, max_evidence_bindings: 32, max_activity_records: 128, max_text_bytes: 512 },
+      limits: { max_record_bytes: 524288, max_evidence_bindings: 32, max_activity_records: 128, max_tool_loop_records: 1024, max_text_bytes: 512 },
       prohibited_claims: ['protocol_authorization', 'individual_verification'],
     },
   });
@@ -1254,7 +1256,7 @@ function generatePublicProofSchemas() {
   return stableSerialize({
     schema_version: '1.0.0',
     schemas: {
-      ...Object.fromEntries(['public_proof_manifest', 'public_proof_head', 'public_proof_manifest_segment', 'public_proof_segments_response', 'public_proof_catalog_entry', 'public_proof_catalog', 'public_proof_catalog_summary'].map((model) => [model, publicFeedModels[model]])),
+      ...Object.fromEntries(['public_proof_manifest', 'public_proof_head', 'public_proof_manifest_segment', 'public_proof_segments_response', 'public_proof_catalog_entry', 'public_proof_catalog'].map((model) => [model, publicFeedModels[model]])),
       public_pointer: publicPointerSchema(),
       public_live_status: publicLiveStatusSchema(publicFeedModels.public_feed_snapshot),
     },
@@ -1290,7 +1292,7 @@ function publicFixture(freshness) {
       records: [{ sequence: 1, record_type: 'projection', record_hash: recordHash, record_bytes: recordBytes }],
     },
     bootstrap: {
-      protocol_version: '1.0.0', snapshot: { protocol_version: '1.0.0', source_id: sourceID, high_water_sequence: 1, feed_chain_hash: contentHash, batch_count: 1, withdrawal_digest: '0'.repeat(64), generated_at: generatedAt, freshness }, source_freshness: freshness, recent_projections: [projection], schema_version: '2.0.0', generated_at: generatedAt,
+      protocol_version: '1.0.0', snapshot: { protocol_version: '1.0.0', source_id: sourceID, high_water_sequence: 1, feed_chain_hash: contentHash, batch_count: 1, withdrawal_digest: '0'.repeat(64), generated_at: generatedAt, freshness }, source_freshness: freshness, recent_projections: [projection], task_index: [], schema_version: '2.0.0', generated_at: generatedAt,
     },
   });
 }

@@ -72,7 +72,7 @@ import {
 
 export const MAX_ACTIVITY_RECORDS = 128;
 // One record per tool call. A model's loop length has no fixed limit, so the
-// 256 KiB record bound is what caps these families in practice.
+// 512 KiB record bound is what caps these families in practice.
 export const MAX_TOOL_LOOP_RECORDS = 1024;
 
 export class ValidationError extends Error {

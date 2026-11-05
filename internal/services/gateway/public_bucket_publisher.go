@@ -110,7 +110,7 @@ type PublicBucketPublisher struct {
 	historyHigh int64
 
 	// withdrawalSweep is set while objects a withdrawal left behind are still owed
-	// removal: read models and catalogs that may name the withdrawn data.
+	// removal: read models that may name the withdrawn data.
 	withdrawalSweep bool
 
 	statusKey     string
@@ -239,7 +239,7 @@ func (p *PublicBucketPublisher) tick(ctx context.Context) error {
 		}
 	}
 	if p.withdrawalSweep {
-		// A withdrawal leaves no grace: earlier read models and catalogs can name
+		// A withdrawal leaves no grace: earlier read models can name
 		// what was withdrawn, and the pointer naming them was purged with it.
 		if err := p.sweep(ctx, p.now().Add(time.Second), true); err != nil {
 			errs = append(errs, err)
@@ -732,7 +732,7 @@ func (p *PublicBucketPublisher) drain(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// sweep queues read models and catalogs the pointer stopped naming and history
+// sweep queues read models the pointer stopped naming and history
 // pages below the retained window, when they are older than cutoff. With purge
 // their cached copies are purged too.
 func (p *PublicBucketPublisher) sweep(ctx context.Context, cutoff time.Time, purge bool) error {

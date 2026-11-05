@@ -50,7 +50,7 @@ describe('public spectator state reconciliation', () => {
       snapshot: snapshot(1, firstHash),
       source_freshness: 'active',
       recent_projections: [{ sequence: 1, campaign_id: 'campaign-a' }],
-      schema_version: '2.0.0',
+      schema_version: '2.0.0', task_index: [],
       generated_at: '2026-09-13T00:00:00Z',
     });
     state = applyPublicHistory(state, {
@@ -77,7 +77,7 @@ describe('public spectator state reconciliation', () => {
     const bootstrap = {
       protocol_version: '1.0.0', snapshot: snapshot(100, firstHash), source_freshness: 'active',
       recent_projections: [{ sequence: 50, campaign_id: 'current-campaign' }],
-      schema_version: '2.0.0', generated_at: '2026-09-13T00:00:00Z',
+      schema_version: '2.0.0', task_index: [], generated_at: '2026-09-13T00:00:00Z',
     };
     const state = reconcilePublicBootstrap(createPublicMirrorState(), bootstrap);
     expect(state.observed_sequence).toBe(100);
