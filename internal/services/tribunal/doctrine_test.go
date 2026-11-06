@@ -52,7 +52,7 @@ func TestGenerationReplacesL1BlockedCandidatesBeforeVoting(t *testing.T) {
 	}
 	feedbackCalls := 0
 	for _, call := range inferer.calls {
-		if call.Stage == StageGenerate && call.User != generationPrompt(Request{Request: "inspect the system"}, nil) {
+		if call.Stage == StageGenerate && call.User != generationPrompt(Request{Request: "inspect the system"}, Member(call.Persona), nil) {
 			feedbackCalls++
 			assert.Contains(t, call.User, "L1 doctrine")
 			assert.Contains(t, call.User, "original request")

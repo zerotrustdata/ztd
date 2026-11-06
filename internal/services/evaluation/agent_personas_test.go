@@ -163,6 +163,10 @@ func TestMaterializeSuite_RejectsStaleOrMissingPersonas(t *testing.T) {
 // was released with. A persona edit fails this test until every built-in suite
 // is bumped and its new version is pinned here; never re-pin an old version.
 var builtinSuitePersonaPins = map[string]string{
+	DefaultSuiteID + "@1.33.0":        "15845bfc0100f1e3db571b939d541807234c1298d9b3416b8d36eaf4f0468448",
+	SmokeSuiteID + "@1.32.0":          "15845bfc0100f1e3db571b939d541807234c1298d9b3416b8d36eaf4f0468448",
+	InvestigationsSuiteID + "@1.28.0": "15845bfc0100f1e3db571b939d541807234c1298d9b3416b8d36eaf4f0468448",
+	QuickstartSuiteID + "@1.2.0":      "15845bfc0100f1e3db571b939d541807234c1298d9b3416b8d36eaf4f0468448",
 	DefaultSuiteID + "@1.32.0":        "56a37a1c486c07336c317ca5ca5cb8f5331d25b2f96421ac732118c64c592f46",
 	SmokeSuiteID + "@1.31.0":          "56a37a1c486c07336c317ca5ca5cb8f5331d25b2f96421ac732118c64c592f46",
 	DefaultSuiteID + "@1.31.0":        "56a37a1c486c07336c317ca5ca5cb8f5331d25b2f96421ac732118c64c592f46",

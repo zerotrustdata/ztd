@@ -72,9 +72,14 @@ func authoredJSON(arguments models.RunShellCommandRequest) string {
 	return string(encoded)
 }
 
-// generationPrompt is one round's user prompt. Round 2 shows the round 1
-// clusters anonymized with their support so members can converge.
-func generationPrompt(req Request, prior []Cluster) string {
+// nemesisRoundTwo is Nemesis's round 2 lens: the adversarial seat reads the
+// emerging consensus as an attack surface rather than converging on it.
+const nemesisRoundTwo = "\nYou are still the only adversarial seat. Evaluate the emerging consensus against the request. When a proposal carries a real semantic flaw (a wrong option, a missed edge case, the wrong tool for the target), back it: adopt that proposal exactly so its support grows, or answer with your own plausible flaw. When every proposal is clean and no plausible flaw exists, adopt the strongest proposal exactly. Never attack on style alone; a contrived attack degrades the signal.\n"
+
+// generationPrompt is member's user prompt for one round. Round 2 shows the
+// round 1 clusters anonymized with their support so the honest members can
+// converge and Nemesis can attack the emerging consensus.
+func generationPrompt(req Request, member Member, prior []Cluster) string {
 	var b strings.Builder
 	b.WriteString(contextBlock(req))
 	if len(prior) > 0 {
@@ -82,7 +87,11 @@ func generationPrompt(req Request, prior []Cluster) string {
 		for _, cluster := range prior {
 			fmt.Fprintf(&b, "[%s] (support: %d)\n%s\n", cluster.ID, len(cluster.Members), authoredJSON(cluster.Arguments))
 		}
-		b.WriteString("\nWrite the single best run_shell_command argument object for the request; you may adopt a proposal or improve it.\n")
+		if member == MemberNemesis {
+			b.WriteString(nemesisRoundTwo)
+		} else {
+			b.WriteString("\nWrite the single best run_shell_command argument object for the request; you may adopt a proposal or improve it.\n")
+		}
 	}
 	b.WriteString("\nRespond now as exactly {\"command\": \"...\", \"args\": [...]}. The command executes directly without a shell.")
 	return b.String()
@@ -92,11 +101,10 @@ func generationPrompt(req Request, prior []Cluster) string {
 // validation and L1 failures and retries until allowed or exhausted. Only allowed arguments
 // enter the vote; invalid answers and exhausted members abstain.
 func generate(ctx context.Context, cfg Config, req Request, round uint32, prior []Cluster) ([]Candidate, error) {
-	prompt := generationPrompt(req, prior)
 	candidates := make([]Candidate, 0, len(AllMembers))
 	for _, member := range AllMembers {
 		candidate := Candidate{Member: member, Round: round}
-		memberPrompt := prompt
+		memberPrompt := generationPrompt(req, member, prior)
 		system, err := personaSystemPrompt(cfg.Personas, string(member))
 		if err != nil {
 			return nil, err
