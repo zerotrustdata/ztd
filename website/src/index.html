@@ -463,7 +463,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
   <div class="wrap">
     <div>
       <div class="status-line">
-        <span class="chip"><span class="dot"></span>ztd <b>v1.9.1</b></span>
+        <span class="chip"><span class="dot"></span>ztd <b>v1.10.0</b></span>
         <span class="chip">Zero-trust execution layer</span>
         <span class="chip">Source available · BSL 1.1</span>
       </div>
@@ -1090,7 +1090,7 @@ footer{border-top:1px solid var(--line2);padding:48px 0 40px;background:rgba(0,0
       <div><b>l2Status / l3Status</b><span>Under doctrine, consensus and human approval are not required. The receipt says <code>NOT_REQUIRED</code>. It does not claim a quorum or a passkey.</span></div>
       <div><b>rejectionCode</b><span>On the denial, <code>GOVERNANCE_REJECTION_CODE_L1_DOCTRINE</code> names the check that refused the payload: recursive deletion of a wide target (<code>destroy_rm_rf_root</code>, MITRE T1485).</span></div>
     </div>
-    <p class="lede">The same feed, published for anyone to read: <a href="https://feed.opendevops.ai/proof-head.json" rel="noopener">https://feed.opendevops.ai/proof-head.json</a> (latest signing header), <a href="https://feed.opendevops.ai/pointer.json" rel="noopener">https://feed.opendevops.ai/pointer.json</a> (the current read model and proof catalog digests), and <a href="https://feed.opendevops.ai/live/status.json" rel="noopener">https://feed.opendevops.ai/live/status.json</a> (live run status). Those routes serve the public spectator's signed proof log. They are not a substitute for the Operator's local receipt.</p>
+    <p class="lede">The same feed, published for anyone to read: <a href="https://feed.opendevops.ai/pointer.json" rel="noopener">https://feed.opendevops.ai/pointer.json</a> (the signed pointer naming the current read model) and <a href="https://feed.opendevops.ai/live/status.json" rel="noopener">https://feed.opendevops.ai/live/status.json</a> (live run status). The read model names each settled run's bundle by digest, so <code>ztd public verify-proof</code> checks a run from the signed pointer down. These files are not a substitute for the Operator's local receipt.</p>
     <p class="proof-note">ztd is source-available under the <a href="https://github.com/zerotrustdata/ztd/blob/main/LICENSE" rel="noopener">Business Source License 1.1</a>. You may copy, modify, and run it for development, evaluation, and non-production use. Production use needs a commercial license from Lateralus Labs, LLC. Each version converts to the Apache License 2.0 four years after release, and no later than 2030-08-18. The <a href="/terms/">commercial terms</a> describe that license.</p>
   </div>
 </section>

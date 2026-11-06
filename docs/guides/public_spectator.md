@@ -3,8 +3,8 @@ doc_id: public_spectator
 title: Public Spectator Operations Guide
 audience: platform operators, release managers, publication reviewers
 status: current
-version: v1.5.0
-last_updated: 2026-10-28
+version: v1.10.0
+last_updated: 2026-11-05
 owners:
   - docs/guides/public_spectator.md
   - internal/cli/cmd/public/
@@ -31,7 +31,7 @@ This guide covers the Gateway-owned anonymous public mirror and evaluation explo
 The Gateway-owned public spectator runs inside the Gateway process when started with `--public-spectator` (default). One in-process `PublicSpectatorRuntime` owns:
 
 - **Private ingest** (`--public-spectator-private-listen`, default `127.0.0.1:8081`): authenticated publisher ingest, proof ingest, replacement-key registration.
-- **Public read** (`--public-spectator-public-listen`, default `127.0.0.1:8082`): anonymous bootstrap, snapshot, history, proof catalog, proof head, signed proof segments, content-addressed proof downloads, and the public layout (`pointer.json`, read models, history pages, live objects). The mirror mounts no SSE route.
+- **Public read** (`--public-spectator-public-listen`, default `127.0.0.1:8082`): anonymous bootstrap, snapshot, history, and the public layout (`pointer.json`, read models, run bundles, scenario fixtures, history pages, live objects). The mirror mounts no SSE route.
 - **Evaluation explorer** (`--eval-explorer-listen`, default `127.0.0.1:5173`): dedicated explorer listener that reads the local public listener API. The public listener also serves the explorer assets (`GET` and `HEAD`), so the public origin hosts the explorer.
 
 Publisher configuration, signing key, ingest token, and outbox state live under `.ztd/public-feed/`. The publisher's signed proof log and artifacts live under `.ztd/public-proofs/`, with its delivery checkpoint in `.ztd/proof-mirror-sync.json`. Together these form one feed generation. If generation state exists without publisher configuration, startup fails closed with `ErrPublicFeedOrphanedGeneration` instead of adopting that state. The mirror database and content-addressed proof artifacts live under `.ztd/public-mirror/`. Listeners bind loopback by default. Only CIDRs passed to `--public-spectator-trusted-proxy-cidr` are trusted to supply `CF-Connecting-IP`.
@@ -114,7 +114,7 @@ Set up the bucket in the Cloudflare account that owns the zone:
 4. Create an API token limited to object read and write on this bucket. The publisher uses it for uploads, deletes, and listings.
 5. Create a second API token limited to cache purge for this zone. The publisher uses it for purges.
 
-The bucket holds one feed source. The first sync deletes any proof artifact in the bucket that the mirror's catalog does not list.
+The bucket holds one feed source. The first sync deletes any run bundle or scenario fixture in the bucket that the mirror's selected active set does not list.
 
 Write the credentials to a JSON file with `access_key_id`, `secret_access_key` (from step 4), and `purge_token` (from step 5). Then set the bucket on the publisher configuration:
 
@@ -140,7 +140,7 @@ The Gateway reads the configuration at start, so restart it to apply a change:
 
 Missing or unreadable sealed credentials are logged as `Public bucket publishing disabled`, with the cause. The mirror keeps serving. Publication resumes when the credentials are set again with `--bucket-credentials-file` and the Gateway restarts.
 
-On the first sync, the publisher uploads every proof artifact and its metadata, then the rest of the layout. An interrupted upload resumes from the bucket's listing. Check the state with:
+On the first sync, the publisher uploads the selected run bundles and scenario fixtures, then history pages, the read model, and the pointer. An interrupted upload resumes from the bucket's listing. Check the state with:
 
 ```bash
 ./ztd public status
@@ -173,9 +173,9 @@ When the Gateway runs on a cloud VM with direct mirror ingress (`--public-specta
 
 ## External acceptance
 
-After starting the tunnel, verify HTTPS, CORS, cache headers, rate limiting, `pointer.json` and its read model, live status, proof catalog, proof head, signed proof segments, and content-addressed proof download from an external client. Check that `pointer.json` carries `Cache-Control: public, max-age=30` and that a read model carries the immutable header.
+After starting the tunnel, verify HTTPS, CORS, cache headers, rate limiting, `pointer.json` and its read model, live status, a run bundle under `runs/`, and a scenario fixture under `fixtures/` from an external client. Check that `/proof-catalog`, `/proof-head`, `/proof-segments`, `/proof-head.json`, and paths under `proofs/`, `proof-catalog/`, `proof-meta/`, and `proof-segments/` return 404. Check that `pointer.json` carries `Cache-Control: public, max-age=30` and that a read model carries the immutable header.
 
-Confirm that mutation requests (`POST`) to `/ingest`, `/keys/register`, `/proof-ingest`, and any other non-read path return 404 on the public origin. The public origin serves only the anonymous read allowlist and explorer assets. A `GET` to a path outside that allowlist returns the explorer `index.html` (HTTP 200), not an API response, so Gateway management, MCP, A2A, approval, and audit paths are not reachable there.
+Confirm that mutation requests (`POST`) to `/ingest`, `/keys/register`, `/proof-ingest`, and any other non-read path return 404 on the public origin. The public origin serves only the anonymous read allowlist and explorer assets. Any other `GET` outside that allowlist returns the explorer `index.html` (HTTP 200), not an API response, so Gateway management, MCP, A2A, approval, and audit paths are not reachable there.
 
 Scan public responses and proof bytes for credentials, private endpoints, machine paths, SPIFFE identities, raw prompts, or model outputs before publication.
 

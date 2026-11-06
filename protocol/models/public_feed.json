@@ -157,7 +157,7 @@
   },
 
   "public_proof_head": {
-    "_description": "Constant-size public proof head from GET /proof-head, without artifact entries. A nonzero segment_index identifies the latest signed segment; verify the signed segment log to authenticate the active catalog. Index zero identifies a legacy full manifest whose artifacts are available in catalog order.",
+    "_description": "Constant-size proof head of the internal proof log, without artifact entries. No anonymous route serves it. A nonzero segment_index identifies the latest signed segment; verify the signed segment log to authenticate the active catalog. Index zero identifies a legacy full manifest whose artifacts are available in catalog order.",
     "schema_version": {"type": "string", "required": true, "description": "Proof head schema version"},
     "source_id": {"type": "string", "required": true, "description": "Public source identity"},
     "segment_index": {"type": "integer", "required": true, "description": "Latest signed segment index, or zero for a legacy full manifest"},
@@ -195,7 +195,7 @@
   },
 
   "public_proof_segments_response": {
-    "_description": "The signed proof log for one source, served by anonymous GET /proof-segments.",
+    "_description": "The signed internal proof log for one source. No anonymous route serves it; offline verification of an explicitly obtained log uses `ztd public verify-proof --segments`.",
     "schema_version": {"type": "string", "required": true},
     "source_id": {"type": "string", "required": true},
     "segments": {"type": "array", "items": "public_proof_manifest_segment", "required": true}

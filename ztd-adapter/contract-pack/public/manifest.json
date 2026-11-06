@@ -42,7 +42,7 @@
     },
     {
       "path": "proof-schemas.json",
-      "sha256": "e67967faa06d7a6cfad0968daa863c40cd5525212614460a28bbcb9348c73265"
+      "sha256": "43df5cb3e28e2cc2811c862ad1db83f4eec0544936132b6d550b91eaf05dfdd7"
     },
     {
       "path": "public-read.openapi.json",
