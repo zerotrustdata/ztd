@@ -282,6 +282,8 @@ When the Gateway's export configuration names a bucket, `PublicBucketPublisher` 
 
 Read models and history pages carry `Content-Encoding: gzip`. Selected artifacts are stored as their own bytes. Settled and live run objects are `application/gzip` with no encoding, so a downloaded live run is the gzip file itself.
 
+Layout objects carry `Access-Control-Allow-Origin: *`, because the Explorer reads them cross-origin from its own host. The public read listener sends that header on its anonymous read routes. The bucket's custom domain must send the same header through a response rule, and the bucket has no CORS policy of its own. Setup is in [Publish the layout to a bucket](../guides/public_spectator.md#publish-the-layout-to-a-bucket).
+
 The internal proof log stores bundles and fixtures and controls their withdrawals. Only UI artifact bodies are public. Pointer schema `2.0.0` removes the catalog digest, proof root, and segment head. Read-model schema `2.0.0` adds an explicit `schema_version` and removes `proof_catalog_summary`; the signed feed protocol and Explorer record schemas remain separate. Old roots retain historical proof directories and metadata; startup never deletes them.
 
 ### Sync Order

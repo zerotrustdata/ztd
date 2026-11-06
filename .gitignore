@@ -50,7 +50,6 @@ GEMINI.md
 *.logs
 /logs/
 .cache/
-# Wrangler's account cache (written to the cwd when wrangler runs outside website/)
 .cloudflare/
 .nyc_output/
 .vitest-cache/
@@ -133,4 +132,5 @@ npm-debug.log*
 /eval/backups/
 # `ztd eval` workspaces
 workspaces/
+# Wrangler's local state and account cache, written to the cwd of any wrangler run
 .wrangler/

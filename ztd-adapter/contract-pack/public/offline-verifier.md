@@ -10,7 +10,7 @@ ztd public verify-proof --pointer pointer.json --read-model read-model.json.gz -
 
 The verifier checks the pointer signature and source/sequence/feed-hash/withdrawal identity, hashes the read model and gzip bundle, and then checks each exact record_bytes hash, ordered sequence, run identity, and assignment uniqueness. An absent or withdrawn run has no usable bundle binding in a current read model.
 
-Scenario fixtures remain public at `fixtures/<sha256>`. Full agent traces and assignment audit databases are delivered under agreement. Place any delivered files under their bare SHA-256 in a directory and add `--artifacts ./delivered` to verify each against the authenticated assignment evidence bindings. Missing private files are not required. Unbound files, changed bytes, directories, and symlinks fail verification.
+Scenario fixtures remain public at `fixtures/<sha256>`. A fixture's digest covers its decoded bytes, and the CDN may compress JSON in transit, so download fixtures with content decoding (`curl --compressed`). Full agent traces and assignment audit databases are delivered under agreement. Place any delivered files under their bare SHA-256 in a directory and add `--artifacts ./delivered` to verify each against the authenticated assignment evidence bindings. Missing private files are not required. Unbound files, changed bytes, directories, and symlinks fail verification.
 
 For an assignment audit database, use the same trust inputs:
 
