@@ -168,14 +168,14 @@ async function main() {
     console.log(`  live status: FAILED (status ${live.status})`);
   }
 
-  const proofHead = await fetchJSON(`${PUBLIC_ORIGIN}/proof-head.json`, 3000);
-  console.log(`  proof-head: ${proofHead.ok ? 'OK' : `status ${proofHead.status} (absent until proofs are published)`}`);
-
   console.log('\n--- Public Boundary ---');
   for (const route of ['/ingest', '/keys/register', '/proof-ingest']) {
+    const result = await fetchPOST(`${PUBLIC_ORIGIN}${route}`, 2000);
+    console.log(`  POST ${route}: ${result.status === 404 ? '404 (isolated)' : `status ${result.status} (NOT ISOLATED)`}`);
+  }
+  for (const route of ['/proof-catalog', '/proof-head', '/proof-head.json', '/proof-segments']) {
     const result = await fetchJSON(`${PUBLIC_ORIGIN}${route}`, 2000);
-    const isolated = result.status === 404;
-    console.log(`  ${route}: ${isolated ? '404 (isolated)' : `status ${result.status} (${isolated ? 'ok' : 'NOT ISOLATED'})`}`);
+    console.log(`  GET ${route}: ${result.status === 404 ? '404 (removed)' : `status ${result.status} (NOT REMOVED)`}`);
   }
 
   const privateIngest = await fetchPOST(`${PRIVATE_ORIGIN}/ingest`, 2000);

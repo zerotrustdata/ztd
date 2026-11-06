@@ -133,3 +133,4 @@ npm-debug.log*
 /eval/backups/
 # `ztd eval` workspaces
 workspaces/
+.wrangler/

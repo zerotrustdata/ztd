@@ -175,7 +175,7 @@ make status
 
 ## Production build and packaging
 
-The checked-in local runtime remains loopback-only for development. `npm run build` replaces the emitted runtime with the exact bytes from `runtime.production.json`, disables source maps, scans the complete asset tree for prohibited content, and fails on any unexpected file. Production serves `dist/` from Cloudflare Workers static assets. `evaluation-explorer/wrangler.jsonc` maps the build to the `next.opendevops.ai` custom domain, and `.github/workflows/deploy-explorer.yml` deploys it with `wrangler deploy` on each push to `main`. `runtime.production.json` names the feed origin `https://feed.opendevops.ai`, which is the bucket that serves the public layout. Until the cutover below, the gateway-owned public listener on `8082` also serves the embedded `dist/` through the tunnel.
+The checked-in local runtime remains loopback-only for development. `npm run build` replaces the emitted runtime with the exact bytes from `runtime.production.json`, disables source maps, scans the complete asset tree for prohibited content, and fails on any unexpected file. Production serves `dist/` from Cloudflare Workers static assets. `evaluation-explorer/wrangler.jsonc` maps the build to the `next.opendevops.ai` custom domain, and `.github/workflows/deploy-explorer.yml` deploys it with `wrangler deploy` on each push to `main`. `runtime.production.json` names the feed origin `https://feed.opendevops.ai`, which is the bucket that serves the public layout. `public/_redirects` sends the removed proof routes (`/proof-catalog`, `/proof-head`, `/proof-head.json`, `/proof-segments`, and paths under `proofs/`, `proof-catalog/`, `proof-meta/`, and `proof-segments/`) with a 301 to the same path on the feed host, which answers 404, so the site's single-page fallback never answers them with HTML. Until the cutover below, the gateway-owned public listener on `8082` also serves the embedded `dist/` through the tunnel.
 
 ```bash
 cd evaluation-explorer
@@ -225,7 +225,7 @@ The bucket serves the layout at `https://feed.opendevops.ai`, and the Explorer s
 After the soak, remove the rest of the tunnel path:
 
 - Delete the tunnel unit from `~/.config/systemd/user/opendevops-feed-tunnel.service` and from `evaluation-explorer/deploy/systemd/opendevops-feed-tunnel.service`, and remove the tunnel section above.
-- Remove the `next.opendevops.ai` custom domain from the Worker, and remove `https://next.opendevops.ai` from the bucket's CORS policy.
+- Remove the `next.opendevops.ai` custom domain from the Worker. The feed's `Access-Control-Allow-Origin: *` Transform Rule names no origin, so it needs no change.
 
 Rollback is available until the last removal step. Remove the site's custom domain for `opendevops.ai`, restore the tunnel's DNS route for that hostname, and run `systemctl --user enable --now opendevops-feed-tunnel.service`. The tunnel serves the embedded Explorer from the Gateway binary, so no site change and no Gateway flag change is needed.
 

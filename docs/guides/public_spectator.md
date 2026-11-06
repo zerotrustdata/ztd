@@ -110,7 +110,7 @@ Set up the bucket in the Cloudflare account that owns the zone:
 
 1. Create an R2 bucket. Add `feed.opendevops.ai` as its custom domain. The domain must be in the same account as the zone.
 2. Add a Cache Rule for `feed.opendevops.ai`. The rule makes the host eligible for cache and respects origin `Cache-Control`. Without it, JSON and extensionless paths miss the cache, and each poll is a Class B read.
-3. Set the bucket CORS policy to allow `GET` and `HEAD` from `https://opendevops.ai` and from the staging host `https://next.opendevops.ai`.
+3. Leave the bucket without a CORS policy. Add a Response Header Transform Rule for `feed.opendevops.ai` that sets `Access-Control-Allow-Origin: *`, matching the mirror listener's anonymous read boundary. Do not combine the rule with a bucket CORS policy: R2 echoes the request origin, and the rule then adds a second value, which browsers reject.
 4. Create an API token limited to object read and write on this bucket. The publisher uses it for uploads, deletes, and listings.
 5. Create a second API token limited to cache purge for this zone. The publisher uses it for purges.
 
@@ -173,7 +173,7 @@ When the Gateway runs on a cloud VM with direct mirror ingress (`--public-specta
 
 ## External acceptance
 
-After starting the tunnel, verify HTTPS, CORS, cache headers, rate limiting, `pointer.json` and its read model, live status, a run bundle under `runs/`, and a scenario fixture under `fixtures/` from an external client. Check that `/proof-catalog`, `/proof-head`, `/proof-segments`, `/proof-head.json`, and paths under `proofs/`, `proof-catalog/`, `proof-meta/`, and `proof-segments/` return 404. Check that `pointer.json` carries `Cache-Control: public, max-age=30` and that a read model carries the immutable header.
+After starting the tunnel, verify HTTPS, CORS, cache headers, rate limiting, `pointer.json` and its read model, live status, a run bundle under `runs/`, and a scenario fixture under `fixtures/` from an external client. Check that `/proof-catalog`, `/proof-head`, `/proof-segments`, `/proof-head.json`, and paths under `proofs/`, `proof-catalog/`, `proof-meta/`, and `proof-segments/` return 404. On the static Explorer site, `public/_redirects` sends each of these paths with a 301 to the same path on `feed.opendevops.ai`, where the bucket answers 404, because the site's single-page fallback would otherwise answer them with `index.html`. Check that `pointer.json` carries `Cache-Control: public, max-age=30` and that a read model carries the immutable header.
 
 Confirm that mutation requests (`POST`) to `/ingest`, `/keys/register`, `/proof-ingest`, and any other non-read path return 404 on the public origin. The public origin serves only the anonymous read allowlist and explorer assets. Any other `GET` outside that allowlist returns the explorer `index.html` (HTTP 200), not an API response, so Gateway management, MCP, A2A, approval, and audit paths are not reachable there.
 
