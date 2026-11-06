@@ -8,7 +8,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"flag"
@@ -30,6 +29,12 @@ const (
 	historyLimit     = 500
 	maxHistoryPages  = 100
 	maxHistoryRounds = 10
+	// pollInterval is the pause between one client's poll cycles.
+	pollInterval = 200 * time.Millisecond
+	modeCold     = "cold"
+	modePoll     = "poll"
+	pointerPath  = "/pointer.json"
+	liveStatus   = "/live/status.json"
 )
 
 type options struct {
@@ -45,8 +50,7 @@ type options struct {
 }
 
 type bootstrapResponse struct {
-	Snapshot          snapshotResponse   `json:"snapshot"`
-	RecentProjections []projectionCursor `json:"recent_projections"`
+	Snapshot snapshotResponse `json:"snapshot"`
 }
 
 type projectionCursor struct {
@@ -65,6 +69,16 @@ type snapshotResponse struct {
 	BatchCount        int64  `json:"batch_count"`
 }
 
+type pointerResponse struct {
+	SchemaVersion     string `json:"schema_version"`
+	ReadModelSHA256   string `json:"read_model_sha256"`
+	HighWaterSequence int64  `json:"high_water_sequence"`
+}
+
+type liveStatusResponse struct {
+	SchemaVersion string `json:"schema_version"`
+}
+
 type requestResult struct {
 	Stage   string
 	Status  int
@@ -72,9 +86,10 @@ type requestResult struct {
 }
 
 type clientResult struct {
-	Outcome        string
-	Requests       []requestResult
-	StreamSurvived bool
+	Outcome     string
+	Requests    []requestResult
+	Established bool
+	Survived    bool
 }
 
 type latencySummary struct {
@@ -94,8 +109,8 @@ type summary struct {
 	Outcomes           map[string]int `json:"outcomes"`
 	Statuses           map[string]int `json:"statuses"`
 	Latency            latencySummary `json:"latency"`
-	StreamsEstablished int            `json:"streams_established"`
-	StreamsSurvived    int            `json:"streams_survived"`
+	ClientsEstablished int            `json:"clients_established"`
+	ClientsSurvived    int            `json:"clients_survived"`
 }
 
 func main() {
@@ -104,18 +119,14 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
-	result, err := run(context.Background(), opts)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	result := run(context.Background(), opts)
 	encoded, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, fmt.Errorf("capacity: encode summary: %w", err))
 		os.Exit(1)
 	}
 	fmt.Println(string(encoded))
-	if result.Outcomes["complete"] != opts.clients || result.StreamsSurvived != opts.clients {
+	if result.Outcomes["complete"] != opts.clients || result.ClientsSurvived != opts.clients {
 		os.Exit(1)
 	}
 }
@@ -123,9 +134,9 @@ func main() {
 func parseFlags() options {
 	var opts options
 	flag.StringVar(&opts.target, "target", "", "public mirror origin")
-	flag.StringVar(&opts.mode, "mode", "cold", "cold or stream")
+	flag.StringVar(&opts.mode, "mode", modeCold, "cold or poll")
 	flag.IntVar(&opts.clients, "clients", 300, "concurrent client count")
-	flag.DurationVar(&opts.hold, "hold", 5*time.Minute, "SSE hold duration")
+	flag.DurationVar(&opts.hold, "hold", 5*time.Minute, "poll hold duration")
 	flag.DurationVar(&opts.requestTimeout, "request-timeout", 30*time.Second, "bounded request timeout")
 	flag.BoolVar(&opts.allowPublic, "allow-public", false, "allow a non-loopback target")
 	flag.BoolVar(&opts.syntheticClientIPs, "synthetic-client-ips", false, "send distinct test client addresses to a loopback trusted proxy")
@@ -156,8 +167,8 @@ func validateOptions(opts options) error {
 	if opts.syntheticClientIPs && !isLoopback {
 		return fmt.Errorf("capacity: synthetic client addresses require a loopback target")
 	}
-	if opts.mode != "cold" && opts.mode != "stream" {
-		return fmt.Errorf("capacity: --mode must be cold or stream")
+	if opts.mode != modeCold && opts.mode != modePoll {
+		return fmt.Errorf("capacity: --mode must be cold or poll")
 	}
 	if opts.clients <= 0 || opts.hold <= 0 || opts.requestTimeout <= 0 {
 		return fmt.Errorf("capacity: clients and durations must be positive")
@@ -187,28 +198,8 @@ func syntheticClientAddress(shardIndex, shardCount, clientIndex int) string {
 	return net.IPv4(198, 18, byte(globalIndex/254), byte(globalIndex%254+1)).String()
 }
 
-func run(ctx context.Context, opts options) (summary, error) {
+func run(ctx context.Context, opts options) summary {
 	origin := strings.TrimSuffix(opts.target, "/")
-	var source string
-	var cursor int64
-	if opts.mode == "stream" {
-		client := newClient(opts.requestTimeout)
-		bootstrap, requestInfo, err := fetchBootstrap(ctx, client, origin, "")
-		if err != nil {
-			return summary{}, fmt.Errorf("capacity: stream bootstrap: %w", err)
-		}
-		if requestInfo.Status != http.StatusOK {
-			return summary{}, fmt.Errorf("capacity: stream bootstrap returned %d", requestInfo.Status)
-		}
-		source = bootstrap.Snapshot.SourceID
-		cursor = bootstrap.Snapshot.HighWaterSequence
-		for _, record := range bootstrap.RecentProjections {
-			if record.Sequence > cursor {
-				cursor = record.Sequence
-			}
-		}
-	}
-
 	started := time.Now()
 	results := make(chan clientResult, opts.clients)
 	var wg sync.WaitGroup
@@ -220,8 +211,8 @@ func run(ctx context.Context, opts options) (summary, error) {
 		}
 		go func() {
 			defer wg.Done()
-			if opts.mode == "stream" {
-				results <- runStreamClient(ctx, opts, origin, source, cursor, clientIP)
+			if opts.mode == modePoll {
+				results <- pollHold(ctx, opts, newClient(opts.requestTimeout), origin, clientIP)
 				return
 			}
 			results <- runColdClient(ctx, opts, origin, clientIP)
@@ -234,7 +225,7 @@ func run(ctx context.Context, opts options) (summary, error) {
 	for result := range results {
 		all = append(all, result)
 	}
-	return summarize(opts, time.Since(started), all), nil
+	return summarize(opts, time.Since(started), all)
 }
 
 func runColdClient(ctx context.Context, opts options, origin, clientIP string) clientResult {
@@ -246,12 +237,7 @@ func runColdClient(ctx context.Context, opts options, origin, clientIP string) c
 		return result
 	}
 	source := bootstrap.Snapshot.SourceID
-	cursor := int64(0)
-	for _, record := range bootstrap.RecentProjections {
-		if record.Sequence > cursor {
-			cursor = record.Sequence
-		}
-	}
+	cursor := bootstrap.Snapshot.HighWaterSequence
 	for range maxHistoryRounds {
 		for range maxHistoryPages {
 			page, requestInfo, pageErr := fetchHistory(ctx, client, origin, source, cursor, clientIP)
@@ -278,10 +264,11 @@ func runColdClient(ctx context.Context, opts options, origin, clientIP string) c
 			return result
 		}
 		if snapshot.HighWaterSequence == cursor {
-			streamResult := openStream(ctx, opts, client, origin, source, cursor, clientIP)
-			result.Requests = append(result.Requests, streamResult.Requests...)
-			result.StreamSurvived = streamResult.StreamSurvived
-			result.Outcome = streamResult.Outcome
+			pollResult := pollHold(ctx, opts, client, origin, clientIP)
+			result.Requests = append(result.Requests, pollResult.Requests...)
+			result.Established = pollResult.Established
+			result.Survived = pollResult.Survived
+			result.Outcome = pollResult.Outcome
 			return result
 		}
 	}
@@ -289,51 +276,43 @@ func runColdClient(ctx context.Context, opts options, origin, clientIP string) c
 	return result
 }
 
-func runStreamClient(ctx context.Context, opts options, origin, source string, cursor int64, clientIP string) clientResult {
-	return openStream(ctx, opts, newClient(opts.requestTimeout), origin, source, cursor, clientIP)
-}
-
-func openStream(ctx context.Context, opts options, client *http.Client, origin, source string, cursor int64, clientIP string) clientResult {
-	streamCtx, cancel := context.WithCancel(ctx)
-	path := endpoint(origin, "/stream", url.Values{"source": {source}, "since_id": {strconv.FormatInt(cursor, 10)}})
-	request, err := http.NewRequestWithContext(streamCtx, http.MethodGet, path, nil)
-	if err != nil {
-		cancel()
-		return clientResult{Outcome: "stream_request"}
-	}
-	request.Header.Set("Accept", "text/event-stream")
-	request.Header.Set("User-Agent", "ztd-public-capacity/1.0")
-	if clientIP != "" {
-		request.Header.Set("CF-Connecting-IP", clientIP)
-	}
-	started := time.Now()
-	response, err := client.Do(request)
-	latency := time.Since(started)
-	if err != nil {
-		cancel()
-		return clientResult{Outcome: "stream", Requests: []requestResult{{Stage: "stream", Latency: latency}}}
-	}
-	defer response.Body.Close()
-	streamRequest := requestResult{Stage: "stream", Status: response.StatusCode, Latency: latency}
-	if response.StatusCode != http.StatusOK {
-		cancel()
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxResponseBytes))
-		return clientResult{Outcome: "stream", Requests: []requestResult{streamRequest}}
-	}
+// pollHold polls pointer.json and live/status.json until opts.hold has elapsed.
+// The client is established once its first cycle succeeds, and survives when
+// every cycle through the hold succeeds. The first failed request ends the
+// client with an outcome naming the endpoint.
+func pollHold(ctx context.Context, opts options, client *http.Client, origin, clientIP string) clientResult {
 	deadline := time.Now().Add(opts.hold)
-	timer := time.AfterFunc(opts.hold, cancel)
-	defer timer.Stop()
-	scanner := bufio.NewScanner(response.Body)
-	scanner.Buffer(make([]byte, 64<<10), 1<<20)
-	for scanner.Scan() {
+	var result clientResult
+	for cycle := 0; ; cycle++ {
+		var pointer pointerResponse
+		pointerRequest, pointerErr := getJSON(ctx, client, endpoint(origin, pointerPath, nil), "pointer", clientIP, &pointer)
+		result.Requests = append(result.Requests, pointerRequest)
+		if pointerErr != nil || pointerRequest.Status != http.StatusOK {
+			result.Outcome = "pointer"
+			return result
+		}
+		var status liveStatusResponse
+		statusRequest, statusErr := getJSON(ctx, client, endpoint(origin, liveStatus, nil), "live_status", clientIP, &status)
+		result.Requests = append(result.Requests, statusRequest)
+		if statusErr != nil || statusRequest.Status != http.StatusOK {
+			result.Outcome = "live_status"
+			return result
+		}
+		if cycle == 0 {
+			result.Established = true
+		}
 		if !time.Now().Before(deadline) {
-			return clientResult{Outcome: "complete", Requests: []requestResult{streamRequest}, StreamSurvived: true}
+			result.Outcome = "complete"
+			result.Survived = true
+			return result
+		}
+		select {
+		case <-ctx.Done():
+			result.Outcome = "poll_cancelled"
+			return result
+		case <-time.After(pollInterval):
 		}
 	}
-	if !time.Now().Before(deadline) {
-		return clientResult{Outcome: "complete", Requests: []requestResult{streamRequest}, StreamSurvived: true}
-	}
-	return clientResult{Outcome: "stream_disconnected", Requests: []requestResult{streamRequest}}
 }
 
 func fetchBootstrap(ctx context.Context, client *http.Client, origin, clientIP string) (bootstrapResponse, requestResult, error) {
@@ -356,7 +335,7 @@ func fetchSnapshot(ctx context.Context, client *http.Client, origin, source, cli
 }
 
 type mirrorResponse interface {
-	bootstrapResponse | historyResponse | snapshotResponse
+	bootstrapResponse | historyResponse | snapshotResponse | pointerResponse | liveStatusResponse
 }
 
 func getJSON[T mirrorResponse](ctx context.Context, client *http.Client, address, stage, clientIP string, value *T) (requestResult, error) {
@@ -414,15 +393,15 @@ func summarize(opts options, elapsed time.Duration, results []clientResult) summ
 	survived := 0
 	for _, result := range results {
 		outcomes[result.Outcome]++
-		if result.StreamSurvived {
+		if result.Established {
+			established++
+		}
+		if result.Survived {
 			survived++
 		}
 		for _, request := range result.Requests {
 			statuses[request.Stage+":"+strconv.Itoa(request.Status)]++
 			latencies = append(latencies, request.Latency)
-			if request.Stage == "stream" && request.Status == http.StatusOK {
-				established++
-			}
 		}
 	}
 	return summary{
@@ -435,8 +414,8 @@ func summarize(opts options, elapsed time.Duration, results []clientResult) summ
 		Outcomes:           outcomes,
 		Statuses:           statuses,
 		Latency:            summarizeLatency(latencies),
-		StreamsEstablished: established,
-		StreamsSurvived:    survived,
+		ClientsEstablished: established,
+		ClientsSurvived:    survived,
 	}
 }
 

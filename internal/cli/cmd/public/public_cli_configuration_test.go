@@ -16,12 +16,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -29,13 +32,16 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
+	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/gateway"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
 type publicFailOnceFileSvc struct {
@@ -586,21 +592,16 @@ func TestPublicPushCmd_AuthenticatesAndPublishesProofPackage(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, artifactCount)
 
-	// Export the mirror's signed log, disconnect, and run the documented
-	// offline verifier against the content-addressed publisher artifacts.
-	response, err := http.Get(publicServer.URL + "/proof-segments?source=" + exportConfig.SourceID)
+	// Explicit internal exports remain verifiable without anonymous proof routes.
+	segments, err := store.ProofSegments(t.Context(), exportConfig.SourceID)
 	require.NoError(t, err)
-	defer response.Body.Close()
-	require.Equal(t, http.StatusOK, response.StatusCode)
-	var exported models.PublicProofSegmentsResponse
-	require.NoError(t, json.NewDecoder(response.Body).Decode(&exported))
-	require.Len(t, exported.Segments, 2)
+	require.Len(t, segments, 2)
 	var log bytes.Buffer
-	for _, segment := range exported.Segments {
+	for _, segment := range segments {
 		require.NoError(t, json.NewEncoder(&log).Encode(segment))
 	}
 	const exportedLog = "downloaded-proof-segments.jsonl"
-	require.NoError(t, fileSvc.WriteFile(context.Background(), exportedLog, log.Bytes(), constants.PermFilePrivate))
+	require.NoError(t, fileSvc.WriteFile(t.Context(), exportedLog, log.Bytes(), constants.PermFilePrivate))
 	server.Close()
 	verify := publicVerifyProofCmd()
 	var output bytes.Buffer
@@ -642,4 +643,367 @@ func TestPublicConfigSetCmd_UpdatesOnlyExplicitFields(t *testing.T) {
 	assert.Equal(t, "deployment-a", updated.SourceID)
 	assert.Equal(t, "https://new.example", updated.MirrorOrigin)
 	assert.Equal(t, "key-a", updated.SigningKeyID)
+}
+
+const (
+	testBucketAccessKeyID = "access-key-value-0001"
+	testBucketSecret      = "secret-value-0001"
+	testBucketPurgeToken  = "purge-token-value-0001"
+)
+
+func testBucketCredentials() models.PublicBucketCredentials {
+	return models.PublicBucketCredentials{AccessKeyID: testBucketAccessKeyID, SecretAccessKey: testBucketSecret, PurgeToken: testBucketPurgeToken}
+}
+
+func writeBucketTestFeedConfig(t *testing.T, fileSvc fs.RuntimeFileService, mirrorOrigin string) {
+	t.Helper()
+	exportConfig := models.DefaultPublicExportConfig()
+	exportConfig.Enabled = true
+	exportConfig.SourceID = "deployment-a"
+	exportConfig.MirrorOrigin = mirrorOrigin
+	exportConfig.SigningKeyID = "key-a"
+	body, err := json.Marshal(exportConfig)
+	require.NoError(t, err)
+	require.NoError(t, fileSvc.WriteFile(context.Background(), constants.PublicFeedExportConfigPath, body, constants.PermFilePrivate))
+}
+
+func writeBucketCredentialsFile(t *testing.T, credentials models.PublicBucketCredentials) string {
+	t.Helper()
+	data, err := json.Marshal(credentials)
+	require.NoError(t, err)
+	path := filepath.Join(testutil.TempDir(t), "bucket-credentials.json")
+	require.NoError(t, os.WriteFile(path, data, constants.PermFilePrivate))
+	return path
+}
+
+func fullBucketSetArgs(credentialsPath string) []string {
+	return []string{
+		"--bucket-name", "feed-bucket",
+		"--bucket-endpoint", "https://acct.r2.example",
+		"--bucket-public-origin", "https://feed.example",
+		"--bucket-zone-id", "zone-a",
+		"--bucket-credentials-file", credentialsPath,
+	}
+}
+
+func bucketConfigOnDisk(t *testing.T, fileSvc fs.RuntimeFileService) models.PublicExportConfig {
+	t.Helper()
+	exportConfig, err := gateway.ReadPublicExportConfig(context.Background(), fileSvc)
+	require.NoError(t, err)
+	return exportConfig
+}
+
+func TestPublicConfigSetCmd_BucketFieldsPersistWithSealedCredentials(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	ks := useTestKeystore(t, fileSvc)
+	writeBucketTestFeedConfig(t, fileSvc, "http://127.0.0.1:8443")
+	ctx := context.Background()
+
+	var output bytes.Buffer
+	cmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetOut(&output)
+	cmd.SetArgs(fullBucketSetArgs(writeBucketCredentialsFile(t, testBucketCredentials())))
+	require.NoError(t, cmd.Execute())
+	assert.Equal(t, "Public feed configuration updated\n", output.String())
+
+	exportConfig := bucketConfigOnDisk(t, fileSvc)
+	require.NotNil(t, exportConfig.Bucket)
+	assert.Equal(t, models.PublicBucketConfig{Name: "feed-bucket", Endpoint: "https://acct.r2.example", PublicOrigin: "https://feed.example", ZoneID: "zone-a"}, *exportConfig.Bucket)
+	assert.Equal(t, "http://127.0.0.1:8443", exportConfig.MirrorOrigin)
+
+	credentials, err := gateway.ReadPublicBucketCredentials(ctx, fileSvc, ks)
+	require.NoError(t, err)
+	assert.Equal(t, testBucketCredentials(), credentials)
+
+	raw, err := fileSvc.ReadFile(ctx, constants.PublicFeedBucketCredentialsPath)
+	require.NoError(t, err)
+	assert.NotContains(t, string(raw), testBucketSecret)
+	assert.NotContains(t, string(raw), testBucketPurgeToken)
+	assert.NotContains(t, string(raw), testBucketAccessKeyID)
+
+	// A later partial update overwrites only the flag given.
+	partial := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	partial.SetArgs([]string{"--bucket-zone-id", "zone-b"})
+	require.NoError(t, partial.Execute())
+	exportConfig = bucketConfigOnDisk(t, fileSvc)
+	require.NotNil(t, exportConfig.Bucket)
+	assert.Equal(t, models.PublicBucketConfig{Name: "feed-bucket", Endpoint: "https://acct.r2.example", PublicOrigin: "https://feed.example", ZoneID: "zone-b"}, *exportConfig.Bucket)
+}
+
+func TestPublicConfigSetCmd_ReadsBucketCredentialsFromStdin(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	ks := useTestKeystore(t, fileSvc)
+	writeBucketTestFeedConfig(t, fileSvc, "http://127.0.0.1:8443")
+	data, err := json.Marshal(testBucketCredentials())
+	require.NoError(t, err)
+
+	cmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetIn(strings.NewReader(string(data)))
+	cmd.SetArgs(fullBucketSetArgs("-"))
+	require.NoError(t, cmd.Execute())
+
+	credentials, err := gateway.ReadPublicBucketCredentials(context.Background(), fileSvc, ks)
+	require.NoError(t, err)
+	assert.Equal(t, testBucketCredentials(), credentials)
+}
+
+func TestPublicConfigSetCmd_RefusesBucketOnSeparatelyHostedMirror(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	useTestKeystore(t, fileSvc)
+	writeBucketTestFeedConfig(t, fileSvc, "https://mirror.example")
+	ctx := context.Background()
+
+	cmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetArgs(fullBucketSetArgs(writeBucketCredentialsFile(t, testBucketCredentials())))
+
+	require.ErrorIs(t, cmd.Execute(), constants.ErrPublicBucketRequiresLocalMirror)
+	assert.Nil(t, bucketConfigOnDisk(t, fileSvc).Bucket)
+	exists, err := fileSvc.FileExists(ctx, constants.PublicFeedBucketCredentialsPath)
+	require.NoError(t, err)
+	assert.False(t, exists)
+}
+
+func TestPublicConfigSetCmd_RefusesNonHTTPSBucketEndpointOnPublicHost(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	useTestKeystore(t, fileSvc)
+	writeBucketTestFeedConfig(t, fileSvc, "http://127.0.0.1:8443")
+
+	cmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetArgs([]string{"--bucket-name", "feed-bucket", "--bucket-endpoint", "http://acct.r2.example", "--bucket-public-origin", "https://feed.example", "--bucket-zone-id", "zone-a"})
+
+	require.ErrorIs(t, cmd.Execute(), constants.ErrPublicBucketConfigInvalid)
+	assert.Nil(t, bucketConfigOnDisk(t, fileSvc).Bucket)
+}
+
+func TestPublicConfigSetCmd_RefusesBucketCredentialsMissingPurgeToken(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	useTestKeystore(t, fileSvc)
+	writeBucketTestFeedConfig(t, fileSvc, "http://127.0.0.1:8443")
+	credentials := testBucketCredentials()
+	credentials.PurgeToken = ""
+
+	cmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetArgs(fullBucketSetArgs(writeBucketCredentialsFile(t, credentials)))
+
+	require.ErrorIs(t, cmd.Execute(), constants.ErrPublicBucketCredentialsRequired)
+	assert.Nil(t, bucketConfigOnDisk(t, fileSvc).Bucket)
+}
+
+func TestPublicConfigSetCmd_RefusesCredentialsWithoutKeystore(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	writeBucketTestFeedConfig(t, fileSvc, "http://127.0.0.1:8443")
+	errKeystore := errors.New("keystore unavailable")
+	original := openPublicKeystore
+	openPublicKeystore = func(fs.RuntimeFileService) (*keystore.Keystore, error) { return nil, errKeystore }
+	t.Cleanup(func() { openPublicKeystore = original })
+
+	cmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetArgs(fullBucketSetArgs(writeBucketCredentialsFile(t, testBucketCredentials())))
+
+	require.ErrorIs(t, cmd.Execute(), errKeystore)
+	assert.Nil(t, bucketConfigOnDisk(t, fileSvc).Bucket)
+}
+
+func TestPublicConfigSetCmd_BucketRemoveClearsConfigAndKeepsCredentials(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	ks := useTestKeystore(t, fileSvc)
+	writeBucketTestFeedConfig(t, fileSvc, "http://127.0.0.1:8443")
+	setCmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	setCmd.SetArgs(fullBucketSetArgs(writeBucketCredentialsFile(t, testBucketCredentials())))
+	require.NoError(t, setCmd.Execute())
+
+	removeCmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	removeCmd.SetArgs([]string{"--bucket-remove"})
+	require.NoError(t, removeCmd.Execute())
+
+	assert.Nil(t, bucketConfigOnDisk(t, fileSvc).Bucket)
+	credentials, err := gateway.ReadPublicBucketCredentials(context.Background(), fileSvc, ks)
+	require.NoError(t, err)
+	assert.Equal(t, testBucketCredentials(), credentials)
+}
+
+func TestPublicConfigSetCmd_BucketRemoveRejectsCombinedBucketFlags(t *testing.T) {
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	useTestKeystore(t, fileSvc)
+	writeBucketTestFeedConfig(t, fileSvc, "http://127.0.0.1:8443")
+	setCmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	setCmd.SetArgs([]string{"--bucket-name", "feed-bucket", "--bucket-endpoint", "https://acct.r2.example", "--bucket-public-origin", "https://feed.example", "--bucket-zone-id", "zone-a"})
+	require.NoError(t, setCmd.Execute())
+
+	for _, args := range [][]string{
+		{"--bucket-remove", "--bucket-zone-id", "zone-b"},
+		{"--bucket-remove", "--bucket-credentials-file", writeBucketCredentialsFile(t, testBucketCredentials())},
+	} {
+		removeCmd := publicConfigSetCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+		removeCmd.SetArgs(args)
+		require.ErrorIs(t, removeCmd.Execute(), constants.ErrValidationFailed)
+	}
+	require.NotNil(t, bucketConfigOnDisk(t, fileSvc).Bucket)
+}
+
+// Each row of a stored verification report against the feed's verifier state. Plain
+// verify stays local by design, so disagreement has to be visible in the status.
+func TestPublicStatusCmd_ReportsFeedDriftForEachDisagreement(t *testing.T) {
+	const pass, fail = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL
+	rows := []struct {
+		runID string
+		local evalv1.EvaluationVerdictStatus
+		feed  string
+		want  string
+	}{
+		{runID: "run-agree-pass", local: pass, feed: "passed"},
+		{runID: "run-agree-fail", local: fail, feed: "failed"},
+		{runID: "run-no-report", feed: "not_run"},
+		{runID: "run-pass-not-run", local: pass, feed: "not_run", want: "verified"},
+		{runID: "run-pass-failed", local: pass, feed: "failed", want: "verified"},
+		{runID: "run-fail-passed", local: fail, feed: "passed", want: "verify_failed"},
+		{runID: "run-fail-not-run", local: fail, feed: "not_run", want: "verify_failed"},
+	}
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	useTestKeystore(t, fileSvc)
+	store := evaluation.NewStore(fileSvc)
+	bootstrap := models.PublicFeedBootstrap{}
+	var want []models.PublicFeedVerificationDrift
+	for _, row := range rows {
+		require.NoError(t, store.SaveRun(t.Context(), &evalv1.EvaluationRun{SchemaVersion: evaluation.CampaignSchemaVersion, RunId: row.runID, CampaignBinding: &evalv1.ModelCampaignBinding{CampaignId: "campaign-a"}}))
+		if row.local != evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSPECIFIED {
+			require.NoError(t, store.SaveCampaignVerification(t.Context(), row.runID, &evalv1.EvaluationVerificationReport{RunId: row.runID, Status: row.local}))
+		}
+		bootstrap.RecentProjections = append(bootstrap.RecentProjections, models.NewPublicFeedObject(map[string]string{"kind": "evaluation_summary", "run_id": row.runID, "verifier_state": row.feed}))
+		if row.want != "" {
+			want = append(want, models.PublicFeedVerificationDrift{RunID: row.runID, LocalStatus: row.want, FeedVerifierState: row.feed})
+		}
+	}
+	sort.Slice(want, func(i, j int) bool { return want[i].RunID < want[j].RunID })
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(bootstrap)
+	}))
+	t.Cleanup(mirror.Close)
+	initCmd := publicInitCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	initCmd.SetArgs([]string{"--source-id", "deployment-a", "--mirror-origin", mirror.URL})
+	require.NoError(t, initCmd.Execute())
+
+	var stdout, stderr bytes.Buffer
+	cmd := publicStatusCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"--mirror-origin", mirror.URL})
+	require.NoError(t, cmd.Execute())
+	var status models.PublicPublisherStatus
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &status))
+	assert.True(t, status.FeedDriftChecked)
+	assert.Equal(t, want, status.FeedDrift)
+	assert.Contains(t, stderr.String(), "run run-fail-passed is verify_failed locally but the feed says passed")
+	assert.NotContains(t, stderr.String(), "run-agree-pass")
+
+	// A mirror that cannot be read must not look like agreement.
+	mirror.Close()
+	stdout.Reset()
+	stderr.Reset()
+	require.NoError(t, cmd.Execute())
+	status = models.PublicPublisherStatus{}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &status))
+	assert.False(t, status.FeedDriftChecked)
+	assert.Empty(t, status.FeedDrift)
+	assert.Contains(t, stderr.String(), "feed drift not checked")
+}
+
+// statusFeedEnv initializes a local feed with an optional bucket and returns the
+// runtime, and the mirror origin that answers feed drift with no runs.
+func statusFeedEnv(t *testing.T, bucket *models.PublicBucketConfig) (fs.RuntimeFileService, *config.Config, string) {
+	t.Helper()
+	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+	useTestKeystore(t, fileSvc)
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(models.PublicFeedBootstrap{})
+	}))
+	t.Cleanup(mirror.Close)
+	initCmd := publicInitCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	initCmd.SetArgs([]string{"--source-id", "deployment-a", "--mirror-origin", mirror.URL})
+	require.NoError(t, initCmd.Execute())
+	if bucket != nil {
+		exportConfig, err := gateway.ReadPublicExportConfig(t.Context(), fileSvc)
+		require.NoError(t, err)
+		exportConfig.Bucket = bucket
+		require.NoError(t, gateway.WritePublicExportConfig(t.Context(), fileSvc, exportConfig))
+	}
+	return fileSvc, cfg, mirror.URL
+}
+
+// statusBucket is the bucket the status tests configure.
+func statusBucket() *models.PublicBucketConfig {
+	return &models.PublicBucketConfig{Name: "feed-bucket", Endpoint: "https://acct.r2.example", PublicOrigin: "https://feed.example", ZoneID: "zone-a"}
+}
+
+// writeStatusBucketJournal writes journal lines as the bucket publisher leaves them.
+func writeStatusBucketJournal(t *testing.T, fileSvc fs.RuntimeFileService, entries ...models.PublicBucketJournalEntry) {
+	t.Helper()
+	var data []byte
+	for _, entry := range entries {
+		encoded, err := json.Marshal(entry)
+		require.NoError(t, err)
+		data = append(data, encoded...)
+		data = append(data, '\n')
+	}
+	require.NoError(t, fileSvc.WriteFile(t.Context(), constants.PublicFeedBucketJournalPath, data, constants.PermFilePrivate))
+}
+
+// runStatusForBucket runs ztd public status against the feed and returns its
+// stdout and stderr.
+func runStatusForBucket(t *testing.T, fileSvc fs.RuntimeFileService, cfg *config.Config, mirrorOrigin string) (string, string, error) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	cmd := publicStatusCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), cmdtest.FileSvcFactoryFor(fileSvc))
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"--mirror-origin", mirrorOrigin})
+	err := cmd.Execute()
+	return stdout.String(), stderr.String(), err
+}
+
+// TestPublicStatusCmd_ReportsBucketPointerAndPendingWork covers both outputs: the
+// bucket object in the JSON status and the text line on stderr. The mirror has no
+// records here, so the lag is floored at zero.
+func TestPublicStatusCmd_ReportsBucketPointerAndPendingWork(t *testing.T) {
+	fileSvc, cfg, mirrorOrigin := statusFeedEnv(t, statusBucket())
+	writeStatusBucketJournal(t, fileSvc,
+		models.PublicBucketJournalEntry{Kind: models.PublicBucketJournalPointer, Revision: 7, Sequence: 3},
+		models.PublicBucketJournalEntry{Kind: models.PublicBucketJournalDelete, Key: "proofs/a"},
+		models.PublicBucketJournalEntry{Kind: models.PublicBucketJournalPurge, Key: "https://feed.example/pointer.json"},
+	)
+
+	stdout, stderr, err := runStatusForBucket(t, fileSvc, cfg, mirrorOrigin)
+	require.NoError(t, err)
+	var status models.PublicPublisherStatus
+	require.NoError(t, json.Unmarshal([]byte(stdout), &status))
+	assert.Equal(t, &models.PublicBucketStatus{Name: "feed-bucket", PointerRevision: 7, PointerSequence: 3, PendingDeletes: 1, PendingPurges: 1}, status.Bucket)
+	assert.Contains(t, stderr, "Bucket: feed-bucket pointer revision 7 at sequence 3, 0 behind, 1 deletes and 1 purges pending\n")
+}
+
+// TestPublicStatusCmd_OmitsBucketWhenOff keeps the status output unchanged for a
+// feed with no bucket: no bucket key in the JSON and no bucket line on stderr.
+func TestPublicStatusCmd_OmitsBucketWhenOff(t *testing.T) {
+	fileSvc, cfg, mirrorOrigin := statusFeedEnv(t, nil)
+
+	stdout, stderr, err := runStatusForBucket(t, fileSvc, cfg, mirrorOrigin)
+	require.NoError(t, err)
+	var raw map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(stdout), &raw))
+	_, present := raw["bucket"]
+	assert.False(t, present, "a feed without a bucket reports no bucket object")
+	assert.NotContains(t, stderr, "Bucket:")
+}
+
+// TestPublicStatusCmd_UnreadableBucketJournalWarnsWithoutFailing reports a journal
+// that cannot be read as a warning, and the status still prints.
+func TestPublicStatusCmd_UnreadableBucketJournalWarnsWithoutFailing(t *testing.T) {
+	fileSvc, cfg, mirrorOrigin := statusFeedEnv(t, statusBucket())
+	require.NoError(t, fileSvc.WriteFile(t.Context(), constants.PublicFeedBucketJournalPath, []byte("not json\n"), constants.PermFilePrivate))
+
+	stdout, stderr, err := runStatusForBucket(t, fileSvc, cfg, mirrorOrigin)
+	require.NoError(t, err, "a bucket read failure must not fail the status command")
+	assert.Contains(t, stderr, "warning: bucket status not read")
+	var status models.PublicPublisherStatus
+	require.NoError(t, json.Unmarshal([]byte(stdout), &status))
+	assert.Nil(t, status.Bucket)
 }

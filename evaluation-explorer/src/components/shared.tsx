@@ -66,7 +66,7 @@ export function StreamStatusIndicator({
   const text =
     detail === 'long'
       ? streamConnection === 'connected' && feedConnection === 'live'
-        ? 'Streaming via SSE'
+        ? 'Updating from the public feed'
         : description
       : label;
   const isConnecting = label === 'Connecting' || label === 'Reconnecting';

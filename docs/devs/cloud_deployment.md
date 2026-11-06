@@ -289,6 +289,8 @@ Cloud VM Gateway Process
 1. **Exposing the Public Mirror**:
    - **Direct Cloud VM Ingress (Default)**: Pass `--public-spectator-public-listen 0.0.0.0:8082 --public-spectator-allow-container-bind` and permit TCP `8082` in cloud firewall rules (`allow-ztd-gateway`). Browsers and remote CLI commands query `http://<GATEWAY_PUBLIC_IP>:8082` directly. Private ingest remains strictly bound to `127.0.0.1:8081`.
    - **Optional Edge Tunnel**: Point `cloudflared` to `http://127.0.0.1:8082` if edge DDoS mitigation or custom CDN caching is desired (`INV-DEPLOY-NET-04`).
+   - **Bucket Publication (Optional)**: Configure `ztd public config set --bucket-*` on the Gateway to publish the public layout to an S3-compatible bucket served from a custom domain. The bucket publisher reads the colocated mirror, so a bucket configuration on a Gateway whose mirror origin is not local is refused with an error. The Gateway reads the configuration at start. The public read listener continues to serve the same layout objects. Setup is in [Public Spectator Operations Guide](../guides/public_spectator.md#publish-the-layout-to-a-bucket).
+   - **Remote Mirror Pointers**: A mirror that does not hold the feed's signing key serves `pointer.json` unsigned, and `ztd public verify-proof --pointer` rejects an unsigned pointer. Verify a pointer offline only from a Gateway whose colocated publisher signed it, using `--read-model`, `--bundle`, `--run`, and independently trusted `--key-registry` or `--public-key` inputs. Anonymous proof-log and generic artifact routes are removed; cloud consumers use `runs/` and `fixtures/`. Private authenticated proof transport is unchanged.
 2. **Publishing Runs and Restoring from Local Workstations**:
    Campaigns run on local development machines publish batches over mTLS and verify public mirror status using the `-e / --endpoint` flag:
    ```bash
@@ -335,7 +337,7 @@ All command dispatches, health heartbeats, and signed event receipts flow across
 ## Links out
 
 - [Gateway Architecture](../architecture/gateway.md) — Comprehensive specification of the Gateway PDP, routes, and operational modes.
-- [Public Spectator Architecture](../architecture/public_spectator.md) — Isolated public mirror, proof catalog, and Evaluation Explorer delivery.
+- [Public Spectator Architecture](../architecture/public_spectator.md) — Isolated public mirror, public bundle and fixture layout, and Evaluation Explorer delivery.
 - [Network Architecture](../architecture/network.md) — Detailed explanation of the SPIFFE PKI hierarchy, dual-port topology, and mTLS transport.
 - [Cloudflare Tunnel Guide](../guides/cloudflare_tunnel.md) — Operational instructions for running local gateways behind NAT using `ztd gw tunnel`.
 - [Troubleshooting Guide](troubleshooting.md) — Remediation steps for network drift, certificate mismatches, and vault unlock failures.

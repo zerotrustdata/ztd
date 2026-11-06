@@ -20,6 +20,7 @@ import { evalStore, useStoreState } from './store';
 const PREF_KEYS = {
   filters: 'opendevops.filters.v3',
   sort: 'opendevops.sort',
+  leaderboardCategory: 'opendevops.leaderboard.category',
 } as const;
 
 export interface DatasetOption extends ReleaseProvenance {

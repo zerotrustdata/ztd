@@ -1,0 +1,8 @@
+/proof-catalog  https://feed.opendevops.ai/proof-catalog  301
+/proof-head  https://feed.opendevops.ai/proof-head  301
+/proof-head.json  https://feed.opendevops.ai/proof-head.json  301
+/proof-segments  https://feed.opendevops.ai/proof-segments  301
+/proofs/*  https://feed.opendevops.ai/proofs/:splat  301
+/proof-catalog/*  https://feed.opendevops.ai/proof-catalog/:splat  301
+/proof-meta/*  https://feed.opendevops.ai/proof-meta/:splat  301
+/proof-segments/*  https://feed.opendevops.ai/proof-segments/:splat  301

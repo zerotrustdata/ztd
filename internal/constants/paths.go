@@ -780,6 +780,7 @@ const (
 	MediaTypeMarkdown                             = "text/markdown; charset=utf-8"
 	MediaTypeHTML                                 = "text/html; charset=utf-8"
 	MediaTypeCSV                                  = "text/csv; charset=utf-8"
+	MediaTypeGzip                                 = "application/gzip"
 	MediaTypeText                                 = "text/plain; charset=utf-8"
 	ObserveEventPayloadSchemaVersion              = "1.0.0"
 	ObserveMeasurementSchemaVersion               = "1.0.0"
@@ -904,17 +905,24 @@ const (
 // signed append-only batches, ordered outbox, and content-addressed proof
 // packages).
 const (
-	PublicFeedDirname                   = "public-feed"
-	PublicFeedOutboxFilename            = "outbox.jsonl"
-	PublicFeedOutboxPath                = "public-feed/outbox.jsonl"
-	PublicFeedSnapshotFilename          = "snapshot.json"
-	PublicFeedSnapshotPath              = "public-feed/snapshot.json"
-	PublicFeedExportConfigFilename      = "export-config.json"
-	PublicFeedExportConfigPath          = "public-feed/export-config.json"
-	PublicFeedSigningKeyFilename        = "signing-key.ed25519"
-	PublicFeedSigningKeyPath            = "public-feed/signing-key.ed25519"
-	PublicFeedIngestTokenFilename       = "ingest-token"
-	PublicFeedIngestTokenPath           = "public-feed/ingest-token"
+	PublicFeedDirname              = "public-feed"
+	PublicFeedOutboxFilename       = "outbox.jsonl"
+	PublicFeedOutboxPath           = "public-feed/outbox.jsonl"
+	PublicFeedSnapshotFilename     = "snapshot.json"
+	PublicFeedSnapshotPath         = "public-feed/snapshot.json"
+	PublicFeedExportConfigFilename = "export-config.json"
+	PublicFeedExportConfigPath     = "public-feed/export-config.json"
+	PublicFeedSigningKeyFilename   = "signing-key.ed25519"
+	PublicFeedSigningKeyPath       = "public-feed/signing-key.ed25519"
+	PublicFeedIngestTokenFilename  = "ingest-token"
+	PublicFeedIngestTokenPath      = "public-feed/ingest-token"
+	// PublicFeedBucketCredentialsPath holds the sealed bucket write and cache
+	// purge credentials. It sits beside the ingest token and never enters the
+	// export configuration.
+	PublicFeedBucketCredentialsPath = "public-feed/bucket-credentials"
+	// PublicFeedBucketJournalPath is the bucket publisher's durable journal of
+	// pointer revisions and pending deletes and purges.
+	PublicFeedBucketJournalPath         = "public-feed/bucket-journal.jsonl"
 	PublicFeedKeyRotationFilename       = "key-rotation.json"
 	PublicFeedKeyRotationPath           = "public-feed/key-rotation.json"
 	PublicFeedArchiveDirname            = "public-feed-archive"
@@ -930,10 +938,53 @@ const (
 	PublicProofCatalogFilename      = "proof-catalog.json"
 	PublicProofManifestFilename     = "proof-manifest.json"
 	PublicProofMirrorSyncFilename   = "proof-mirror-sync.json"
+	// PublicRunBundleFilenameSuffix names one run's assignment bundle artifact: the
+	// run ID followed by this suffix.
+	PublicRunBundleFilenameSuffix = ".assignments.jsonl.gz"
+)
+
+// Public feed layout object keys, relative to the bucket root or a mirror's
+// public origin. pointer.json names the current digest-addressed objects.
+const (
+	PublicLayoutPointerKey          = "pointer.json"
+	PublicLayoutReadModelPrefix     = "read-model/"
+	PublicLayoutProofPrefix         = "proofs/"
+	PublicLayoutRunsPrefix          = "runs/"
+	PublicLayoutFixturesPrefix      = "fixtures/"
+	PublicLayoutProofMetaPrefix     = "proof-meta/"
+	PublicLayoutProofCatalogPrefix  = "proof-catalog/"
+	PublicLayoutProofHeadKey        = "proof-head.json"
+	PublicLayoutProofSegmentsPrefix = "proof-segments/"
+	PublicLayoutHistoryPrefix       = "history/"
+	PublicLayoutLiveStatusKey       = "live/status.json"
+	PublicLayoutLiveRunsPrefix      = "live/runs/"
+	PublicLayoutJSONSuffix          = ".json"
+	PublicLayoutJSONGzipSuffix      = ".json.gz"
+	PublicLayoutJSONLGzipSuffix     = ".jsonl.gz"
+	// PublicLayoutSegmentChunkSize is the number of proof segments in one
+	// proof-segments object. A chunk's name is its first segment index.
+	PublicLayoutSegmentChunkSize = 1000
+	// PublicLayoutHistoryPageRecords is the sequence span of one history page. A
+	// page's name is the first sequence of its span.
+	PublicLayoutHistoryPageRecords = 1000
+	// PublicLiveStatusTailLimit bounds the activity tail in live/status.json. The
+	// Explorer's LIVE_EVENT_RETENTION_LIMIT names the same bound.
+	PublicLiveStatusTailLimit = 100
+
+	PublicLayoutCacheImmutable = "public, max-age=31536000, immutable"
+	PublicLayoutCachePointer   = "public, max-age=30"
+	PublicLayoutCacheProofHead = "public, max-age=30"
+	PublicLayoutCacheTail      = "public, max-age=60"
+	PublicLayoutCacheHistory   = "public, max-age=3600"
+	PublicLayoutCacheLive      = "public, max-age=10"
+	PublicLayoutCacheLiveRun   = "public, max-age=60"
 )
 
 // Public feed schema and protocol version constants.
 const (
+	PublicFeedPointerSchemaVersion     = "2.0.0"
+	PublicReadModelSchemaVersion       = "2.0.0"
+	PublicLiveStatusSchemaVersion      = "1.0.0"
 	PublicFeedProtocolVersion          = "1.0.0"
 	PublicFeedSchemaVersion            = "1.0.0"
 	PublicProofManifestSchemaVersion   = "1.0.0"
@@ -943,6 +994,7 @@ const (
 	PublicProofMirrorSyncSchemaVersion = "2.0.0"
 	PublicFeedBatchMaxRecords          = 100
 	PublicFeedBatchMaxBytes            = 4 << 20
+	PublicFeedRecordMaxBytes           = 512 << 10
 	PublicFeedRetryMaxAttempts         = 5
 	PublicFeedRetryInitialBackoff      = 1
 	PublicFeedRetryMaxBackoff          = 60
@@ -959,9 +1011,10 @@ const (
 	PublicFeedAnonymousRatePerWindow  = 600
 	PublicFeedAnonymousRateWindowSecs = 60
 	PublicFeedAnonymousRateMaxClients = 10000
-	PublicFeedSSEMaxSubscribers       = 1000
-	// Cap SSE backlog replay so reconnects do not resend the full retained feed.
-	PublicFeedSSEReplayMaxRecords = 100
+	// PublicFeedEventRetentionMaxRecords is how many of the newest activity-event
+	// records the snapshot store keeps per source. Older event records are pruned
+	// at ingest and when snapshots are rebuilt.
+	PublicFeedEventRetentionMaxRecords = 100
 	// Retain enough batches for a full homogeneous smoke matrix (~2.6k cells
 	// plus lifecycle, result, and aggregate projections) without pruning the
 	// prefix the evaluation explorer replays on cold load.

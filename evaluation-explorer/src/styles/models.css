@@ -1,0 +1,379 @@
+/* Copyright (c) 2026 Lateralus Labs, LLC.
+   Licensed under the Business Source License 1.1 — see LICENSE for details. */
+
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  font-size: var(--fs-label);
+  font-weight: 500;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--fg-muted);
+  border: 0;
+  white-space: nowrap;
+  cursor: default;
+  font-family: var(--mono);
+  letter-spacing: var(--tracking-label);
+}
+
+.role-badge-primary {
+  color: var(--fg);
+  background: transparent;
+}
+
+.role-badge-assistant {
+  color: var(--fg-muted);
+  background: transparent;
+}
+
+.role-badge-lite {
+  color: var(--fg-muted);
+  background: transparent;
+}
+
+.model-identity-cell {
+  display: grid;
+  gap: 4px;
+  min-width: 190px;
+}
+
+.model-identity-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.model-identity-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.served-tag-code {
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  color: var(--fg-dim);
+  background: transparent;
+  padding: 0;
+  border: 0;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-scope-tag {
+  font-size: 11px;
+  color: var(--fg-dim);
+  font-family: var(--mono);
+}
+
+.model-specs-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1px;
+  flex-direction: column;
+}
+
+.spec-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  font-size: var(--fs-label);
+  font-weight: 400;
+  line-height: 1.35;
+  border: 0;
+  background: transparent;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  font-family: var(--mono);
+}
+
+.spec-family {
+  color: var(--fg);
+  background: transparent;
+  font-weight: 500;
+}
+
+.spec-params {
+  font-family: var(--mono);
+  color: var(--fg-muted);
+}
+
+.spec-quant {
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  color: var(--fg-muted);
+}
+
+.spec-ctx {
+  font-family: var(--mono);
+  color: var(--fg-muted);
+}
+
+.spec-provider {
+  color: var(--fg-muted);
+}
+
+.spec-trust {
+  color: var(--tone-ok);
+  background: transparent;
+}
+
+.capability-pill-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  align-items: center;
+}
+
+.capability-pill-group.compact {
+  gap: 2px 8px;
+}
+
+.capability-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  font-size: var(--fs-label);
+  font-weight: 400;
+  border: 0;
+  background: transparent;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  cursor: help;
+  font-family: var(--mono);
+}
+
+.capability-symbol {
+  font-size: var(--fs-label);
+  font-weight: 500;
+}
+
+.capability-ok {
+  color: var(--fg-muted);
+  background: transparent;
+}
+
+.capability-critical {
+  color: var(--fg-muted);
+  background: transparent;
+}
+
+.capability-warn {
+  color: var(--fg-muted);
+  background: transparent;
+}
+
+.capability-neutral {
+  color: var(--fg-dim);
+}
+
+.capability-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  margin: 8px 0 12px;
+  padding: 0 1px 0 0;
+}
+
+.capability-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 100ms, background-color 100ms;
+  margin-right: -1px;
+  font-family: var(--font);
+}
+
+.capability-filter-chip:hover {
+  color: var(--fg);
+  background: var(--bg-elev2);
+}
+
+.capability-filter-chip.active {
+  background: var(--bg-elev3);
+  color: var(--fg);
+}
+
+.chip-count {
+  padding: 0;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  color: var(--fg-dim);
+}
+
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  font-size: var(--fs-label);
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+  border: 0;
+  background: transparent;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  font-family: var(--mono);
+  text-transform: uppercase;
+}
+
+.model-evals-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-label);
+  font-weight: 400;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+  font-family: var(--mono);
+}
+
+.model-evals-link:hover {
+  text-decoration: underline;
+}
+
+.role-switcher-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0;
+  align-items: center;
+}
+
+.role-switch-pill {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  text-decoration: none;
+  margin-right: -1px;
+  font-family: var(--mono);
+}
+
+.role-switch-pill.active {
+  border-color: var(--border);
+  background: var(--bg-elev3);
+  color: var(--fg);
+}
+
+.capability-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0;
+  padding: 0 1px 1px 0;
+}
+
+.capability-detail-card {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: transparent;
+  display: grid;
+  gap: 6px;
+  margin: 0 -1px -1px 0;
+}
+
+.capability-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.capability-detail-copy {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.model-eval-run-list {
+  display: grid;
+  gap: 10px;
+}
+
+.model-eval-run-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.model-eval-run-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.model-eval-run-link {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.model-eval-run-sub {
+  margin: 2px 0 0;
+  font-size: var(--fs-label);
+  color: var(--fg-muted);
+}
+
+.model-eval-run-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.model-eval-run-metrics {
+  display: grid;
+  gap: 8px;
+}
+
+.model-eval-run-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: var(--fs-label);
+  color: var(--fg-muted);
+  font-family: var(--mono);
+}
+
+.formation-mini-card {
+  display: grid;
+  gap: 4px;
+}
+
+.formation-mini-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.formation-mini-desc {
+  margin: 0;
+  font-size: var(--fs-label);
+  color: var(--fg-muted);
+}
+
+.capability-ok .capability-symbol { color: var(--tone-ok); }
+.capability-critical,
+.capability-critical .capability-symbol { color: var(--tone-critical); }
+.capability-warn,
+.capability-warn .capability-symbol { color: var(--tone-warn); }

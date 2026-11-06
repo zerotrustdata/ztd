@@ -119,6 +119,18 @@ func TestTribunalVotePersonasHaveIndependentDigestBoundRenderings(t *testing.T) 
 	if !strings.Contains(nemesis.VoteSystemPrompt(), nemesis.Identity) || !strings.Contains(nemesis.Identity, "always cunning, not always aggressive") {
 		t.Error("Nemesis vote rendering must preserve its identity as-is")
 	}
+	if strings.Contains(nemesis.OutputContract, "honest argument set") || !strings.Contains(nemesis.VotePurpose, "calibrated attacker") {
+		t.Error("Nemesis must author and vote as the adversarial seat")
+	}
+	for _, id := range []string{IDAxiom, IDConcord, IDVariance, IDPragma} {
+		p, err := registry.Get(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(p.OutputContract, "honest argument set") || strings.Contains(p.VotePurpose, "attacker") {
+			t.Errorf("%s must author and vote as an honest member", id)
+		}
+	}
 }
 
 // TestPersona_TriageNeverInterrogates keeps Triage a classifier: it runs once

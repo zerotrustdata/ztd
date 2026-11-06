@@ -15,14 +15,24 @@ import {
   type ScenarioGoldCriteria,
   type ScenarioInputFixture,
 } from '../contract/scenario-fixture';
-import type { ProofCatalogEntry, PublicEvidenceBinding } from '../contract/types';
+import type { PublicEvidenceBinding } from '../contract/types';
 import { ValidationError } from '../contract/validators';
-import { runnableVerifyCommand } from '../verifyCommand';
 import { useMirrorOrigin } from '../state/mirror';
-import { useProofArtifact } from '../state/proof';
-import { TextBlock } from './AgentTraceSection';
 import { PanelSection } from './evidence';
+import { prettyJSON } from './RoleTranscripts';
 import { CopyButton } from './shared';
+
+function TextBlock({ title, text, copyLabel, json = false }: { title: string; text: string; copyLabel: string; json?: boolean }) {
+  return (
+    <div className="transcript-field">
+      <div className="transcript-field-label">
+        {title}
+        <CopyButton text={text} label={copyLabel} />
+      </div>
+      <pre className="model-response-text"><code>{json ? prettyJSON(text) : text}</code></pre>
+    </div>
+  );
+}
 
 type Verified<T> = { status: 'loading' } | { status: 'verified'; value: T } | { status: 'failed'; reason: string };
 
@@ -38,7 +48,7 @@ function useVerifiedArtifact<T>(
     if (!url || !sha256 || !scenarioId) return;
     let cancelled = false;
     setState({ status: 'loading' });
-    fetch(url)
+    fetch(url, { credentials: 'omit' })
       .then((response) => {
         if (!response.ok) throw new Error(`fetch returned HTTP ${response.status}`);
         return response.arrayBuffer();
@@ -59,14 +69,14 @@ function useVerifiedArtifact<T>(
   return state;
 }
 
-function ArtifactProof({ binding, artifact, url, noun }: {
-  binding: PublicEvidenceBinding; artifact: ProofCatalogEntry; url: string | undefined; noun: string;
+function ArtifactProof({ binding, filename, url, noun }: {
+  binding: PublicEvidenceBinding; filename: string; url: string | undefined; noun: string;
 }) {
   return (
     <div className="agent-trace-proof">
       <code>sha256 {binding.sha256}</code>
-      {url ? <a href={url} download={artifact.filename}>Download {noun}</a> : <span>Download {noun}</span>}
-      <CopyButton text={runnableVerifyCommand(artifact.verification_command)} label={`${noun} verify command`} />
+      {url ? <a href={url} download={filename}>Download {noun}</a> : <span>Download {noun}</span>}
+      <CopyButton text={binding.sha256} label={`${noun} SHA-256`} />
     </div>
   );
 }
@@ -136,14 +146,12 @@ export function ScenarioFixtureSection({ id, bindings, scenarioId }: {
 }) {
   const origin = useMirrorOrigin();
   const { input, gold } = scenarioFixtureBindings(bindings);
-  const inputArtifact = useProofArtifact(input);
-  const goldArtifact = useProofArtifact(gold);
-  const inputURL = origin && inputArtifact ? `${origin}${inputArtifact.immutable_url}` : undefined;
-  const goldURL = origin && goldArtifact ? `${origin}${goldArtifact.immutable_url}` : undefined;
+  const inputURL = origin && input && gold && scenarioId ? `${origin}/fixtures/${input.sha256}` : undefined;
+  const goldURL = origin && input && gold && scenarioId ? `${origin}/fixtures/${gold.sha256}` : undefined;
   const inputState = useVerifiedArtifact(inputURL, input && scenarioId ? { sha256: input.sha256, scenarioId } : undefined, verifyScenarioInputArtifact);
   const goldState = useVerifiedArtifact(goldURL, gold && scenarioId ? { sha256: gold.sha256, scenarioId } : undefined, verifyScenarioGoldArtifact);
 
-  if (!scenarioId || !input || !gold || !inputArtifact || !goldArtifact) return null;
+  if (!scenarioId || !input || !gold) return null;
 
   const failed = inputState.status === 'failed' || goldState.status === 'failed';
   return (
@@ -153,13 +161,13 @@ export function ScenarioFixtureSection({ id, bindings, scenarioId }: {
       </p>
       <div className="model-response-block">
         <div className="model-response-header"><span className="model-response-label">Input</span></div>
-        <ArtifactProof binding={input} artifact={inputArtifact} url={inputURL} noun="input" />
+        <ArtifactProof binding={input} filename={`scenario-${scenarioId}.input.json`} url={inputURL} noun="input" />
         <Status state={inputState} noun="input" />
         {inputState.status === 'verified' ? <InputBody input={inputState.value} /> : null}
       </div>
       <div className="model-response-block">
         <div className="model-response-header"><span className="model-response-label">Gold criteria</span></div>
-        <ArtifactProof binding={gold} artifact={goldArtifact} url={goldURL} noun="gold criteria" />
+        <ArtifactProof binding={gold} filename={`scenario-${scenarioId}.gold.json`} url={goldURL} noun="gold criteria" />
         <Status state={goldState} noun="gold criteria" />
         {goldState.status === 'verified' ? <GoldBody gold={goldState.value} /> : null}
       </div>

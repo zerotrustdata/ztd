@@ -48,7 +48,7 @@ func TestValidatePublicDisclosureMetricsAndStrings(t *testing.T) {
 			return validateStrings([]byte(`{"grade_summaries":[{"criterion_id":"../c","detail":"ok"}]}`))
 		}},
 		{name: "grade detail bounded", fn: func() error {
-			return validateStrings([]byte(`{"grade_summaries":[{"detail":"` + strings.Repeat("x", 256*1024+1) + `"}]}`))
+			return validateStrings([]byte(`{"grade_summaries":[{"detail":"` + strings.Repeat("x", constants.PublicFeedRecordMaxBytes+1) + `"}]}`))
 		}, want: constants.ErrEvidenceArtifactTooLarge},
 		{name: "valid resource", fn: func() error { return validateResource(json.RawMessage(`{"latency_ms":{"value":2}}`)) }},
 		{name: "unknown resource field", fn: func() error { return validateResource(json.RawMessage(`{"private":{"value":2}}`)) }, want: constants.ErrEvidenceSchemaMismatch},
@@ -339,6 +339,7 @@ func TestPublicFeedVocabularyAcceptsKnownValues(t *testing.T) {
 	assert.True(t, publicFeedViewSchemaVersion("1.9.0"))
 	assert.True(t, publicFeedViewSchemaVersion("1.10.0"))
 	assert.True(t, publicFeedViewSchemaVersion("1.11.0"))
+	assert.True(t, publicFeedViewSchemaVersion("1.13.0"))
 	assert.True(t, publicFeedViewSchemaVersion(constants.ExplorerViewSchemaVersion))
 	assert.True(t, publicFeedEventKind("judge_started"))
 	assert.True(t, publicFeedEventKind("judge_completed"))
@@ -355,4 +356,14 @@ func TestPublicFeedVocabularyAcceptsKnownValues(t *testing.T) {
 	assert.True(t, publicFeedRole("primary"))
 	assert.False(t, publicFeedRole("unknown"))
 	assert.Error(t, validateStrings([]byte(strings.Repeat("x", maxStringBytes+1))))
+}
+
+func TestValidateAssignmentRecordPreservesLargeBoundedActivity(t *testing.T) {
+	toolCall := `{"tool_label":"` + strings.Repeat("a", 380) + `"}`
+	records := strings.TrimSuffix(strings.Repeat(toolCall+",", 800), ",")
+	body := []byte(`{"schema_version":"1.2.0","message_type":"PublicAssignmentResultProjection","idempotency_key":"run-1:assignment-1:result","record":{"assignment_id":"assignment-1","run_id":"run-1","scenario_id":"scenario-1","activity_summary":{"tool_calls":{"availability":"PUBLIC_ACTIVITY_AVAILABILITY_OBSERVED","records":[` + records + `]}}}}`)
+	require.Greater(t, len(body), 256*1024)
+	require.Less(t, len(body), 512*1024)
+	require.NoError(t, ValidateAssignmentRecord("1.2.0", body))
+	require.NoError(t, ValidatePublicFeedRecord(models.PublicFeedRecordTypeProjection, body))
 }

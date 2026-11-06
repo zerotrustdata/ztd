@@ -209,7 +209,7 @@ func TestBuildRunAggregateViewRecordsCarriesProviderEnvironment(t *testing.T) {
 		state, err := CollectRunAggregateState(assignments, map[string]*evalv1.EvaluationAssignmentResult{})
 		require.NoError(t, err)
 		state.ProviderEnvironment = environment
-		records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC())
+		records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC(), "")
 		require.NoError(t, err)
 		for _, record := range records {
 			var fields map[string]json.RawMessage

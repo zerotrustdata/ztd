@@ -2,37 +2,49 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { Link } from 'react-router-dom';
-import { useStoreState } from '../state/store';
+import { useFeedStatus } from '../state/store';
 import { useMirrorOrigin } from '../state/mirror';
 import { ZTD_REPO_URL } from '../content/platform';
 import descriptorUrl from '../contract/descriptor.json?url';
+import { formatNumber, formatTimestamp } from '../utils/format';
 
-/** Single-row footer: mirror transport endpoints, schema, and site links. */
+/** Time of day for today's data; a date as well once it is older, so a stale feed cannot read as current. */
+function acceptedLabel(iso: string, now: Date = new Date()): string {
+  const date = new Date(iso);
+  const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  if (date.toDateString() === now.toDateString()) return time;
+  return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${time}`;
+}
+
+/** Single-row footer: feed position, mirror transport endpoints, schema, and site links. */
 export function AppFooter() {
   const origin = useMirrorOrigin();
-  const sourceId = useStoreState((state) => state.sourceId);
-  const proofQuery = sourceId ? `?${new URLSearchParams({ source: sourceId })}` : '';
-  const proofsPublished = useStoreState((state) => state.proofArtifactCount > 0);
+  const feedStatus = useFeedStatus();
   const external = { target: '_blank', rel: 'noopener noreferrer' } as const;
 
   return (
-    <footer className="app-footer" aria-label="Public mirror endpoints and site links">
+    <footer className="app-footer" aria-label="Public mirror status, endpoints, and site links">
       <span className="app-footer-label" title="Anonymous, read-only. Mirror availability is not verification evidence.">
         Public mirror · read-only
       </span>
+      {feedStatus ? (
+        <span className="app-footer-telemetry" data-testid="footer-telemetry">
+          Seq {formatNumber(feedStatus.highWaterSequence)}
+          {feedStatus.lastAcceptedAt ? (
+            <>
+              {' · Accepted '}
+              <time dateTime={feedStatus.lastAcceptedAt} title={formatTimestamp(feedStatus.lastAcceptedAt)}>
+                {acceptedLabel(feedStatus.lastAcceptedAt)}
+              </time>
+            </>
+          ) : null}
+        </span>
+      ) : null}
       <nav className="app-footer-links" aria-label="Mirror transport">
         {origin ? (
           <>
-            <a href={`${origin}/history?cursor=0&limit=500`} {...external}>History <code>JSON</code></a>
-            <a href={`${origin}/bootstrap`} {...external}>Bootstrap <code>JSON</code></a>
-            {proofsPublished ? (
-              <>
-                <a href={`${origin}/proof-head${proofQuery}`} {...external}>Proof head <code>JSON</code></a>
-                <a href={`${origin}/proof-catalog${proofQuery}`} {...external}>Proof catalog <code>JSON</code></a>
-                <a href={`${origin}/proof-segments${proofQuery}`} {...external}>Proof segments <code>JSON</code></a>
-              </>
-            ) : null}
-            <a href={`${origin}/stream`} {...external}>Live updates <code>SSE</code></a>
+            <a href={`${origin}/pointer.json`} {...external}>Pointer <code>JSON</code></a>
+            <a href={`${origin}/live/status.json`} {...external}>Live status <code>JSON</code></a>
           </>
         ) : (
           <span className="app-footer-unavailable">Mirror origin unavailable</span>

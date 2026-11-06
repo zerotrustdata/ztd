@@ -10,7 +10,6 @@
 package gateway
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/ed25519"
@@ -186,12 +185,7 @@ func (env *capacityMirrorEnv) coldLifecycle(ctx context.Context, clientIP string
 	if source == "" {
 		source = env.sourceID
 	}
-	cursor := int64(0)
-	for _, record := range bootstrap.RecentProjections {
-		if record.Sequence > cursor {
-			cursor = record.Sequence
-		}
-	}
+	cursor := bootstrap.Snapshot.HighWaterSequence
 	for range 10 {
 		for range 100 {
 			history, status, err := capacityGetJSON[historyCapacityResponse](ctx, env.client, capacityEndpoint(origin, "/history", url.Values{
@@ -217,7 +211,7 @@ func (env *capacityMirrorEnv) coldLifecycle(ctx context.Context, clientIP string
 			return fmt.Sprintf("snapshot (status=%d, error=%v)", status, err), status == http.StatusTooManyRequests
 		}
 		if snapshot.HighWaterSequence == cursor {
-			survived, status, outcome := env.openStream(ctx, source, cursor, clientIP, 200*time.Millisecond)
+			survived, status, outcome := env.pollLive(ctx, clientIP, 200*time.Millisecond)
 			if !survived && outcome != "complete" {
 				return outcome, status == http.StatusTooManyRequests
 			}
@@ -227,55 +221,34 @@ func (env *capacityMirrorEnv) coldLifecycle(ctx context.Context, clientIP string
 	return "sequence_divergence", false
 }
 
-func (env *capacityMirrorEnv) openStream(ctx context.Context, source string, cursor int64, clientIP string, hold time.Duration) (survived bool, status int, outcome string) {
-	streamCtx, cancel := context.WithTimeout(ctx, hold+10*time.Second)
-	defer cancel()
-	address := capacityEndpoint(env.baseURL, "/stream", url.Values{
-		"source":   {source},
-		"since_id": {strconv.FormatInt(cursor, 10)},
-	})
-	request, err := http.NewRequestWithContext(streamCtx, http.MethodGet, address, nil)
-	if err != nil {
-		return false, 0, "stream_request"
+// capacityPollInterval is the pause between one client's poll cycles.
+const capacityPollInterval = 200 * time.Millisecond
+
+// pollLive polls pointer.json and live/status.json from one client until hold
+// has elapsed. The first non-200 response or transport failure ends the poll
+// with that status and an outcome naming the endpoint.
+func (env *capacityMirrorEnv) pollLive(ctx context.Context, clientIP string, hold time.Duration) (survived bool, status int, outcome string) {
+	deadline := time.Now().Add(hold)
+	for {
+		if _, status, err := capacityGetJSON[models.PublicFeedPointer](ctx, env.client, env.baseURL+"/"+constants.PublicLayoutPointerKey, clientIP); err != nil || status != http.StatusOK {
+			return false, status, fmt.Sprintf("pointer (status=%d, error=%v)", status, err)
+		}
+		if _, status, err := capacityGetJSON[models.PublicLiveStatus](ctx, env.client, env.baseURL+"/"+constants.PublicLayoutLiveStatusKey, clientIP); err != nil || status != http.StatusOK {
+			return false, status, fmt.Sprintf("live_status (status=%d, error=%v)", status, err)
+		}
+		if !time.Now().Before(deadline) {
+			return true, http.StatusOK, "complete"
+		}
+		select {
+		case <-ctx.Done():
+			return false, 0, "poll_cancelled"
+		case <-time.After(capacityPollInterval):
+		}
 	}
-	request.Header.Set("Accept", "text/event-stream")
-	if clientIP != "" {
-		request.Header.Set("CF-Connecting-IP", clientIP)
-	}
-	response, err := env.client.Do(request)
-	if err != nil {
-		return false, 0, fmt.Sprintf("stream (error=%v)", err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
-		return false, response.StatusCode, "stream"
-	}
-	// Scanner.Scan blocks until the next SSE line. The mirror only emits a
-	// keepalive every 15 seconds, so checking a deadline after Scan returns
-	// makes short hold tests wait for that keepalive. Cancel the request at the
-	// end of the hold to wake the blocked read immediately.
-	held := make(chan struct{}, 1)
-	holdTimer := time.AfterFunc(hold, func() {
-		held <- struct{}{}
-		cancel()
-	})
-	defer holdTimer.Stop()
-	scanner := bufio.NewScanner(response.Body)
-	scanner.Buffer(make([]byte, 64<<10), 1<<20)
-	for scanner.Scan() {
-	}
-	select {
-	case <-held:
-		return true, response.StatusCode, "complete"
-	default:
-	}
-	return false, response.StatusCode, "stream_disconnected"
 }
 
 type bootstrapCapacityResponse struct {
-	Snapshot          snapshotCapacityResponse   `json:"snapshot"`
-	RecentProjections []projectionCapacityCursor `json:"recent_projections"`
+	Snapshot snapshotCapacityResponse `json:"snapshot"`
 }
 
 type historyCapacityResponse struct {
@@ -356,55 +329,46 @@ func TestPublicSpectatorColdLoad_ThreeHundredDistinctClientsReconcile(t *testing
 	assert.Equal(t, clients, outcomes["complete"], "outcomes: %v", outcomes)
 }
 
-func TestPublicSpectatorPublicationDeliversDuringSSEHold(t *testing.T) {
+func TestPublicSpectatorPublicationDeliversDuringPollHold(t *testing.T) {
 	env := newCapacityMirrorEnv(t, 5)
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
 
-	const subscribers = 32
+	const pollers = 32
 	hold := 1 * time.Second
 	var delivered atomic.Int32
 	var wg, attached sync.WaitGroup
-	wg.Add(subscribers)
-	attached.Add(subscribers)
-	for index := range subscribers {
+	wg.Add(pollers)
+	attached.Add(pollers)
+	for index := range pollers {
 		go func(clientIndex int) {
 			defer wg.Done()
-			// The mirror registers the subscriber before it writes response
-			// headers, so a returned response means the client is attached. A
-			// failed attempt also releases the wait; it just never delivers.
+			// A successful first poll means the client is attached. A failed
+			// attempt also releases the wait; it just never delivers.
 			var attachedOnce sync.Once
 			markAttached := func() { attachedOnce.Do(attached.Done) }
 			defer markAttached()
-			address := capacityEndpoint(env.baseURL, "/stream", url.Values{
-				"source":   {env.sourceID},
-				"since_id": {"5"},
-			})
-			request, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
-			if err != nil {
-				return
-			}
-			request.Header.Set("Accept", "text/event-stream")
-			request.Header.Set("CF-Connecting-IP", capacitySyntheticClientAddress(clientIndex))
-			response, err := env.client.Do(request)
-			if err != nil || response.StatusCode != http.StatusOK {
-				if response != nil {
-					response.Body.Close()
-				}
-				return
-			}
-			defer response.Body.Close()
-			markAttached()
-			scanner := bufio.NewScanner(response.Body)
-			scanner.Buffer(make([]byte, 64<<10), 1<<20)
+			clientIP := capacitySyntheticClientAddress(clientIndex)
 			deadline := time.Now().Add(hold)
-			for scanner.Scan() {
-				if strings.Contains(scanner.Text(), "dataset-publish") {
-					delivered.Add(1)
+			for {
+				status, code, err := capacityGetJSON[models.PublicLiveStatus](ctx, env.client, env.baseURL+"/"+constants.PublicLayoutLiveStatusKey, clientIP)
+				if err != nil || code != http.StatusOK {
 					return
+				}
+				markAttached()
+				for _, record := range status.Tail {
+					if strings.Contains(record.RecordBytes, "dataset-publish") {
+						delivered.Add(1)
+						return
+					}
 				}
 				if !time.Now().Before(deadline) {
 					return
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(capacityPollInterval):
 				}
 			}
 		}(index)
@@ -423,15 +387,18 @@ func TestPublicSpectatorPublicationDeliversDuringSSEHold(t *testing.T) {
 	require.True(t, ingestResp.Accepted)
 
 	wg.Wait()
-	assert.GreaterOrEqual(t, int(delivered.Load()), subscribers/2, "connected subscribers should receive the published record during hold")
+	assert.GreaterOrEqual(t, int(delivered.Load()), pollers/2, "polling clients should read the published record during hold")
 }
 
-func TestPublicSpectatorStreamHold_ThousandDistinctClientsSurvive(t *testing.T) {
+// pollHoldClients is the number of distinct clients held in the poll-hold test.
+const pollHoldClients = 1000
+
+func TestPublicSpectatorPollHold_ThousandDistinctClientsSurvive(t *testing.T) {
 	env := newCapacityMirrorEnv(t, 10)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	const clients = constants.PublicFeedSSEMaxSubscribers
+	const clients = pollHoldClients
 	hold := 300 * time.Millisecond
 	results := make(chan bool, clients)
 	errors := make(chan string, clients)
@@ -440,7 +407,7 @@ func TestPublicSpectatorStreamHold_ThousandDistinctClientsSurvive(t *testing.T) 
 	for index := range clients {
 		go func(clientIndex int) {
 			defer wg.Done()
-			survived, status, outcome := env.openStream(ctx, env.sourceID, 0, capacitySyntheticClientAddress(clientIndex), hold)
+			survived, status, outcome := env.pollLive(ctx, capacitySyntheticClientAddress(clientIndex), hold)
 			results <- survived && status == http.StatusOK
 			if !survived || status != http.StatusOK {
 				errors <- fmt.Sprintf("status=%d, %s", status, outcome)

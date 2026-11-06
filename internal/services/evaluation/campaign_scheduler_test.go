@@ -35,7 +35,7 @@ func TestBuildHomogeneousAssignmentMatrix_MaterializesFullCrossProduct(t *testin
 		QueuedAt:        time.Unix(1_700_000_000, 0).UTC(),
 	})
 	require.NoError(t, err)
-	assert.Len(t, assignments, 170)
+	assert.Len(t, assignments, 188)
 }
 
 func TestBuildHomogeneousAssignmentMatrix_GatesL2DependentScenarios(t *testing.T) {
@@ -57,7 +57,7 @@ func TestBuildHomogeneousAssignmentMatrix_GatesL2DependentScenarios(t *testing.T
 		Variants:      []*evalv1.ModelVariant{variant},
 	})
 	require.NoError(t, err)
-	assert.Len(t, consensus, 78)
+	assert.Len(t, consensus, 87)
 	for _, assignment := range consensus {
 		assert.NotContains(t, []string{"recovery-live-command-error", "tool-arg-shell-command", "code-fix-ca-bundle", "code-restore-bad-change"}, assignment.GetScenarioId())
 	}
@@ -68,7 +68,7 @@ func TestBuildHomogeneousAssignmentMatrix_GatesL2DependentScenarios(t *testing.T
 		Variants:      []*evalv1.ModelVariant{variant},
 	})
 	require.NoError(t, err)
-	assert.Len(t, doctrine, 85)
+	assert.Len(t, doctrine, 94)
 }
 
 func TestBuildHomogeneousAssignmentMatrix_RunsModelByModel(t *testing.T) {

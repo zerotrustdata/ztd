@@ -120,6 +120,7 @@
   "public_feed_proofs_batch": "/api/v1/public-feed/proofs/batch",
   "public_feed_proofs_prune": "/api/v1/public-feed/proofs/prune",
   "public_feed_proofs_push": "/api/v1/public-feed/proofs/push",
+  "public_feed_proofs_run_bundle": "/api/v1/public-feed/proofs/run-bundle",
   "public_feed_snapshot": "/api/v1/public-feed/snapshot",
   "pubsub_publish": "/api/v1/pubsub/publish",
   "pubsub_stream": "/api/v1/pubsub/stream",

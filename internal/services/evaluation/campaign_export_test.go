@@ -291,7 +291,7 @@ func TestCampaignExporter_ExportRunWithVerification(t *testing.T) {
 	require.NoError(t, err)
 	aggregateState.Release, err = store.LoadCampaignRelease(context.Background(), run.GetCampaignBinding().GetCampaignId())
 	require.NoError(t, err)
-	expectedAggregateRecords, err := BuildRunAggregateViewRecords(run, aggregateState, report, time.Unix(1_700_000_300, 0).UTC())
+	expectedAggregateRecords, err := BuildRunAggregateViewRecords(run, aggregateState, report, time.Unix(1_700_000_300, 0).UTC(), "")
 	require.NoError(t, err)
 	var expectedEvaluationSummaryBody []byte
 	for _, record := range expectedAggregateRecords {

@@ -46,6 +46,7 @@ function RoleSlot({ slot }: { slot: RoleSlotState }) {
       aria-label={roleSlotAriaLabel(slot)}
       title={isRunning && slot.progressTotal ? `${roleName}: ${modelLabel} (${progressPercent}% complete)` : `${roleName}: ${modelLabel}`}
     >
+      <span className="header-campaign-role-name" aria-hidden="true">{roleName}</span>
       <span className="header-campaign-role-model">{modelLabel}</span>
       {slot.status === 'active' ? (
         <span className="sr-only header-campaign-role-status">Active</span>

@@ -5,12 +5,12 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-// Package assignmentaudit builds and verifies the plaintext public
+// Package assignmentaudit builds and verifies the plaintext
 // assignment-audit database: a standalone SQLite file holding the public feed
 // live-event records of exactly one assignment, exactly as the Gateway stored
 // them. The file has no encryption, no vault header, and no internal chain.
-// Its authenticity comes from the Gateway's signed proof segment, which covers
-// the file's SHA-256.
+// Its SHA-256 is carried by the assignment result's evidence binding. Historical
+// public exports also have a Gateway-signed proof segment covering that digest.
 package assignmentaudit
 
 import (

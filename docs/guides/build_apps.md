@@ -3,8 +3,8 @@ doc_id: build_apps
 title: Build ztd-Compatible Applications
 audience: application developers and agent framework authors
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.10.0
+last_updated: 2026-11-06
 owners:
   - docs/guides/build_apps.md
   - internal/services/mcp/
@@ -154,7 +154,7 @@ Bind the member set through governance. The primary application MUST appear in t
 ./ztd consensus enroll app etl-service https://etl.example.com:9443 --member-app etl-service --member-app risk-service --quorum 2
 ```
 
-Every consensus binding names a provider, `application` or `tribunal`; an empty or unknown provider is rejected. The `application` provider uses the enrolled member set above. The alternative is the Gateway-hosted Tribunal panel, bound with `./ztd consensus enroll tribunal --model <tag>` (`--quorum` between 3 and 5, default 3). The panel is `tribunal-axiom`, `tribunal-concord`, `tribunal-variance`, `tribunal-pragma`, and `tribunal-nemesis`. Its members vote on envelopes that change state; a member's own INFERENCE call is never voted on, and the binding takes no application endpoint. Under `ratify` and `notary`, the binding requires passkey approval at the printed URL. `./ztd consensus status` prints the bound provider, quorum, member IDs, and signer readiness. The member lifecycle, deliberation endpoint, and vote verification are defined in [Consensus Architecture](../architecture/consensus.md).
+Every consensus binding names a provider, `application` or `tribunal`; an empty or unknown provider is rejected. The `application` provider uses the enrolled member set above. The alternative is the Gateway-hosted Tribunal panel, bound with `./ztd consensus enroll tribunal --model <tag>` (`--quorum` between 3 and 5, default 3). The panel is `tribunal-axiom`, `tribunal-concord`, `tribunal-variance`, `tribunal-pragma`, and `tribunal-nemesis`. Its members vote on envelopes that change state; a member's own INFERENCE call is never voted on, and the binding takes no application endpoint. `tribunal-nemesis` is the panel's only adversarial seat, a calibrated attacker that approves some hazardous actions by design; the other four members are honest. Under `ratify` and `notary`, the binding requires passkey approval at the printed URL. `./ztd consensus status` prints the bound provider, quorum, member IDs, and signer readiness. The member lifecycle, deliberation endpoint, and vote verification are defined in [Consensus Architecture](../architecture/consensus.md).
 
 ---
 

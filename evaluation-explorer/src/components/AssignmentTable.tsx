@@ -8,7 +8,7 @@ import { AssignmentInsight } from './AssignmentInsight';
 import { DataTable, type DataTableColumn } from './DataTable';
 import { NON_VERDICT_NOTE } from './evidence';
 import { abbreviateAssignmentId, formatLatency, formatNumber, formatThroughput } from '../utils/format';
-import { assignmentGradeChips, assignmentOutputThroughput, assignmentVerdictTone, isFailureTerminalStatus, isNonVerdictOutcome, roleLabel } from '../views/derived';
+import { assignmentGradeChips, assignmentOutcomeLabel, assignmentOutputThroughput, assignmentVerdictTone, isFailureTerminalStatus, isNonVerdictOutcome, roleLabel } from '../views/derived';
 
 type TableView = 'results' | 'grading' | 'performance';
 type AssignmentRow = ReturnType<typeof assignmentRow>;
@@ -93,7 +93,7 @@ export function AssignmentTable({ assignments, runId }: { assignments: Assignmen
     },
     {
       id: 'status', header: 'Outcome', accessorFn: (row) => row.assignment.terminal_status,
-      cell: ({ row: { original: { assignment } } }) => <span className="assignment-result" data-tone={assignmentVerdictTone(assignment.terminal_status, assignment.verification_disposition)} title={isNonVerdictOutcome(assignment.terminal_status) ? NON_VERDICT_NOTE : undefined}>{assignment.terminal_status.replace(/_/g, ' ')}</span>,
+      cell: ({ row: { original: { assignment } } }) => <span className="assignment-result" data-tone={assignmentVerdictTone(assignment.terminal_status, assignment.verification_disposition)} title={isNonVerdictOutcome(assignment.terminal_status) ? `${assignment.terminal_status}: ${NON_VERDICT_NOTE}` : undefined}>{assignmentOutcomeLabel(assignment)}</span>,
     },
     { id: 'role', header: 'Role', accessorFn: (row) => row.assignment.role, cell: ({ row }) => roleLabel(row.original.assignment.role) },
     {

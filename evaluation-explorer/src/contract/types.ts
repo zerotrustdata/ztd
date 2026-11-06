@@ -10,12 +10,12 @@
 // and checked-in explorer fixtures. See src/contract/CONTRACT.md for the
 // ownership map and integration decisions.
 //
-// FROZEN at schema_version 1.13.0 on 2026-11-04. A change to any enum value
+// FROZEN at schema_version 1.14.0 on 2026-11-04. A change to any enum value
 // or required field is a contract revision: bump VIEW_SCHEMA_VERSION and
 // update descriptor.json and validators.
 
-export const VIEW_SCHEMA_VERSION = '1.13.0' as const;
-export const SUPPORTED_VIEW_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '1.10.0', '1.11.0', '1.12.0', '1.13.0'] as const;
+export const VIEW_SCHEMA_VERSION = '1.14.0' as const;
+export const SUPPORTED_VIEW_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '1.10.0', '1.11.0', '1.12.0', '1.13.0', '1.14.0'] as const;
 export type ViewSchemaVersion = (typeof SUPPORTED_VIEW_SCHEMA_VERSIONS)[number];
 
 export const ACTIVITY_AVAILABILITIES = ['observed', 'unavailable', 'not_applicable'] as const;
@@ -471,6 +471,8 @@ export interface ModelSummary extends ViewRecordEnvelope {
   inventory_only: boolean;
   evaluation_coverage: number;
   pass_rate?: ConfidenceInterval;
+  /** Pass rate over judged security-policy assignments for the variant and designated role; the denominator is the judged count. */
+  security_pass_rate?: ConfidenceInterval;
   agreement_pairwise?: MetricValue<number>;
   agreement_all_five?: MetricValue<number>;
   repeatability?: {
@@ -620,6 +622,8 @@ export interface EvaluationSummary extends ViewRecordEnvelope {
   verifier_state: VerifierState;
   verifier_failure_summary?: string;
   verification_metadata?: PublicVerificationMetadata;
+  /** SHA-256 of the run's assignment bundle, a proof artifact holding the run's assignment result records. Absent until the run settles. */
+  assignment_bundle_sha256?: string;
   headline_metrics: EvaluationHeadlineMetrics;
   evidence_link?: string;
   native_result?: NativeEvaluationResult;
@@ -923,7 +927,7 @@ export type SnapshotRecord =
   | MethodologySnapshot;
 
 /** A decoded projection record from the mirror transport. The public read
- *  surface (/bootstrap, /history, /stream) never emits per-record hashes —
+ *  surface (the pointer's read model and live/status.json) never emits per-record hashes —
  *  record integrity is enforced by the snapshot feed-chain seal, so
  *  record_hash is optional here. record_bytes is the serialized view-record
  *  payload; feed.ts normalizes decoded wire items into this shape. */
@@ -958,13 +962,31 @@ export interface FeedHistoryItem {
   [field: string]: unknown;
 }
 
+/** One result in a task's recent-results list: the wire fields the Tasks view renders, named as the assignment result envelope names them. */
+export interface FeedTaskResult {
+  run_id: string;
+  assignment_id: string;
+  lifecycle_status: string;
+  summary_status: string;
+  verification_status?: string;
+  completed_at: string;
+}
+
+/** The recent results of one task. task_id is the scenario ID without its @version suffix. */
+export interface FeedTaskIndexEntry {
+  task_id: string;
+  results: FeedTaskResult[];
+}
+
 /** Public feed bootstrap response. */
 export interface FeedBootstrap {
+  schema_version: '2.0.0';
   protocol_version: string;
   snapshot: FeedSnapshot;
   source_freshness: FreshnessState;
   recent_projections: FeedBootstrapRecentProjection[];
-  proof_catalog_summary: { artifact_count: number; total_byte_size: number; last_generated_at?: string };
+  /** Up to ten most recent results per task, newest first. */
+  task_index: FeedTaskIndexEntry[];
   generated_at: string;
 }
 

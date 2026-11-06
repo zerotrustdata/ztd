@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { expect, test, type Page, type Route } from '@playwright/test';
-import { LIVE_EVENT_KINDS } from '../src/contract/types';
+import { expect, test, type Page } from '@playwright/test';
 import { FIXTURE_RELEASE, fixtureEnrichedAssignmentResult, fixtureModelSummaries, fixtureEvaluationSummaries } from '../src/fixtures/fixtures';
 import { formationRun } from '../tests/formation-fixture';
+import { installMirrorLayout } from './mirror-layout';
 
 // Keep geometry checks stable while the drawer itself supports animated transitions.
 test.use({ reducedMotion: 'reduce' });
@@ -74,72 +74,8 @@ function nativeEvaluation(runId: string) {
   };
 }
 
-async function installMirror(page: Page, records: object[] = runIds.map(nativeEvaluation)): Promise<void> {
-  await page.route(`${mirrorOrigin}/**`, async (route: Route) => {
-    const url = new URL(route.request().url());
-    if (url.pathname === '/bootstrap') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          protocol_version: '1.0.0',
-          snapshot: {
-            protocol_version: '1.0.0',
-            source_id: sourceId,
-            high_water_sequence: records.length,
-            feed_chain_hash: 'b'.repeat(64),
-            withdrawal_digest: '0'.repeat(64),
-            batch_count: 1,
-            generated_at: '2026-09-20T00:00:00Z',
-            freshness: 'active',
-          },
-          source_freshness: 'active',
-          recent_projections: records.map((record, index) => ({ ...record, sequence: index + 1 })).reverse(),
-          proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 },
-          generated_at: '2026-09-20T00:00:00Z',
-        }),
-      });
-      return;
-    }
-    if (url.pathname === '/history') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          protocol_version: '1.0.0',
-          items: records.map((record, index) => ({ sequence: index + 1, record_type: LIVE_EVENT_KINDS.includes((record as { kind: typeof LIVE_EVENT_KINDS[number] }).kind) ? 'event' : 'projection', ...record })),
-          has_more: false,
-          limit: 100,
-        }),
-      });
-      return;
-    }
-    if (url.pathname === '/snapshot') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          protocol_version: '1.0.0',
-          source_id: sourceId,
-          high_water_sequence: records.length,
-          feed_chain_hash: 'b'.repeat(64),
-          withdrawal_digest: '0'.repeat(64),
-          batch_count: 1,
-          generated_at: '2026-09-20T00:00:00Z',
-          freshness: 'active',
-        }),
-      });
-      return;
-    }
-    if (url.pathname === '/stream') {
-      await route.fulfill({ status: 200, contentType: 'text/event-stream', body: ': connected\n\n' });
-      return;
-    }
-    await route.abort();
-  });
-  await page.route('**/runtime.json', async (route) => {
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ schema_version: '1.0.0', mirror_origin: mirrorOrigin }),
-    });
-  });
+async function installMirror(page: Page, records: object[] = runIds.map(nativeEvaluation), taskIndex: object[] = []): Promise<string[]> {
+  return installMirrorLayout(page, { mirrorOrigin, sourceId, records, taskIndex });
 }
 
 async function expectNativeRun(page: Page, runId: string) {
@@ -174,8 +110,8 @@ test('loads native evaluations directly from the public mirror snapshot', async 
   await page.goto('/evaluations');
   await expect(page.getByRole('heading', { name: 'Evaluations', exact: true })).toBeVisible();
   for (const runId of runIds) await expect(page.getByRole('main').getByRole('link', { name: runId })).toBeVisible();
-  await expect.poll(() => mirrorResponses.some((url) => url.endsWith('/bootstrap'))).toBe(true);
-  expect(mirrorResponses.some((url) => url.includes('/history?'))).toBe(false);
+  await expect.poll(() => mirrorResponses.some((url) => url.includes('/read-model/'))).toBe(true);
+  expect(mirrorResponses.some((url) => url.includes('/history'))).toBe(false);
 
   for (const runId of runIds) await expectNativeRun(page, runId);
 
@@ -188,14 +124,24 @@ test('loads native evaluations directly from the public mirror snapshot', async 
   for (const runId of runIds) await expect(page.getByRole('main').getByRole('link', { name: runId })).toBeVisible();
 
   expect(consoleErrors).toEqual([]);
-  expect(failedRequests.filter((url) => !url.includes('/stream?'))).toEqual([]);
+  expect(failedRequests).toEqual([]);
 });
 
 test('follows the evidence from a campaign through its assignment, model and task', async ({ page }) => {
   const assignment = { ...fixtureEnrichedAssignmentResult, task_id: 'instruction-review-vote-deny', scenario_id: 'instruction-review-vote-deny', dataset_id: 'ds-live-navigation', run_id: 'navigation-run', assignment_id: 'navigation-assignment', variant_id: 'navigation-model' };
   const model = { ...fixtureModelSummaries[0]!, dataset_id: assignment.dataset_id, variant_id: assignment.variant_id, role: assignment.role, display_name: 'Navigation model' };
   const run = { ...fixtureEvaluationSummaries[0]!, dataset_id: assignment.dataset_id, run_id: assignment.run_id, model_role_mapping: { [assignment.role]: assignment.variant_id } };
-  await installMirror(page, [run, model, assignment]);
+  await installMirror(page, [run, model, assignment], [{
+    task_id: assignment.task_id,
+    results: [{
+      run_id: assignment.run_id,
+      assignment_id: assignment.assignment_id,
+      lifecycle_status: 'EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED',
+      summary_status: 'EVALUATION_VERDICT_STATUS_PASS',
+      verification_status: 'verified',
+      completed_at: assignment.observed_at,
+    }],
+  }]);
   await page.goto('/evaluations?release=all');
   await page.getByRole('main').getByRole('link', { name: run.run_id, exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: run.run_id })).toBeVisible();
@@ -259,7 +205,12 @@ test('Live panels fit above the footer and scroll independently through resizing
     const runsOverflow = await runList.evaluate((element) => element.scrollHeight > element.clientHeight);
     await runList.hover();
     await page.mouse.wheel(0, 300);
-    if (runsOverflow) await expect.poll(() => runList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    // WebKit applies wheel input over multiple frames; compare the other panel
+    // only after this wheel has reached its clamped destination.
+    if (runsOverflow) {
+      const target = await runList.evaluate((element) => Math.min(300, element.scrollHeight - element.clientHeight));
+      await expect.poll(() => runList.evaluate((element) => element.scrollTop)).toBe(target);
+    }
     expect(await eventList.evaluate((element) => element.scrollTop)).toBe(0);
     const runScroll = await runList.evaluate((element) => element.scrollTop);
     if (viewport.width <= 768) await page.getByRole('banner').getByRole('button', { name: 'Close navigation drawer' }).click();
@@ -281,9 +232,55 @@ test('Live panels fit above the footer and scroll independently through resizing
     await runList.evaluate((element) => { element.scrollTop = 0; });
     await runList.focus();
     await page.keyboard.press('PageDown');
-    if (runsOverflow) await expect.poll(() => runList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    if (runsOverflow) {
+      await expect.poll(() => runList.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      // Finish keyboard scrolling before the next viewport resets the list.
+      let previous = -1;
+      let stationarySamples = 0;
+      await expect.poll(async () => {
+        const current = await runList.evaluate((element) => element.scrollTop);
+        stationarySamples = current === previous ? stationarySamples + 1 : 0;
+        previous = current;
+        return stationarySamples;
+      }, { intervals: [100] }).toBeGreaterThanOrEqual(2);
+    }
   }
 });
+
+for (const theme of ['dark', 'light']) {
+  test(`Live activity shows published throughput without assignment bundles in ${theme} mode`, async ({ page }, testInfo) => {
+    const events = (['primary', 'assistant', 'lite'] as const).map((role, index) => ({
+      schema_version: '1.4.0', ...FIXTURE_RELEASE, release_basis: 'PUBLIC_RELEASE_BASIS_RECORDED',
+      dataset_id: 'ds-live-throughput', run_id: 'throughput-run', assignment_id: 'formation-assignment',
+      task_id: 'tool-select-file-read', variant_id: `model-${role}`, role,
+      event_id: `invocation-${role}`, kind: 'stage_updated', lifecycle_status: 'running',
+      quality_state: 'live_in_progress', completed: 0, total: 1,
+      observed_at: new Date(Date.UTC(2026, 10, 5, 15, 30, index)).toISOString(),
+      metric_delta: {
+        latency_ms: { value: 190 + index }, output_tokens: { value: 101 + index },
+        ...(index < 2 ? { tokens_per_second: { value: index === 0 ? 531.6 : 0 } } : {}),
+      },
+    }));
+    // A lifecycle event has no metric delta: the Primary row retains its invocation's rate.
+    const terminal = { ...events[0]!, event_id: 'terminal', kind: 'assignment_completed',
+      lifecycle_status: 'completed', completed: 1, metric_delta: undefined, observed_at: '2026-11-05T15:31:00Z' };
+    const requests = await installMirror(page, [...events, terminal]);
+    await page.goto('/?release=all');
+    await page.evaluate((value) => document.documentElement.setAttribute('data-theme', value), theme);
+    const live = page.getByRole('region', { name: 'Live activity', exact: true });
+    await expect(live.locator('tbody tr')).toHaveCount(3);
+    for (const [role, rate] of [['primary', '531.6'], ['assistant', '0.0'], ['lite', '--']]) {
+      const row = live.locator('tbody tr').filter({ has: page.getByRole('link', { name: `model-${role}`, exact: true }) });
+      await expect(row.locator('[data-metric="tokens_per_second"]')).toHaveText(rate!);
+    }
+    await live.getByRole('button', { name: 'Sort by Tokens/s', exact: true }).click();
+    await expect(live.locator('tbody [data-metric="tokens_per_second"]')).toHaveText(['0.0', '531.6', '--']);
+    await live.getByRole('button', { name: 'Sort by Tokens/s', exact: true }).click();
+    await expect(live.locator('tbody [data-metric="tokens_per_second"]')).toHaveText(['531.6', '0.0', '--']);
+    expect(requests.some((url) => /\/proofs\/|\/live\/runs\//.test(url))).toBe(false);
+    await page.screenshot({ path: testInfo.outputPath(`live-throughput-${theme}.png`), fullPage: true });
+  });
+}
 
 for (const viewport of [
   { width: 1920, height: 1080, theme: 'dark' },
@@ -320,6 +317,8 @@ for (const viewport of [
     await page.evaluate((theme) => document.documentElement.setAttribute('data-theme', theme), viewport.theme);
     const live = page.getByRole('region', { name: 'Live activity', exact: true });
     await expect(live.locator('tbody tr')).toHaveCount(6);
+    // A phone lands on the content; the drawer opens on request.
+    if (viewport.width <= 768) await page.getByRole('banner').getByRole('button', { name: 'Open navigation drawer' }).click();
     const runs = page.getByRole('region', { name: 'Runs', exact: true });
     await expect(runs.getByRole('heading', { name: 'Runs', exact: true })).toBeVisible();
     const runsBox = (await runs.boundingBox())!;
@@ -393,7 +392,6 @@ for (const viewport of [
     const run = { ...fixtureEvaluationSummaries[0]!, dataset_id: 'ds-live-grading', run_id: 'live-grading-run', model_role_mapping: { primary: 'qwen3:8b' } };
     await installMirror(page, [run, ...events]);
     await page.goto('/?release=all');
-    if (viewport.width <= 768) await page.getByRole('banner').getByRole('button', { name: 'Close navigation drawer' }).click();
 
     const live = page.getByRole('region', { name: 'Live activity', exact: true });
     await expect(live.locator('tbody tr')).toHaveCount(1);
@@ -408,6 +406,8 @@ for (const viewport of [
       const modelWidth = await live.locator('tbody .stream-model-cell').evaluate((cell) => cell.getBoundingClientRect().width);
       expect(taskWidth).toBeGreaterThan(90);
       expect(modelWidth).toBeGreaterThan(90);
+      const rowHeight = await live.locator('tbody tr').first().evaluate((row) => row.getBoundingClientRect().height);
+      expect(rowHeight).toBeLessThan(180);
       await expect(live.locator('tbody .stream-time')).toBeVisible();
     }
     expect(await live.locator('.stream-scroll').evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
@@ -445,7 +445,6 @@ for (const viewport of [
       },
     ]);
     await page.goto('/?release=all');
-    if (viewport.width <= 768) await page.getByRole('banner').getByRole('button', { name: 'Close navigation drawer' }).click();
 
     const live = page.getByRole('region', { name: 'Live activity', exact: true });
     await expect(live.locator('tbody tr')).toHaveCount(1);
@@ -653,4 +652,53 @@ test('assignment analysis offers sortable grading and performance without wide I
   await table.getByRole('link', { name: 'Fail', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: tasks[0]! })).toBeVisible();
   await expect.poll(() => page.locator('#assignment-grades').evaluate((element) => element.getBoundingClientRect().top)).toBeLessThan(200);
+});
+
+test('a phone lands on the content, and opening a page from the drawer closes it', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installMirror(page);
+  await page.goto('/?release=all');
+  const main = page.getByRole('main');
+  const open = page.getByRole('banner').getByRole('button', { name: 'Open navigation drawer' });
+  await expect(open).toHaveAttribute('aria-expanded', 'false');
+  await expect(main.getByRole('region', { name: 'Live activity', exact: true })).toBeVisible();
+
+  await open.click();
+  const nav = page.getByRole('navigation', { name: 'Primary navigation' });
+  await expect(nav).toBeInViewport();
+  await nav.getByRole('link', { name: 'Models' }).click();
+  await expect(page).toHaveURL(/\/models/);
+  await expect(page.getByRole('banner').getByRole('button', { name: 'Open navigation drawer' })).toBeFocused();
+  await expect(nav).toHaveCount(0);
+});
+
+test('the footer stays one row below desktop, shows the feed position, and keeps its links', async ({ page }) => {
+  for (const width of [390, 900]) {
+    await page.setViewportSize({ width, height: 844 });
+    await installMirror(page);
+    await page.goto('/?release=all');
+    const footer = page.getByRole('contentinfo');
+    await expect(footer.getByTestId('footer-telemetry')).toHaveText(/^Seq \d/);
+    await expect(footer.getByTestId('footer-telemetry')).toBeInViewport();
+    expect((await footer.boundingBox())!.height).toBeLessThan(36);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    for (const name of ['Methodology', /Source/]) {
+      const link = footer.getByRole('link', { name });
+      await link.scrollIntoViewIfNeeded();
+      await expect(link).toBeInViewport();
+    }
+  }
+});
+
+test('section links land just below the top of the scrolling pane', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await installMirror(page);
+  await page.goto('/methodology');
+  const link = page.locator('.docs-sidebar-nav a').nth(5);
+  const id = (await link.getAttribute('href'))!.slice(1);
+  await link.click();
+  await expect.poll(() => page.evaluate((target) => {
+    const pane = document.querySelector('.app-main')!.getBoundingClientRect().top;
+    return Math.round(document.getElementById(target)!.getBoundingClientRect().top - pane);
+  }, id)).toBeLessThan(20);
 });

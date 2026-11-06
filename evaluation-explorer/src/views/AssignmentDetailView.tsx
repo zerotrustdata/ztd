@@ -14,9 +14,8 @@ import { scrollToAnchor, scrollToAnchorOnClick } from '../utils/scroll';
 import { TOOL_SCORE_DIMENSIONS } from '../contract/types';
 import { AssignmentEvidenceData } from '../components/AssignmentEvidenceData';
 import { AssignmentActivitySummary } from '../components/AssignmentActivitySummary';
-import { AgentTraceSection, agentTraceBinding } from '../components/AgentTraceSection';
 import { ScenarioFixtureSection, scenarioFixtureBindings } from '../components/ScenarioFixtureSection';
-import { AssignmentAuditProofRow, filterNonAuditEvidenceBindings } from '../components/AssignmentAuditProofRow';
+import { EvidenceAccessOffer, filterNonAuditEvidenceBindings, offeredEvidence } from '../components/EvidenceAccessOffer';
 import { EvidenceBindingsPanel } from '../components/EvidenceBindingsPanel';
 import { RoleTranscripts } from '../components/RoleTranscripts';
 import { ScenarioContextCard } from '../components/ScenarioContextCard';
@@ -26,10 +25,12 @@ import { DetailLayout, EvidenceChain, NON_VERDICT_NOTE, PageHero, PanelSection, 
 import { SCENARIO_CATEGORY_COPY, SCENARIO_TASK_BY_ID } from '../content/scenario-task';
 import { useActiveDatasetId, useSelectedRelease } from '../state/dataset';
 import { recordKey, useStoreState } from '../state/store';
+import { useRunAssignments } from '../state/use-run-assignments';
 import {
   CopyButton,
   EmptyState,
   ErrorState,
+  ReconcilePlaceholder,
   StatTile,
   Timeline,
   UnavailableValue,
@@ -50,6 +51,7 @@ import {
   assignmentMetricFormatter,
   assignmentSecuritySignals,
   assignmentVerdictTone,
+  assignmentOutcomeLabel,
   isScenarioNotApplicableMetric,
   isNonVerdictOutcome,
   roleLabel,
@@ -61,7 +63,6 @@ const SECTION = {
   task: 'assignment-task',
   trail: 'assignment-trail',
   fixture: 'assignment-scenario-fixture',
-  agentTrace: 'assignment-agent-trace',
   governance: 'assignment-governance',
   criteria: 'assignment-criteria',
   scores: 'assignment-scores',
@@ -104,8 +105,8 @@ function formatClockSpeed(value: number): string {
   return `${formatNumber(value)}MHz`;
 }
 
-function terminalLabel(status: AssignmentResult['terminal_status']): string {
-  return status.replace(/_/g, ' ').replace(/^./, (letter) => letter.toUpperCase());
+function terminalLabel(assignment: AssignmentResult): string {
+  return assignmentOutcomeLabel(assignment).replace(/^./, (letter) => letter.toUpperCase());
 }
 
 function toolActionSummaries(activity: AssignmentResult['activity_summary']): string[] {
@@ -167,7 +168,7 @@ function FailureDiagnosis({ assignment }: { assignment: AssignmentResult }) {
   const tone = assignmentVerdictTone(assignment.terminal_status, assignment.verification_disposition);
   return (
     <div className={`assignment-failure-callout assignment-failure-${tone}`} role="alert">
-      <h3>Failure Diagnosis ({terminalLabel(assignment.terminal_status)})</h3>
+      <h3>Failure Diagnosis ({terminalLabel(assignment)})</h3>
       {failingChips.length > 0 ? (
         <ul className="failure-criteria-list">
           {failingChips.map((chip) => (
@@ -200,7 +201,7 @@ function ModelResponseSection({ assignment }: { assignment: AssignmentResult }) 
   const transcripts = assignment.role_transcripts ?? [];
   const hasResponse = Boolean(assignment.model_response);
   const toolActions = hasResponse ? [] : toolActionSummaries(assignment.activity_summary);
-  const verdict = terminalLabel(assignment.terminal_status);
+  const verdict = terminalLabel(assignment);
 
   return (
     <PanelSection id={SECTION.trail} className="assignment-model-response" title="What the model did">
@@ -405,9 +406,10 @@ export function AssignmentDetailView() {
   const [params] = useSearchParams();
   const activeDatasetId = useActiveDatasetId(routeDataset ?? params.get('dataset') ?? undefined, useSelectedRelease());
 
-  const assignment = useStoreState((state) =>
-    assignmentId ? state.assignments.get(recordKey(activeDatasetId, assignmentId)) : undefined,
-  );
+  const runAssignments = useRunAssignments(activeDatasetId, runId);
+  const assignment = assignmentId
+    ? runAssignments.assignments.find((candidate) => candidate.assignment_id === assignmentId)
+    : undefined;
   const lifecycleEvents = useStoreState((state) =>
     assignmentId
       ? assignmentLifecycleEvents(
@@ -419,9 +421,7 @@ export function AssignmentDetailView() {
   const sourceRecord = useStoreState((state) =>
     assignmentId ? state.assignmentSources.get(recordKey(activeDatasetId, assignmentId)) : undefined,
   );
-  const siblingAssignments = useStoreState((state) =>
-    assignment ? siblingRepetitions(assignment, Array.from(state.assignments.values())) : [],
-  );
+  const siblingAssignments = assignment ? siblingRepetitions(assignment, runAssignments.assignments) : [];
   const connection = useStoreState((state) => state.connection);
   const { hash } = useLocation();
   const loadedAssignmentId = assignment?.assignment_id;
@@ -431,7 +431,10 @@ export function AssignmentDetailView() {
 
 
   if (!assignmentId || !runId) return <ErrorState message="No assignment selected." />;
-  if (!assignment) return <EmptyState hasRecords={false} hasFilters={false} connection={connection} />;
+  if (!assignment) {
+    if (runAssignments.status === 'loading') return <ReconcilePlaceholder label="Loading assignment results…" />;
+    return <EmptyState hasRecords={false} hasFilters={false} connection={connection} />;
+  }
 
   const task =
     lookupTask(assignment.task_id) ??
@@ -445,7 +448,6 @@ export function AssignmentDetailView() {
   const verification = evidenceChain.find((step) => step.key === 'verified');
   const publishedActivity = Boolean(assignment.activity_summary);
   const transcripts = assignment.role_transcripts ?? [];
-  const hasAgentTrace = Boolean(agentTraceBinding(assignment.evidence_bindings));
   const fixtureBindings = scenarioFixtureBindings(assignment.evidence_bindings);
   const hasFixture = Boolean(assignment.scenario_id && fixtureBindings.input && fixtureBindings.gold);
   const hasScores = visibleToolScoreDimensions(assignment).length > 0 || decomposedScores(assignment).length > 0;
@@ -453,7 +455,7 @@ export function AssignmentDetailView() {
   const otherEvidenceBindings = filterNonAuditEvidenceBindings(assignment.evidence_bindings);
   const hasEvidence = Boolean(otherEvidenceBindings?.length || assignment.verification_metadata);
   const hasAuditSlice = assignmentHasAuditSlice(assignment);
-  const hasProof = hasEvidence || hasAuditSlice;
+  const hasProof = hasEvidence || offeredEvidence(assignment.evidence_bindings).length > 0;
   const hasSignals = assignmentSecuritySignals(assignment).length > 0;
   const hasAside =
     hasProof || hasSignals || assignment.stage_summary.length > 0 || lifecycleEvents.length > 0 || siblingAssignments.length > 0;
@@ -463,8 +465,8 @@ export function AssignmentDetailView() {
 
   const chainTargets: Partial<Record<EvidenceChainStep['key'], string>> = {
     scenario: hasFixture ? SECTION.fixture : task ? SECTION.task : undefined,
-    model: hasAgentTrace ? SECTION.agentTrace : SECTION.trail,
-    tool_calls: hasAgentTrace ? SECTION.agentTrace : transcripts.length > 0 ? SECTION.trail : publishedActivity ? SECTION.governance : undefined,
+    model: SECTION.trail,
+    tool_calls: transcripts.length > 0 ? SECTION.trail : publishedActivity ? SECTION.governance : undefined,
     policy: publishedActivity ? SECTION.governance : undefined,
     governed_actions: publishedActivity ? SECTION.governance : undefined,
     graded: hasScores ? SECTION.scores : task ? SECTION.criteria : undefined,
@@ -499,7 +501,7 @@ export function AssignmentDetailView() {
         verdict={<>
             <div aria-label="Assignment verdict">
               <TonePill tone={assignmentVerdictTone(assignment.terminal_status, undefined)} className={`terminal-${assignment.terminal_status}`}>
-                {terminalLabel(assignment.terminal_status)}
+                {terminalLabel(assignment)}
               </TonePill>
             </div>
             {verification ? (
@@ -533,7 +535,7 @@ export function AssignmentDetailView() {
       <DetailLayout asideLabel="Proof and measurements" aside={hasAside ? <>
             {hasProof ? (
               <div id={SECTION.proof} className="assignment-proof">
-                <AssignmentAuditProofRow bindings={assignment.evidence_bindings} />
+                <EvidenceAccessOffer bindings={assignment.evidence_bindings} runId={runId} assignmentId={assignment.assignment_id} />
                 {hasEvidence ? (
                   <EvidenceBindingsPanel bindings={otherEvidenceBindings} verification={assignment.verification_metadata} />
                 ) : null}
@@ -582,7 +584,7 @@ export function AssignmentDetailView() {
                       </Link>
                       <span className="sibling-rep">rep {sibling.repetition}</span>
                       <span className={`sibling-status sibling-status-${assignmentVerdictTone(sibling.terminal_status, sibling.verification_disposition)}`} title={isNonVerdictOutcome(sibling.terminal_status) ? NON_VERDICT_NOTE : undefined}>
-                        {terminalLabel(sibling.terminal_status)}
+                        {terminalLabel(sibling)}
                       </span>
                     </li>
                   ))}
@@ -596,7 +598,6 @@ export function AssignmentDetailView() {
         </Anchor> : null}
         <ScenarioFixtureSection id={SECTION.fixture} bindings={assignment.evidence_bindings} scenarioId={assignment.scenario_id} />
         <ModelResponseSection assignment={assignment} />
-        <AgentTraceSection id={SECTION.agentTrace} bindings={assignment.evidence_bindings} runId={runId} assignmentId={assignment.assignment_id} />
         <Anchor id={SECTION.governance}><AssignmentActivitySummary activity={assignment.activity_summary} /></Anchor>
         {task ? <Anchor id={SECTION.criteria}><TaskExpectationSection task={task} className="assignment-task-expected" fold showRoleCriteria={false} /></Anchor> : null}
         <ScoresSection assignment={assignment} />

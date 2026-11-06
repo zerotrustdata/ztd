@@ -10,11 +10,11 @@ import {
   formatDuration,
   formatNumber,
   formatPercent,
-  formatThroughput,
   formatTokens,
   formatRank,
   UnavailableValue,
 } from './shared';
+import { formatCompact } from '../utils/format';
 import {
   LEADERBOARD_SCORE_FORMULA,
   LEADERBOARD_SECURITY_SCORING_DESCRIPTION,
@@ -25,10 +25,11 @@ import {
   type ModelOverallLeaderboardRow,
   type ModelRoleLeaderboardRow,
 } from '../views/derived';
-import type { AssignmentResult, EvaluationSummary, ModelRole, ModelSummary } from '../contract/types';
+import type { EvaluationSummary, ModelRole, ModelSummary } from '../contract/types';
 import { ModelScoreCoverage } from './evidence';
 import { FormationTable } from './FormationTable';
 import { formationLeaderboardRows } from '../views/formations';
+import { PREF, useUserPref } from '../state/dataset';
 
 export type LeaderboardSortField =
   | 'rank'
@@ -101,7 +102,7 @@ const LEADERBOARD_COLUMNS: LeaderboardColumnDef[] = [
   },
   {
     field: 'size',
-    label: 'Total parameters',
+    label: 'Parameters',
     title: 'Total-parameter penalty: each doubling of the frozen provider parameter count over the smallest qualifying count in the role costs 10% of the score. This is not measured memory or compute cost.',
     initialDirection: 'desc',
   },
@@ -218,26 +219,25 @@ function RankBadge({ rank }: { rank: number }) {
 export function RoleLeadersPanel({
   models,
   evaluations,
-  assignments = [],
   stats = [],
   maxArtifactGiB = 0,
 }: {
   maxArtifactGiB?: number;
   models: ModelSummary[];
   evaluations: EvaluationSummary[];
-  assignments?: AssignmentResult[];
   /** Inline summary counts rendered in the panel header row. */
   stats?: { label: string; value: number }[];
 }) {
-  const [category, setCategory] = useState<ModelRole | 'all' | 'formations'>('all');
+  // Only an explicit click is stored; with no stored choice the default is derived from the release's results.
+  const [storedCategory, setStoredCategory] = useUserPref<ModelRole | 'all' | 'formations' | null>(PREF.leaderboardCategory, null);
   const [sortField, setSortField] = useState<LeaderboardSortField>('score');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   const formationRows = useMemo(() => formationLeaderboardRows(evaluations, maxArtifactGiB), [evaluations, maxArtifactGiB]);
   const formationSuites = Array.from(new Set(formationRows.map((row) => row.suite_id)));
   const qualifiedRows = useMemo(
-    () => modelRoleLeaderboardRows(models, 'all', evaluations, assignments),
-    [models, evaluations, assignments],
+    () => modelRoleLeaderboardRows(models, 'all', evaluations),
+    [models, evaluations],
   );
   const allRows = useMemo(
     () => modelOverallLeaderboardRows(qualifiedRows),
@@ -250,6 +250,7 @@ export function RoleLeadersPanel({
     return { primary: forRole('primary'), assistant: forRole('assistant'), lite: forRole('lite') };
   }, [qualifiedRows]);
   const evaluatedRoles = MODEL_ROLE_WIRE_ORDER.filter((role) => rowsByRole[role].length > 0);
+  const category = storedCategory ?? (qualifiedRows.length === 0 && formationRows.length > 0 ? 'formations' : 'all');
   // Declared union: an overall row is structurally a role row, so inference would collapse it.
   const categoryRows: Array<ModelRoleLeaderboardRow | ModelOverallLeaderboardRow> =
     category === 'all' ? allRows : category === 'formations' ? [] : rowsByRole[category];
@@ -272,7 +273,7 @@ export function RoleLeadersPanel({
   };
 
   const handleCategoryChange = (next: ModelRole | 'all' | 'formations') => {
-    setCategory(next);
+    setStoredCategory(next);
     setSortField('score');
     setSortDirection('desc');
   };
@@ -290,7 +291,9 @@ export function RoleLeadersPanel({
         <h2>
           Leaderboard{' '}
           <span className="panel-sub">
-            · {evaluatedRoles.length} of {MODEL_ROLE_WIRE_ORDER.length} roles qualified
+            {formationRows.length > 0 && evaluatedRoles.length === 0
+              ? `· ${formationRows.length} ranked ${formationRows.length === 1 ? 'formation' : 'formations'}`
+              : `· ${evaluatedRoles.length} of ${MODEL_ROLE_WIRE_ORDER.length} roles qualified`}
           </span>
         </h2>
         {stats.length > 0 ? (
@@ -449,10 +452,15 @@ export function RoleLeadersPanel({
                         <td className="role-leader-accuracy">{formatPercent(row.pass_rate, 1)}<ModelScoreCoverage models={row.sources} /></td>
                         <td>
                           {row.security !== undefined ? (
-                            formatPercent(row.security, 0)
+                            <>
+                              <span title={category === 'lite' ? 'Pass rate on security classification tasks; this does not measure refusal behavior.' : 'Pass rate on judged security tasks.'}>{formatPercent(row.security, 0)}</span>
+                              <div className="model-identity-sub" title="Judged security assignments contributing to this row; skipped tool tests are excluded.">
+                                {formatNumber(row.sources.reduce((sum, source) => sum + (source.security_pass_rate?.denominator ?? 0), 0))} scored
+                              </div>
+                            </>
                           ) : (
-                            <span className="unavailable-value" title={`No security metrics available. ${LEADERBOARD_SECURITY_SCORING_DESCRIPTION}`}>
-                              N/A
+                            <span className="unavailable-value" title={`No scored security tasks. Tool capability exclusions and other non-verdict outcomes do not measure security. ${LEADERBOARD_SECURITY_SCORING_DESCRIPTION}`}>
+                              Not scored
                             </span>
                           )}
                         </td>
@@ -467,7 +475,7 @@ export function RoleLeadersPanel({
                         </td>
                         <td>
                           {row.throughput_p50 !== undefined ? (
-                            formatThroughput(row.throughput_p50)
+                            formatCompact(row.throughput_p50)
                           ) : (
                             <UnavailableValue />
                           )}

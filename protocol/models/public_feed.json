@@ -1,5 +1,5 @@
 {
-  "_comment": "Canonical typed wire models for the public spectator feed protocol. The Gateway outbound publisher signs and sends append-only batches to a hosted mirror's authenticated ingest endpoint. Public browsers connect to the mirror's anonymous read-only endpoints (bootstrap, cursor-paginated history, replayable SSE, content-addressed proof downloads). The private Gateway receives no public connection. All models exclude null fields on the wire.",
+  "_comment": "Canonical typed wire models for the public spectator feed protocol. The Gateway outbound publisher signs and sends append-only batches to a hosted mirror's authenticated ingest endpoint. Public browsers connect to the mirror's anonymous read-only endpoints (signed pointer, read model, bounded history, live status, digest-addressed run bundles and fixtures). The private Gateway receives no public connection. All models exclude null fields on the wire.",
   "_authority": "gateway",
   "_consumers": ["browser", "mirror", "offline-verifier"],
 
@@ -45,13 +45,52 @@
   },
 
   "public_feed_bootstrap": {
-    "_description": "One bounded initial snapshot for public first paint. Contains the feed snapshot, current source freshness, recent projections, and proof catalog summary. SSE provides incremental change notifications after the snapshot.",
+    "schema_version": {"type":"string", "required":true, "const":"2.0.0", "description":"Read model schema version, independent of the signed feed batch protocol"},
+    "_description": "Schema 2.0.0 current read model: feed snapshot, source freshness, summary projections, and the bounded task index. Assignment results are loaded from per-run bundles; live/status.json supplies updates between pointer revisions.",
     "protocol_version": {"type": "string", "required": true, "description": "Public feed protocol version"},
     "snapshot": {"type": "object", "required": true, "model": "public_feed_snapshot", "description": "Current feed snapshot with high-water sequence and feed-chain hash"},
     "source_freshness": {"type": "string", "required": true, "description": "Source freshness label", "enum": ["active", "delayed", "stale", "intentionally_stopped", "safety_stopped", "source_offline"]},
+    "task_index": {"type":"array", "items":"public_task_index_entry", "required":true, "description":"Up to ten newest result identities per task"},
     "recent_projections": {"type": "array", "required": true, "description": "Bounded list of recent public projections (JSON objects). Each carries only allowlisted fields."},
-    "proof_catalog_summary": {"type": "object", "required": true, "model": "public_proof_catalog_summary", "description": "Summary of the available public proof packages"},
     "generated_at": {"type": "string", "format": "iso8601", "required": true, "description": "UTC timestamp when the bootstrap was produced"}
+  },
+
+  "public_task_index_entry": {
+    "task_id": {
+      "type": "string",
+      "required": true
+    },
+    "results": {
+      "type": "array",
+      "items": "public_task_result",
+      "required": true
+    }
+  },
+  "public_task_result": {
+    "run_id": {
+      "type": "string",
+      "required": true
+    },
+    "assignment_id": {
+      "type": "string",
+      "required": true
+    },
+    "lifecycle_status": {
+      "type": "string",
+      "required": true
+    },
+    "summary_status": {
+      "type": "string",
+      "required": true
+    },
+    "verification_status": {
+      "type": "string",
+      "required": false
+    },
+    "completed_at": {
+      "type": "string",
+      "required": true
+    }
   },
 
   "public_feed_cursor_page": {
@@ -118,7 +157,7 @@
   },
 
   "public_proof_head": {
-    "_description": "Constant-size public proof head from GET /proof-head, without artifact entries. A nonzero segment_index identifies the latest signed segment; verify the signed segment log to authenticate the active catalog. Index zero identifies a legacy full manifest whose artifacts are available in catalog order.",
+    "_description": "Constant-size proof head of the internal proof log, without artifact entries. No anonymous route serves it. A nonzero segment_index identifies the latest signed segment; verify the signed segment log to authenticate the active catalog. Index zero identifies a legacy full manifest whose artifacts are available in catalog order.",
     "schema_version": {"type": "string", "required": true, "description": "Proof head schema version"},
     "source_id": {"type": "string", "required": true, "description": "Public source identity"},
     "segment_index": {"type": "integer", "required": true, "description": "Latest signed segment index, or zero for a legacy full manifest"},
@@ -156,7 +195,7 @@
   },
 
   "public_proof_segments_response": {
-    "_description": "The signed proof log for one source, served by anonymous GET /proof-segments.",
+    "_description": "The signed internal proof log for one source. No anonymous route serves it; offline verification of an explicitly obtained log uses `ztd public verify-proof --segments`.",
     "schema_version": {"type": "string", "required": true},
     "source_id": {"type": "string", "required": true},
     "segments": {"type": "array", "items": "public_proof_manifest_segment", "required": true}
@@ -178,18 +217,13 @@
   },
 
   "public_proof_catalog": {
-    "_description": "The full public proof catalog listing every available proof package artifact. Served as a bounded anonymous read. Public retention uses append-only tombstones rather than rewriting history.",
+    "_description": "Internal active proof catalog. It authorizes selected run bundles and fixtures but has no anonymous endpoint or bucket projection.",
     "schema_version": {"type": "string", "required": true, "description": "Proof catalog schema version"},
     "entries": {"type": "array", "items": "public_proof_catalog_entry", "required": true, "description": "Catalog entries for every available proof artifact"},
     "generated_at": {"type": "string", "format": "iso8601", "required": true, "description": "UTC timestamp when the catalog was generated"}
   },
 
-  "public_proof_catalog_summary": {
-    "_description": "Summary of the public proof catalog for bootstrap responses. Carries the total artifact count, total byte size, and the most recent generation time.",
-    "artifact_count": {"type": "integer", "required": true, "description": "Total number of proof artifacts in the catalog"},
-    "total_byte_size": {"type": "integer", "required": true, "description": "Total byte size of all proof artifacts"},
-    "last_generated_at": {"type": "string", "format": "iso8601", "required": false, "description": "UTC timestamp of the most recently generated proof artifact. Omitted when the catalog is empty."}
-  },
+
 
   "public_export_config": {
     "_description": "Owner-only export configuration for the outbound publisher. Carries the allowlisted HTTPS origin, signing key ID, pseudonymous source ID, batch size limit, and retry policy. Secrets never appear in frontend runtime JSON, logs, events, reports, proofs, or contract packs. The private key is stored in the Gateway runtime tree, not in this configuration.",

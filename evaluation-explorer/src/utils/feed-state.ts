@@ -46,7 +46,7 @@ export type FeedConnectionState =
   | 'offline'
   | 'error';
 
-/** SSE transport state from the public mirror stream. */
+/** Transport state of the public feed poll. */
 export type StreamConnectionState =
   | 'disconnected'
   | 'connecting'
@@ -102,7 +102,7 @@ export function classifyStreamConnection(
     return {
       label: 'Offline',
       tone: 'warn',
-      description: 'The mirror stream is unreachable. Last accepted data remains visible.',
+      description: 'The public mirror is unreachable. Last accepted data remains visible.',
     };
   }
   switch (streamConnection) {
@@ -110,31 +110,31 @@ export function classifyStreamConnection(
       return {
         label: 'Live',
         tone: 'ok',
-        description: 'Streaming live updates via SSE.',
+        description: 'Updating from the public feed.',
       };
     case 'connecting':
       return {
         label: 'Connecting',
         tone: 'warn',
-        description: 'Opening the SSE stream.',
+        description: 'Checking the public feed.',
       };
     case 'reconnecting':
       return {
         label: 'Reconnecting',
         tone: 'warn',
-        description: 'The SSE stream is reconnecting.',
+        description: 'The public feed is retrying after a failed check.',
       };
     case 'disconnected':
       return feedConnection === 'connecting' || feedConnection === 'live'
         ? {
             label: 'Connecting',
             tone: 'warn',
-            description: 'Opening the SSE stream.',
+            description: 'Checking the public feed.',
           }
         : {
             label: 'Offline',
             tone: 'warn',
-            description: 'The SSE stream is not connected.',
+            description: 'The public feed has not been checked yet.',
           };
   }
 }

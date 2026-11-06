@@ -1,9 +1,9 @@
 // Publish a deterministic scripted live evaluation through the real mirror
-// at a configurable speed. This is the Checkpoint A scripted-SSE producer:
+// at a configurable speed. This is the Checkpoint A scripted live producer:
 // it emits typed live event records generated from
 // the checked-in fixtures, and sends them through `ztd public publish` +
-// `ztd public push`. The browser receives them through the same SSE
-// transport as real events.
+// `ztd public push`. The browser receives them through the same
+// `live/status.json` polling as real events.
 //
 // Each invocation mints a fresh live-run identity (dataset_id, run_id,
 // event_id, assignment_id) so a replayed run is a new logical run rather

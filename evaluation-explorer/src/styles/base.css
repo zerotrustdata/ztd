@@ -1,0 +1,110 @@
+/* Copyright (c) 2026 Lateralus Labs, LLC.
+   Licensed under the Business Source License 1.1 — see LICENSE for details. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+strong, b { font-weight: 600; }
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+a:hover,
+a:focus { text-decoration: underline; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* The arrow marks leaving the site; it stays out of the accessible name. */
+a[target="_blank"]::after {
+  content: "\2197";
+  content: "\2197" / "";
+  margin-left: 0.25em;
+  font-size: 0.85em;
+  color: var(--fg-dim);
+  text-decoration: none;
+  display: inline-block;
+}
+
+button { font-family: inherit; cursor: pointer; }
+button, input, select, textarea { border-radius: var(--radius-control); }
+input, select, textarea {
+  font-family: inherit;
+  font-size: 13px;
+}
+input::placeholder { color: var(--fg-dim); opacity: 1; }
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+code, pre, kbd, samp { font-family: var(--mono); }
+code { font-size: 0.93em; }
+
+dl { display: grid; gap: 6px; }
+section { margin-bottom: 24px; }
+section h2 { font-size: var(--fs-title); margin: 0 0 12px; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  background: var(--accent);
+  color: var(--on-accent);
+  padding: 8px 12px;
+}
+.skip-link:focus { left: 0; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto; }
+}

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { fixtureModelSummaries, fixtureEvaluationSummaries, fixtureEnrichedAssignmentResult } from '../src/fixtures/fixtures';
@@ -18,6 +18,14 @@ describe('ModelDetailView', () => {
   beforeEach(() => evalStore.loadFixtures([model, run,
     { ...fixtureEnrichedAssignmentResult, dataset_id: model.dataset_id, variant_id: model.variant_id, role: model.role, run_id: run.run_id, assignment_id: 'model-assignment', terminal_status: 'grader_failed', verification_disposition: 'not_run' },
   ], []));
+
+  it('renders a model that arrives after the page opened on its URL', () => {
+    evalStore.loadFixtures([], []);
+    renderModel();
+    expect(screen.queryByRole('heading', { level: 1, name: model.display_name })).not.toBeInTheDocument();
+    act(() => evalStore.loadFixtures([model, run], []));
+    expect(screen.getByRole('heading', { level: 1, name: model.display_name })).toBeInTheDocument();
+  });
 
   it('shows measured identity, verdict denominators, outcome separation, runs and assignment tones', () => {
     renderModel();

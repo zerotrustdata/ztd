@@ -196,7 +196,6 @@ describe('EvalStore', () => {
         freshness: 'active',
       },
       [],
-      0,
     );
     listener.mockClear();
 
@@ -245,7 +244,6 @@ describe('EvalStore', () => {
         freshness: 'active',
       },
       [],
-      0,
     );
     store.acceptSnapshot({ ...store.getState().currentSnapshot!, high_water_sequence: 3 });
     expect(store.isReconciling()).toBe(true);
@@ -344,7 +342,7 @@ describe('EvalStore', () => {
       generated_at: '2026-09-14T08:00:00Z',
       freshness: 'stale' as const,
     };
-    store.initBootstrap(snapshot, [], 0);
+    store.initBootstrap(snapshot, []);
     store.setStreamConnection('connected');
     store.acceptProjection({
       sequence: 1,

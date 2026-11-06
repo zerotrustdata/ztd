@@ -28,7 +28,7 @@ describe('theme', () => {
   beforeEach(() => {
     document.documentElement.removeAttribute('data-theme');
     document.cookie = 'theme=; path=/; max-age=0';
-    document.head.innerHTML = '<meta name="theme-color" content="#f5f7fb" />';
+    document.head.innerHTML = '<meta name="theme-color" content="#f7f6f2" />';
   });
 
   afterEach(() => {
@@ -45,11 +45,11 @@ describe('theme', () => {
   it('applies theme to the document root and theme-color meta', () => {
     applyTheme('dark');
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
-    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#0d1117');
+    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#0c0c0b');
 
     applyTheme('light');
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
-    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#f5f7fb');
+    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#f7f6f2');
   });
 
   it('persists theme in the shared dashboard cookie', () => {

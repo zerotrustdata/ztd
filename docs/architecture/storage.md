@@ -140,6 +140,15 @@ Paths are relative to `.ztd/data/` within the runtime directory. The database fi
 | Compliance report bundles | Compliance CLI | Compliance CLI | `.ztd/reports/<report-id>/` (outside `data/`): signed bundles written by `compliance report generate`, every file sealed with the runtime vault under its own associated data, so a report ciphertext never authenticates as eval evidence. Writing a bundle into an existing bundle directory fails. `compliance report export` is the only path that writes a bundle in the clear, to a new directory outside the runtime root. |
 | Public mirror database (`public-mirror/mirror.db`) | ✓ | — | Separate SQLite file opened by `OpenPublicMirrorStore` for the public spectator mirror, not part of `ztd.db`. |
 
+### Public Feed State
+
+The Gateway's public feed keeps its bucket state as files under `.ztd/public-feed/`, read and written through `RuntimeFileService`. It adds no database and no mirror schema change: the public mirror database (`public-mirror/mirror.db`) is unchanged.
+
+- `public-feed/bucket-journal.jsonl` is an append-only journal of the bucket publisher. It records each pointer revision that reached the bucket, with its sequence and withdrawal digest, and each pending object delete and pending cache purge. A delete or purge line is cleared by a matching `deleted` or `purged` line. Uploaded objects are not journaled, because the bucket's listing is the authority for what is present. The journal is compacted to its live entries past 1 MiB. An incomplete final line is ignored on read, and it is cut back before the next append.
+- `public-feed/bucket-credentials` holds the bucket write and cache-purge credentials. It is sealed by the keystore, like the ingest token beside it at `public-feed/ingest-token`. The export configuration (`public-feed/export-config.json`) names the bucket but holds no credential.
+
+The bucket configuration is set with `ztd public config set` and is read at Gateway start. The bucket objects themselves live outside the runtime root, and [Bucket Layout](public_spectator.md#bucket-layout) describes them.
+
 All databases are local to the runtime that opens them. An outbound Operator's `ztd.db` is not a central platform database; it is authoritative only for evidence produced by that Operator. During L4 verification on the authenticated command channel, the Operator uses the Gateway admission snapshot already bound into the envelope, without querying the Gateway or substituting its own database root. L5 reads the local database root before and after execution for receipt evidence. The Gateway mirrors remote signed receipts on a best-effort basis; mirroring failure does not invalidate the Operator's local evidence.
 
 Each runtime keeps its own database, PKI, vault, and evidence under its own runtime root. Removing one runtime root removes only that runtime's state.

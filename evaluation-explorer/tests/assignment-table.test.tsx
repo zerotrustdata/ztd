@@ -35,6 +35,17 @@ function rowIds() {
 }
 
 describe('AssignmentTable', () => {
+  it('labels probe-excluded tool tasks as skipped while preserving the evidence outcome', () => {
+    renderTable([assignment(0, {
+      terminal_status: 'invalid_evidence',
+      failure_reason: 'capability_unsupported: provider rejected tool calling (tools_unsupported)',
+      semantic_grade_summaries: [],
+      benchmark_observations: { unavailable_reasons: [], grade_summaries: [{ criterion_id: 'tool-calling-capability', status: 'unavailable', explanation_code: 'evidence_unavailable' }] },
+    })]);
+    expect(screen.getByText('Skipped: tool capability')).toHaveAttribute('title', expect.stringContaining('invalid_evidence'));
+    expect(screen.getByText(/provider rejected tool calling/)).toBeInTheDocument();
+  });
+
   it('opens the assignment reply and tool calls in the same table', async () => {
     const user = userEvent.setup();
     renderTable([assignment(0, {

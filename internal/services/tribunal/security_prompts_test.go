@@ -61,3 +61,20 @@ func TestConsensusVotePromptsCarrySharedSecurityRulesForEveryMember(t *testing.T
 		})
 	}
 }
+
+// TestConsensusVotePromptMakesNemesisTheAttacker keeps the honest approval
+// rule out of Nemesis's L2 vote frame and the attack out of everyone else's.
+func TestConsensusVotePromptMakesNemesisTheAttacker(t *testing.T) {
+	for _, member := range AllMembers {
+		system, _, err := ConsensusVotePrompt(member, ConsensusSubject{})
+		require.NoError(t, err)
+		if member == MemberNemesis {
+			assert.Contains(t, system, "calibrated attacker")
+			assert.Contains(t, system, "sanctioned red-team vote")
+			assert.NotContains(t, system, "Approve only when the action is safe, matches its stated target")
+			continue
+		}
+		assert.Contains(t, system, "Approve only when the action is safe, matches its stated target")
+		assert.NotContains(t, system, "calibrated attacker")
+	}
+}

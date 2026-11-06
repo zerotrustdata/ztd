@@ -94,6 +94,11 @@ func combinePublicSpectatorHandler(mirrorPublic, explorer http.Handler) http.Han
 		return mirrorPublic
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The SPA fallback must not turn retired evidence APIs into HTML 200s.
+		if removedPublicProofPath(r.URL.Path) {
+			http.NotFound(w, r)
+			return
+		}
 		if publicMirrorAnonymousReadPath(r.URL.Path) {
 			mirrorPublic.ServeHTTP(w, r)
 			return
@@ -104,6 +109,19 @@ func combinePublicSpectatorHandler(mirrorPublic, explorer http.Handler) http.Han
 		}
 		explorer.ServeHTTP(w, r)
 	})
+}
+
+func removedPublicProofPath(path string) bool {
+	switch path {
+	case "/proof-catalog", "/proof-head", "/proof-segments", "/" + constants.PublicLayoutProofHeadKey:
+		return true
+	}
+	for _, prefix := range []string{constants.PublicLayoutProofPrefix, constants.PublicLayoutProofCatalogPrefix, constants.PublicLayoutProofMetaPrefix, constants.PublicLayoutProofSegmentsPrefix} {
+		if strings.HasPrefix(path, "/"+prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveEvalExplorerMirrorOrigin(publicBaseURL, publicListenAddress string) string {

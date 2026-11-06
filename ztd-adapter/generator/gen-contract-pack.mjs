@@ -1001,6 +1001,8 @@ const PUBLIC_MODELS = [
   'public_feed_batch',
   'public_feed_snapshot',
   'public_feed_bootstrap',
+  'public_task_index_entry',
+  'public_task_result',
   'public_feed_cursor_page',
   'public_proof_manifest',
   'public_proof_head',
@@ -1008,7 +1010,6 @@ const PUBLIC_MODELS = [
   'public_proof_segments_response',
   'public_proof_catalog_entry',
   'public_proof_catalog',
-  'public_proof_catalog_summary',
 ];
 
 const PUBLIC_ENUMS = [
@@ -1116,29 +1117,117 @@ function generatePublicRuntimeConfigSchema() {
   });
 }
 
+const PUBLIC_DIGEST_SCHEMA = { type: 'string', pattern: '^[0-9a-f]{64}$' };
+// Cache policies served by the mirror and written to the bucket. Every value
+// here is the policy the layout routes set; no path uses a query string.
+const PUBLIC_CACHE = {
+  immutable: 'public, max-age=31536000, immutable',
+  pointer: 'public, max-age=30',
+  tail: 'public, max-age=60',
+  history: 'public, max-age=3600',
+  live: 'public, max-age=10',
+  liveRun: 'public, max-age=60',
+};
+
+function publicPointerSchema() {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    description: 'Mutable mirror pointer. It names the current digest-addressed read model. It is written last, so a partial publish never goes live. While a run is active the publisher holds it and moves it only when the active run set changes, a withdrawal lands, or records of a dataset that is not executing arrive; live/status.json carries the run in between. generated_at is when the pointer was composed, not a freshness signal.',
+    required: ['schema_version', 'source_id', 'revision', 'read_model_sha256', 'high_water_sequence', 'history_first_sequence', 'feed_chain_hash', 'active', 'generated_at'],
+    properties: {
+      schema_version: { type: 'string', const: '2.0.0' },
+      source_id: { type: 'string', minLength: 1 },
+      revision: { type: 'integer', minimum: 1, description: 'Increases with every pointer the source writes' },
+      read_model_sha256: { ...PUBLIC_DIGEST_SCHEMA, description: 'SHA-256 of the decoded read-model bytes' },
+      high_water_sequence: { type: 'integer', minimum: 0 },
+      history_first_sequence: { type: 'integer', minimum: 0, description: 'First retained sequence of the signed batch chain' },
+      feed_chain_hash: { ...PUBLIC_DIGEST_SCHEMA },
+      withdrawal_digest: { ...PUBLIC_DIGEST_SCHEMA },
+      active: { type: 'boolean', description: 'True while a run is executing; poll live/status.json' },
+      generated_at: { type: 'string', format: 'date-time' },
+      signing_key_id: { ...PUBLIC_DIGEST_SCHEMA },
+      signing_public_key: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+      signature: { type: 'string', pattern: '^[0-9a-f]{128}$', description: 'Ed25519 over the domain-separated digest of every other field' },
+    },
+  };
+}
+
+function publicLiveStatusSchema(snapshotSchema) {
+  return {
+    type: 'object',
+    description: 'Live status: the snapshot, executing runs, and the newest feed records.',
+    required: ['schema_version', 'snapshot', 'active_runs', 'tail'],
+    properties: {
+      schema_version: { type: 'string', const: '1.0.0' },
+      snapshot: snapshotSchema,
+      active_runs: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['dataset_id', 'run_id', 'lifecycle_state'],
+          properties: {
+            dataset_id: { type: 'string', minLength: 1 },
+            run_id: { type: 'string', minLength: 1 },
+            lifecycle_state: { type: 'string', minLength: 1 },
+          },
+        },
+      },
+      tail: {
+        type: 'array',
+        maxItems: 100,
+        description: 'Newest feed records, oldest first. Assignment results arrive through live/runs.',
+        items: {
+          type: 'object',
+          required: ['sequence', 'record_type', 'record_bytes'],
+          properties: {
+            sequence: { type: 'integer', minimum: 1 },
+            record_type: { type: 'string', minLength: 1 },
+            record_bytes: { type: 'string', description: 'Canonical JSON of the record payload' },
+          },
+        },
+      },
+    },
+  };
+}
+
 function publicOpenApiModel(model) {
   return Object.fromEntries(Object.entries(publicFeedModels[model]).filter(([key]) => !key.startsWith('_')));
 }
 
 function generatePublicOpenApi() {
-  const sourceParameter = () => ({ name: 'source', in: 'query', required: false, schema: { type: 'string' } });
+  const header = (value) => ({ schema: { type: 'string', enum: Array.isArray(value) ? value : [value] } });
+  const headers = (cacheControl, encoding) => ({
+    ...(encoding ? { 'Content-Encoding': header(encoding) } : {}),
+    'Cache-Control': header(cacheControl),
+  });
+  const json = (schema) => ({ 'application/json': { schema } });
+  const digestParam = (name) => ({ name, in: 'path', required: true, schema: { ...PUBLIC_DIGEST_SCHEMA } });
+  const sequenceParam = (name) => ({ name, in: 'path', required: true, description: 'Chunk or page start; 1, 1001, 2001, and so on', schema: { type: 'string', pattern: '^[1-9][0-9]*$' } });
   return stableSerialize({
     openapi: '3.0.3',
-    info: { title: 'ztd Public Spectator Read API', version: '1.0.0', description: 'Anonymous bounded read-only public mirror API.' },
+    info: { title: 'ztd Public Spectator Read API', version: '1.0.0', description: 'Anonymous, read-only public layout. Every path is a static object served by the bucket or its local mirror. There are no query strings, no event streams, and no mutable paths other than pointer.json and live/status.json.' },
     paths: {
-      '/bootstrap': { get: { operationId: 'public_bootstrap', parameters: [sourceParameter()], responses: { '200': { description: 'Coherent current entity snapshot with bounded recent activity', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicFeedBootstrap' } } } } } } },
-      '/snapshot': { get: { operationId: 'public_snapshot', parameters: [sourceParameter()], responses: { '200': { description: 'Current feed position', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicFeedSnapshot' } } } } } } },
-      '/history': { get: { operationId: 'public_history', parameters: [sourceParameter(), { name: 'cursor', in: 'query', required: false, schema: { type: 'string' } }, { name: 'limit', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100 } }], responses: { '200': { description: 'Bounded history page', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicFeedCursorPage' } } } } } } },
-      '/stream': { get: { operationId: 'public_stream', parameters: [sourceParameter(), { name: 'since_id', in: 'query', required: false, schema: { type: 'integer', minimum: 0 } }], responses: { '200': { description: 'Replayable public event stream', content: { 'text/event-stream': { schema: { type: 'string' } } } } } } },
-      '/proof-catalog': { get: { operationId: 'public_proof_catalog', parameters: [sourceParameter(), { name: 'artifact', in: 'query', required: false, description: 'Narrow the catalog to this active artifact; an unknown or withdrawn digest returns no entries', schema: { type: 'string', pattern: '^[0-9a-f]{64}$' } }], responses: { '400': { description: 'Malformed artifact digest' }, '200': { description: 'Public-safe proof catalog', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicProofCatalog' } } } } } } },
-      '/proof-head': { get: { operationId: 'public_proof_head', parameters: [sourceParameter()], responses: { '404': { description: 'No proof publication for the source' }, '200': { description: 'Constant-size proof head without artifact entries; verify the signed log for authenticity', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicProofHead' } } } } } } },
-      '/proof-segments': { get: { operationId: 'public_proof_segments', parameters: [sourceParameter()], responses: { '200': { description: 'Source-signed proof log including withdrawals', content: { 'application/json': { schema: { $ref: '#/components/schemas/PublicProofSegmentsResponse' } } } } } } },
-      '/proofs/{artifact_id}': { get: { operationId: 'public_proof_download', parameters: [{ name: 'artifact_id', in: 'path', required: true, schema: { type: 'string', pattern: '^[0-9a-f]{64}$' } }], responses: { '200': { description: 'Content-addressed public-safe proof bytes', content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } } } } },
+      '/pointer.json': { get: { operationId: 'public_pointer', responses: { '200': { description: 'Signed pointer naming the current digest-addressed objects', headers: headers(PUBLIC_CACHE.pointer), content: json({ $ref: '#/components/schemas/PublicPointer' }) } } } },
+      '/read-model/{read_model_sha256}.json.gz': { get: { operationId: 'public_read_model', parameters: [digestParam('read_model_sha256')], responses: { '200': { description: 'Gzip-encoded read model in the /bootstrap shape. The SHA-256 of the decoded bytes equals the pointer read_model_sha256.', headers: headers(PUBLIC_CACHE.immutable, 'gzip'), content: json({ $ref: '#/components/schemas/PublicFeedBootstrap' }) }, '404': { description: 'Unknown digest' } } } },
+      '/history/{first_sequence}.json.gz': { get: { operationId: 'public_history', parameters: [sequenceParam('first_sequence')], responses: { '200': { description: 'Gzip-encoded bounded history page', headers: headers(PUBLIC_CACHE.history, 'gzip'), content: json({ $ref: '#/components/schemas/PublicFeedCursorPage' }) }, '404': { description: 'No records in the range' } } } },
+      '/runs/{sha256}.jsonl.gz': { get: { operationId: 'public_run_bundle', parameters: [digestParam('sha256')], responses: { '200': { description: 'Selected settled run bundle. The SHA-256 covers stored gzip bytes; no Content-Encoding is set.', headers: headers(PUBLIC_CACHE.immutable), content: { 'application/gzip': { schema: { type: 'string', format: 'binary' } } } }, '404': { description: 'Unknown, withdrawn, or not a run bundle' } } } },
+      '/fixtures/{sha256}': { get: { operationId: 'public_scenario_fixture', parameters: [digestParam('sha256')], responses: { '200': { description: 'Campaign-frozen scenario input or gold criteria, selected from the internal proof log. Check bytes against the evidence binding digest and scenario identity.', headers: headers(PUBLIC_CACHE.immutable), content: { 'application/json': { schema: { type: 'string', format: 'binary' } } } }, '404': { description: 'Unknown, withdrawn, or not a scenario fixture' } } } },
+      '/live/status.json': { get: { operationId: 'public_live_status', responses: { '200': { description: 'Snapshot, executing runs, and the newest feed records', headers: headers(PUBLIC_CACHE.live), content: json({ $ref: '#/components/schemas/PublicLiveStatus' }) } } } },
+      '/live/runs/{run_id}.jsonl.gz': { get: { operationId: 'public_live_run', parameters: [{ name: 'run_id', in: 'path', required: true, description: 'A run listed in live/status.json active_runs', schema: { type: 'string', minLength: 1 } }], responses: { '200': { description: 'Run bundle for an executing run. The object is gzip data served without Content-Encoding.', headers: headers(PUBLIC_CACHE.liveRun), content: { 'application/gzip': { schema: { type: 'string', format: 'binary' } } } }, '404': { description: 'Run is not executing or has no result records yet' } } } },
     },
     components: {
-      schemas: Object.fromEntries(PUBLIC_MODELS.map((model) => [pascalCase(model), { $ref: `#/x-models/${model}` }])),
+      schemas: {
+        ...Object.fromEntries(PUBLIC_MODELS.map((model) => [pascalCase(model), { $ref: `#/x-models/${model}` }])),
+        PublicPointer: { $ref: '#/x-models/public_pointer' },
+        PublicLiveStatus: { $ref: '#/x-models/public_live_status' },
+      },
     },
-    'x-models': Object.fromEntries(PUBLIC_MODELS.map((model) => [model, publicOpenApiModel(model)])),
+    'x-models': {
+      ...Object.fromEntries(PUBLIC_MODELS.map((model) => [model, publicOpenApiModel(model)])),
+      public_pointer: publicPointerSchema(),
+      public_live_status: publicLiveStatusSchema({ $ref: '#/x-models/public_feed_snapshot' }),
+    },
   });
 }
 
@@ -1147,19 +1236,16 @@ function generatePublicEventSchemas() {
     schema_version: '1.0.0',
     event_types: {
       snapshot: { payload_model: 'public_feed_snapshot', sequence_source: 'payload.high_water_sequence' },
-      projection: { payload_model: 'public_safe_object', sequence_source: 'sse.id' },
-      event: { payload_model: 'public_safe_object', sequence_source: 'sse.id' },
-      proof_manifest: { payload_model: 'public_proof_manifest', sequence_source: 'sse.id' },
-      key_revocation: { payload_model: 'public_key_revocation_record', sequence_source: 'sse.id' },
-      truncated: { payload_model: 'public_stream_sentinel' },
-      error: { payload_model: 'public_stream_sentinel' },
+      projection: { payload_model: 'public_safe_object', sequence_source: 'tail.sequence' },
+      event: { payload_model: 'public_safe_object', sequence_source: 'tail.sequence' },
+      proof_manifest: { payload_model: 'public_proof_manifest', sequence_source: 'tail.sequence' },
+      key_revocation: { payload_model: 'public_key_revocation_record', sequence_source: 'tail.sequence' },
     },
-    sentinel_models: { public_stream_sentinel: { reason: { type: 'string', required: true } } },
     assignment_record_schemas: {
-      envelope_versions: ['1.0.0', '1.1.0'],
+      envelope_versions: ['1.0.0', '1.1.0', '1.2.0'],
       message_types: ['PublicAssignmentLifecycleRecord', 'PublicAssignmentResultProjection'],
       enriched_fields: ['scenario_summary', 'semantic_grade_summaries', 'activity_summary', 'evidence_bindings', 'verification_metadata', 'benchmark_observations', 'resource_summary'],
-      limits: { max_record_bytes: 262144, max_evidence_bindings: 32, max_activity_records: 128, max_text_bytes: 512 },
+      limits: { max_record_bytes: 524288, max_evidence_bindings: 32, max_activity_records: 128, max_tool_loop_records: 1024, max_text_bytes: 512 },
       prohibited_claims: ['protocol_authorization', 'individual_verification'],
     },
   });
@@ -1168,7 +1254,11 @@ function generatePublicEventSchemas() {
 function generatePublicProofSchemas() {
   return stableSerialize({
     schema_version: '1.0.0',
-    schemas: Object.fromEntries(['public_proof_manifest', 'public_proof_head', 'public_proof_manifest_segment', 'public_proof_segments_response', 'public_proof_catalog_entry', 'public_proof_catalog', 'public_proof_catalog_summary'].map((model) => [model, publicFeedModels[model]])),
+    schemas: {
+      ...Object.fromEntries(['public_proof_manifest', 'public_proof_head', 'public_proof_manifest_segment', 'public_proof_segments_response', 'public_proof_catalog_entry', 'public_proof_catalog'].map((model) => [model, publicFeedModels[model]])),
+      public_pointer: publicPointerSchema(),
+      public_live_status: publicLiveStatusSchema(publicFeedModels.public_feed_snapshot),
+    },
   });
 }
 
@@ -1201,7 +1291,7 @@ function publicFixture(freshness) {
       records: [{ sequence: 1, record_type: 'projection', record_hash: recordHash, record_bytes: recordBytes }],
     },
     bootstrap: {
-      protocol_version: '1.0.0', snapshot: { protocol_version: '1.0.0', source_id: sourceID, high_water_sequence: 1, feed_chain_hash: contentHash, batch_count: 1, withdrawal_digest: '0'.repeat(64), generated_at: generatedAt, freshness }, source_freshness: freshness, recent_projections: [projection], proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 }, generated_at: generatedAt,
+      protocol_version: '1.0.0', snapshot: { protocol_version: '1.0.0', source_id: sourceID, high_water_sequence: 1, feed_chain_hash: contentHash, batch_count: 1, withdrawal_digest: '0'.repeat(64), generated_at: generatedAt, freshness }, source_freshness: freshness, recent_projections: [projection], task_index: [], schema_version: '2.0.0', generated_at: generatedAt,
     },
   });
 }
@@ -1218,15 +1308,29 @@ function generatePublicFixtures() {
 }
 
 function generateOfflineVerifierInstructions() {
-  return `# Public Proof Offline Verification
+  return `# Public Evidence Offline Verification
 
-Follow the [canonical offline proof verification procedure](../../../docs/architecture/public_spectator.md#offline-proof-verification). Before disconnecting, export the mirror's signed \`/proof-segments\` response as JSONL and download its active content-addressed artifact files.
+Follow the [canonical offline verification procedure](../../../docs/architecture/public_spectator.md#offline-proof-verification). Public evidence is authenticated through a trusted Ed25519 signing key, the signed pointer, its read model, and the settled run bundle named by the selected run's evaluation summary. The browser checks object digests but does not authenticate the pointer signature.
 
-Offline, run \`ztd public verify-proof --segments proof-segments.jsonl --artifacts ./proofs\`. The verifier recomputes the signed segment chain from the zero root, checks each Ed25519 signature under that segment's \`signing_public_key\` (SHA-256 of the key must equal \`signing_key_id\`), applies withdrawals, and verifies active artifact sizes and hashes. Pass \`--public-key\` or \`--key-registry trusted-keys.json\` to require a key supplied separately. The default command checks the published signatures and hash chain; it does not establish an out-of-band publisher identity.
+Download \`pointer.json\`, the \`read-model/<read_model_sha256>.json.gz\` object it names, and the selected run's \`runs/<assignment_bundle_sha256>.jsonl.gz\`. Keep the bundle's gzip bytes unchanged: its digest covers the stored file. The read model digest covers decoded JSON; the CLI accepts its gzip object or decoded bytes. Obtain trusted keys separately as a JSON mapping of key ID (or source ID plus colon plus key ID) to hex Ed25519 public key. A registry can contain old and rotated keys; a self-published key alone is never trusted in this mode.
 
-The \`/proof-head\` response contains the latest signing header, including \`signing_public_key\` when the mirror has it, without artifact entries; \`/proof-catalog\` lists the active artifacts. A head with a nonzero \`segment_index\` carries that segment's root and signature; verification requires the signed log. The head's root identifies the advertised log position. It does not independently establish freshness.
+\`\`\`bash
+ztd public verify-proof --pointer pointer.json --read-model read-model.json.gz --bundle run.jsonl.gz --run "$RUN_ID" --key-registry trusted-keys.json
+\`\`\`
 
-For a legacy source with segment index zero, reconstruct its full manifest from the proof head metadata and catalog entries in response order, then use the legacy ordered manifest-root and Ed25519 verification procedure. Verify signed feed fixtures by recomputing each record hash, recomputing the batch content hash from the ordered protocol fields, and verifying the Ed25519 signature over the decoded content hash. Missing active artifacts, unknown fields, hash or signature mismatches, traversal paths, and symlinks invalidate the package.
+The verifier checks the pointer signature and source/sequence/feed-hash/withdrawal identity, hashes the read model and gzip bundle, and then checks each exact record_bytes hash, ordered sequence, run identity, and assignment uniqueness. An absent or withdrawn run has no usable bundle binding in a current read model.
+
+Scenario fixtures remain public at \`fixtures/<sha256>\`. A fixture's digest covers its decoded bytes, and the CDN may compress JSON in transit, so download fixtures with content decoding (\`curl --compressed\`). Full agent traces and assignment audit databases are delivered under agreement. Place any delivered files under their bare SHA-256 in a directory and add \`--artifacts ./delivered\` to verify each against the authenticated assignment evidence bindings. Missing private files are not required. Unbound files, changed bytes, directories, and symlinks fail verification.
+
+For an assignment audit database, use the same trust inputs:
+
+\`\`\`bash
+ztd public verify-assignment --db assignment.db --pointer pointer.json --read-model read-model.json.gz --bundle run.jsonl.gz --run "$RUN_ID" --key-registry trusted-keys.json
+\`\`\`
+
+This additionally requires an assignment_audit_slice digest binding, verifies the database's live-event record hashes, and matches its source, run, and assignment identity. Database verification does not independently verify every governed execution receipt. The database is plaintext SQLite and needs no vault key.
+
+The pointer authenticates a captured state; it does not prove that a capture is the latest state. A previously downloaded pointer and bundle can still verify after withdrawal. Remote mirrors without a source signing key serve unsigned pointers and cannot supply this trust root. Bounded history remains public for signed feed-chain checks, subject to retention and withdrawals. The internal proof log is no longer an anonymous endpoint or bucket projection. The separate \`verify-proof --segments\` mode remains for an explicitly obtained internal log and its active files.
 `;
 }
 

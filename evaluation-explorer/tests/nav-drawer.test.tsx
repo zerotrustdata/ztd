@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, fireEvent, within } from '@testing-library/react';
 import { App } from '../src/App';
 import { evalStore } from '../src/state/store';
@@ -57,5 +57,38 @@ describe('Navigation and runs drawer', () => {
     fireEvent.click(toggle);
     fireEvent.click(toggle);
     expect(drawer).toHaveAttribute('inert');
+  });
+
+  describe('where the drawer overlays the content', () => {
+    beforeEach(() => {
+      vi.stubGlobal('matchMedia', (query: string) => ({ matches: query === '(max-width: 768px)', addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('starts closed, so the visitor lands on the content', () => {
+      render(<App />);
+      expect(within(screen.getByRole('banner')).getByRole('button', { name: 'Open navigation drawer' })).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.getByRole('complementary', { hidden: true, name: 'Navigation and runs' })).toHaveAttribute('inert');
+    });
+
+    it('closes once a link opens a page, and returns focus to the toggle', () => {
+      render(<App />);
+      const toggle = within(screen.getByRole('banner')).getByRole('button', { name: 'Open navigation drawer' });
+      fireEvent.click(toggle);
+      const drawer = screen.getByRole('complementary', { name: 'Navigation and runs' });
+      expect(drawer).not.toHaveAttribute('inert');
+      fireEvent.click(within(drawer).getByRole('link', { name: 'Models' }));
+      expect(window.location.pathname).toBe('/models');
+      expect(drawer).toHaveAttribute('inert');
+      expect(toggle).toHaveFocus();
+    });
+  });
+
+  it('stays open after a link opens a page on desktop', () => {
+    render(<App />);
+    const drawer = screen.getByRole('complementary', { name: 'Navigation and runs' });
+    fireEvent.click(within(drawer).getByRole('link', { name: 'Models' }));
+    expect(window.location.pathname).toBe('/models');
+    expect(drawer).not.toHaveAttribute('inert');
   });
 });

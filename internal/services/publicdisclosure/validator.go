@@ -28,7 +28,7 @@ const (
 	// failure_reason, tools_declared, and the per-tool-call guidance fields.
 	enrichedVersion   = "1.1.0"
 	trajectoryVersion = "1.2.0"
-	maxRecordBytes    = 256 * 1024
+	maxRecordBytes    = constants.PublicFeedRecordMaxBytes
 	maxArrayEntries   = 128
 	// maxToolLoopRecords bounds the activity families that gain one record per
 	// tool call. A model's loop length has no fixed limit, so maxRecordBytes is
@@ -890,7 +890,7 @@ func validatePublicFeedKeyRevocation(recordBytes []byte) error {
 
 func publicFeedViewSchemaVersion(value string) bool {
 	switch value {
-	case "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0", "1.10.0", "1.11.0", "1.12.0", constants.ExplorerViewSchemaVersion:
+	case "1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.6.0", "1.7.0", "1.8.0", "1.9.0", "1.10.0", "1.11.0", "1.12.0", "1.13.0", constants.ExplorerViewSchemaVersion:
 		return true
 	default:
 		return false

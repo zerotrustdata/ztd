@@ -51,7 +51,7 @@ function operatorDiagramDetail(role: string): string {
 function ArchitectureDiagram() {
   const edgeNodes = [
     { id: 'publish', label: 'Publication', sub: 'public-safe projection' },
-    { id: 'mirror', label: 'Mirror', sub: 'JSONL feed + SSE' },
+    { id: 'mirror', label: 'Mirror', sub: 'JSONL feed + polling' },
     { id: 'cloudflare', label: 'Cloudflare', sub: 'tunnel to opendevops.ai' },
     { id: 'explorer', label: 'Explorer', sub: 'this browser' },
   ];
@@ -68,8 +68,8 @@ function ArchitectureDiagram() {
         <g>
           {edgeNodes.map((node, i) => (
             <g key={node.id} transform={`translate(${36 + i * 210}, 22)`}>
-              <rect width="156" height="72" rx="8" fill="var(--bg-elev2)" stroke="var(--border)" />
-              <text x="78" y="30" textAnchor="middle" fill="var(--fg)" fontSize="14" fontWeight="700">
+              <rect width="156" height="72" fill="var(--bg-elev2)" stroke="var(--border)" />
+              <text x="78" y="30" textAnchor="middle" fill="var(--fg)" fontSize="14" fontWeight="500">
                 {node.label}
               </text>
               <text x="78" y="50" textAnchor="middle" fill="var(--fg-dim)" fontSize="12">
@@ -93,20 +93,20 @@ function ArchitectureDiagram() {
 
         <line x1="450" y1="170" x2="450" y2="100" stroke="var(--accent)" strokeWidth="2" markerEnd="url(#docs-arch-arrow)" />
 
-        <rect x="20" y="130" width="860" height="200" rx="12" fill="none" stroke="var(--border)" strokeWidth="2" strokeDasharray="6 4" />
-        <text x="36" y="152" fill="var(--fg-dim)" fontSize="12" fontWeight="700" letterSpacing="0.4">
+        <rect x="20" y="130" width="860" height="200" fill="none" stroke="var(--border)" strokeWidth="2" strokeDasharray="6 4" />
+        <text x="36" y="152" fill="var(--fg-dim)" fontSize="12" fontWeight="500" letterSpacing="0.4">
           HOME WORKSTATION · WINDOWS
         </text>
 
         <g transform="translate(40, 170)">
-          <rect width="150" height="78" rx="8" fill="var(--bg-elev2)" stroke="var(--border)" />
-          <text x="75" y="30" textAnchor="middle" fill="var(--fg)" fontSize="15" fontWeight="700">Ollama</text>
+          <rect width="150" height="78" fill="var(--bg-elev2)" stroke="var(--border)" />
+          <text x="75" y="30" textAnchor="middle" fill="var(--fg)" fontSize="15" fontWeight="500">Ollama</text>
           <text x="75" y="50" textAnchor="middle" fill="var(--fg-dim)" fontSize="12">local model inference</text>
         </g>
 
         <g transform="translate(210, 170)">
-          <rect width="500" height="78" rx="8" fill="var(--navy)" stroke="var(--accent)" strokeWidth="2" />
-          <text x="250" y="28" textAnchor="middle" fill="var(--accent)" fontSize="16" fontWeight="800">ztd unified stack</text>
+          <rect width="500" height="78" fill="var(--bg-elev3)" stroke="var(--accent)" strokeWidth="2" />
+          <text x="250" y="28" textAnchor="middle" fill="var(--accent)" fontSize="16" fontWeight="600">ztd unified stack</text>
           <text x="250" y="48" textAnchor="middle" fill="var(--fg)" fontSize="12">
             Gateway · Operator · native eval
           </text>
@@ -116,14 +116,14 @@ function ArchitectureDiagram() {
         </g>
 
         <g transform="translate(730, 170)">
-          <rect width="130" height="78" rx="8" fill="var(--bg-elev2)" stroke="var(--border)" />
-          <text x="65" y="30" textAnchor="middle" fill="var(--fg)" fontSize="15" fontWeight="700">Campaigns</text>
+          <rect width="130" height="78" fill="var(--bg-elev2)" stroke="var(--border)" />
+          <text x="65" y="30" textAnchor="middle" fill="var(--fg)" fontSize="15" fontWeight="500">Campaigns</text>
           <text x="65" y="50" textAnchor="middle" fill="var(--fg-dim)" fontSize="12">live + historical</text>
         </g>
 
         <g transform="translate(40, 258)">
-          <rect width="820" height="64" rx="8" fill="var(--bg-elev2)" stroke="var(--border)" />
-          <text x="12" y="15" fill="var(--fg-dim)" fontSize="11" fontWeight="700" letterSpacing="0.4">EVALUATION HOST</text>
+          <rect width="820" height="64" fill="var(--bg-elev2)" stroke="var(--border)" />
+          <text x="12" y="15" fill="var(--fg-dim)" fontSize="11" fontWeight="500" letterSpacing="0.4">EVALUATION HOST</text>
           <line x1="0" y1="22" x2="820" y2="22" stroke="var(--border)" />
           <line x1="410" y1="22" x2="410" y2="64" stroke="var(--border)" />
           <line x1="0" y1="43" x2="820" y2="43" stroke="var(--border)" />
@@ -132,15 +132,15 @@ function ArchitectureDiagram() {
             const y = i < 2 ? 37 : 58;
             return (
               <g key={spec.label}>
-                <text x={x + 12} y={y} fill="var(--fg-dim)" fontSize="10" fontWeight="700">{spec.label}</text>
+                <text x={x + 12} y={y} fill="var(--fg-dim)" fontSize="10" fontWeight="500">{spec.label}</text>
                 <text x={x + 68} y={y} fill="var(--fg)" fontSize="11">{spec.value}</text>
               </g>
             );
           })}
         </g>
 
-        <rect x="20" y="360" width="860" height="156" rx="12" fill="none" stroke="var(--border)" strokeWidth="2" strokeDasharray="6 4" />
-        <text x="36" y="506" fill="var(--fg-dim)" fontSize="12" fontWeight="700" letterSpacing="0.4">
+        <rect x="20" y="360" width="860" height="156" fill="none" stroke="var(--border)" strokeWidth="2" strokeDasharray="6 4" />
+        <text x="36" y="506" fill="var(--fg-dim)" fontSize="12" fontWeight="500" letterSpacing="0.4">
           CAMPAIGN OPERATOR SESSIONS · OUTBOUND mTLS
         </text>
         <line x1="126" y1="350" x2="774" y2="350" stroke="var(--accent)" strokeWidth="2" opacity="0.65" />
@@ -153,8 +153,8 @@ function ArchitectureDiagram() {
             <g key={operator.role}>
               <line x1={center} y1="396" x2={center} y2="350" stroke="var(--accent)" strokeWidth="2" markerEnd="url(#docs-arch-arrow)" />
               <g transform={`translate(${x}, 396)`}>
-                <rect width="204" height="96" rx="8" fill="var(--navy)" stroke="var(--border)" />
-                <text x="102" y="28" textAnchor="middle" fill="var(--fg)" fontSize="14" fontWeight="700">
+                <rect width="204" height="96" fill="var(--bg-elev3)" stroke="var(--border)" />
+                <text x="102" y="28" textAnchor="middle" fill="var(--fg)" fontSize="14" fontWeight="500">
                   {operator.role}
                 </text>
                 <text x="102" y="48" textAnchor="middle" fill="var(--fg-dim)" fontSize="12">

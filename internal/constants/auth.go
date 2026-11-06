@@ -144,6 +144,7 @@ const (
 	HeaderValueTextEvent           = "text/event-stream"
 	HeaderValueApplicationJSON     = "application/json"
 	HeaderValueApplicationNDJSON   = "application/x-ndjson"
+	HeaderValueGzip                = "gzip"
 	HeaderValueXHTML               = "application/xhtml+xml"
 	HeaderValueXML                 = "application/xml"
 	HeaderValueOctetStream         = "application/octet-stream"

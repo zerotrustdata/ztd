@@ -52,27 +52,43 @@ describe('public spectator runtime boundary', () => {
       fetchImpl,
     );
 
-    await publicFetch('snapshot', '?source=deployment-a');
-    await publicFetch('proofHead', '?source=deployment-a');
-    expect(fetchImpl).toHaveBeenCalledWith('https://feed.example.com/proof-head?source=deployment-a', expect.objectContaining({ method: 'GET', credentials: 'omit' }));
-    await publicFetch('proofSegments', '?source=deployment-a');
-    expect(fetchImpl).toHaveBeenCalledWith('https://feed.example.com/proof-segments?source=deployment-a', expect.objectContaining({ method: 'GET', credentials: 'omit' }));
-
-    expect(fetchImpl).toHaveBeenCalledWith('https://feed.example.com/snapshot?source=deployment-a', expect.objectContaining({
-      method: 'GET',
-      credentials: 'omit',
-    }));
+    await publicFetch({ endpoint: 'pointer' });
+    expect(fetchImpl).toHaveBeenLastCalledWith('https://feed.example.com/pointer.json', expect.objectContaining({ method: 'GET', credentials: 'omit' }));
+    await publicFetch({ endpoint: 'runBundle', digest: 'a'.repeat(64) });
+    expect(fetchImpl).toHaveBeenLastCalledWith(`https://feed.example.com/runs/${'a'.repeat(64)}.jsonl.gz`, expect.objectContaining({ method: 'GET', credentials: 'omit' }));
+    await publicFetch({ endpoint: 'fixture', digest: 'b'.repeat(64) });
+    expect(fetchImpl).toHaveBeenLastCalledWith(`https://feed.example.com/fixtures/${'b'.repeat(64)}`, expect.objectContaining({ method: 'GET', credentials: 'omit' }));
+    await publicFetch({ endpoint: 'history', first: 1 });
+    expect(fetchImpl).toHaveBeenLastCalledWith('https://feed.example.com/history/1.json.gz', expect.objectContaining({ method: 'GET', credentials: 'omit' }));
+    for (const call of fetchImpl.mock.calls) expect(String(call[0])).not.toContain('?');
   });
 
-  it('rejects private, producer, ingest, and arbitrary mirror paths before fetch', async () => {
+  it('refuses digests and indexes outside the closed grammar before fetch', async () => {
     const fetchImpl = vi.fn<typeof fetch>();
     const publicFetch = createPublicFetch(
       parsePublicRuntimeConfig({ schema_version: '1.0.0', mirror_origin: 'https://feed.example.com' }),
       fetchImpl,
     );
+    const digest = 'a'.repeat(64);
+    const refused = [
+      { endpoint: 'readModel', digest: 'A'.repeat(64) },
+      { endpoint: 'runBundle', digest: `${digest}.jsonl.gz` },
+      { endpoint: 'fixture', digest: `${digest}?source=x` },
+      { endpoint: 'readModel', digest: `${'a'.repeat(63)}/` },
+      { endpoint: 'fixture', digest: `../${'a'.repeat(61)}` },
+      { endpoint: 'readModel', digest: `${digest}?source=x` },
+      { endpoint: 'readModel', digest: 'a'.repeat(63) },
+      { endpoint: 'history', first: 0 },
+      { endpoint: 'history', first: '01' },
+      { endpoint: 'history', first: 1.5 },
+      { endpoint: 'history', first: 1e21 },
+      { endpoint: 'history', first: '1?cursor=2' },
+      { endpoint: 'history', first: '1/../2' },
+      { endpoint: '/api/v1/health' },
+    ] as const;
 
-    for (const path of ['/api/v1/health', '/ingest', '/proof-ingest', '/keys/register', '/arbitrary']) {
-      await expect(publicFetch('snapshot', path)).rejects.toBeInstanceOf(PublicEndpointNotAllowedError);
+    for (const request of refused) {
+      await expect(publicFetch(request as never)).rejects.toBeInstanceOf(PublicEndpointNotAllowedError);
     }
     expect(fetchImpl).not.toHaveBeenCalled();
   });

@@ -3,8 +3,8 @@ doc_id: public_spectator
 title: Public Spectator Operations Guide
 audience: platform operators, release managers, publication reviewers
 status: current
-version: v1.5.0
-last_updated: 2026-10-28
+version: v1.10.0
+last_updated: 2026-11-05
 owners:
   - docs/guides/public_spectator.md
   - internal/cli/cmd/public/
@@ -31,7 +31,7 @@ This guide covers the Gateway-owned anonymous public mirror and evaluation explo
 The Gateway-owned public spectator runs inside the Gateway process when started with `--public-spectator` (default). One in-process `PublicSpectatorRuntime` owns:
 
 - **Private ingest** (`--public-spectator-private-listen`, default `127.0.0.1:8081`): authenticated publisher ingest, proof ingest, replacement-key registration.
-- **Public read/SSE** (`--public-spectator-public-listen`, default `127.0.0.1:8082`): anonymous bootstrap, snapshot, history, SSE, proof catalog, proof head, signed proof segments, and content-addressed proof downloads.
+- **Public read** (`--public-spectator-public-listen`, default `127.0.0.1:8082`): anonymous bootstrap, snapshot, history, and the public layout (`pointer.json`, read models, run bundles, scenario fixtures, history pages, live objects). The mirror mounts no SSE route.
 - **Evaluation explorer** (`--eval-explorer-listen`, default `127.0.0.1:5173`): dedicated explorer listener that reads the local public listener API. The public listener also serves the explorer assets (`GET` and `HEAD`), so the public origin hosts the explorer.
 
 Publisher configuration, signing key, ingest token, and outbox state live under `.ztd/public-feed/`. The publisher's signed proof log and artifacts live under `.ztd/public-proofs/`, with its delivery checkpoint in `.ztd/proof-mirror-sync.json`. Together these form one feed generation. If generation state exists without publisher configuration, startup fails closed with `ErrPublicFeedOrphanedGeneration` instead of adopting that state. The mirror database and content-addressed proof artifacts live under `.ztd/public-mirror/`. Listeners bind loopback by default. Only CIDRs passed to `--public-spectator-trusted-proxy-cidr` are trusted to supply `CF-Connecting-IP`.
@@ -80,47 +80,110 @@ curl -o /dev/null -sS -w '%{http_code}\n' -X POST http://127.0.0.1:8082/keys/reg
 curl -o /dev/null -sS -w '%{http_code}\n' -X POST http://127.0.0.1:8082/proof-ingest
 ```
 
-Verify the anonymous allowlist on the public listener. Set the shell variable `SOURCE_ID` to the public source pseudonym of the current publication generation before running the source-scoped requests:
+Read the layout on the public listener. The objects are the same ones the bucket serves. Set the shell variable `PUBLIC_ORIGIN` to `http://127.0.0.1:8082` for a local mirror, or to the bucket's public origin:
 
 ```bash
-curl -fsS http://127.0.0.1:8082/bootstrap
-curl -fsS "http://127.0.0.1:8082/history?source=${SOURCE_ID}&cursor=0&limit=20&kind=catalog_snapshot"
-curl -fsS "http://127.0.0.1:8082/snapshot?source=${SOURCE_ID}"
-curl -fsS http://127.0.0.1:8082/proof-catalog
-curl -fsS "http://127.0.0.1:8082/proof-head?source=${SOURCE_ID}"
-curl -fsS "http://127.0.0.1:8082/proof-segments?source=${SOURCE_ID}"
+curl -fsS "${PUBLIC_ORIGIN}/pointer.json" | jq '{schema_version, revision, read_model_sha256, high_water_sequence, active}'
+curl -fsS "${PUBLIC_ORIGIN}/live/status.json" | jq '{active_runs, tail: (.tail | length)}'
 ```
 
-Public clients omit credentials. `/proof-head` returns only the latest signing header; `/proof-catalog` lists active artifacts, and `/proof-segments` supplies their signed history. The Evaluation Explorer footer links to all three for the selected source. See the [offline verification procedure](../architecture/public_spectator.md#offline-proof-verification) for verifying downloaded evidence.
+Read the immutable model named by one captured pointer. Its digest covers decoded JSON; run-bundle digests cover the stored gzip bytes. Set `RUN_ID` to the settled run to verify and obtain `trusted-keys.json` through a trusted channel before verification:
+
+```bash
+curl -fsS "${PUBLIC_ORIGIN}/pointer.json" > pointer.json
+MODEL=$(jq -r .read_model_sha256 pointer.json)
+curl -fsS --compressed "${PUBLIC_ORIGIN}/read-model/${MODEL}.json.gz" > read-model.json
+BUNDLE=$(jq -r --arg run "$RUN_ID" '.recent_projections[] | select(.kind == "evaluation_summary" and .run_id == $run) | .assignment_bundle_sha256' read-model.json)
+curl -fsS "${PUBLIC_ORIGIN}/runs/${BUNDLE}.jsonl.gz" > run.jsonl.gz
+./ztd public verify-proof --pointer pointer.json --read-model read-model.json --bundle run.jsonl.gz --run "$RUN_ID" --key-registry trusted-keys.json
+```
+
+Run bundles and frozen scenario fixtures are the only public artifact bodies. Delivered private traces and audit databases are verified under the [canonical offline verification procedure](../architecture/public_spectator.md#offline-proof-verification), which covers `--artifacts` and `verify-assignment`.
+
+The listener retains `/bootstrap`, `/snapshot`, and `/history` for CLI and cloud consumers. The removed anonymous proof routes return 404; [External acceptance](#external-acceptance) lists them. The authenticated private proof transport remains unchanged. Public clients omit credentials.
+
+## Publish the layout to a bucket
+
+The bucket publisher copies the mirror's layout to an S3-compatible bucket served from a custom domain. The layout and each object's cache header are described in [Bucket Layout](../architecture/public_spectator.md#bucket-layout). The production bucket serves `feed.opendevops.ai`.
+
+Set up the bucket in the Cloudflare account that owns the zone:
+
+1. Create an R2 bucket. Add `feed.opendevops.ai` as its custom domain. The domain must be in the same account as the zone.
+2. Add a Cache Rule for `feed.opendevops.ai` that honors origin `Cache-Control`. The layout's cache headers are listed in [Bucket Layout](../architecture/public_spectator.md#bucket-layout), and the reason the rule is required is in [Read Rate Limits](../architecture/public_spectator.md#read-rate-limits).
+3. Leave the bucket without a CORS policy. Add a Response Header Transform Rule for `feed.opendevops.ai` that sets `Access-Control-Allow-Origin: *`. The mirror listener sends the same header on its anonymous read routes. Do not combine the rule with a bucket CORS policy: R2 echoes the request origin, and the rule then adds a second value, which browsers reject.
+4. Create an API token limited to object read and write on this bucket. The publisher uses it for uploads, deletes, and listings.
+5. Create a second API token limited to cache purge for this zone. The publisher uses it for purges.
+
+The bucket holds one feed source. The first sync deletes the run bundles and scenario fixtures that the mirror's selected active set does not list, as described in [First Sync](../architecture/public_spectator.md#first-sync).
+
+Write the credentials to a JSON file with `access_key_id`, `secret_access_key` (from step 4), and `purge_token` (from step 5). Set the shell variable `ACCOUNT_ID` to the Cloudflare account ID and `ZONE_ID` to the zone ID. Then set the bucket on the publisher configuration:
+
+```bash
+./ztd public config set \
+  --bucket-name opendevops-feed \
+  --bucket-endpoint "https://${ACCOUNT_ID}.r2.cloudflarestorage.com" \
+  --bucket-public-origin https://feed.opendevops.ai \
+  --bucket-zone-id "$ZONE_ID" \
+  --bucket-credentials-file ~/.config/ztd/feed-bucket.json
+```
+
+`--bucket-credentials-file` accepts a path or `-` for stdin. The credentials are sealed beside the ingest token and do not enter the export configuration. Run `./ztd public config set --help` for the full flag set.
+
+`--bucket-remove` turns publication to the bucket off. Sealed credentials remain on disk. A configuration with no bucket fields does not publish to a bucket. A mirror hosted at a separate address is refused with an error when a bucket is configured, because the publisher must read the mirror it is colocated with.
+
+The Gateway reads the configuration at start, so restart it to apply a change:
+
+```bash
+./ztd gw stop
+./ztd gw start --public-spectator
+```
+
+Missing or unreadable sealed credentials are logged as `Public bucket publishing disabled`, with the cause. The mirror keeps serving. Publication resumes when the credentials are set again with `--bucket-credentials-file` and the Gateway restarts.
+
+On the first sync, the publisher uploads the selected run bundles and scenario fixtures, then history pages, the read model, and the pointer. An interrupted upload resumes from the bucket's listing. Check the state with:
+
+```bash
+./ztd public status
+```
+
+The status output has a `Bucket:` line. It shows the pointer revision, the sequence the pointer names, how many sequences the bucket is behind the mirror, and the pending deletes and purges.
 
 ## Create the Cloudflare tunnel
 
-The tunnel origin is the read-only public listener (`8082`), never the private listener (`8081`) and never the Gateway console (`8443`):
+The tunnel origin is the read-only public listener (`8082`), never the private listener (`8081`) and never the Gateway console (`8443`). The tunnel serves the listener routes and the Explorer that the Gateway embeds. The bucket domain serves the layout. Both read the same objects.
 
 ```bash
 ./ztd gw tunnel create --name opendevops-feed --hostname opendevops.ai --service http://127.0.0.1:8082
-./ztd gw tunnel run
+./ztd gw tunnel run --name opendevops-feed
 ```
 
 Start the Gateway with `--public-base-url https://opendevops.ai` so the embedded explorer points at the public origin.
 
 ## Publish to a remote Cloud Gateway
 
-When the Gateway runs on a cloud VM with direct mirror ingress (`--public-spectator-public-listen 0.0.0.0:8082 --public-spectator-allow-container-bind`; see [cloud deployment](../devs/cloud_deployment.md)), publish and restore from a workstation with `-e / --endpoint`. The CLI derives the anonymous mirror read origin `http://<gateway-host>:8082` from the endpoint host. Pass `--mirror-origin` to override it, for example when the mirror is fronted by a domain:
+When the Gateway runs on a cloud VM with direct mirror ingress (`--public-spectator-public-listen 0.0.0.0:8082 --public-spectator-allow-container-bind`; see [cloud deployment](../devs/cloud_deployment.md)), publish and restore from a workstation with `-e / --endpoint`. The CLI derives the anonymous mirror read origin `http://<gateway-host>:8082` from the endpoint host. Pass `--mirror-origin` to override it, for example when the mirror is fronted by a domain. Set the shell variable `GATEWAY_IP` to the Gateway's address first:
 
 ```bash
-./ztd -e <GATEWAY_IP> public restore --queue
-./ztd -e <GATEWAY_IP> eval runs publish --mirror-origin https://opendevops.ai
-./ztd -e <GATEWAY_IP> public status --mirror-origin http://<GATEWAY_IP>:8082
+./ztd -e "$GATEWAY_IP" public restore --queue
+./ztd -e "$GATEWAY_IP" eval runs publish --mirror-origin https://opendevops.ai
+./ztd -e "$GATEWAY_IP" public status --mirror-origin "http://${GATEWAY_IP}:8082"
 ```
 
 `--mirror-origin` is the public read origin, never the private ingest listener (`127.0.0.1:8081`). Writes still reach the Gateway over its authenticated API; the mirror origin is used only for anonymous presence and status reads.
 
 ## External acceptance
 
-After starting the tunnel, verify HTTPS, CORS, bounded reads, rate limiting, replayable SSE, proof catalog, proof head, signed proof segments, and content-addressed proof download from an external client.
+After starting the tunnel, verify HTTPS, CORS, cache headers, rate limiting, `pointer.json` and its read model, live status, a run bundle under `runs/`, and a scenario fixture under `fixtures/` from an external client. The feed host answers CORS with one header on `pointer.json`:
 
-Confirm that mutation requests (`POST`) to `/ingest`, `/keys/register`, `/proof-ingest`, and any other non-read path return 404 on the public origin. The public origin serves only the anonymous read allowlist and explorer assets. A `GET` to a path outside that allowlist returns the explorer `index.html` (HTTP 200), not an API response, so Gateway management, MCP, A2A, approval, and audit paths are not reachable there.
+```bash
+curl -sSI https://feed.opendevops.ai/pointer.json | grep -i '^access-control-allow-origin'
+```
+
+The command prints one line, `access-control-allow-origin: *`. Two lines mean a bucket CORS policy and the Transform Rule both add the header.
+
+The removed proof routes (`/proof-catalog`, `/proof-head`, `/proof-head.json`, `/proof-segments`, and paths under `proofs/`, `proof-catalog/`, `proof-meta/`, and `proof-segments/`) return 404 on the public origin. On the static Explorer site, `public/_redirects` sends each of these paths with a 301 to the same path on `feed.opendevops.ai`, where the bucket answers 404. The site's single-page fallback would otherwise answer them with `index.html`. The site's redirect rules are described in the [Evaluation Explorer Runbook](../../evaluation-explorer/RUNBOOK.md). Check that `pointer.json` carries `Cache-Control: public, max-age=30` and that a read model carries the immutable header.
+
+Confirm that mutation requests (`POST`) to `/ingest`, `/keys/register`, `/proof-ingest`, and any other non-read path return 404 on the public origin. `npm run health` in `evaluation-explorer/` runs these POST checks and the removed-route checks against `ZTD_PUBLIC_ORIGIN` (default `http://127.0.0.1:8082`). The public origin serves only the anonymous read allowlist and explorer assets. Any other `GET` outside that allowlist returns the explorer `index.html` (HTTP 200), not an API response, so Gateway management, MCP, A2A, approval, and audit paths are not reachable there.
 
 Scan public responses and proof bytes for credentials, private endpoints, machine paths, SPIFFE identities, raw prompts, or model outputs before publication.
 
@@ -134,6 +197,8 @@ Scan public responses and proof bytes for credentials, private endpoints, machin
 ./ztd public status
 ./ztd public restore --queue
 ```
+
+`public status` also compares each run's stored verification report with the verifier state the read model publishes, and lists disagreements in `feed_drift`, with a warning per run on stderr. `feed_drift_checked` is `false`, with the cause in `feed_drift_error` and a warning, when the stored reports or the read model behind the comparison cannot be read. Pass `--mirror-origin` when the public mirror is not at the default origin. See [Feed Drift](../devs/troubleshooting.md#feed-drift) to clear a reported run.
 
 `public publish` durably appends records before transmission. `public push` retries outbox delivery and pushes the proof package. When publication is Gateway-owned (no host publisher configuration and a healthy Gateway), `public push` prints that the Gateway-owned public mirror is already synchronized and does nothing. `public restore --queue` republishes completed, passing verified runs from the campaign queue to the mirror.
 

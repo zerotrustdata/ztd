@@ -25,12 +25,12 @@ do_not_use_for:
 
 ## Purpose
 
-This guide provides operational routing for executing sovereignty, compliance, and evaluation evidence verification across the maintained `ztd compliance` and `ztd eval` pipelines in ztd v1.3.0.
+This guide provides operational routing for executing sovereignty, compliance, and evaluation evidence verification across the maintained `ztd compliance` and `ztd eval` pipelines in ztd v1.10.0.
 
 In ztd, sovereignty is established through cryptographic verification at the local host execution boundary:
 - A model can request an action, but cannot directly execute mutations.
 - Every governed mutation is carried in a canonical `GovernanceEnvelope` and passes the governance layers L1–L5. L1, L4, and L5 always run; L2 and L3 gate execution only under postures that enforce them.
-- Execution is recorded as an `EventReceipt` signed by the Warden's signing key, and as a commitment in the local commitment ledger.
+- Execution is recorded as an `EventReceipt` signed by the executing Operator's L5 Actuator signing key, and as a commitment in the local commitment ledger.
 - System integrity is evidenced through Key Security Indicators (KSIs), cross-source evidence graphs, and model evaluation suites.
 
 ## Quick index
@@ -78,9 +78,11 @@ The `ztd eval` command suite executes governance conformance verification, manag
 | `ztd eval models` | Manages model catalogs and the frozen model registry, pulls models onto the inference provider, and freezes provider model digests into the registry |
 | `ztd eval formations` | Manages the checked-in formation catalog (Primary, Assistant, and Lite model slots); system-lane campaigns freeze formations from it |
 | `ztd eval campaigns` | Defines, inspects, and archives evaluation campaigns, including system-lane formation campaigns created with `--formations` |
-| `ztd eval suites` | Creates, inspects, edits, and deletes the scenario suites that campaigns freeze |
+| `ztd eval suites` | Lists, shows, exports, creates, updates, and deletes the scenario suites that campaigns freeze |
 | `ztd eval runs` | Starts, follows, verifies, and publishes campaign runs |
 | `ztd eval rollout` | Automates sequential model qualification across the rollout queue |
+| `ztd eval quickstart` | Runs one governed evaluation cell of a light model or formation |
+| `ztd eval gates` | Runs pre-campaign acceptance gates: the `inference` matrix and the single `probe` |
 | `ztd eval backup` / `restore` | Backs up and restores evaluation evidence snapshots |
 
 ---

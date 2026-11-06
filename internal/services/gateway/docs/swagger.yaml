@@ -2002,7 +2002,7 @@ definitions:
       agent_trace:
         description: |-
           AgentTrace is the exact sealed agent trace body for agent assignments.
-          It is published unredacted as a content-addressed proof artifact.
+          The gateway hashes it without exporting it as a public proof artifact.
         items:
           type: integer
         type: array
@@ -2112,6 +2112,30 @@ definitions:
       artifact_count:
         type: integer
       proof_root_sha256:
+        type: string
+    type: object
+  models.PublicRunBundleRequest:
+    properties:
+      campaign_id:
+        type: string
+      campaign_revision:
+        description: CampaignRevision is the campaign spec digest the bundle is published
+          under.
+        type: string
+      run_id:
+        type: string
+    type: object
+  models.PublicRunBundleResponse:
+    properties:
+      accepted:
+        type: boolean
+      bundle_sha256:
+        type: string
+      byte_size:
+        type: integer
+      record_count:
+        type: integer
+      run_id:
         type: string
     type: object
   models.ReputationSignRequest:
@@ -5593,10 +5617,10 @@ paths:
     post:
       consumes:
       - application/json
-      description: Builds one assignment's audit database from the gateway's stored
-        signed event records and publishes it to the gateway-owned public proof catalog
-        (mTLS owner CLI only). The request names the run and assignment; it carries
-        no database or key.
+      description: Returns one assignment's evidence digests and publishes its scenario
+        fixtures (mTLS owner CLI only). The gateway builds the audit database from
+        its stored signed event records; database and trace bytes are not exported
+        as public artifacts. The request carries no database or key.
       parameters:
       - description: Assignment audit proof request
         in: body
@@ -5630,9 +5654,10 @@ paths:
     post:
       consumes:
       - application/json
-      description: Builds many assignments' audit databases from the gateway's stored
-        signed event records and publishes them in one request (mTLS owner CLI only).
-        The response carries each proof's digests in request order.
+      description: Returns many assignments' evidence digests and publishes their
+        scenario fixtures in one request (mTLS owner CLI only). Database and trace
+        bytes are not exported as public artifacts. The response carries each assignment's
+        digests in request order.
       parameters:
       - description: Assignment audit proof batch
         in: body
@@ -5684,6 +5709,43 @@ paths:
           schema:
             type: string
       summary: Push proof catalog to mirror
+      tags:
+      - public-feed
+  /api/v1/public-feed/proofs/run-bundle:
+    post:
+      consumes:
+      - application/json
+      description: Publishes one settled run's assignment result records, read from
+        the gateway's accepted public mirror rows, as one gzip JSONL proof artifact
+        (mTLS owner CLI only). Unchanged records reuse the active bundle; changed
+        records replace it.
+      parameters:
+      - description: Run bundle request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.PublicRunBundleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PublicRunBundleResponse'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "503":
+          description: Public spectator unavailable
+          schema:
+            type: string
+      summary: Publish assignment run bundle
       tags:
       - public-feed
   /api/v1/public-feed/snapshot:

@@ -287,7 +287,7 @@ func TestBuildRunAggregateViewRecords(t *testing.T) {
 			CampaignId: "eval-smoke-mini",
 		},
 	}
-	records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC())
+	records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC(), "")
 	require.NoError(t, err)
 	require.Len(t, records, 4)
 
@@ -349,7 +349,7 @@ func TestBuildRunAggregateViewRecordsScheduledNoProgress(t *testing.T) {
 			CampaignId: "eval-smoke-mini",
 		},
 	}
-	records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC())
+	records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC(), "")
 	require.NoError(t, err)
 
 	var summary evaluationSummaryRecord
@@ -384,7 +384,7 @@ func TestBuildRunAggregateViewRecordsCancelledRunReportsStopped(t *testing.T) {
 			CampaignId: "eval-smoke-mini",
 		},
 	}
-	records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC())
+	records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC(), "")
 	require.NoError(t, err)
 
 	var summary evaluationSummaryRecord
@@ -418,7 +418,7 @@ func TestBuildRunAggregateViewRecordsPartialProgress(t *testing.T) {
 			CampaignId: "eval-smoke-mini",
 		},
 	}
-	records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC())
+	records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC(), "")
 	require.NoError(t, err)
 
 	var summary evaluationSummaryRecord
@@ -456,7 +456,7 @@ func TestBuildRunCompletionViewRecords(t *testing.T) {
 			CampaignId: "eval-smoke-mini",
 		},
 	}
-	records, err := BuildRunCompletionViewRecords(run, assignments, results, state, nil, time.Unix(1_700_000_100, 0).UTC())
+	records, err := BuildRunCompletionViewRecords(run, assignments, results, state, nil, time.Unix(1_700_000_100, 0).UTC(), "")
 	require.NoError(t, err)
 	require.Len(t, records, 5)
 
@@ -519,7 +519,7 @@ func TestBuildRunVerificationViewRecords(t *testing.T) {
 		VerifiedAssignmentCount:  1,
 		ExpectedAssignmentCount:  1,
 	}
-	records, err := BuildRunVerificationViewRecords(run, state, report, time.Unix(1_700_000_200, 0).UTC())
+	records, err := BuildRunVerificationViewRecords(run, state, report, time.Unix(1_700_000_200, 0).UTC(), "")
 	require.NoError(t, err)
 	require.Len(t, records, 2)
 
@@ -575,7 +575,7 @@ func TestBuildRunVerificationViewRecordsEligibility(t *testing.T) {
 				ExpectedAssignmentCount:  tt.expected,
 				VerifiedAssignmentCount:  tt.verified,
 			}
-			records, err := BuildRunVerificationViewRecords(run, state, report, time.Unix(1_700_000_200, 0).UTC())
+			records, err := BuildRunVerificationViewRecords(run, state, report, time.Unix(1_700_000_200, 0).UTC(), "")
 			require.NoError(t, err)
 			assert.Len(t, records, 1+tt.wantModelRows)
 		})
@@ -614,7 +614,7 @@ func TestBuildRunVerificationViewRecordsEmitsEveryEligibleVariantRole(t *testing
 		ExpectedAssignmentCount:  2,
 		VerifiedAssignmentCount:  2,
 	}
-	records, err := BuildRunVerificationViewRecords(run, state, report, time.Unix(1_700_000_200, 0).UTC())
+	records, err := BuildRunVerificationViewRecords(run, state, report, time.Unix(1_700_000_200, 0).UTC(), "")
 	require.NoError(t, err)
 	require.Len(t, records, 3)
 	var firstModel, secondModel modelSummaryRecord
@@ -631,7 +631,7 @@ func TestBuildRunVerificationViewRecordsBoundFailurePublishesPartialModelRevisio
 	run := &evalv1.EvaluationRun{RunId: "run-failed", CampaignBinding: &evalv1.ModelCampaignBinding{CampaignDigest: "campaign", CatalogDigest: "catalog", ModelRegistryDigest: "registry"}}
 	state := &runAggregateState{Scheduled: 1, Terminal: 1, VariantRoles: map[string]*variantRoleAggregate{"model-a:primary": {VariantID: "model-a", Role: "primary", Scheduled: 1, Terminal: 1, Failed: 1, Outcomes: map[string]uint32{"model_failed": 1}}}}
 	report := &evalv1.EvaluationVerificationReport{SchemaVersion: "2.0.0", RunId: run.GetRunId(), Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, ReportDigestRef: &compliancev1.ComplianceEvidenceReference{Sha256: strings.Repeat("c", 64)}, VerifiedAt: timestamppb.New(time.Unix(1_700_000_200, 0).UTC()), VerifierReleaseVersion: "v2.1.10", VerifierContractVersion: "2.0.0", VerifiedPopulationDigest: strings.Repeat("d", 64), CampaignDigest: "campaign", CatalogDigest: "catalog", ModelRegistryDigest: "registry", ExpectedAssignmentCount: 1, VerifiedAssignmentCount: 1}
-	records, err := BuildRunVerificationViewRecords(run, state, report, time.Unix(1_700_000_200, 0).UTC())
+	records, err := BuildRunVerificationViewRecords(run, state, report, time.Unix(1_700_000_200, 0).UTC(), "")
 	require.NoError(t, err)
 	require.Len(t, records, 2)
 	var model modelSummaryRecord
@@ -976,7 +976,7 @@ func TestBuildRunAggregateViewRecordsModelPerformanceMetrics(t *testing.T) {
 			CampaignId: "eval-smoke-mini",
 		},
 	}
-	records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC())
+	records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC(), "")
 	require.NoError(t, err)
 
 	var model modelSummaryRecord
@@ -1136,7 +1136,7 @@ func TestBuildRunAggregateViewRecordsVerifierStates(t *testing.T) {
 	}
 
 	t.Run("unbound run reports not_run", func(t *testing.T) {
-		records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC())
+		records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC(), "")
 		require.NoError(t, err)
 		summary := decodeSummary(t, records)
 		assert.Equal(t, "not_run", summary.VerifierState)
@@ -1146,7 +1146,7 @@ func TestBuildRunAggregateViewRecordsVerifierStates(t *testing.T) {
 
 	t.Run("bound pass reports verified state and metadata", func(t *testing.T) {
 		report := boundTestReport(run.GetRunId(), evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS)
-		records, err := BuildRunAggregateViewRecords(run, state, report, time.Unix(1_700_000_050, 0).UTC())
+		records, err := BuildRunAggregateViewRecords(run, state, report, time.Unix(1_700_000_050, 0).UTC(), "")
 		require.NoError(t, err)
 		summary := decodeSummary(t, records)
 		assert.Equal(t, "passed", summary.VerifierState)
@@ -1165,7 +1165,7 @@ func TestBuildRunAggregateViewRecordsVerifierStates(t *testing.T) {
 	t.Run("bound failure reports failed state", func(t *testing.T) {
 		report := boundTestReport(run.GetRunId(), evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL)
 		report.FailureReasons = []string{"assignment assign-1: missing window"}
-		records, err := BuildRunAggregateViewRecords(run, state, report, time.Unix(1_700_000_050, 0).UTC())
+		records, err := BuildRunAggregateViewRecords(run, state, report, time.Unix(1_700_000_050, 0).UTC(), "")
 		require.NoError(t, err)
 		summary := decodeSummary(t, records)
 		assert.Equal(t, "failed", summary.VerifierState)
@@ -1178,7 +1178,7 @@ func TestBuildRunAggregateViewRecordsVerifierStates(t *testing.T) {
 	t.Run("malformed bound report fails closed", func(t *testing.T) {
 		report := boundTestReport(run.GetRunId(), evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS)
 		report.VerifiedAt = nil
-		_, err := BuildRunAggregateViewRecords(run, state, report, time.Unix(1_700_000_050, 0).UTC())
+		_, err := BuildRunAggregateViewRecords(run, state, report, time.Unix(1_700_000_050, 0).UTC(), "")
 		require.Error(t, err)
 		assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 	})
@@ -1200,7 +1200,7 @@ func TestBuildRunAggregateViewRecordsHeadlineMetricsShape(t *testing.T) {
 		StartedAt:       timestamppb.New(time.Unix(1_700_000_000, 0).UTC()),
 		CampaignBinding: &evalv1.ModelCampaignBinding{CampaignId: "eval-smoke-mini"},
 	}
-	records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC())
+	records, err := BuildRunAggregateViewRecords(run, state, nil, time.Unix(1_700_000_050, 0).UTC(), "")
 	require.NoError(t, err)
 	var summary evaluationSummaryRecord
 	require.NoError(t, json.Unmarshal(records[0].Body, &summary))

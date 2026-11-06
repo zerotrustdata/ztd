@@ -21,6 +21,7 @@ import (
 var quickstartCatalogDigestPins = map[string]string{
 	"1.0.0": "ccc67ab63e97e53efc50871b9c33e44fb1681a11e6763f78b868e624ed195a48",
 	"1.1.0": "1ad710b02e9294ae561f1741777561d911bb2900b879098c8b546354b51421a5",
+	"1.2.0": "0155de39863d771cfc8527e93c2b858eda03c16023f819c711792a1db2fceaef",
 }
 
 // The quickstart suite must stay one fast, deterministic cell: one Primary-only

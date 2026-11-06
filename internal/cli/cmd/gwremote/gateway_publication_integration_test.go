@@ -19,6 +19,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -194,6 +195,24 @@ func TestGatewayPublisherStatus_ReturnsBootstrapFields(t *testing.T) {
 	assert.Equal(t, bootstrap.Snapshot.BatchCount, status.BatchCount)
 }
 
+// A run record the comparison cannot read must not take the rest of the status
+// down, and must not read as agreement.
+func TestGatewayPublisherStatus_UnreadableRunDegradesDriftCheck(t *testing.T) {
+	_, fileSvc, cfg := newPublicMirrorGateway(t)
+	status, err := GatewayPublisherStatus(t.Context(), fileSvc, cfg)
+	require.NoError(t, err)
+	assert.True(t, status.FeedDriftChecked)
+	assert.Empty(t, status.FeedDriftError)
+
+	require.NoError(t, fileSvc.WriteFile(t.Context(), path.Join(constants.EvaluationRunsPath, "run-unreadable", constants.EvaluationRunStateFilename), []byte("not a run"), constants.PermFilePrivate))
+	status, err = GatewayPublisherStatus(t.Context(), fileSvc, cfg)
+	require.NoError(t, err)
+	assert.True(t, status.Enabled)
+	assert.False(t, status.FeedDriftChecked)
+	assert.NotEmpty(t, status.FeedDriftError)
+	assert.Empty(t, status.FeedDrift)
+}
+
 func TestPublishJSONLViaGateway_ExportsRecords(t *testing.T) {
 	_, fileSvc, cfg := newPublicMirrorGateway(t)
 
@@ -323,7 +342,7 @@ func publishedSingleAssignmentRun(t *testing.T) (*evalRunStack, *evalv1.Evaluati
 	return e, result, proofs
 }
 
-func TestCampaignProofPublisherRealStack_SingleProofRouteReturnsDatabaseDigestAndMirrorServesFlushedProof(t *testing.T) {
+func TestCampaignProofPublisherRealStack_SingleProofRouteKeepsDigestsWithoutPublicBodies(t *testing.T) {
 	ctx := t.Context()
 	e, result, proofs := publishedSingleAssignmentRun(t)
 	assignmentID := result.GetAssignmentId()
@@ -354,7 +373,17 @@ func TestCampaignProofPublisherRealStack_SingleProofRouteReturnsDatabaseDigestAn
 	require.NoError(t, proofs.FlushProofCatalog(ctx))
 	bootstrap, err := FetchPublicMirrorBootstrap(ctx)
 	require.NoError(t, err)
-	assert.Positive(t, bootstrap.ProofCatalogSummary.ArtifactCount, "the flushed proof catalog is served by the mirror")
+	assert.Equal(t, constants.PublicReadModelSchemaVersion, bootstrap.SchemaVersion)
+	traceDigest := recorded.PublishedProofArtifacts[assignmentID].AgentTraceSHA256
+	require.NotEmpty(t, traceDigest)
+	entries, err := e.stack.Gateway.Service.GetPublicMirror().LayoutArtifacts(ctx, bootstrap.Snapshot.SourceID)
+	require.NoError(t, err)
+	require.NotEmpty(t, entries)
+	for _, entry := range entries {
+		assert.NotEqual(t, want, entry.ArtifactID)
+		assert.NotEqual(t, traceDigest, entry.ArtifactID)
+	}
+
 }
 
 func TestCampaignProofPublisherRealStack_PruneRunProofCatalogRemovesRunProofsFromMirror(t *testing.T) {
@@ -363,13 +392,17 @@ func TestCampaignProofPublisherRealStack_PruneRunProofCatalogRemovesRunProofsFro
 
 	before, err := FetchPublicMirrorBootstrap(ctx)
 	require.NoError(t, err)
-	require.Positive(t, before.ProofCatalogSummary.ArtifactCount)
+	beforeArtifacts, err := e.stack.Gateway.Service.GetPublicMirror().LayoutArtifacts(ctx, before.Snapshot.SourceID)
+	require.NoError(t, err)
+	require.NotEmpty(t, beforeArtifacts)
 
 	require.NoError(t, proofs.PruneRunProofCatalog(ctx, e.req.RunID))
 	require.NoError(t, proofs.FlushProofCatalog(ctx))
 	after, err := FetchPublicMirrorBootstrap(ctx)
 	require.NoError(t, err)
-	assert.Less(t, after.ProofCatalogSummary.ArtifactCount, before.ProofCatalogSummary.ArtifactCount, "the pruned run's proofs leave the mirror catalog")
+	afterArtifacts, err := e.stack.Gateway.Service.GetPublicMirror().LayoutArtifacts(ctx, after.Snapshot.SourceID)
+	require.NoError(t, err)
+	assert.Less(t, len(afterArtifacts), len(beforeArtifacts), "the pruned bundle leaves the active set")
 }
 
 func TestCampaignProofPublisherRealStack_GatewayRefusesIncompleteProofWithPublicationContext(t *testing.T) {

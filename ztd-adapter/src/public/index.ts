@@ -4,5 +4,4 @@
 export * from './client.js';
 export * from './fetch.js';
 export * from './runtime_config.js';
-export * from './sse.js';
 export * from './state.js';

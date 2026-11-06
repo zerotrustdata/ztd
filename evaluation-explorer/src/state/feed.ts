@@ -2,51 +2,28 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 // Public mirror feed client. Runtime validation, anonymous fetch construction,
-// endpoint allowlisting, and SSE transport come from the audited ztd adapter.
-// Explorer-specific validators normalize the mirror wire shapes into the
-// complete typed evaluation corpus store without reaching a private service.
+// and endpoint allowlisting come from the audited ztd adapter, which reads the
+// mirror's static layout: pointer.json names the digest-addressed read model,
+// and live/status.json carries the active runs and the newest records.
+// Explorer-specific validators normalize those wire shapes into the typed
+// evaluation corpus store without reaching a private service.
 
 import {
-  PublicSseStream,
   createPublicClient,
   parsePublicRuntimeConfig,
+  type PublicLiveStatus,
+  type PublicPointer,
   type PublicRuntimeConfig,
-  type PublicSseConnectionState,
 } from '../../../ztd-adapter/src/public';
-import type {
-  FeedBootstrap,
-  FeedHistoryPage,
-  FeedSnapshot,
-  ProofCatalogEntry,
-  ProjectionRecord,
-} from '../contract/types';
+import type { FeedBootstrap, ProjectionRecord } from '../contract/types';
 import {
   isFeedBootstrap,
-  isFeedHistoryPage,
-  isProofCatalog,
   isProjectionRecord,
-  isFeedSnapshot,
   createLazyProjectionRecord,
 } from '../contract/validators';
-import { evalStore } from './store';
-
-export type RuntimeConfig = PublicRuntimeConfig;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/** Normalize a /history item ({...payload, sequence, record_type}). */
-export function normalizeHistoryItem(item: unknown): ProjectionRecord {
-  if (!isObject(item)) throw new Error('invalid public history record');
-  const { sequence, record_type, ...payload } = item;
-  const record = createLazyProjectionRecord(
-    Number(sequence),
-    record_type as ProjectionRecord['record_type'],
-    payload,
-  );
-  isProjectionRecord(record);
-  return record;
 }
 
 /** Normalize a /bootstrap recent_projections item ({...payload, sequence}). */
@@ -61,7 +38,7 @@ export function normalizeRecentProjection(item: unknown): ProjectionRecord {
   return record;
 }
 
-/** Normalize an SSE record event (id: sequence, event: type, data: bytes). */
+/** Normalize one live record ({sequence, record_type, record_bytes}) into a projection record. */
 export function normalizeStreamRecord(recordType: string, lastEventId: string, data: string): ProjectionRecord {
   const record: ProjectionRecord = {
     sequence: Number(lastEventId),
@@ -72,7 +49,7 @@ export function normalizeStreamRecord(recordType: string, lastEventId: string, d
   return record;
 }
 
-export async function loadRuntimeConfig(fetchImpl: typeof fetch = fetch.bind(globalThis)): Promise<RuntimeConfig> {
+export async function loadRuntimeConfig(fetchImpl: typeof fetch = fetch.bind(globalThis)): Promise<PublicRuntimeConfig> {
   const response = await fetchImpl('/runtime.json', {
     method: 'GET',
     credentials: 'omit',
@@ -86,105 +63,29 @@ function client(mirrorOrigin: string, fetchImpl: typeof fetch) {
   return createPublicClient(parsePublicRuntimeConfig({ schema_version: '1.0.0', mirror_origin: mirrorOrigin }), fetchImpl);
 }
 
-export async function fetchBootstrap(
+/** The mutable pointer: the digest of the current read model and the source's withdrawal state. */
+export async function fetchPointer(
   mirrorOrigin: string,
   fetchImpl: typeof fetch = fetch.bind(globalThis),
+): Promise<PublicPointer> {
+  return client(mirrorOrigin, fetchImpl).pointer();
+}
+
+/** The read model the pointer names. The adapter checks its bytes against read_model_sha256. */
+export async function fetchReadModel(
+  mirrorOrigin: string,
+  pointer: PublicPointer,
+  fetchImpl: typeof fetch = fetch.bind(globalThis),
 ): Promise<FeedBootstrap> {
-  const bootstrap = await client(mirrorOrigin, fetchImpl).bootstrap();
+  const bootstrap: unknown = await client(mirrorOrigin, fetchImpl).readModel(pointer);
   isFeedBootstrap(bootstrap);
   return bootstrap;
 }
 
-export async function fetchSnapshot(
+/** The active runs, the snapshot, and the newest records, oldest first. */
+export async function fetchLiveStatus(
   mirrorOrigin: string,
-  sourceId: string = '',
   fetchImpl: typeof fetch = fetch.bind(globalThis),
-): Promise<FeedSnapshot> {
-  const snapshot = await client(mirrorOrigin, fetchImpl).snapshot(sourceId || undefined);
-  isFeedSnapshot(snapshot);
-  return snapshot;
-}
-
-export async function fetchSnapshotAt(
-  mirrorOrigin: string,
-  sourceId: string,
-  sequence: number,
-  fetchImpl: typeof fetch = fetch.bind(globalThis),
-): Promise<FeedSnapshot> {
-  const snapshot = await client(mirrorOrigin, fetchImpl).snapshotAt(sourceId, sequence);
-  isFeedSnapshot(snapshot);
-  return snapshot;
-}
-
-export async function fetchHistoryPage(
-  mirrorOrigin: string,
-  sourceId: string,
-  cursor: number,
-  limit: number,
-  fetchImpl: typeof fetch = fetch.bind(globalThis),
-): Promise<FeedHistoryPage> {
-  const history = await client(mirrorOrigin, fetchImpl).history(sourceId, cursor, limit);
-  isFeedHistoryPage(history);
-  return history;
-}
-
-/** Resolve one evidence binding's active catalog entry, or null when the
- *  mirror holds none (unknown or withdrawn). */
-export async function fetchProofCatalogEntry(
-  mirrorOrigin: string,
-  sourceId: string | undefined,
-  sha256: string,
-  fetchImpl: typeof fetch = fetch.bind(globalThis),
-): Promise<ProofCatalogEntry | null> {
-  const catalog = await client(mirrorOrigin, fetchImpl).proofCatalogEntry(sourceId, sha256);
-  isProofCatalog(catalog);
-  return catalog.entries.find((entry) => entry.sha256 === sha256) ?? null;
-}
-
-export interface StreamHandlers {
-  onSnapshot: (snapshot: FeedSnapshot) => void;
-  onProjection: (record: ProjectionRecord) => void;
-  onTruncated: () => void;
-  onError: () => void;
-  onStateChange?: (state: PublicSseConnectionState) => void;
-}
-
-export interface StreamHandle {
-  close: () => void;
-}
-
-export function openStream(
-  mirrorOrigin: string,
-  sourceId: string,
-  sinceId: number,
-  handlers: StreamHandlers,
-): StreamHandle {
-  const stream = new PublicSseStream({
-    config: parsePublicRuntimeConfig({ schema_version: '1.0.0', mirror_origin: mirrorOrigin }),
-    source_id: sourceId,
-    since_sequence: sinceId,
-    callbacks: {
-      onSnapshot: (snapshot) => {
-        try {
-          isFeedSnapshot(snapshot);
-          handlers.onSnapshot(snapshot);
-        } catch {
-          handlers.onError();
-        }
-      },
-      onRecord: (record) => {
-        if (record.sequence <= evalStore.getState().observedSequence) return;
-        try {
-          handlers.onProjection(normalizeStreamRecord(record.record_type, String(record.sequence), record.record_bytes));
-        } catch {
-          handlers.onError();
-        }
-      },
-      onTruncated: handlers.onTruncated,
-      onError: handlers.onError,
-      onStateChange: handlers.onStateChange,
-    },
-  });
-  stream.connect();
-  return { close: () => stream.disconnect() };
+): Promise<PublicLiveStatus> {
+  return client(mirrorOrigin, fetchImpl).liveStatus();
 }

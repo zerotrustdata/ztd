@@ -39,6 +39,6 @@ export const EXECUTION_STAGES = [
     label: 'Project',
     system: 'Public mirror',
     detail: 'Emits an allowlisted, public-safe projection. Private prompts, outputs, identities, paths, and receipt bodies stay owner-local.',
-    output: 'Bootstrap + history + SSE',
+    output: 'Pointer + read model + live status',
   },
 ] as const;

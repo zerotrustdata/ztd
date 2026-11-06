@@ -7,7 +7,6 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { TasksView } from '../src/views/TasksView';
 import { SCENARIO_CATALOG_ID, SCENARIO_TASKS, scenarioTaskSourceUrl } from '../src/content/scenario-task';
 import { evalStore } from '../src/state/store';
-import { fixtureEnrichedAssignmentResult } from '../src/fixtures/fixtures';
 
 function renderTasks(initialPath = '/tasks') {
   return render(
@@ -34,16 +33,19 @@ describe('TasksView', () => {
     expect(link).toHaveAttribute('aria-current', 'location');
   });
 
-  it('links recent task assignments across loaded datasets with their verdict tones', () => {
-    evalStore.loadFixtures([
-      { ...fixtureEnrichedAssignmentResult, dataset_id: 'one', task_id: 'tool-select-grep', assignment_id: 'recent-one', terminal_status: 'model_failed', verification_disposition: 'not_run' },
-      { ...fixtureEnrichedAssignmentResult, dataset_id: 'two', task_id: 'tool-select-grep@1.0.0', assignment_id: 'recent-two', terminal_status: 'grader_failed', verification_disposition: 'not_run' },
-    ], []);
+  it('links recent task results across runs with their verdict tones', () => {
+    evalStore.acceptTaskIndex([{
+      task_id: 'tool-select-grep',
+      results: [
+        { run_id: 'one', assignment_id: 'recent-one', lifecycle_status: 'EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED', summary_status: 'EVALUATION_VERDICT_STATUS_FAIL', verification_status: 'unverified', completed_at: '2026-10-01T12:00:00Z' },
+        { run_id: 'two', assignment_id: 'recent-two', lifecycle_status: 'EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED', summary_status: 'EVALUATION_VERDICT_STATUS_UNAVAILABLE', verification_status: 'unverified', completed_at: '2026-10-01T11:00:00Z' },
+      ],
+    }]);
     renderTasks('/tasks/tool-select-grep');
     expect(screen.getByRole('heading', { level: 1, name: 'tool-select-grep' })).toHaveClass('evidence-title');
     const recent = within(screen.getByRole('region', { name: 'Recent assignments of this task' }));
-    expect(recent.getByRole('link', { name: 'recent-one' })).toHaveAttribute('href', expect.stringContaining('/evaluations/one/'));
-    expect(recent.getByRole('link', { name: 'recent-two' })).toHaveAttribute('href', expect.stringContaining('/evaluations/two/'));
+    expect(recent.getByRole('link', { name: 'recent-one' })).toHaveAttribute('href', '/evaluations/ds-live-one/one/assignments/recent-one');
+    expect(recent.getByRole('link', { name: 'recent-two' })).toHaveAttribute('href', '/evaluations/ds-live-two/two/assignments/recent-two');
     expect(recent.getByText('model failed')).toHaveAttribute('data-tone', 'critical');
     expect(recent.getByText('grader failed')).toHaveAttribute('data-tone', 'warn');
   });
@@ -55,13 +57,13 @@ describe('TasksView', () => {
   it('lists every catalog task grouped by category on the overview', () => {
     renderTasks();
 
-    expect(SCENARIO_TASKS).toHaveLength(41);
+    expect(SCENARIO_TASKS).toHaveLength(44);
     expect(screen.getByRole('heading', { name: 'Task catalog' })).toBeInTheDocument();
     expect(screen.getByText(SCENARIO_CATALOG_ID)).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'View full definition' })).toHaveLength(SCENARIO_TASKS.length);
     expect(screen.getByRole('heading', { name: /Instruction adherence/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Security & policy/i })).toBeInTheDocument();
-    expect(screen.getByText(/Cards show a prompt excerpt/i)).toBeInTheDocument();
+    expect(screen.getByText(/Rows show a prompt excerpt/i)).toBeInTheDocument();
   });
 
   it('shows a detailed definition for a selected task with ztd source links', () => {

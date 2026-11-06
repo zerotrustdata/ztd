@@ -67,8 +67,10 @@ With --coverage, check only that the run's assignment matrix is fully populated
 and accounted for, without full verification.
 
 Verification publishes nothing unless --publish is set. With --publish, the
-run's completion and passing verification projections are published to the
-public mirror; archived runs are never published.`,
+run's completion and verification projections are published to the public
+mirror whatever the outcome, so a failure replaces an earlier published pass;
+archived runs are never published. --publish refuses a --require-provenance or
+--require-observation flag stricter than the run's frozen policy.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]
@@ -111,7 +113,7 @@ public mirror; archived runs are never published.`,
 	cmd.Flags().BoolVar(&coverage, "coverage", false, "Verify only that the assignment matrix is fully populated")
 	cmd.Flags().BoolVar(&requireProvenance, "require-provenance", false, "Fail when model provenance attestation windows are missing or digest_match is false")
 	cmd.Flags().BoolVar(&requireObservation, "require-observation", false, "Fail when provider-boundary observation windows are missing or incomplete")
-	cmd.Flags().BoolVar(&publish, "publish", false, "Publish the run's completion and passing verification projections to the public mirror")
+	cmd.Flags().BoolVar(&publish, "publish", false, "Publish the run's completion and verification projections to the public mirror, whatever the outcome")
 	return cmd
 }
 
@@ -171,8 +173,8 @@ func verifyRunCoverage(cmd *cobra.Command, deps nativeEvalDeps, store *evaluatio
 }
 
 // verifyRun verifies one run's persisted results, saves the verification
-// report, and, when publish is set, publishes the completion and passing
-// verification projections. A publication failure is reported as a warning: it
+// report, and, when publish is set, publishes the completion and verification
+// projections for any outcome. A publication failure is reported as a warning: it
 // never invalidates a verification that already succeeded.
 func verifyRun(
 	cmd *cobra.Command,
@@ -191,6 +193,9 @@ func verifyRun(
 	run, err := store.LoadRun(cmd.Context(), runID)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs verify: %w", err)
+	}
+	if publish && witnessFlagsExceedFrozenPolicy(run, requireObservation, requireProvenance) {
+		return nil, fmt.Errorf("evaluation: runs verify: --publish cannot apply a witness policy stricter than the run's frozen policy: %w", constants.ErrEvaluationFlagsInvalid)
 	}
 	requireObservation, requireProvenance, err = resolveRunWitnessPolicies(run, requireObservation, requireProvenance)
 	if err != nil {
@@ -261,15 +266,21 @@ func verifyRun(
 	} else if completionCount > 0 && !jsonOutput {
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Published %d completion projection record(s) to public mirror\n", completionCount)
 	}
-	if report.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS {
-		published, pubErr := publication.PublishRunVerification(cmd.Context(), runID, report)
-		if pubErr != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: run verify publication: %v\n", pubErr)
-		} else if published > 0 && !jsonOutput {
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Published %d verification projection record(s) to public mirror\n", published)
-		}
+	published, pubErr := publication.PublishRunVerification(cmd.Context(), runID, report)
+	if pubErr != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: run verify publication: %v\n", pubErr)
+	} else if published > 0 && !jsonOutput {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Published %d verification projection record(s) to public mirror\n", published)
 	}
 	return report, nil
+}
+
+// witnessFlagsExceedFrozenPolicy reports a flag stricter than the run's frozen
+// witness policy. Report applicability does not check policy, so publishing such
+// a report could post a public failure for a run that passes at its own policy.
+func witnessFlagsExceedFrozenPolicy(run *evalv1.EvaluationRun, requireObservation, requireProvenance bool) bool {
+	strict := evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_STRICT
+	return (requireObservation && run.GetProviderObservationPolicy() != strict) || (requireProvenance && run.GetModelProvenancePolicy() != strict)
 }
 
 func resolveRunWitnessPolicies(run *evalv1.EvaluationRun, requireObservation, requireProvenance bool) (bool, bool, error) {

@@ -16,14 +16,17 @@
       "PublicFeedSnapshot": {
         "$ref": "#/x-models/public_feed_snapshot"
       },
+      "PublicLiveStatus": {
+        "$ref": "#/x-models/public_live_status"
+      },
+      "PublicPointer": {
+        "$ref": "#/x-models/public_pointer"
+      },
       "PublicProofCatalog": {
         "$ref": "#/x-models/public_proof_catalog"
       },
       "PublicProofCatalogEntry": {
         "$ref": "#/x-models/public_proof_catalog_entry"
-      },
-      "PublicProofCatalogSummary": {
-        "$ref": "#/x-models/public_proof_catalog_summary"
       },
       "PublicProofHead": {
         "$ref": "#/x-models/public_proof_head"
@@ -36,25 +39,221 @@
       },
       "PublicProofSegmentsResponse": {
         "$ref": "#/x-models/public_proof_segments_response"
+      },
+      "PublicTaskIndexEntry": {
+        "$ref": "#/x-models/public_task_index_entry"
+      },
+      "PublicTaskResult": {
+        "$ref": "#/x-models/public_task_result"
       }
     }
   },
   "info": {
-    "description": "Anonymous bounded read-only public mirror API.",
+    "description": "Anonymous, read-only public layout. Every path is a static object served by the bucket or its local mirror. There are no query strings, no event streams, and no mutable paths other than pointer.json and live/status.json.",
     "title": "ztd Public Spectator Read API",
     "version": "1.0.0"
   },
   "openapi": "3.0.3",
   "paths": {
-    "/bootstrap": {
+    "/fixtures/{sha256}": {
       "get": {
-        "operationId": "public_bootstrap",
+        "operationId": "public_scenario_fixture",
         "parameters": [
           {
-            "in": "query",
-            "name": "source",
-            "required": false,
+            "in": "path",
+            "name": "sha256",
+            "required": true,
             "schema": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Campaign-frozen scenario input or gold criteria, selected from the internal proof log. Check bytes against the evidence binding digest and scenario identity.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "enum": [
+                    "public, max-age=31536000, immutable"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown, withdrawn, or not a scenario fixture"
+          }
+        }
+      }
+    },
+    "/history/{first_sequence}.json.gz": {
+      "get": {
+        "operationId": "public_history",
+        "parameters": [
+          {
+            "description": "Chunk or page start; 1, 1001, 2001, and so on",
+            "in": "path",
+            "name": "first_sequence",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9][0-9]*$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicFeedCursorPage"
+                }
+              }
+            },
+            "description": "Gzip-encoded bounded history page",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "enum": [
+                    "public, max-age=3600"
+                  ],
+                  "type": "string"
+                }
+              },
+              "Content-Encoding": {
+                "schema": {
+                  "enum": [
+                    "gzip"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No records in the range"
+          }
+        }
+      }
+    },
+    "/live/runs/{run_id}.jsonl.gz": {
+      "get": {
+        "operationId": "public_live_run",
+        "parameters": [
+          {
+            "description": "A run listed in live/status.json active_runs",
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/gzip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Run bundle for an executing run. The object is gzip data served without Content-Encoding.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "enum": [
+                    "public, max-age=60"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Run is not executing or has no result records yet"
+          }
+        }
+      }
+    },
+    "/live/status.json": {
+      "get": {
+        "operationId": "public_live_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicLiveStatus"
+                }
+              }
+            },
+            "description": "Snapshot, executing runs, and the newest feed records",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "enum": [
+                    "public, max-age=10"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pointer.json": {
+      "get": {
+        "operationId": "public_pointer",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicPointer"
+                }
+              }
+            },
+            "description": "Signed pointer naming the current digest-addressed objects",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "enum": [
+                    "public, max-age=30"
+                  ],
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/read-model/{read_model_sha256}.json.gz": {
+      "get": {
+        "operationId": "public_read_model",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "read_model_sha256",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{64}$",
               "type": "string"
             }
           }
@@ -68,160 +267,39 @@
                 }
               }
             },
-            "description": "Coherent current entity snapshot with bounded recent activity"
-          }
-        }
-      }
-    },
-    "/history": {
-      "get": {
-        "operationId": "public_history",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "source",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "maximum": 100,
-              "minimum": 1,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
+            "description": "Gzip-encoded read model in the /bootstrap shape. The SHA-256 of the decoded bytes equals the pointer read_model_sha256.",
+            "headers": {
+              "Cache-Control": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicFeedCursorPage"
+                  "enum": [
+                    "public, max-age=31536000, immutable"
+                  ],
+                  "type": "string"
+                }
+              },
+              "Content-Encoding": {
+                "schema": {
+                  "enum": [
+                    "gzip"
+                  ],
+                  "type": "string"
                 }
               }
-            },
-            "description": "Bounded history page"
-          }
-        }
-      }
-    },
-    "/proof-catalog": {
-      "get": {
-        "operationId": "public_proof_catalog",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "source",
-            "required": false,
-            "schema": {
-              "type": "string"
             }
-          },
-          {
-            "description": "Narrow the catalog to this active artifact; an unknown or withdrawn digest returns no entries",
-            "in": "query",
-            "name": "artifact",
-            "required": false,
-            "schema": {
-              "pattern": "^[0-9a-f]{64}$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProofCatalog"
-                }
-              }
-            },
-            "description": "Public-safe proof catalog"
-          },
-          "400": {
-            "description": "Malformed artifact digest"
-          }
-        }
-      }
-    },
-    "/proof-head": {
-      "get": {
-        "operationId": "public_proof_head",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "source",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProofHead"
-                }
-              }
-            },
-            "description": "Constant-size proof head without artifact entries; verify the signed log for authenticity"
           },
           "404": {
-            "description": "No proof publication for the source"
+            "description": "Unknown digest"
           }
         }
       }
     },
-    "/proof-segments": {
+    "/runs/{sha256}.jsonl.gz": {
       "get": {
-        "operationId": "public_proof_segments",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "source",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicProofSegmentsResponse"
-                }
-              }
-            },
-            "description": "Source-signed proof log including withdrawals"
-          }
-        }
-      }
-    },
-    "/proofs/{artifact_id}": {
-      "get": {
-        "operationId": "public_proof_download",
+        "operationId": "public_run_bundle",
         "parameters": [
           {
             "in": "path",
-            "name": "artifact_id",
+            "name": "sha256",
             "required": true,
             "schema": {
               "pattern": "^[0-9a-f]{64}$",
@@ -232,77 +310,27 @@
         "responses": {
           "200": {
             "content": {
-              "application/octet-stream": {
+              "application/gzip": {
                 "schema": {
                   "format": "binary",
                   "type": "string"
                 }
               }
             },
-            "description": "Content-addressed public-safe proof bytes"
-          }
-        }
-      }
-    },
-    "/snapshot": {
-      "get": {
-        "operationId": "public_snapshot",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "source",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
+            "description": "Selected settled run bundle. The SHA-256 covers stored gzip bytes; no Content-Encoding is set.",
+            "headers": {
+              "Cache-Control": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicFeedSnapshot"
-                }
-              }
-            },
-            "description": "Current feed position"
-          }
-        }
-      }
-    },
-    "/stream": {
-      "get": {
-        "operationId": "public_stream",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "source",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "since_id",
-            "required": false,
-            "schema": {
-              "minimum": 0,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "text/event-stream": {
-                "schema": {
+                  "enum": [
+                    "public, max-age=31536000, immutable"
+                  ],
                   "type": "string"
                 }
               }
-            },
-            "description": "Replayable public event stream"
+            }
+          },
+          "404": {
+            "description": "Unknown, withdrawn, or not a run bundle"
           }
         }
       }
@@ -381,12 +409,6 @@
         "required": true,
         "type": "string"
       },
-      "proof_catalog_summary": {
-        "description": "Summary of the available public proof packages",
-        "model": "public_proof_catalog_summary",
-        "required": true,
-        "type": "object"
-      },
       "protocol_version": {
         "description": "Public feed protocol version",
         "required": true,
@@ -396,6 +418,12 @@
         "description": "Bounded list of recent public projections (JSON objects). Each carries only allowlisted fields.",
         "required": true,
         "type": "array"
+      },
+      "schema_version": {
+        "const": "2.0.0",
+        "description": "Read model schema version, independent of the signed feed batch protocol",
+        "required": true,
+        "type": "string"
       },
       "snapshot": {
         "description": "Current feed snapshot with high-water sequence and feed-chain hash",
@@ -415,6 +443,12 @@
         ],
         "required": true,
         "type": "string"
+      },
+      "task_index": {
+        "description": "Up to ten newest result identities per task",
+        "items": "public_task_index_entry",
+        "required": true,
+        "type": "array"
       }
     },
     "public_feed_cursor_page": {
@@ -522,6 +556,151 @@
         "type": "string"
       }
     },
+    "public_live_status": {
+      "description": "Live status: the snapshot, executing runs, and the newest feed records.",
+      "properties": {
+        "active_runs": {
+          "items": {
+            "properties": {
+              "dataset_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "lifecycle_state": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "run_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "dataset_id",
+              "run_id",
+              "lifecycle_state"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "type": "string"
+        },
+        "snapshot": {
+          "$ref": "#/x-models/public_feed_snapshot"
+        },
+        "tail": {
+          "description": "Newest feed records, oldest first. Assignment results arrive through live/runs.",
+          "items": {
+            "properties": {
+              "record_bytes": {
+                "description": "Canonical JSON of the record payload",
+                "type": "string"
+              },
+              "record_type": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "sequence": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "sequence",
+              "record_type",
+              "record_bytes"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "snapshot",
+        "active_runs",
+        "tail"
+      ],
+      "type": "object"
+    },
+    "public_pointer": {
+      "additionalProperties": false,
+      "description": "Mutable mirror pointer. It names the current digest-addressed read model. It is written last, so a partial publish never goes live. While a run is active the publisher holds it and moves it only when the active run set changes, a withdrawal lands, or records of a dataset that is not executing arrive; live/status.json carries the run in between. generated_at is when the pointer was composed, not a freshness signal.",
+      "properties": {
+        "active": {
+          "description": "True while a run is executing; poll live/status.json",
+          "type": "boolean"
+        },
+        "feed_chain_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "high_water_sequence": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "history_first_sequence": {
+          "description": "First retained sequence of the signed batch chain",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "read_model_sha256": {
+          "description": "SHA-256 of the decoded read-model bytes",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "revision": {
+          "description": "Increases with every pointer the source writes",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "2.0.0",
+          "type": "string"
+        },
+        "signature": {
+          "description": "Ed25519 over the domain-separated digest of every other field",
+          "pattern": "^[0-9a-f]{128}$",
+          "type": "string"
+        },
+        "signing_key_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "signing_public_key": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "withdrawal_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "source_id",
+        "revision",
+        "read_model_sha256",
+        "high_water_sequence",
+        "history_first_sequence",
+        "feed_chain_hash",
+        "active",
+        "generated_at"
+      ],
+      "type": "object"
+    },
     "public_proof_catalog": {
       "entries": {
         "description": "Catalog entries for every available proof artifact",
@@ -600,24 +779,6 @@
         "description": "Offline verification command for this artifact",
         "required": true,
         "type": "string"
-      }
-    },
-    "public_proof_catalog_summary": {
-      "artifact_count": {
-        "description": "Total number of proof artifacts in the catalog",
-        "required": true,
-        "type": "integer"
-      },
-      "last_generated_at": {
-        "description": "UTC timestamp of the most recently generated proof artifact. Omitted when the catalog is empty.",
-        "format": "iso8601",
-        "required": false,
-        "type": "string"
-      },
-      "total_byte_size": {
-        "description": "Total byte size of all proof artifacts",
-        "required": true,
-        "type": "integer"
       }
     },
     "public_proof_head": {
@@ -856,6 +1017,43 @@
       },
       "source_id": {
         "required": true,
+        "type": "string"
+      }
+    },
+    "public_task_index_entry": {
+      "results": {
+        "items": "public_task_result",
+        "required": true,
+        "type": "array"
+      },
+      "task_id": {
+        "required": true,
+        "type": "string"
+      }
+    },
+    "public_task_result": {
+      "assignment_id": {
+        "required": true,
+        "type": "string"
+      },
+      "completed_at": {
+        "required": true,
+        "type": "string"
+      },
+      "lifecycle_status": {
+        "required": true,
+        "type": "string"
+      },
+      "run_id": {
+        "required": true,
+        "type": "string"
+      },
+      "summary_status": {
+        "required": true,
+        "type": "string"
+      },
+      "verification_status": {
+        "required": false,
         "type": "string"
       }
     }

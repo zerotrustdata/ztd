@@ -1,10 +1,6 @@
 {
   "bootstrap": {
     "generated_at": "2026-09-13T00:00:00Z",
-    "proof_catalog_summary": {
-      "artifact_count": 0,
-      "total_byte_size": 0
-    },
     "protocol_version": "1.0.0",
     "recent_projections": [
       {
@@ -15,6 +11,7 @@
         "source_freshness": "source_offline"
       }
     ],
+    "schema_version": "2.0.0",
     "snapshot": {
       "batch_count": 1,
       "feed_chain_hash": "696e07e5b2070781ed9bdf278875cb0951f804ce15b268edff80261641fd9d93",
@@ -25,7 +22,8 @@
       "source_id": "fixture-source",
       "withdrawal_digest": "0000000000000000000000000000000000000000000000000000000000000000"
     },
-    "source_freshness": "source_offline"
+    "source_freshness": "source_offline",
+    "task_index": []
   },
   "fixture_public_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
   "signed_batch": {

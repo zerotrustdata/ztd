@@ -424,9 +424,10 @@ type remoteGatewayCampaignProofPublisher struct {
 	client authcmd.APIClient
 }
 
-// IngestAssignmentAuditSlices publishes the assignment audit proofs and returns
-// the Gateway's answer for each one, in request order. Each answer's database
-// digest is the digest of the database the Gateway built or reused.
+// IngestAssignmentAuditSlices resolves assignment evidence digests and publishes
+// scenario fixtures, returning the Gateway's answer for each one in request order.
+// Each answer's database digest is the digest the Gateway built or reused;
+// database and trace bodies are not public artifacts.
 func (p *remoteGatewayCampaignProofPublisher) IngestAssignmentAuditSlices(ctx context.Context, inputs []evaluation.AssignmentAuditProofInput, deferMirrorPush bool) ([]models.PublicAssignmentAuditProofPublishResponse, error) {
 	if p == nil || p.client == nil {
 		return nil, fmt.Errorf("campaign publication: publish assignment audit proof: %w", constants.ErrMissingRequiredField)
@@ -526,6 +527,28 @@ func (p *remoteGatewayCampaignProofPublisher) PruneRunProofCatalog(ctx context.C
 	return nil
 }
 
+func (p *remoteGatewayCampaignProofPublisher) PublishRunBundle(ctx context.Context, input evaluation.RunBundleInput) (string, error) {
+	if p == nil || p.client == nil {
+		return "", fmt.Errorf("campaign publication: publish run bundle: %w", constants.ErrMissingRequiredField)
+	}
+	responseBody, err := p.client.Post(constants.APIPaths.PublicFeedProofsRunBundle, models.PublicRunBundleRequest{
+		CampaignID:       input.CampaignID,
+		CampaignRevision: input.CampaignRevision,
+		RunID:            input.RunID,
+	})
+	if err != nil {
+		return "", fmt.Errorf("campaign publication: publish run bundle: %w", err)
+	}
+	var response models.PublicRunBundleResponse
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return "", fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
+	}
+	if !response.Accepted || response.RunID != input.RunID || response.BundleSHA256 == "" {
+		return "", constants.ErrPublicFeedProofIngestRejected
+	}
+	return response.BundleSHA256, nil
+}
+
 func (p *remoteGatewayCampaignProofPublisher) FlushProofCatalog(ctx context.Context) error {
 	if p == nil || p.client == nil {
 		return fmt.Errorf("campaign publication: flush proof catalog: %w", constants.ErrMissingRequiredField)
@@ -595,14 +618,63 @@ func GatewayPublisherStatusWithOrigin(ctx context.Context, fileSvc fs.RuntimeFil
 	if err != nil {
 		return models.PublicPublisherStatus{}, err
 	}
-	return models.PublicPublisherStatus{
+	status := models.PublicPublisherStatus{
 		Enabled:           true,
 		MirrorOrigin:      resolvedOrigin,
 		SourceID:          bootstrap.Snapshot.SourceID,
 		HighWaterSequence: highWater,
 		FeedChainHash:     bootstrap.Snapshot.FeedChainHash,
 		BatchCount:        bootstrap.Snapshot.BatchCount,
-	}, nil
+	}
+	drift, err := evaluation.RunFeedVerificationDrift(ctx, evaluation.NewStore(fileSvc), publishedVerifierStates(bootstrap.RecentProjections))
+	status.ApplyFeedDrift(drift, err)
+	return status, nil
+}
+
+// PublicMirrorFeedDrift fetches the read model from the public mirror and compares
+// it with the stored verification reports. The long timeout allows a full read model.
+func PublicMirrorFeedDrift(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config, mirrorOrigin string) ([]models.PublicFeedVerificationDrift, error) {
+	resolvedOrigin, err := ResolvePublicMirrorOrigin(cfg, mirrorOrigin)
+	if err != nil {
+		return nil, err
+	}
+	bootstrap, err := fetchPublicMirrorBootstrapWithClientAndOrigin(ctx, newMirrorHTTPClient(time.Minute), resolvedOrigin)
+	if err != nil {
+		return nil, err
+	}
+	return evaluation.RunFeedVerificationDrift(ctx, evaluation.NewStore(fileSvc), publishedVerifierStates(bootstrap.RecentProjections))
+}
+
+// publishedVerifierStates returns each run's verifier state from the read
+// model's evaluation summaries, keeping the highest sequence per run.
+func publishedVerifierStates(projections []models.PublicFeedObject) map[string]string {
+	type revision struct {
+		sequence int64
+		state    string
+	}
+	latest := make(map[string]revision)
+	for _, object := range projections {
+		if kind, _ := object.StringField("kind"); kind != "evaluation_summary" {
+			continue
+		}
+		runID, _ := object.StringField("run_id")
+		state, ok := object.StringField("verifier_state")
+		if runID == "" || !ok {
+			continue
+		}
+		var sequence int64
+		if raw, found := object["sequence"]; found && json.Unmarshal(raw, &sequence) != nil {
+			continue
+		}
+		if current, found := latest[runID]; !found || sequence >= current.sequence {
+			latest[runID] = revision{sequence: sequence, state: state}
+		}
+	}
+	states := make(map[string]string, len(latest))
+	for runID, entry := range latest {
+		states[runID] = entry.state
+	}
+	return states
 }
 
 func PublishJSONLViaGateway(ctx context.Context, fileSvc fs.RuntimeFileService, cfg *config.Config, recordsPath string) (int, error) {

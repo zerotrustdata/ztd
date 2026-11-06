@@ -33,6 +33,7 @@ import {
   type QualityState,
   type ScenarioCategory,
   type SnapshotRecord,
+  type FeedTaskResult,
   type TerminalStatus,
   type ToolScoreDimension,
   type VerifierState,
@@ -43,6 +44,10 @@ import {
   type WireActivityFamily,
   type WireUnavailableReason,
 } from '../contract/activity-family';
+import {
+  EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_VALUES,
+  EVALUATION_VERDICT_STATUS_VALUES,
+} from '../contract/proto-enums.generated';
 import type {
   EvaluationAssignmentLifecycleStatus,
   EvaluationGradingMethod,
@@ -63,6 +68,7 @@ import type {
   PublicToolScoreDimension,
 } from '../contract/proto-enums.generated';
 import {
+  assertEnum,
   decodeCampaignProjectionEnvelope,
   type CampaignProjectionEnvelope,
   mapCampaignRelease,
@@ -284,6 +290,28 @@ export function campaignDatasetId(runId: string): string {
   return `ds-live-${runId}`;
 }
 
+/**
+ * Maps one task-index result to its assignment identity and outcome. The wire enums are
+ * checked first so an unknown value throws a ValidationError naming its field.
+ */
+export function taskResultView(result: FeedTaskResult): {
+  dataset_id: string;
+  run_id: string;
+  assignment_id: string;
+  terminal_status: TerminalStatus;
+  verification_disposition: VerifierState;
+} {
+  assertEnum(result.lifecycle_status, EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_VALUES, 'lifecycle_status');
+  assertEnum(result.summary_status, EVALUATION_VERDICT_STATUS_VALUES, 'summary_status');
+  return {
+    dataset_id: campaignDatasetId(result.run_id),
+    run_id: result.run_id,
+    assignment_id: result.assignment_id,
+    terminal_status: mapTerminalStatus(result.lifecycle_status, result.summary_status),
+    verification_disposition: mapVerificationDisposition(result.verification_status),
+  };
+}
+
 export function adaptCampaignProjectionEnvelope(
   envelope: unknown,
   context: CampaignAdaptContext,
@@ -380,6 +408,7 @@ function adaptResultProjection(
   const datasetId = campaignDatasetId(runId);
   const observedAt = new Date(record.completed_at).toISOString();
   const meta = context.assignmentMeta.get(metaKey(runId, assignmentId));
+  const scenarioId = meta?.scenarioId ?? record.scenario_id;
   const lifecycle = mapLifecycleStatus(record.lifecycle_status);
   const terminalStatus = mapTerminalStatus(record.lifecycle_status, record.summary_status);
   const qualityState: QualityState = terminalStatus === 'completed' ? 'live_in_progress' : 'terminal_failed';
@@ -399,7 +428,8 @@ function adaptResultProjection(
     ...mapCampaignRelease(record),
     assignment_id: assignmentId,
     run_id: runId,
-    task_id: meta?.scenarioId ?? record.scenario_id,
+    scenario_id: scenarioId,
+    task_id: scenarioId,
     variant_id: variantId,
     role,
     repetition: meta?.repetition ?? 1,

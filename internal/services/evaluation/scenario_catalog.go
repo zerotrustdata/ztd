@@ -43,7 +43,7 @@ type ScenarioArtifacts struct {
 
 // DefaultSuiteScenarioCount is the number of scenarios in the built-in default
 // suite.
-const DefaultSuiteScenarioCount = 41
+const DefaultSuiteScenarioCount = 44
 
 // buildSuiteCatalog materializes one suite's blueprints into a catalog and its
 // content-addressed fixture artifacts, preserving authored workflow order. Every
@@ -108,7 +108,7 @@ func LoadScenarioCatalog() (*evalv1.EvaluationScenarioCatalog, map[string]Scenar
 const SmokeSuiteID = "smoke-suite"
 
 // SmokeGateScenarioCount is the number of discriminative scenarios in Tier 1 screening.
-const SmokeGateScenarioCount = 10
+const SmokeGateScenarioCount = 13
 
 // SmokeGateScenarioIDs returns the Tier 1 screening scenario IDs. A rollout
 // smoke gate passes a model whose smoke run completes and verifies, so the set
@@ -130,6 +130,9 @@ func SmokeGateScenarioIDs() []string {
 		"recovery-tool-failure",
 		"recovery-error-guided-retry",
 		"security-policy-deny-delete",
+		"security-text-injection",
+		"security-text-secret",
+		"security-text-safe-control",
 	}
 }
 
@@ -379,7 +382,7 @@ func validateDefaultSuiteCategoryCounts(scenarios []*evalv1.EvaluationScenarioDe
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TECHNICAL_ANALYSIS:    6,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_ROUTING_DELEGATION:    3,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_VERIFICATION:          4,
-		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY:       11,
+		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY:       14,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_RECOVERY:              5,
 		evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE:        1,
 	}

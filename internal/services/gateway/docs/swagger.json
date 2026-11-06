@@ -2152,7 +2152,7 @@
         },
         "/api/v1/public-feed/proofs": {
             "post": {
-                "description": "Builds one assignment's audit database from the gateway's stored signed event records and publishes it to the gateway-owned public proof catalog (mTLS owner CLI only). The request names the run and assignment; it carries no database or key.",
+                "description": "Returns one assignment's evidence digests and publishes its scenario fixtures (mTLS owner CLI only). The gateway builds the audit database from its stored signed event records; database and trace bytes are not exported as public artifacts. The request carries no database or key.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2204,7 +2204,7 @@
         },
         "/api/v1/public-feed/proofs/batch": {
             "post": {
-                "description": "Builds many assignments' audit databases from the gateway's stored signed event records and publishes them in one request (mTLS owner CLI only). The response carries each proof's digests in request order.",
+                "description": "Returns many assignments' evidence digests and publishes their scenario fixtures in one request (mTLS owner CLI only). Database and trace bytes are not exported as public artifacts. The response carries each assignment's digests in request order.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2272,6 +2272,58 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/models.PublicProofCatalogPushResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "Public spectator unavailable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/public-feed/proofs/run-bundle": {
+            "post": {
+                "description": "Publishes one settled run's assignment result records, read from the gateway's accepted public mirror rows, as one gzip JSONL proof artifact (mTLS owner CLI only). Unchanged records reuse the active bundle; changed records replace it.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "public-feed"
+                ],
+                "summary": "Publish assignment run bundle",
+                "parameters": [
+                    {
+                        "description": "Run bundle request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.PublicRunBundleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.PublicRunBundleResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "405": {
@@ -5333,7 +5385,7 @@
             "type": "object",
             "properties": {
                 "agent_trace": {
-                    "description": "AgentTrace is the exact sealed agent trace body for agent assignments.\nIt is published unredacted as a content-addressed proof artifact.",
+                    "description": "AgentTrace is the exact sealed agent trace body for agent assignments.\nThe gateway hashes it without exporting it as a public proof artifact.",
                     "type": "array",
                     "items": {
                         "type": "integer"
@@ -5488,6 +5540,41 @@
                     "type": "integer"
                 },
                 "proof_root_sha256": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.PublicRunBundleRequest": {
+            "type": "object",
+            "properties": {
+                "campaign_id": {
+                    "type": "string"
+                },
+                "campaign_revision": {
+                    "description": "CampaignRevision is the campaign spec digest the bundle is published under.",
+                    "type": "string"
+                },
+                "run_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.PublicRunBundleResponse": {
+            "type": "object",
+            "properties": {
+                "accepted": {
+                    "type": "boolean"
+                },
+                "bundle_sha256": {
+                    "type": "string"
+                },
+                "byte_size": {
+                    "type": "integer"
+                },
+                "record_count": {
+                    "type": "integer"
+                },
+                "run_id": {
                     "type": "string"
                 }
             }

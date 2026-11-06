@@ -160,8 +160,29 @@ func TestEveryRoleCallCarriesItsSchema(t *testing.T) {
 func TestRegenerationShowsOnlyAuthoredArguments(t *testing.T) {
 	prior := []Cluster{{ID: "cluster_a", Arguments: argsFor("ss -l"), Members: []Member{MemberAxiom}}}
 	prior[0].Arguments.Timeout, prior[0].Arguments.WorkingDir = 23, "/srv/work"
-	prompt := generationPrompt(Request{Request: testRequest}, prior)
-	assert.Contains(t, prompt, `{"command":"ss","args":["-l"]}`)
-	assert.NotContains(t, prompt, "timeout")
-	assert.NotContains(t, prompt, "working_dir")
+	for _, member := range AllMembers {
+		prompt := generationPrompt(Request{Request: testRequest}, member, prior)
+		assert.Contains(t, prompt, `{"command":"ss","args":["-l"]}`)
+		assert.NotContains(t, prompt, "timeout")
+		assert.NotContains(t, prompt, "working_dir")
+	}
+}
+
+// TestRoundTwoGivesNemesisItsAdversarialLens keeps Nemesis attacking the
+// emerging consensus in round 2 while the honest members converge on it.
+func TestRoundTwoGivesNemesisItsAdversarialLens(t *testing.T) {
+	prior := []Cluster{{ID: "cluster_a", Arguments: argsFor("ss -l"), Members: []Member{MemberAxiom, MemberConcord}}}
+	for _, member := range AllMembers {
+		prompt := generationPrompt(Request{Request: testRequest}, member, prior)
+		if member == MemberNemesis {
+			assert.Contains(t, prompt, "only adversarial seat")
+			assert.Contains(t, prompt, "real semantic flaw")
+			assert.NotContains(t, prompt, "you may adopt a proposal or improve it")
+			continue
+		}
+		assert.Contains(t, prompt, "you may adopt a proposal or improve it")
+		assert.NotContains(t, prompt, "adversarial")
+	}
+	assert.Equal(t, generationPrompt(Request{Request: testRequest}, MemberNemesis, nil), generationPrompt(Request{Request: testRequest}, MemberAxiom, nil),
+		"round 1 gives every seat the same request")
 }

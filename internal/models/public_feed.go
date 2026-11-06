@@ -28,12 +28,6 @@ import (
 // published key.
 const PublicProofVerifierInstructions = "Run ztd public verify-proof --segments proof-segments.jsonl --artifacts ./proofs. The command recomputes each segment root from the zero hash, checks each Ed25519 signature under the segment's signing_public_key, requires SHA-256 of that key to equal signing_key_id, applies withdrawals, and hashes active artifacts by their content-addressed IDs. Pass --public-key or --key-registry to require a key supplied separately. The default command checks the published signatures and hash chain; it does not establish an out-of-band publisher identity."
 
-// PublicAssignmentAuditVerificationCommand is the offline command published
-// on an assignment events database. The segment log supplies the signing key.
-func PublicAssignmentAuditVerificationCommand(dbFilename string) string {
-	return fmt.Sprintf("ztd public verify-assignment --db %s --segments proof-segments.jsonl", dbFilename)
-}
-
 // PublicProofSigningKeyID is the SHA-256 hex of an Ed25519 public key. The
 // publisher stores that digest as signing_key_id.
 func PublicProofSigningKeyID(key ed25519.PublicKey) string {
@@ -151,13 +145,6 @@ type PublicFeedSnapshot struct {
 	DatasetID string `json:"dataset_id,omitempty"`
 }
 
-// PublicProofCatalogSummary is the summary of the proof catalog for bootstrap.
-type PublicProofCatalogSummary struct {
-	ArtifactCount   int        `json:"artifact_count"`
-	TotalByteSize   int64      `json:"total_byte_size"`
-	LastGeneratedAt *time.Time `json:"last_generated_at,omitempty"`
-}
-
 // PublicFeedObject is an open-ended public JSON object. Public projections
 // intentionally admit schema-versioned fields owned by the evaluation publisher;
 // RawMessage preserves those fields without converting the boundary to an
@@ -195,12 +182,32 @@ func (o PublicFeedObject) SetInt64Field(name string, value int64) {
 // RecentProjections carries the latest record per entity plus bounded activity,
 // newest first. It is independent of replay-history retention.
 type PublicFeedBootstrap struct {
-	ProtocolVersion     string                    `json:"protocol_version"`
-	Snapshot            PublicFeedSnapshot        `json:"snapshot"`
-	SourceFreshness     CampaignFreshness         `json:"source_freshness"`
-	RecentProjections   []PublicFeedObject        `json:"recent_projections"`
-	ProofCatalogSummary PublicProofCatalogSummary `json:"proof_catalog_summary"`
-	GeneratedAt         time.Time                 `json:"generated_at"`
+	SchemaVersion     string                 `json:"schema_version"`
+	ProtocolVersion   string                 `json:"protocol_version"`
+	Snapshot          PublicFeedSnapshot     `json:"snapshot"`
+	SourceFreshness   CampaignFreshness      `json:"source_freshness"`
+	RecentProjections []PublicFeedObject     `json:"recent_projections"`
+	TaskIndex         []PublicTaskIndexEntry `json:"task_index"`
+	GeneratedAt       time.Time              `json:"generated_at"`
+}
+
+// PublicTaskIndexEntry lists the most recent assignment results of one task,
+// newest first and bounded by constants.PublicTaskIndexResultLimit. TaskID is
+// the scenario ID without its @version suffix.
+type PublicTaskIndexEntry struct {
+	TaskID  string             `json:"task_id"`
+	Results []PublicTaskResult `json:"results"`
+}
+
+// PublicTaskResult is the subset of an assignment result envelope the Explorer's
+// task view renders, under the envelope's own field names.
+type PublicTaskResult struct {
+	RunID              string `json:"run_id"`
+	AssignmentID       string `json:"assignment_id"`
+	LifecycleStatus    string `json:"lifecycle_status"`
+	SummaryStatus      string `json:"summary_status"`
+	VerificationStatus string `json:"verification_status,omitempty"`
+	CompletedAt        string `json:"completed_at"`
 }
 
 // PublicFeedCursorPage is a cursor-paginated page of public records.
@@ -308,9 +315,9 @@ type PublicProofSegmentsResponse struct {
 }
 
 // PublicAssignmentAuditProofPublishRequest asks the gateway-owned public
-// publisher to publish one assignment's audit database. The gateway builds the
-// database itself from the signed event records it stores for the run and
-// assignment; the request carries no database bytes and no key.
+// publisher for one assignment's evidence digests and public scenario fixtures.
+// The gateway builds the database itself from the signed event records it stores
+// for the run and assignment; the request carries no database bytes and no key.
 type PublicAssignmentAuditProofPublishRequest struct {
 	CampaignID string `json:"campaign_id"`
 	// CampaignRevision and IndexDigest are required.
@@ -319,7 +326,7 @@ type PublicAssignmentAuditProofPublishRequest struct {
 	AssignmentID     string `json:"assignment_id"`
 	IndexDigest      string `json:"index_digest"`
 	// AgentTrace is the exact sealed agent trace body for agent assignments.
-	// It is published unredacted as a content-addressed proof artifact.
+	// The gateway hashes it without exporting it as a public proof artifact.
 	AgentTrace []byte `json:"agent_trace,omitempty"`
 	// ScenarioID names the assignment's scenario. ScenarioInput and
 	// ScenarioGold are its frozen canonical input fixture and gold criteria
@@ -348,6 +355,35 @@ type PublicProofCatalogPruneRequest struct {
 	RunID string `json:"run_id"`
 }
 
+// PublicRunBundleLine is one line of a run's assignment bundle: the accepted
+// snapshot row of one assignment result record. RecordBytes is the row's bytes
+// unchanged and RecordHash is the lowercase hex SHA-256 of those bytes.
+type PublicRunBundleLine struct {
+	Sequence    int64  `json:"sequence"`
+	RecordHash  string `json:"record_hash"`
+	RecordBytes string `json:"record_bytes"`
+}
+
+// PublicRunBundleRequest asks the Gateway to publish one run's assignment bundle.
+// CampaignID, CampaignRevision, and RunID are required. The campaign identity
+// labels the bundle's catalog entry and proof segment.
+type PublicRunBundleRequest struct {
+	CampaignID string `json:"campaign_id"`
+	// CampaignRevision is the campaign spec digest the bundle is published under.
+	CampaignRevision string `json:"campaign_revision"`
+	RunID            string `json:"run_id"`
+}
+
+// PublicRunBundleResponse names the published bundle. BundleSHA256 is the
+// digest of the gzip bytes served at /proofs/<sha256>.
+type PublicRunBundleResponse struct {
+	Accepted     bool   `json:"accepted"`
+	RunID        string `json:"run_id"`
+	BundleSHA256 string `json:"bundle_sha256"`
+	RecordCount  int    `json:"record_count"`
+	ByteSize     int64  `json:"byte_size"`
+}
+
 type PublicProofCatalogPruneResponse struct {
 	Accepted       bool `json:"accepted"`
 	RemovedCount   int  `json:"removed_count"`
@@ -366,8 +402,9 @@ type PublicProofMirrorSyncState struct {
 }
 
 // PublicAssignmentAuditProofPublishResponse reports the digests of one
-// published assignment. DatabaseSHA256 is the SHA-256 of the assignment audit
-// database the gateway built; the proof segment signature covers it.
+// assignment. DatabaseSHA256 is the SHA-256 of the assignment audit database the
+// gateway built or reused. Result evidence bindings carry the database and trace
+// digests; the proof segment lists only the public scenario fixtures.
 type PublicAssignmentAuditProofPublishResponse struct {
 	Accepted            bool   `json:"accepted"`
 	AssignmentID        string `json:"assignment_id,omitempty"`
@@ -590,6 +627,9 @@ type PublicExportConfig struct {
 	RetryInitialBackoffSecs int    `json:"retry_initial_backoff_seconds"`
 	RetryMaxBackoffSecs     int    `json:"retry_max_backoff_seconds"`
 	AckWindowSecs           int    `json:"ack_confirmation_window_seconds"`
+	// Bucket configures publishing the public layout to an S3-compatible bucket.
+	// Absent means bucket publishing is off.
+	Bucket *PublicBucketConfig `json:"bucket,omitempty"`
 }
 
 // DefaultPublicExportConfig returns the default export configuration with
@@ -629,6 +669,37 @@ type PublicPublisherStatus struct {
 	HighWaterSequence int64  `json:"high_water_sequence"`
 	FeedChainHash     string `json:"feed_chain_hash"`
 	BatchCount        int    `json:"batch_count"`
+	// FeedDriftChecked is false when the read model could not be fetched, so an
+	// empty FeedDrift never reads as agreement that was not checked.
+	FeedDriftChecked bool `json:"feed_drift_checked"`
+	// FeedDriftError is why the comparison did not run.
+	FeedDriftError string `json:"feed_drift_error,omitempty"`
+	// FeedDrift lists runs whose published verifier state differs from their
+	// stored verification report. It is compared on read, never stored.
+	FeedDrift []PublicFeedVerificationDrift `json:"feed_drift,omitempty"`
+	// Bucket reports the bucket publisher. It is absent when publishing is off.
+	Bucket *PublicBucketStatus `json:"bucket,omitempty"`
+	// BucketError is why the bucket publisher's state could not be read.
+	BucketError string `json:"bucket_error,omitempty"`
+}
+
+// ApplyFeedDrift records a drift comparison's outcome. Status stays available when
+// the comparison cannot run, for example on a locked vault.
+func (s *PublicPublisherStatus) ApplyFeedDrift(drift []PublicFeedVerificationDrift, err error) {
+	if err != nil {
+		s.FeedDriftError = err.Error()
+		return
+	}
+	s.FeedDriftChecked = true
+	s.FeedDrift = drift
+}
+
+// PublicFeedVerificationDrift is one run whose public verifier state disagrees
+// with its stored verification report.
+type PublicFeedVerificationDrift struct {
+	RunID             string `json:"run_id"`
+	LocalStatus       string `json:"local_status"`
+	FeedVerifierState string `json:"feed_verifier_state"`
 }
 
 // PublicOutboxEntry is one entry in the durable ordered outbox.

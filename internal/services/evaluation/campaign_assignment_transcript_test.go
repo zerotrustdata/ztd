@@ -109,9 +109,9 @@ func TestAssignmentPublicationOmitsOversizedTranscript(t *testing.T) {
 		response string
 		calls    []AgentToolCall
 	}{
-		{name: "transcript over bound", response: strings.Repeat("a", 256*1024)},
+		{name: "transcript over bound", response: strings.Repeat("a", constants.PublicFeedRecordMaxBytes)},
 		{name: "too many tool calls", response: "done", calls: manyCalls},
-		{name: "record over bound", response: strings.Repeat("a", 255*1024)},
+		{name: "record over bound", response: strings.Repeat("a", constants.PublicFeedRecordMaxBytes-1024)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()

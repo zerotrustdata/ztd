@@ -3,8 +3,8 @@ doc_id: docs
 title: Documentation Guide
 audience: maintainers and coding agents
 status: current
-version: v1.6.0
-last_updated: 2026-10-30
+version: v1.10.0
+last_updated: 2026-11-06
 owners:
   - docs/
   - protocol/docs/
@@ -325,6 +325,7 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.8.0 Release Notes](../release_notes/v1.8.x/v1.8.0.md): Typed governed Ollama model pull and copy, the single-path file ledger, failed observer receipts as evidence, the append-only publisher outbox, and renamed CLI commands and catalog files.
 - [v1.9.0 Release Notes](../release_notes/v1.9.x/v1.9.0.md): Deterministic grades in the Evaluation Explorer Live view, the `deterministic_grading_completed` live event, Explorer view schema 1.12.0, `make vhs` governed agent demo recordings, and file mutation diffs outside the ledger write lock.
 - [v1.9.1 Release Notes](../release_notes/v1.9.x/v1.9.1.md): Published frozen formation results and leaderboard, feed-derived model membership, formation-aware release selection, local persona demo scenarios, and the Explorer view schema 1.13.0 upgrade requirement.
+- [v1.10.0 Release Notes](../release_notes/v1.10.x/v1.10.0.md): Public feed served from an S3-compatible bucket through a signed pointer and polled live status, on-demand content-addressed run bundles, published per-model security pass rates, pointer-rooted `ztd public verify-proof`, digest-bound private traces and audit databases, Nemesis `1.3.0` as the Tribunal's calibrated adversarial seat, and the Explorer view schema 1.14.0 upgrade requirement.
 
 ## Procedures
 

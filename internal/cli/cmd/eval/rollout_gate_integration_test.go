@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -57,6 +58,62 @@ func withScriptedJudgeVerdicts(replies []fixtures.OllamaReply) []fixtures.Ollama
 		}
 	}
 	return out
+}
+
+// A provider without the model cannot attest a window for it, so the run can never
+// verify. The rollout stops that model at its first such result rather than
+// finishing cells that cannot rank, and still moves on to the healthy model.
+func TestRunRollout_ModelNotFoundStopsAtFirstResultAndContinuesWithHealthyModel(t *testing.T) {
+	replies := make([]fixtures.OllamaReply, 96)
+	for i := range replies {
+		replies[i].Content = "READY"
+	}
+	replies[0] = fixtures.OllamaReply{Failure: "model not found", FailureStatus: http.StatusNotFound}
+	env, run := newGatewayRunEnvWithOptions(t, fixtures.EvalStackOptions{
+		Posture: constants.PostureDoctrine, EnablePublicSpectator: true,
+		Provenance: true, ModelTags: []string{"qwen3:8b", evaluation.DefaultJudgeServedModelTag}, Replies: withScriptedJudgeVerdicts(replies),
+	})
+	previousOrigin := gwremote.PublicMirrorOrigin
+	gwremote.PublicMirrorOrigin = run.stack.Gateway.PublicMirrorOrigin
+	t.Cleanup(func() { gwremote.PublicMirrorOrigin = previousOrigin })
+	missing, healthy := testQwenVariant(), testQwenVariant()
+	missing.ModelDigest = fixtures.ScriptedModelDigest(t, missing.ServedModelTag)
+	healthy.VariantId, healthy.ServedModelTag = "qwen3-8b", "qwen3:8b"
+	healthy.ModelDigest = fixtures.ScriptedModelDigest(t, healthy.ServedModelTag)
+	writeTestFrozenInventory(t, env.root, missing, healthy, scriptedJudgeVariant(t))
+	env.mustRun(t, "rollout", "add", missing.ServedModelTag)
+	env.mustRun(t, "rollout", "add", healthy.ServedModelTag)
+	var out bytes.Buffer
+	env.cmd.SetOut(&out)
+	env.cmd.SetErr(&out)
+	err := runRollout(env.cmd, env.deps, rolloutRunOptions{
+		SkipVerified: true, GateSmoke: true,
+		MirrorBootstrapURL: run.stack.Gateway.PublicMirrorBootstrapURL,
+	})
+	require.Error(t, err, out.String())
+	assert.Contains(t, out.String(), "planned=2 succeeded=1 failed=1")
+	assert.Contains(t, out.String(), "the provider does not have the requested model")
+	queue, err := evaluation.LoadRolloutQueue(run.ctx, env.fileSvc(t))
+	require.NoError(t, err)
+	require.Len(t, queue.Models, 2)
+	assert.Equal(t, evaluation.QueueStatusFailed, queue.Models[0].Status)
+	assert.Contains(t, queue.Models[0].Notes, "provider_failure (model_not_found)")
+	assert.Equal(t, evaluation.QueueStatusPending, queue.Models[1].Status)
+	assignments, err := env.store(t).ListAssignments(run.ctx, queue.Models[0].VerifiedRunID)
+	require.NoError(t, err)
+	failed, queued := 0, 0
+	for _, assignment := range assignments {
+		switch assignment.GetLifecycleStatus() {
+		case evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED:
+			failed++
+		case evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_QUEUED:
+			queued++
+		default:
+			t.Fatalf("unexpected assignment lifecycle %s", assignment.GetLifecycleStatus())
+		}
+	}
+	assert.Equal(t, 1, failed, "the run stops at the first model_not_found result")
+	assert.Positive(t, queued, "unexecuted assignments keep their real queued lifecycle")
 }
 
 func TestRunRollout_ProviderCrashStopsBadModelAndContinuesWithHealthyModel(t *testing.T) {

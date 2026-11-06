@@ -1,15 +1,18 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-// Live SSE event feed for the overview page. Newest events at the top inside a
+// Live event feed for the overview page. Newest events at the top inside a
 // bounded scroll region. Detailed diagnostics live on the assignment page.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { FeedConnectionState, StreamConnectionState } from '../utils/feed-state';
 import { recordKey, resolveModelSummary, useStoreState } from '../state/store';
+import { taskResultView } from '../state/campaign-adapter';
+import { ValidationError } from '../contract/validators';
 import {
   assignmentRowKey,
+  assignmentOutputThroughput,
   criterionLabels,
   deterministicGradesByAssignment,
   isDeterministicGradingEvent,
@@ -28,6 +31,7 @@ import { SCENARIO_TASK_BY_ID } from '../content/scenario-task';
 import {
   MODEL_ROLES,
   type AssignmentResult,
+  type EvaluationSummary,
   type LiveDeterministicGrade,
   type LiveEvent,
   type LiveJudgeActivity,
@@ -35,7 +39,9 @@ import {
   type ModelRole,
 } from '../contract/types';
 import { formatNumber } from '../utils/format';
-import { LIVE_EVENT_RETENTION_LIMIT } from '../constants';
+import { LIVE_EVENT_RETENTION_LIMIT, RUN_BUNDLE_CONCURRENCY, RUN_BUNDLE_LRU_LIMIT } from '../constants';
+import { useRunBundles } from '../state/use-run-bundles';
+import type { RunRef } from '../state/load-runs-bounded';
 const STREAM_PAGE_SIZE = 25;
 const STREAM_EMPTY_METRIC = '--';
 
@@ -119,6 +125,16 @@ function TribunalVotes({ votes }: { votes: SeatVotes }) {
       })}
     </div>
   );
+}
+
+/** Distinct runs of the rows that name an assignment, in row order, capped at the bundle limit. */
+function assignmentRuns(events: LiveEvent[]): RunRef[] {
+  const runs = new Map<string, RunRef>();
+  for (const event of events) {
+    if (!event.assignment_id) continue;
+    runs.set(JSON.stringify([event.dataset_id, event.run_id]), { datasetId: event.dataset_id, runId: event.run_id });
+  }
+  return Array.from(runs.values()).slice(0, RUN_BUNDLE_LRU_LIMIT);
 }
 
 function eventTime(iso: string): string {
@@ -269,7 +285,7 @@ function eventParts(event: LiveEvent, assignment: AssignmentResult | undefined):
 }
 
 type AssignmentMetricColumn = 'latency_ms' | 'output_tokens' | 'tokens_per_second';
-type StreamSortField = 'time' | 'result' | 'task' | 'model' | AssignmentMetricColumn;
+type StreamSortField = 'time' | 'status' | 'task' | 'model' | AssignmentMetricColumn;
 type StreamSortDirection = 'asc' | 'desc';
 
 const ASSIGNMENT_METRIC_COLUMNS: Array<{ key: AssignmentMetricColumn; label: string; format: (value: number) => string }> = [
@@ -278,10 +294,16 @@ const ASSIGNMENT_METRIC_COLUMNS: Array<{ key: AssignmentMetricColumn; label: str
   { key: 'tokens_per_second', label: 'Tokens/s', format: (value) => formatNumber(value, 1) },
 ];
 
-type StreamResult = { label: string; symbol: string; tone: 'ok' | 'critical' | 'neutral' | 'info' };
+type StreamStatus = { label: string; symbol: string; tone: 'ok' | 'critical' | 'neutral' | 'info' };
 
-/** Model verdicts stay distinct from infrastructure failures and run lifecycle. */
-function streamResult(event: LiveEvent, assignment: AssignmentResult | undefined): StreamResult {
+/** A loaded result settles the assignment even when its terminal event has left
+ *  the bounded feed. Model verdicts stay distinct from infrastructure failures. */
+function streamStatus(
+  event: LiveEvent,
+  assignment: AssignmentResult | undefined,
+  taskResult?: ReturnType<typeof taskResultView>,
+  runLifecycle?: EvaluationSummary['lifecycle_state'],
+): StreamStatus {
   if (isTribunalVoteEvent(event)) {
     const record = tribunalVoteRecord(event);
     const outcome = typeof record?.outcome === 'string' ? record.outcome : undefined;
@@ -296,22 +318,34 @@ function streamResult(event: LiveEvent, assignment: AssignmentResult | undefined
     }
     return { label: 'Vote', symbol: '•', tone: 'info' };
   }
-  if (isSettledAssignmentRow(event)) {
-    const status = event.terminal_status ?? assignment?.terminal_status;
+  const settledEvent = isSettledAssignmentRow(event);
+  if (settledEvent || assignment || taskResult) {
+    const status = event.terminal_status ?? assignment?.terminal_status ?? taskResult?.terminal_status;
+    if (status === 'stopped' || (!status && event.lifecycle_status === 'stopped')) {
+      return { label: 'Stopped', symbol: 'Ⅱ', tone: 'neutral' };
+    }
     if (status && status !== 'completed' && status !== 'model_failed') {
       return { label: displayLabel(status)!, symbol: '!', tone: 'neutral' };
     }
     // A formation is one outcome: its role rows state the assignment's verdict.
-    const pass = assignmentMetricValues(event, assignment).pass?.value ?? assignment?.metric_values.pass?.value;
+    const pass = assignmentMetricValues(event, assignment).pass?.value ?? assignment?.metric_values.pass?.value
+      ?? (taskResult?.terminal_status === 'completed' ? 1 : undefined);
     if (status === 'model_failed' || pass === 0) {
       return { label: 'Model failed', symbol: '×', tone: 'critical' };
     }
-    const ended = event.kind === 'assignment_completed' ? 'completed' : event.kind === 'assignment_failed' ? 'failed' : event.lifecycle_status;
+    const ended = !settledEvent && (assignment || taskResult) ? 'completed'
+      : event.kind === 'assignment_completed' ? 'completed' : event.kind === 'assignment_failed' ? 'failed' : event.lifecycle_status;
     if (ended !== 'completed') return { label: 'Failed', symbol: '!', tone: 'neutral' };
     return { label: pass === 1 ? 'Passed' : 'Completed', symbol: '✓', tone: 'ok' };
   }
-  if (event.stage_label?.toLowerCase().startsWith('model role invoked')) {
-    return { label: 'Invoked', symbol: '•', tone: 'info' };
+  if (event.assignment_id && runLifecycle && ['completed', 'failed', 'stopped'].includes(runLifecycle)) {
+    return { label: 'Status unavailable', symbol: '?', tone: 'neutral' };
+  }
+  if (event.assignment_id && event.lifecycle_status === 'queued') {
+    return { label: 'Queued', symbol: '•', tone: 'neutral' };
+  }
+  if (event.assignment_id && event.lifecycle_status === 'running') {
+    return { label: 'Running', symbol: '•', tone: 'info' };
   }
   const label = displayLabel(event.kind) ?? 'Activity';
   if (event.lifecycle_status === 'failed') return { label, symbol: '!', tone: 'neutral' };
@@ -329,11 +363,14 @@ function assignmentTokensPerSecond(
   event: LiveEvent,
   assignment: AssignmentResult | undefined,
 ): MetricValue | undefined {
-  const values = assignmentMetricValues(event, assignment);
-  const output = values.output_tokens?.value;
-  const generationMs = assignment?.benchmark_observations?.timing?.generation_ms?.value;
-  if (output === undefined || generationMs === undefined || generationMs <= 0) return undefined;
-  return { value: output / (generationMs / 1000) };
+  // Invocation deltas already carry observed generation throughput. Preserve
+  // that role/model's measurement even before its run bundle has loaded.
+  const published = event.metric_delta?.tokens_per_second;
+  if (published) return published;
+  if (!assignment || (event.variant_id && event.variant_id !== assignment.variant_id)
+    || (event.role && event.role !== assignment.role)) return undefined;
+  const throughput = assignmentOutputThroughput(assignment);
+  return throughput === undefined ? undefined : { value: throughput };
 }
 
 function assignmentMetric(event: LiveEvent, assignment: AssignmentResult | undefined, key: AssignmentMetricColumn): MetricValue | undefined {
@@ -365,9 +402,10 @@ function streamSortValue(
   assignment: AssignmentResult | undefined,
   model: ReturnType<typeof resolveModelSummary>,
   field: StreamSortField,
+  status: StreamStatus,
 ): string | number {
   if (field === 'time') return event.observed_at;
-  if (field === 'result') return streamResult(event, assignment).label;
+  if (field === 'status') return status.label;
   if (field === 'task') return eventParts(event, assignment).task;
   if (field === 'model') {
     if (isTribunalVoteEvent(event)) {
@@ -443,6 +481,22 @@ export function LiveEventStream({
   const scrollRef = useRef<HTMLDivElement>(null);
   const models = useStoreState((state) => state.models);
   const assignments = useStoreState((state) => state.assignments);
+  const evaluations = useStoreState((state) => state.evaluations);
+  const taskIndex = useStoreState((state) => state.taskIndex);
+  const indexedStatuses = useMemo(() => {
+    const statuses = new Map<string, ReturnType<typeof taskResultView>>();
+    for (const results of taskIndex.values()) {
+      for (const result of results) {
+        try {
+          const status = taskResultView(result);
+          statuses.set(assignmentRowKey(status), status);
+        } catch (error) {
+          if (!(error instanceof ValidationError)) throw error;
+        }
+      }
+    }
+    return statuses;
+  }, [taskIndex]);
   // Tribunal votes, deterministic grades, and judge activity are cells of their
   // assignment's row, never rows of their own and never its status, model, or
   // metrics.
@@ -483,8 +537,13 @@ export function LiveEventStream({
   const hasFilters = advancedFilterCount > 0 || modelFilter !== 'all';
 
   const sortedVisible = useMemo(() => [...visible].sort((left, right) => {
-    const value = (event: LiveEvent) => streamSortValue(event, matchingAssignment(event, assignments),
-      event.variant_id ? resolveModelSummary(models, event.dataset_id, event.variant_id) : undefined, sortField);
+    const value = (event: LiveEvent) => {
+      const assignment = matchingAssignment(event, assignments);
+      const status = streamStatus(event, assignment, indexedStatuses.get(assignmentRowKey(event)),
+        evaluations.get(recordKey(event.dataset_id, event.run_id))?.lifecycle_state);
+      return streamSortValue(event, assignment,
+        event.variant_id ? resolveModelSummary(models, event.dataset_id, event.variant_id) : undefined, sortField, status);
+    };
     const leftValue = value(left);
     const rightValue = value(right);
     // Missing observations always follow measured values, including measured zero.
@@ -494,10 +553,12 @@ export function LiveEventStream({
       ? leftValue - rightValue : String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true });
     return comparison === 0 ? 0
       : sortDirection === 'asc' ? comparison : -comparison;
-  }), [visible, assignments, models, sortField, sortDirection]);
+  }), [visible, assignments, models, indexedStatuses, evaluations, sortField, sortDirection]);
   const pageCount = Math.ceil(sortedVisible.length / STREAM_PAGE_SIZE);
   const safePage = Math.min(page, Math.max(0, pageCount - 1));
   const pageEvents = sortedVisible.slice(safePage * STREAM_PAGE_SIZE, (safePage + 1) * STREAM_PAGE_SIZE);
+  // Quiet background load: the page's assignment rows fill in through the store as bundles arrive.
+  useRunBundles(assignmentRuns(pageEvents), RUN_BUNDLE_CONCURRENCY);
   const showTribunal = pageEvents.some((event) => event.assignment_id && tribunalVotes.has(assignmentRowKey(event)));
   const showDeterministic = pageEvents.some((event) => (event.assignment_id && deterministicGrades.has(assignmentRowKey(event))) ||
     deterministicGradesPending(event, deterministicGrades, judgeActivity));
@@ -562,9 +623,9 @@ export function LiveEventStream({
         <div className="stream-scroll" ref={scrollRef} role="region" aria-label="Live activity results" tabIndex={0}>
           <table className="stream-table" data-grading={showTribunal || showDeterministic || showJudge ? '' : undefined}>
             <thead><tr>
-              <SortHeader label="Result" field="result" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <SortHeader label="Status" field="status" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               <SortHeader label="Task" field="task" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-              <SortHeader label="Model" field="model" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              <SortHeader className="stream-model-header" label="Model" field="model" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               {showTribunal ? <th scope="col" className="stream-tribunal-header">Consensus</th> : null}
               {showDeterministic ? <th scope="col" className="stream-deterministic-header">Deterministic</th> : null}
               {showJudge ? <th scope="col" className="stream-judge-header">Judge</th> : null}
@@ -582,7 +643,8 @@ export function LiveEventStream({
                 const rowVotes = event.assignment_id ? tribunalVotes.get(assignmentRowKey(event)) : undefined;
                 const rowGrades = event.assignment_id ? deterministicGrades.get(assignmentRowKey(event)) : undefined;
                 const rowJudgments = event.assignment_id ? judgeActivity.get(assignmentRowKey(event)) : undefined;
-                const result = streamResult(event, assignment);
+                const status = streamStatus(event, assignment, indexedStatuses.get(assignmentRowKey(event)),
+                  evaluations.get(recordKey(event.dataset_id, event.run_id))?.lifecycle_state);
                 const eventHref = event.assignment_id
                   ? `/evaluations/${event.dataset_id}/${event.run_id}/assignments/${event.assignment_id}`
                   : `/evaluations/${event.dataset_id}/${event.run_id}`;
@@ -593,9 +655,9 @@ export function LiveEventStream({
                 return (
                   <tr key={`${event.dataset_id}:${event.run_id}:${event.event_id}`}>
                     <td className="stream-result-cell">
-                      <Link to={eventHref} className="stream-result" data-tone={result.tone} aria-label={`${result.label}: ${task}. View details`}>
-                        <span aria-hidden="true">{result.symbol}</span>
-                        <span className="stream-result-label" aria-hidden="true">{result.label}</span>
+                      <Link to={eventHref} className="stream-result" data-tone={status.tone} aria-label={`${status.label}: ${task}. View details`}>
+                        <span aria-hidden="true">{status.symbol}</span>
+                        <span className="stream-result-label" aria-hidden="true">{status.label}</span>
                       </Link>
                     </td>
                     <td className="stream-task-cell">

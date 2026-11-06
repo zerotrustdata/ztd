@@ -163,7 +163,6 @@ export function ModelsView() {
   const evaluations = useStoreState((state) =>
     Array.from(state.evaluations.values()).filter((record) => matchesRelease(record, release)),
   );
-  const assignments = useStoreState((state) => Array.from(state.assignments.values()));
   const formations = useMemo(() => formationGroups(evaluations), [evaluations]);
 
   const profilesByKey = useMemo(() => {
@@ -174,33 +173,40 @@ export function ModelsView() {
     return map;
   }, [models]);
 
+  /** Runs per variant. A run names its variants in its role mapping; a run that names none is
+   *  attributed to the variants of the model summaries in its dataset. */
   const runsByVariant = useMemo(() => {
     const map = new Map<string, Set<string>>();
-    for (const asg of assignments) {
-      let set = map.get(asg.variant_id);
+    const addRun = (variantId: string, runKey: string) => {
+      let set = map.get(variantId);
       if (!set) {
         set = new Set<string>();
-        map.set(asg.variant_id, set);
+        map.set(variantId, set);
       }
-      set.add(`${asg.dataset_id}:${asg.run_id}`);
-    }
+      set.add(runKey);
+    };
+    const unmappedRunsByDataset = new Map<string, string[]>();
     for (const run of evaluations) {
+      const runKey = `${run.dataset_id}:${run.run_id}`;
       const variantIds = new Set([
         ...Object.values(run.model_role_mapping ?? {}),
         ...(run.formations ?? []).flatMap((formation) => Object.values(formation.model_role_mapping)),
       ]);
+      if (variantIds.size === 0) {
+        unmappedRunsByDataset.set(run.dataset_id, [...(unmappedRunsByDataset.get(run.dataset_id) ?? []), runKey]);
+        continue;
+      }
       for (const variantId of variantIds) {
-        if (!variantId) continue;
-        let set = map.get(variantId);
-        if (!set) {
-          set = new Set<string>();
-          map.set(variantId, set);
-        }
-        set.add(`${run.dataset_id}:${run.run_id}`);
+        if (variantId) addRun(variantId, runKey);
+      }
+    }
+    for (const model of models) {
+      for (const runKey of unmappedRunsByDataset.get(model.dataset_id) ?? []) {
+        addRun(model.variant_id, runKey);
       }
     }
     return map;
-  }, [assignments, evaluations]);
+  }, [evaluations, models]);
 
   const availableFamilies = useMemo(() => {
     const set = new Set<string>();
@@ -446,12 +452,12 @@ export function ModelsView() {
   const measuredCount = new Set(models.filter((model) => Boolean(model.pass_rate) && model.evaluation_coverage >= 1).map((model) => model.variant_id)).size;
   const measuredVariants = new Set(models.filter((model) => model.pass_rate).map((model) => model.variant_id));
   const inventoryVariants = new Set(models.filter((model) => model.inventory_only && !measuredVariants.has(model.variant_id)).map((model) => model.variant_id));
-  const modelKeys = new Set(models.map((model) => `${model.dataset_id}:${model.variant_id}:${model.role}`));
-  const coveredRuns = new Set(
-    assignments
-      .filter((assignment) => modelKeys.has(`${assignment.dataset_id}:${assignment.variant_id}:${assignment.role}`))
-      .map((assignment) => `${assignment.dataset_id}:${assignment.run_id}`),
-  );
+  const coveredRuns = new Set<string>();
+  for (const model of models) {
+    for (const runKey of runsByVariant.get(model.variant_id) ?? []) {
+      if (runKey.startsWith(`${model.dataset_id}:`)) coveredRuns.add(runKey);
+    }
+  }
 
   const filterControls = (
     <>

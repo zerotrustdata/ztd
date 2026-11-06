@@ -85,7 +85,110 @@ func ValidatePublicExportConfig(exportConfig models.PublicExportConfig) error {
 	if exportConfig.BatchMaxRecords <= 0 || exportConfig.BatchMaxRecords > constants.PublicFeedBatchMaxRecords || exportConfig.BatchMaxBytes <= 0 || exportConfig.BatchMaxBytes > constants.PublicFeedBatchMaxBytes || exportConfig.RetryMaxAttempts <= 0 || exportConfig.RetryInitialBackoffSecs < 0 || exportConfig.RetryMaxBackoffSecs < exportConfig.RetryInitialBackoffSecs || exportConfig.AckWindowSecs <= 0 {
 		return constants.ErrPublicFeedConfigRequired
 	}
-	return ValidatePublicMirrorOrigin(exportConfig.MirrorOrigin)
+	if err := ValidatePublicMirrorOrigin(exportConfig.MirrorOrigin); err != nil {
+		return err
+	}
+	if exportConfig.Bucket == nil {
+		return nil
+	}
+	if err := ValidatePublicBucketConfig(*exportConfig.Bucket); err != nil {
+		return err
+	}
+	// The publisher reads the mirror it is colocated with, so a bucket cannot
+	// publish through a mirror hosted elsewhere.
+	mirror, err := url.Parse(exportConfig.MirrorOrigin)
+	if err != nil {
+		return constants.ErrPublicFeedMirrorOriginRequired
+	}
+	if !isAllowedPublicMirrorListenHost(mirror.Hostname(), false) {
+		return constants.ErrPublicBucketRequiresLocalMirror
+	}
+	return nil
+}
+
+// ValidatePublicBucketConfig checks the bucket names and origins. Endpoint and
+// PublicOrigin are bare origins under the same rules as the mirror origin, and
+// must use https unless they name a loopback host.
+func ValidatePublicBucketConfig(bucket models.PublicBucketConfig) error {
+	for _, required := range []struct {
+		field string
+		value string
+	}{
+		{field: "name", value: bucket.Name},
+		{field: "endpoint", value: bucket.Endpoint},
+		{field: "public_origin", value: bucket.PublicOrigin},
+		{field: "zone_id", value: bucket.ZoneID},
+	} {
+		if strings.TrimSpace(required.value) == "" {
+			return fmt.Errorf("%w: %s is required", constants.ErrPublicBucketConfigInvalid, required.field)
+		}
+	}
+	for _, origin := range []struct {
+		field string
+		value string
+	}{
+		{field: "endpoint", value: bucket.Endpoint},
+		{field: "public_origin", value: bucket.PublicOrigin},
+	} {
+		if err := ValidatePublicMirrorOrigin(origin.value); err != nil {
+			return fmt.Errorf("%w: %s: %w", constants.ErrPublicBucketConfigInvalid, origin.field, err)
+		}
+		parsed, err := url.Parse(origin.value)
+		if err != nil {
+			return fmt.Errorf("%w: %s: %w", constants.ErrPublicBucketConfigInvalid, origin.field, err)
+		}
+		if parsed.Scheme != "https" && !isAllowedPublicMirrorListenHost(parsed.Hostname(), false) {
+			return fmt.Errorf("%w: %s must use https", constants.ErrPublicBucketConfigInvalid, origin.field)
+		}
+	}
+	return nil
+}
+
+// WritePublicBucketCredentials seals the bucket credentials at
+// constants.PublicFeedBucketCredentialsPath. Missing fields fail before anything
+// is written.
+func WritePublicBucketCredentials(ctx context.Context, fileSvc fs.RuntimeFileService, ks *keystore.Keystore, credentials models.PublicBucketCredentials) error {
+	if err := validatePublicBucketCredentials(credentials); err != nil {
+		return err
+	}
+	data, err := json.Marshal(credentials)
+	if err != nil {
+		return fmt.Errorf("public-feed: encode bucket credentials: %w", err)
+	}
+	return WritePublicSecret(ctx, fileSvc, ks, constants.PublicFeedBucketCredentialsPath, data)
+}
+
+// ReadPublicBucketCredentials unseals the bucket credentials. Any read, unseal,
+// decode, or missing-field failure wraps constants.ErrPublicBucketCredentialsRequired.
+func ReadPublicBucketCredentials(ctx context.Context, fileSvc fs.RuntimeFileService, ks *keystore.Keystore) (models.PublicBucketCredentials, error) {
+	data, err := readSealedPublicBytes(ctx, fileSvc, ks, constants.PublicFeedBucketCredentialsPath, constants.ErrPublicBucketCredentialsRequired)
+	if err != nil {
+		return models.PublicBucketCredentials{}, err
+	}
+	var credentials models.PublicBucketCredentials
+	if err := json.Unmarshal(data, &credentials); err != nil {
+		return models.PublicBucketCredentials{}, fmt.Errorf("%w: decode: %w", constants.ErrPublicBucketCredentialsRequired, err)
+	}
+	if err := validatePublicBucketCredentials(credentials); err != nil {
+		return models.PublicBucketCredentials{}, err
+	}
+	return credentials, nil
+}
+
+func validatePublicBucketCredentials(credentials models.PublicBucketCredentials) error {
+	for _, required := range []struct {
+		field string
+		value string
+	}{
+		{field: "access_key_id", value: credentials.AccessKeyID},
+		{field: "secret_access_key", value: credentials.SecretAccessKey},
+		{field: "purge_token", value: credentials.PurgeToken},
+	} {
+		if strings.TrimSpace(required.value) == "" {
+			return fmt.Errorf("%w: %s is required", constants.ErrPublicBucketCredentialsRequired, required.field)
+		}
+	}
+	return nil
 }
 
 // ValidatePublicMirrorOrigin ensures the mirror origin is a bare loopback or
@@ -450,6 +553,19 @@ func WritePublicSecret(ctx context.Context, fileSvc fs.RuntimeFileService, ks *k
 // ReadPublicSecret reads and unseals a secret written by WritePublicSecret and
 // checks its length. Any read, unseal, or decode failure returns missingErr.
 func ReadPublicSecret(ctx context.Context, fileSvc fs.RuntimeFileService, ks *keystore.Keystore, relPath string, expectedBytes int, missingErr error) ([]byte, error) {
+	decoded, err := readSealedPublicBytes(ctx, fileSvc, ks, relPath, missingErr)
+	if err != nil {
+		return nil, err
+	}
+	if len(decoded) != expectedBytes {
+		return nil, missingErr
+	}
+	return decoded, nil
+}
+
+// readSealedPublicBytes reads and unseals a WritePublicSecret file and returns
+// its hex-decoded bytes. Any read, unseal, or decode failure returns missingErr.
+func readSealedPublicBytes(ctx context.Context, fileSvc fs.RuntimeFileService, ks *keystore.Keystore, relPath string, missingErr error) ([]byte, error) {
 	if ks == nil {
 		return nil, fmt.Errorf("%w: keystore unavailable", missingErr)
 	}
@@ -462,7 +578,7 @@ func ReadPublicSecret(ctx context.Context, fileSvc fs.RuntimeFileService, ks *ke
 		return nil, fmt.Errorf("%w: unseal: %v", missingErr, err)
 	}
 	decoded, err := hex.DecodeString(plaintext)
-	if err != nil || len(decoded) != expectedBytes {
+	if err != nil {
 		return nil, missingErr
 	}
 	return decoded, nil

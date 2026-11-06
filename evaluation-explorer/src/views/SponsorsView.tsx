@@ -101,7 +101,7 @@ export function SponsorsView({
             target="_blank"
             rel="noopener noreferrer"
           >
-            Sponsor via Stripe →
+            Sponsor via Stripe
           </a>
           <a
             className="sponsors-cta-secondary"
@@ -120,10 +120,7 @@ export function SponsorsView({
         </div>
       </PageHero>
 
-      <PanelSection
-        title={SPONSORS_URGENCY_HEADING}
-        className="sponsors-urgency-panel"
-      >
+      <PanelSection title={SPONSORS_URGENCY_HEADING}>
         {SPONSORS_URGENCY_PARAGRAPHS.map((paragraph, index) => (
           <p key={index} className="sys-platform-lede">
             {paragraph}
@@ -142,7 +139,7 @@ export function SponsorsView({
               target="_blank"
               rel="noopener noreferrer"
             >
-              Claim #1 →
+              Claim #1
             </a>
           </div>
         </div>

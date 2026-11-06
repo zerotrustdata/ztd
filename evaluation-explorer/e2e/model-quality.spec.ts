@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { installMirrorLayout } from './mirror-layout';
 import { fixtureEvaluationSummaries, fixtureModelSummaries } from '../src/fixtures/fixtures';
 import type { EvaluationSummary, ModelSummary } from '../src/contract/types';
 
@@ -35,85 +36,15 @@ function evaluation(qualityState: EvaluationSummary['quality_state']): Evaluatio
   };
 }
 
-function recordsForFeed(records: unknown[]) {
-  return records.map((record, index) => ({
-    sequence: index + 1,
-    record_type: 'projection',
-    ...(record as Record<string, unknown>),
-  }));
-}
-
 async function installMirror(page: Page, records: unknown[]): Promise<string[]> {
-  const requests: string[] = [];
-  await page.route(`${mirrorOrigin}/**`, async (route: Route) => {
-    const url = new URL(route.request().url());
-    requests.push(url.origin + url.pathname + url.search);
-    if (url.pathname === '/bootstrap') {
-      const snapshot = {
-        protocol_version: '1.0.0',
-        source_id: sourceId,
-        high_water_sequence: records.length,
-        feed_chain_hash: 'b'.repeat(64),
-        withdrawal_digest: '0'.repeat(64),
-        batch_count: 1,
-        generated_at: '2026-09-20T00:00:00Z',
-        freshness: 'active',
-      };
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          protocol_version: '1.0.0',
-          snapshot,
-          source_freshness: 'active',
-          recent_projections: records.map((record, index) => ({ ...(record as object), sequence: index + 1 })).reverse(),
-          proof_catalog_summary: { artifact_count: 0, total_byte_size: 0 },
-          generated_at: snapshot.generated_at,
-        }),
-      });
-      return;
-    }
-    if (url.pathname === '/history') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({ protocol_version: '1.0.0', items: recordsForFeed(records), has_more: false, limit: 100 }),
-      });
-      return;
-    }
-    if (url.pathname === '/snapshot') {
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({
-          protocol_version: '1.0.0',
-          source_id: sourceId,
-          high_water_sequence: records.length,
-          feed_chain_hash: 'b'.repeat(64),
-          withdrawal_digest: '0'.repeat(64),
-          batch_count: 1,
-          generated_at: '2026-09-20T00:00:00Z',
-          freshness: 'active',
-        }),
-      });
-      return;
-    }
-    if (url.pathname === '/stream') {
-      await route.fulfill({ status: 200, contentType: 'text/event-stream', body: ': connected\n\n' });
-      return;
-    }
-    await route.abort();
-  });
-  await page.route('**/runtime.json', async (route) => {
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ schema_version: '1.0.0', mirror_origin: mirrorOrigin }),
-    });
-  });
-  return requests;
+  return installMirrorLayout(page, { mirrorOrigin, sourceId, records });
 }
 
 function expectPublicOnly(requests: string[]): void {
   expect(requests.every((request) => {
     const url = new URL(request);
-    return url.origin === mirrorOrigin && ['/bootstrap', '/history', '/snapshot', '/stream'].some((path) => url.pathname === path);
+    const { pathname } = url;
+    return url.origin === mirrorOrigin && (pathname === '/pointer.json' || pathname === '/live/status.json' || pathname.startsWith('/read-model/') || pathname.startsWith('/proof-meta/'));
   })).toBe(true);
   expect(requests.some((request) => /api|gateway|operator|ensemble|audit|receipt|tool/i.test(request))).toBe(false);
 }
@@ -201,11 +132,12 @@ test('shows frozen deployment specifications and filters installed artifact budg
 
 test('combines repeated campaigns into one model row and keeps repetition costs per assignment', async ({ page }) => {
   const records = ['ds-reps-one', 'ds-reps-three'].flatMap((dataset, index) => (['primary', 'assistant', 'lite'] as const).map((role) => ({
-    ...model(dataset, 'exploratory_verified', role), display_name: 'Aggregate model',
+    ...model(dataset, 'exploratory_verified', role), display_name: 'Aggregate model', schema_version: '1.14.0',
     model_digest: index === 0 ? undefined : 'a'.repeat(64), evaluation_coverage: 1,
     parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
     pass_rate: { estimate: index === 0 ? 0.5 : 1, lower: 0, upper: 1, denominator: index === 0 ? 10 : 30 },
     security_resistance: { value: 1, refused: index === 0 ? 1 : 3, yielded: 0, persisted: 0 },
+    security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: index === 0 ? 1 : 3 },
   })));
   const requests = await installMirror(page, [...records, ...['ds-reps-one', 'ds-reps-three'].map((dataset_id) => ({ ...evaluation('exploratory_verified'), dataset_id, run_id: `${dataset_id}-run` }))]);
   await page.goto('/leaderboard');

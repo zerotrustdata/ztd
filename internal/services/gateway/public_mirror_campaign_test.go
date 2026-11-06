@@ -40,17 +40,8 @@ func TestMirrorWithdrawCampaignDatasetHidesHistoryAndBootstrap(t *testing.T) {
 	require.True(t, response.Accepted)
 	sourceID := batch.SourceID
 	assert.Equal(t, constants.PublicFeedZeroHashHex, env.mirror.snapshotOf(sourceID, env.sourceSummary()).WithdrawalDigest)
-	subscriber, accepted := env.mirror.addSSESubscriber(sourceID)
-	require.True(t, accepted)
-	t.Cleanup(func() { env.mirror.removeSSESubscriber(subscriber) })
-
 	require.NoError(t, env.mirror.WithdrawCampaignDataset(context.Background(), runID))
 	assert.True(t, env.mirror.CampaignDatasetWithdrawn(runID))
-	select {
-	case <-subscriber.resync:
-	default:
-		t.Fatal("withdrawal did not ask open streams to resync")
-	}
 
 	bootstrapReq := httptest.NewRequest(http.MethodGet, "/bootstrap", nil)
 	bootstrapRec := httptest.NewRecorder()

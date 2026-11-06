@@ -1,9 +1,15 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { createPublicFetch, type PublicEndpoint, type PublicFetch } from './fetch.js';
+import { createPublicFetch, decodePublicJSON, type PublicFetch, type PublicRequest } from './fetch.js';
 import type { PublicRuntimeConfig } from './runtime_config.js';
-import type { PublicBootstrap, PublicHistory, PublicItem, PublicProofCatalog, PublicSnapshot } from './state.js';
+import type {
+  PublicBootstrap,
+  PublicLiveStatus,
+  PublicPointer,
+  PublicRecentProjection,
+  PublicSnapshot,
+} from './state.js';
 
 export class PublicClientError extends Error {
   constructor(public readonly operation: string, public readonly status: number, message: string) {
@@ -13,13 +19,12 @@ export class PublicClientError extends Error {
 }
 
 export interface PublicClient {
-  bootstrap(sourceID?: string, signal?: AbortSignal): Promise<PublicBootstrap>;
-  snapshot(sourceID?: string, signal?: AbortSignal): Promise<PublicSnapshot>;
-  snapshotAt(sourceID: string, sequence: number, signal?: AbortSignal): Promise<PublicSnapshot>;
-  history(sourceID?: string, cursor?: number, limit?: number, signal?: AbortSignal): Promise<PublicHistory>;
-  proofCatalog(sourceID?: string, signal?: AbortSignal): Promise<PublicProofCatalog>;
-  /** The catalog narrowed to one active artifact: zero or one entries. */
-  proofCatalogEntry(sourceID: string | undefined, artifactID: string, signal?: AbortSignal): Promise<PublicProofCatalog>;
+  /** The mutable pointer. Its signature is not verified here; use verify-proof --pointer for that. */
+  pointer(signal?: AbortSignal): Promise<PublicPointer>;
+  /** The read model the pointer names. Throws PublicClientError when the decoded bytes do not hash to read_model_sha256. */
+  readModel(pointer: PublicPointer, signal?: AbortSignal): Promise<PublicBootstrap>;
+  liveStatus(signal?: AbortSignal): Promise<PublicLiveStatus>;
+
 }
 
 function object(value: unknown): Record<string, unknown> | null {
@@ -34,105 +39,131 @@ function integer(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
+function positiveInteger(value: unknown): value is number {
+  return integer(value) && value > 0;
+}
+
+function digest(value: unknown): value is string {
+  return string(value) && /^[0-9a-f]{64}$/.test(value);
+}
+
+function optional(check: (value: unknown) => boolean): (value: unknown) => boolean {
+  return (value) => value === undefined || check(value);
+}
+
+function signature(value: unknown): value is string {
+  return string(value) && /^[0-9a-f]{128}$/.test(value);
+}
+
 function snapshot(value: unknown): value is PublicSnapshot {
   const candidate = object(value);
   return candidate !== null
     && string(candidate.protocol_version)
     && string(candidate.source_id)
     && integer(candidate.high_water_sequence)
-    && string(candidate.feed_chain_hash)
-    && /^[0-9a-f]{64}$/.test(candidate.feed_chain_hash)
+    && digest(candidate.feed_chain_hash)
     && integer(candidate.batch_count)
-    && (candidate.withdrawal_digest === undefined || (string(candidate.withdrawal_digest) && /^[0-9a-f]{64}$/.test(candidate.withdrawal_digest)))
+    && (candidate.withdrawal_digest === undefined || digest(candidate.withdrawal_digest))
     && string(candidate.generated_at)
     && ['active', 'delayed', 'stale', 'intentionally_stopped', 'safety_stopped', 'source_offline'].includes(String(candidate.freshness));
 }
 
-function item(value: unknown): value is PublicItem {
-  const candidate = object(value);
-  return candidate !== null && integer(candidate.sequence) && string(candidate.record_type);
-}
-
-function recentProjection(value: unknown): boolean {
+function recentProjection(value: unknown): value is PublicRecentProjection {
   const candidate = object(value);
   return candidate !== null && integer(candidate.sequence) && candidate.record_type === undefined;
 }
 
+function taskIndexEntry(value: unknown): boolean {
+ const entry=object(value);
+ return entry!==null && string(entry.task_id) && Array.isArray(entry.results) && entry.results.length<=10 && entry.results.every((value: unknown)=>{
+ const result=object(value);
+ return result!==null && ['run_id','assignment_id','lifecycle_status','summary_status','completed_at'].every((field)=>string(result[field])) && optional(string)(result.verification_status);
+ });
+}
+
 function bootstrap(value: unknown): value is PublicBootstrap {
   const candidate = object(value);
-  const summary = object(candidate?.proof_catalog_summary);
   return candidate !== null
+    && candidate.schema_version === '2.0.0'
     && string(candidate.protocol_version)
     && snapshot(candidate.snapshot)
     && string(candidate.source_freshness)
     && Array.isArray(candidate.recent_projections)
     && candidate.recent_projections.every(recentProjection)
-    && summary !== null
-    && integer(summary.artifact_count)
-    && integer(summary.total_byte_size)
+    && Array.isArray(candidate.task_index)
+    && candidate.task_index.every(taskIndexEntry)
     && string(candidate.generated_at);
 }
 
-function history(value: unknown): value is PublicHistory {
+function pointer(value: unknown): value is PublicPointer {
   const candidate = object(value);
   return candidate !== null
-    && string(candidate.protocol_version)
-    && Array.isArray(candidate.items)
-    && candidate.items.every(item)
-    && (candidate.cursor === undefined || string(candidate.cursor))
-    && typeof candidate.has_more === 'boolean'
-    && integer(candidate.limit);
-}
-
-function proofCatalogEntry(value: unknown): boolean {
-  const candidate = object(value);
-  return candidate !== null
-    && string(candidate.artifact_id)
-    && string(candidate.filename)
-    && string(candidate.media_type)
-    && typeof candidate.byte_size === 'number' && Number.isSafeInteger(candidate.byte_size) && candidate.byte_size >= 0
-    && string(candidate.sha256)
-    && /^[0-9a-f]{64}$/.test(candidate.sha256)
-    && string(candidate.classification)
-    && string(candidate.campaign_id)
-    && (candidate.source_run_id === undefined || string(candidate.source_run_id))
+    && Object.keys(candidate).every((key) => ['schema_version', 'source_id', 'revision', 'read_model_sha256', 'high_water_sequence', 'history_first_sequence', 'feed_chain_hash', 'withdrawal_digest', 'active', 'generated_at', 'signing_key_id', 'signing_public_key', 'signature'].includes(key))
+    && candidate.schema_version === '2.0.0'
+    && string(candidate.source_id)
+    && candidate.source_id !== ''
+    && positiveInteger(candidate.revision)
+    && digest(candidate.read_model_sha256)
+    && integer(candidate.high_water_sequence)
+    && integer(candidate.history_first_sequence)
+    && digest(candidate.feed_chain_hash)
+    && optional(digest)(candidate.withdrawal_digest)
+    && typeof candidate.active === 'boolean'
     && string(candidate.generated_at)
-    && string(candidate.verification_command)
-    && string(candidate.immutable_url)
-    && candidate.immutable_url.startsWith('/proofs/');
+    && optional(digest)(candidate.signing_key_id)
+    && optional(digest)(candidate.signing_public_key)
+    && optional(signature)(candidate.signature);
 }
 
-function proofCatalog(value: unknown): value is PublicProofCatalog {
+function liveRun(value: unknown): boolean {
+  const candidate = object(value);
+  return candidate !== null && string(candidate.dataset_id) && string(candidate.run_id) && string(candidate.lifecycle_state);
+}
+
+function liveRecord(value: unknown): boolean {
+  const candidate = object(value);
+  return candidate !== null && integer(candidate.sequence) && string(candidate.record_type) && string(candidate.record_bytes);
+}
+
+function liveStatus(value: unknown): value is PublicLiveStatus {
   const candidate = object(value);
   return candidate !== null
-    && string(candidate.schema_version)
-    && Array.isArray(candidate.entries)
-    && candidate.entries.every(proofCatalogEntry)
-    && string(candidate.generated_at);
+    && candidate.schema_version === '1.0.0'
+    && snapshot(candidate.snapshot)
+    && Array.isArray(candidate.active_runs)
+    && candidate.active_runs.every(liveRun)
+    && Array.isArray(candidate.tail)
+    && candidate.tail.every(liveRecord);
 }
 
-function query(values: Record<string, string | number | undefined>): string {
-  const params = new URLSearchParams();
-  for (const [name, value] of Object.entries(values)) if (value !== undefined && value !== '') params.set(name, String(value));
-  const encoded = params.toString();
-  return encoded === '' ? '' : `?${encoded}`;
+async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
+  const hash = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-async function read<T>(fetchPublic: PublicFetch, operation: PublicEndpoint, suffix: string, validator: (value: unknown) => value is T, signal?: AbortSignal): Promise<T> {
-  const response = await fetchPublic(operation, suffix, signal);
+async function readJSON<T>(fetchPublic: PublicFetch, operation: string, request: PublicRequest, validator: (value: unknown) => value is T, signal?: AbortSignal): Promise<T> {
+  const response = await fetchPublic(request, signal);
   if (!response.ok) throw new PublicClientError(operation, response.status, 'mirror request failed');
-  if (!validator(response.body)) throw new PublicClientError(operation, response.status, 'invalid response');
-  return response.body;
+  const body = decodePublicJSON(response.bytes);
+  if (!validator(body)) throw new PublicClientError(operation, response.status, 'invalid response');
+  return body;
+}
+
+async function readDigested<T>(fetchPublic: PublicFetch, operation: string, request: Extract<PublicRequest, { readonly digest: string }>, validator: (value: unknown) => value is T, signal?: AbortSignal): Promise<T> {
+  const response = await fetchPublic(request, signal);
+  if (!response.ok) throw new PublicClientError(operation, response.status, 'mirror request failed');
+  if (await sha256Hex(response.bytes) !== request.digest) throw new PublicClientError(operation, response.status, 'digest mismatch');
+  const body = decodePublicJSON(response.bytes);
+  if (!validator(body)) throw new PublicClientError(operation, response.status, 'invalid response');
+  return body;
 }
 
 export function createPublicClient(config: PublicRuntimeConfig, fetchImpl: typeof fetch = fetch): PublicClient {
   const fetchPublic = createPublicFetch(config, fetchImpl);
   return {
-    bootstrap: (sourceID, signal) => read(fetchPublic, 'bootstrap', query({ source: sourceID }), bootstrap, signal),
-    snapshot: (sourceID, signal) => read(fetchPublic, 'snapshot', query({ source: sourceID }), snapshot, signal),
-    snapshotAt: (sourceID, sequence, signal) => read(fetchPublic, 'snapshot', query({ source: sourceID, sequence }), snapshot, signal),
-    history: (sourceID, cursor, limit, signal) => read(fetchPublic, 'history', query({ source: sourceID, cursor, limit }), history, signal),
-    proofCatalog: (sourceID, signal) => read(fetchPublic, 'proofCatalog', query({ source: sourceID }), proofCatalog, signal),
-    proofCatalogEntry: (sourceID, artifactID, signal) => read(fetchPublic, 'proofCatalog', query({ source: sourceID, artifact: artifactID }), proofCatalog, signal),
+    pointer: (signal) => readJSON(fetchPublic, 'pointer', { endpoint: 'pointer' }, pointer, signal),
+    readModel: (current, signal) => readDigested(fetchPublic, 'readModel', { endpoint: 'readModel', digest: current.read_model_sha256 }, bootstrap, signal),
+    liveStatus: (signal) => readJSON(fetchPublic, 'liveStatus', { endpoint: 'liveStatus' }, liveStatus, signal),
+
   };
 }

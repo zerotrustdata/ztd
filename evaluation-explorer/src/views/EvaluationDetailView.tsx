@@ -11,6 +11,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useActiveDatasetId, useSelectedRelease } from '../state/dataset';
 import { releaseLabel } from '../content/release';
 import { recordKey, useStoreState } from '../state/store';
+import { useRunAssignments, type RunAssignmentsView } from '../state/use-run-assignments';
 import { FormationTable } from '../components/FormationTable';
 import { formationGroups } from './formations';
 import { AssignmentTable } from '../components/AssignmentTable';
@@ -22,6 +23,7 @@ import {
   MetricCard,
   ProgressBar,
   QualityBadge,
+  ReconcilePlaceholder,
   StatTile,
   SafeSourceLink,
   UnavailableValue,
@@ -43,6 +45,17 @@ const verifierStateLabels: Record<VerifierState, string> = {
   not_applicable: 'Not applicable',
 };
 
+/** Assignment rows for one run, or the loading and error notes for its bundle. */
+function RunAssignmentsBody({ load, runId }: { load: RunAssignmentsView; runId: string }) {
+  if (load.status === 'error') {
+    return <ErrorState message={load.error?.message ?? 'Assignment results could not be loaded.'} />;
+  }
+  if (load.status === 'loading' && load.assignments.length === 0) {
+    return <ReconcilePlaceholder label="Loading assignment results…" />;
+  }
+  return <AssignmentTable assignments={load.assignments} runId={runId} />;
+}
+
 export function EvaluationDetailView() {
   const { runId: routeRun, datasetId: routeDataset } = useParams();
   const [params] = useSearchParams();
@@ -55,13 +68,8 @@ export function EvaluationDetailView() {
   const run = useStoreState((state) =>
     runId ? state.evaluations.get(recordKey(activeDatasetId, runId)) : undefined,
   );
-  const assignments = useStoreState((state) =>
-    runId
-      ? Array.from(state.assignments.values()).filter(
-          (a) => a.run_id === runId && a.dataset_id === activeDatasetId,
-        )
-      : [],
-  );
+  const runAssignments = useRunAssignments(activeDatasetId, runId);
+  const assignments = runAssignments.assignments;
   const connection = useStoreState((state) => state.connection);
   if (!runId) return <ErrorState message="No run selected." />;
   if (!run) return <EmptyState hasRecords={false} hasFilters={false} connection={connection} />;
@@ -169,7 +177,7 @@ export function EvaluationDetailView() {
 
       {!run.native_result ? <>
         <PanelSection id="run-results" title={`Assignments (${formatNumber(assignments.length)})`}>
-          <AssignmentTable assignments={assignments} runId={run.run_id} />
+          <RunAssignmentsBody load={runAssignments} runId={run.run_id} />
         </PanelSection>
       </> : null}
       <div className="evaluation-context">

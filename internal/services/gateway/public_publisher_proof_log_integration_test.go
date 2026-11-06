@@ -185,12 +185,12 @@ func TestPublisherProofLog_ConcurrentPublicationsFormLinearChain(t *testing.T) {
 	require.Len(t, segments, publications)
 	catalog, err := publisher.GetProofCatalog(ctx)
 	require.NoError(t, err)
-	assert.Len(t, catalog.Entries, publications, "each assignment publishes its database alone")
+	assert.Empty(t, catalog.Entries, "audit digests do not export database artifacts")
 	stored, found, err := store.ProofManifest(ctx, publisher.cfg.SourceID)
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, segments[publications-1].ProofRootSHA256, stored.ProofRootSHA256)
-	assert.Equal(t, publications, stored.ArtifactCount)
+	assert.Zero(t, stored.ArtifactCount)
 }
 
 // seedPublisherProofLog writes a signed log of segments, each listing

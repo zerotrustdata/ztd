@@ -93,6 +93,7 @@ type modelSummaryRecord struct {
 	OutputThroughputP50     *modelMetricValueRecord        `json:"output_throughput_p50,omitempty"`
 	OutputTokens            *modelMetricValueRecord        `json:"output_tokens,omitempty"`
 	SecurityResistance      *modelSecurityResistanceRecord `json:"security_resistance,omitempty"`
+	SecurityPassRate        *modelPassRateRecord           `json:"security_pass_rate,omitempty"`
 	TerminalOutcomes        map[string]uint32              `json:"terminal_outcomes,omitempty"`
 	UnavailableReasons      []string                       `json:"unavailable_reasons,omitempty"`
 }
@@ -254,6 +255,10 @@ type variantRoleAggregate struct {
 	// SecurityResistance is graded only once the frozen catalog is attached;
 	// nil means the catalog was never bound, not that no scenario applied.
 	SecurityResistance *modelSecurityResistanceRecord
+	// SecurityPassRate is the pass rate over judged security-policy assignments
+	// for the variant and role; nil when none were judged or the catalog was
+	// never bound.
+	SecurityPassRate *modelPassRateRecord
 }
 
 // CampaignDatasetID returns the explorer dataset id for one live campaign run.
@@ -782,7 +787,9 @@ func runAggregateSettled(state *runAggregateState) bool {
 // model, and methodology explorer snapshot records for one campaign run. When
 // report is a bound, applicable verification report for the run, the emitted
 // summary carries the verified state; otherwise it reports not_run.
-func BuildRunAggregateViewRecords(run *evalv1.EvaluationRun, state *runAggregateState, report *evalv1.EvaluationVerificationReport, observedAt time.Time) ([]CampaignViewRecord, error) {
+// assignmentBundleSHA256 is the digest of the run's published assignment
+// bundle the summary names, or empty when none exists.
+func BuildRunAggregateViewRecords(run *evalv1.EvaluationRun, state *runAggregateState, report *evalv1.EvaluationVerificationReport, observedAt time.Time, assignmentBundleSHA256 string) ([]CampaignViewRecord, error) {
 	if run == nil || run.GetRunId() == "" || state == nil || state.Scheduled == 0 {
 		return nil, fmt.Errorf("evaluation: build run aggregate view records: %w", constants.ErrMissingRequiredField)
 	}
@@ -797,6 +804,7 @@ func BuildRunAggregateViewRecords(run *evalv1.EvaluationRun, state *runAggregate
 
 	summaryRecord, err := buildEvaluationSummaryRecord(evaluationSummaryInput{
 		Run: run, DatasetID: datasetID, ObservedAt: observed, State: state, Report: report,
+		AssignmentBundleSHA256: assignmentBundleSHA256,
 	})
 	if err != nil {
 		return nil, err
@@ -875,7 +883,9 @@ func BuildRunAggregateViewRecords(run *evalv1.EvaluationRun, state *runAggregate
 // plus completion catalog, model, and methodology snapshots for one finished
 // campaign run. When report is a bound, applicable verification report for the
 // run, the emitted summary carries the verified state; otherwise not_run.
-func BuildRunCompletionViewRecords(run *evalv1.EvaluationRun, assignments []*evalv1.EvaluationAssignment, results map[string]*evalv1.EvaluationAssignmentResult, state *runAggregateState, report *evalv1.EvaluationVerificationReport, observedAt time.Time) ([]CampaignViewRecord, error) {
+// assignmentBundleSHA256 is the digest of the run's published assignment
+// bundle the summary names, or empty when none exists.
+func BuildRunCompletionViewRecords(run *evalv1.EvaluationRun, assignments []*evalv1.EvaluationAssignment, results map[string]*evalv1.EvaluationAssignmentResult, state *runAggregateState, report *evalv1.EvaluationVerificationReport, observedAt time.Time, assignmentBundleSHA256 string) ([]CampaignViewRecord, error) {
 	if run == nil || state == nil || !RunAggregateComplete(assignments, results, state) {
 		return nil, fmt.Errorf("evaluation: build run completion view records: %w", constants.ErrMissingRequiredField)
 	}
@@ -889,6 +899,7 @@ func BuildRunCompletionViewRecords(run *evalv1.EvaluationRun, assignments []*eva
 
 	summaryRecord, err := buildEvaluationSummaryRecord(evaluationSummaryInput{
 		Run: run, DatasetID: datasetID, ObservedAt: observed, State: state, Report: report,
+		AssignmentBundleSHA256: assignmentBundleSHA256,
 	})
 	if err != nil {
 		return nil, err
@@ -988,6 +999,7 @@ func buildModelSummaryRecord(datasetID, observedAt string, bucket *variantRoleAg
 		record.OutputThroughputP50 = modelMetricRecordOrNil(bucket.OutputThroughputP50)
 		record.OutputTokens = modelMetricRecordOrNil(bucket.OutputTokensP50)
 		record.SecurityResistance = bucket.SecurityResistance
+		record.SecurityPassRate = bucket.SecurityPassRate
 	} else {
 		record.UnavailableReasons = []string{"awaiting terminal assignments"}
 	}
@@ -1034,7 +1046,9 @@ func buildCompletedMethodologySnapshotRecord(datasetID, observedAt string, suite
 
 // BuildRunVerificationViewRecords materializes the post-verify evaluation_summary
 // revision and eligible verified model-summary revisions for one campaign run.
-func BuildRunVerificationViewRecords(run *evalv1.EvaluationRun, state *runAggregateState, report *evalv1.EvaluationVerificationReport, observedAt time.Time) ([]CampaignViewRecord, error) {
+// assignmentBundleSHA256 is the digest of the run's published assignment
+// bundle the summary names, or empty when none exists.
+func BuildRunVerificationViewRecords(run *evalv1.EvaluationRun, state *runAggregateState, report *evalv1.EvaluationVerificationReport, observedAt time.Time, assignmentBundleSHA256 string) ([]CampaignViewRecord, error) {
 	if run == nil || state == nil || report == nil || report.GetRunId() != run.GetRunId() {
 		return nil, fmt.Errorf("evaluation: build run verification view records: %w", constants.ErrMissingRequiredField)
 	}
@@ -1045,6 +1059,7 @@ func BuildRunVerificationViewRecords(run *evalv1.EvaluationRun, state *runAggreg
 	datasetID := CampaignDatasetID(run.GetRunId())
 	summaryRecord, err := buildEvaluationSummaryRecord(evaluationSummaryInput{
 		Run: run, DatasetID: datasetID, ObservedAt: observed, State: state, Report: report,
+		AssignmentBundleSHA256: assignmentBundleSHA256,
 	})
 	if err != nil {
 		return nil, err
@@ -1054,8 +1069,8 @@ func BuildRunVerificationViewRecords(run *evalv1.EvaluationRun, state *runAggreg
 		return nil, err
 	}
 	summaryKey := RunVerificationIdempotencyKey(run.GetRunId())
-	if verifiedModelSummariesEligible(state, report, run) {
-		summaryKey = BoundVerificationSummaryIdempotencyKey(run.GetRunId(), report.GetReportDigestRef().GetSha256())
+	if digest := report.GetReportDigestRef().GetSha256(); digest != "" {
+		summaryKey = BoundVerificationSummaryIdempotencyKey(run.GetRunId(), digest)
 	}
 	records := []CampaignViewRecord{{
 		IdempotencyKey: summaryKey,
@@ -1310,7 +1325,10 @@ type evaluationSummaryRecord struct {
 	VerifierState          string                             `json:"verifier_state"`
 	VerifierFailureSummary string                             `json:"verifier_failure_summary,omitempty"`
 	VerificationMetadata   *summaryVerificationMetadataRecord `json:"verification_metadata,omitempty"`
-	HeadlineMetrics        evaluationHeadlineMetricsRecord    `json:"headline_metrics"`
+	// AssignmentBundleSHA256 names the run's assignment bundle, a proof artifact
+	// holding the run's assignment result records; empty until one is published.
+	AssignmentBundleSHA256 string                          `json:"assignment_bundle_sha256,omitempty"`
+	HeadlineMetrics        evaluationHeadlineMetricsRecord `json:"headline_metrics"`
 }
 
 // evaluationSummaryInput carries every input the summary builder needs; the
@@ -1322,6 +1340,9 @@ type evaluationSummaryInput struct {
 	ObservedAt string
 	State      *runAggregateState
 	Report     *evalv1.EvaluationVerificationReport
+	// AssignmentBundleSHA256 is the digest of the run's published assignment
+	// bundle, or empty when none exists.
+	AssignmentBundleSHA256 string
 }
 
 // buildEvaluationSummaryRecord is the single construction point for live,
@@ -1339,29 +1360,30 @@ func buildEvaluationSummaryRecord(input evaluationSummaryInput) (*evaluationSumm
 		summary = &CampaignRunSummary{ExpectedAssignment: uint64(state.Scheduled), TerminalCount: state.Terminal, StoppedCount: state.Stopped}
 	}
 	record := &evaluationSummaryRecord{
-		CampaignRelease:     state.Release.publicIdentity(),
-		SchemaVersion:       constants.ExplorerViewSchemaVersion,
-		Kind:                "evaluation_summary",
-		DatasetID:           input.DatasetID,
-		QualityState:        qualityStateForCompletedAggregate(state),
-		ObservedAt:          input.ObservedAt,
-		SourceRevisionLabel: campaignSourceRevision,
-		RunID:               run.GetRunId(),
-		CampaignID:          run.GetCampaignBinding().GetCampaignId(),
-		SuiteID:             suiteForRun(run, state).SuiteID,
-		Arm:                 armForRun(run),
-		EvaluationUnit:      evaluationUnitForRun(run),
-		ModelRoleMapping:    buildModelRoleMapping(state),
-		Formations:          buildFormationSummaryRecords(state),
-		LifecycleState:      lifecycleStateForAggregate(state),
-		RunStatus:           CampaignRunStatus(summary, input.Report, state.Executing),
-		AssignmentTotal:     state.Scheduled,
-		AssignmentCompleted: state.Passed,
-		AssignmentFailed:    state.Failed,
-		TerminalOutcomes:    aggregateTerminalOutcomes(state),
-		VerifierState:       "not_run",
-		HeadlineMetrics:     headlineMetricsForState(state),
-		RunSeconds:          state.RunSeconds,
+		CampaignRelease:        state.Release.publicIdentity(),
+		SchemaVersion:          constants.ExplorerViewSchemaVersion,
+		Kind:                   "evaluation_summary",
+		DatasetID:              input.DatasetID,
+		QualityState:           qualityStateForCompletedAggregate(state),
+		ObservedAt:             input.ObservedAt,
+		SourceRevisionLabel:    campaignSourceRevision,
+		RunID:                  run.GetRunId(),
+		CampaignID:             run.GetCampaignBinding().GetCampaignId(),
+		SuiteID:                suiteForRun(run, state).SuiteID,
+		Arm:                    armForRun(run),
+		EvaluationUnit:         evaluationUnitForRun(run),
+		ModelRoleMapping:       buildModelRoleMapping(state),
+		Formations:             buildFormationSummaryRecords(state),
+		LifecycleState:         lifecycleStateForAggregate(state),
+		RunStatus:              CampaignRunStatus(summary, input.Report, state.Executing),
+		AssignmentTotal:        state.Scheduled,
+		AssignmentCompleted:    state.Passed,
+		AssignmentFailed:       state.Failed,
+		TerminalOutcomes:       aggregateTerminalOutcomes(state),
+		VerifierState:          "not_run",
+		AssignmentBundleSHA256: input.AssignmentBundleSHA256,
+		HeadlineMetrics:        headlineMetricsForState(state),
+		RunSeconds:             state.RunSeconds,
 	}
 	if settled {
 		record.EndedAt = input.ObservedAt

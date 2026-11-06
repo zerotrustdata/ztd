@@ -3,8 +3,8 @@ doc_id: codemap
 title: ztd Code Map
 audience: maintainers and coding agents
 status: current
-version: v1.7.0
-last_updated: 2026-10-30
+version: v1.9.1
+last_updated: 2026-11-05
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
@@ -152,7 +152,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | `eval/` | Evaluation campaign inputs and evaluation data layout. Go evaluator resides in `internal/services/evaluation/`, exposed via `internal/cli/cmd/eval/`. |
 | `console/` | Gateway-embedded browser console (React + TypeScript). Docs: [Console Architecture & Development](../architecture/console.md). |
 | `ztd-adapter/` | Audited browser adapter and deterministic contract pack for generated observe frontends. |
-| `evaluation-explorer/` | Evaluation explorer SPA; build artifacts embedded in `internal/services/gateway/explorer/static`. |
+| `evaluation-explorer/` | Evaluation explorer SPA; build artifacts embedded in `internal/services/gateway/explorer/static`. Styles live in `src/styles/` by concern: `tokens.css` owns every color and the self-hosted fonts, and `tests/design-system.test.ts` guards the visual rules. |
 | `examples/` | Runnable Go platform examples, external console app, and MCP client configuration templates. |
 | `demos/` | End-to-end multi-agent scenario demonstrations (e.g. `demos/zero-trust-paper-company/`). |
 | `deploy/` | Reference infrastructure deployment configurations (e.g. `deploy/cloud_gateway/`). |
@@ -313,6 +313,9 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | Path constants | `internal/constants/paths.go` | Reusable system, repository, and runtime path strings. |
 | `CanonicalDBService` | `internal/services/gateway/gateway_db.go` | Primary SQLite connection, schema lifecycle, encrypted vault, secret manager, maintenance, and store lifetimes. Constructor: `OpenCanonicalDBService`, called by the Gateway builder and by Operator startup in `internal/cli/serve/operator_runtime.go`. `ZtdoService` receives the opened instance. |
 | `PublicMirrorStore` | `internal/services/gateway/public_mirror_store.go` | Public spectator mirror store: `public-mirror/mirror.db` plus content-addressed `public-mirror/proofs/`. Constructor: `OpenPublicMirrorStore`, which verifies the chain and proofs on every open. |
+| Run bundles | `internal/services/gateway/public_run_bundle.go`, `internal/services/gateway/public_mirror_run_bundle_store.go` | `PublicPublisherService.PublishRunBundle` builds a settled run's assignment result bundle from the mirror's accepted `snapshot_records` through `PublicMirrorStore.RunBundleRecords` and publishes it as a proof catalog artifact. The Gateway route is `POST /api/v1/public-feed/proofs/run-bundle`; `remoteGatewayCampaignProofPublisher.PublishRunBundle` calls it. |
+| Public layout | `internal/services/gateway/public_layout.go`, `internal/services/gateway/public_mirror_layout.go`, `internal/models/public_feed_layout.go` | `PublicLayoutSource` is the read interface the bucket publisher uses. `PublicMirrorServer` implements it and serves the same objects on the public read listener. The layout paths are the `PublicLayout*` constants in `internal/constants/paths.go`. |
+| `PublicSpectatorRuntime` bucket publisher | `internal/services/gateway/public_spectator_runtime.go`, `internal/services/gateway/public_bucket_publisher.go` | `PublicSpectatorRuntime` starts `PublicBucketPublisher` when the export configuration names a bucket. The publisher reads `PublicLayoutSource` from the colocated mirror and signs each pointer through the `PublicPublisherService` signer (`SignFeedPointer`). It writes through `publicBucketClient` (`public_bucket_client.go`) and records state in `public_bucket_journal.go`. |
 
 `CanonicalDBService` accessors:
 

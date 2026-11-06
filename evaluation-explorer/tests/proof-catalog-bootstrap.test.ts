@@ -1,30 +1,10 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { evalStore } from '../src/state/store';
 import { startFeed, stopFeed } from '../src/state/startup';
-
-const mirrorOrigin = 'http://127.0.0.1:8082';
-const sourceId = 'proof-bootstrap-source';
-
-function requestPath(input: Parameters<typeof fetch>[0]): string {
-  const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as { url: string }).url;
-  return new URL(url, mirrorOrigin).pathname;
-}
-
-function snapshot(highWater = 0) {
-  return {
-    protocol_version: '1.0.0',
-    source_id: sourceId,
-    high_water_sequence: highWater,
-    feed_chain_hash: 'd'.repeat(64),
-    withdrawal_digest: '0'.repeat(64),
-    batch_count: 1,
-    generated_at: '2026-09-20T00:00:00Z',
-    freshness: 'active',
-  };
-}
+import { makeMirror, requestedPaths, serveLayout } from './mirror-layout-fixture';
 
 describe('proof catalog bootstrap', () => {
   beforeEach(() => {
@@ -33,35 +13,14 @@ describe('proof catalog bootstrap', () => {
   });
 
   it('never fetches the proof catalog during startup, even when artifacts are published', async () => {
-    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
-      const path = requestPath(input);
-      if (path === '/runtime.json') {
-        return new Response(JSON.stringify({ schema_version: '1.0.0', mirror_origin: mirrorOrigin }), { status: 200 });
-      }
-      if (path === '/bootstrap') {
-        return new Response(JSON.stringify({
-          protocol_version: '1.0.0',
-          snapshot: snapshot(),
-          source_freshness: 'active',
-          recent_projections: [],
-          proof_catalog_summary: { artifact_count: 1, total_byte_size: 512 },
-          generated_at: '2026-09-20T00:00:00Z',
-        }), { status: 200 });
-      }
-      if (path === '/snapshot') {
-        return new Response(JSON.stringify(snapshot()), { status: 200 });
-      }
-      if (path === '/history') {
-        return new Response(JSON.stringify({ protocol_version: '1.0.0', items: [], has_more: false, limit: 500 }), { status: 200 });
-      }
-      return new Response('not found', { status: 404 });
-    });
+    const fetchImpl = serveLayout(makeMirror());
 
-    await startFeed({ fetchImpl: fetchImpl as typeof fetch });
+    await startFeed({ fetchImpl });
+    stopFeed();
 
-    expect(fetchImpl.mock.calls.some(([url]) => requestPath(url) === '/history')).toBe(false);
-    expect(fetchImpl.mock.calls.some(([url]) => requestPath(url) === '/proof-catalog')).toBe(false);
-    expect(evalStore.getState().proofArtifacts.size).toBe(0);
-    expect(evalStore.getState().proofArtifactCount).toBe(1);
+    const paths = requestedPaths(fetchImpl);
+    expect(paths.some((path) => path.startsWith('/proof-catalog'))).toBe(false);
+    expect(paths.some((path) => path.startsWith('/history'))).toBe(false);
+    expect(paths.some((path) => path.startsWith('/proof-'))).toBe(false);
   });
 });

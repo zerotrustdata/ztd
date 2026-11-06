@@ -1,5 +1,5 @@
 // Mirror health check. Reports mirror process, public endpoint reachability,
-// snapshot high-water, source freshness, record counts, last accepted record,
+// snapshot high-water, source freshness, read-model digest, live status,
 // and publisher-to-mirror drift. Also verifies the public boundary: mutation
 // routes must be absent from the public listener and unauthenticated ingest
 // on the private listener must be rejected.
@@ -8,10 +8,11 @@
 //
 // Usage:  node scripts/mirror-health.mjs
 //
-// Exits with code 0 if the public listener is reachable and responds to
-// bootstrap; exits with code 1 otherwise.
+// Exits with code 0 if the public listener is reachable and serves pointer.json;
+// exits with code 1 otherwise.
 
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,9 +22,6 @@ const projectRoot = resolve(__dirname, '..');
 
 const PUBLIC_ORIGIN = process.env.ZTD_PUBLIC_ORIGIN ?? 'http://127.0.0.1:8082';
 const PRIVATE_ORIGIN = process.env.ZTD_PRIVATE_ORIGIN ?? 'http://127.0.0.1:8081';
-const SOURCE_ID = process.env.ZTD_SOURCE_ID ?? 'opendevops-local';
-const HISTORY_PAGE_LIMIT = 100;
-const HISTORY_MAX_PAGES = 50;
 
 async function fetchJSON(url, timeoutMs) {
   try {
@@ -64,20 +62,18 @@ async function fetchPOST(url, timeoutMs) {
   }
 }
 
-// Probe the SSE endpoint: verify it responds with an event stream, then
-// abort. Does not consume the stream.
-async function probeStream(url, timeoutMs) {
+// Fetch a layout object's raw bytes. Digest-addressed objects are checked against their digest
+// over these bytes, after transport decoding.
+async function fetchBytes(url, timeoutMs) {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const response = await fetch(url, { credentials: 'omit', signal: controller.signal });
-    const contentType = response.headers.get('content-type') ?? '';
-    const ok = response.ok && contentType.includes('text/event-stream');
-    controller.abort();
+    const response = await fetch(url, { method: 'GET', credentials: 'omit', signal: controller.signal });
     clearTimeout(timer);
-    return { ok, status: response.status, contentType };
+    if (!response.ok) return { ok: false, status: response.status, bytes: null };
+    return { ok: true, status: response.status, bytes: Buffer.from(await response.arrayBuffer()) };
   } catch {
-    return { ok: false, status: 0, contentType: '' };
+    return { ok: false, status: 0, bytes: null };
   }
 }
 
@@ -106,20 +102,6 @@ function ztdStatus() {
   }
 }
 
-async function countHistory() {
-  let cursor = '0';
-  let total = 0;
-  for (let page = 0; page < HISTORY_MAX_PAGES; page++) {
-    const result = await fetchJSON(`${PUBLIC_ORIGIN}/history?source=${SOURCE_ID}&cursor=${cursor}&limit=${HISTORY_PAGE_LIMIT}`, 5000);
-    if (!result.ok) return { total: -1, error: result.status };
-    const items = Array.isArray(result.body?.items) ? result.body.items : [];
-    total += items.length;
-    if (!result.body?.has_more || items.length === 0) return { total };
-    cursor = String(result.body.cursor ?? items[items.length - 1].sequence);
-  }
-  return { total, truncated: true };
-}
-
 async function main() {
   console.log('=== Mirror Health Check ===');
   console.log(`Public endpoint:  ${PUBLIC_ORIGIN}`);
@@ -142,23 +124,30 @@ async function main() {
   }
 
   console.log(`\n--- Public Listener (${PUBLIC_ORIGIN}) ---`);
-  const bootstrap = await fetchJSON(`${PUBLIC_ORIGIN}/bootstrap?source=${SOURCE_ID}`, 3000);
-  if (!bootstrap.ok) {
-    console.log(`  bootstrap:  FAILED (status ${bootstrap.status})`);
+  const pointerResponse = await fetchJSON(`${PUBLIC_ORIGIN}/pointer.json`, 3000);
+  const pointer = pointerResponse.body;
+  const readModelSha = typeof pointer?.read_model_sha256 === 'string' ? pointer.read_model_sha256 : '';
+  if (!pointerResponse.ok || !/^[0-9a-f]{64}$/u.test(readModelSha)) {
+    console.log(`  pointer:    FAILED (status ${pointerResponse.status})`);
     console.log('\n  MIRROR UNHEALTHY: public listener not reachable.');
     process.exit(1);
   }
-  const bs = bootstrap.body;
+  console.log('  pointer:    OK');
+  console.log(`  revision:    ${pointer.revision ?? 'unknown'}`);
+  console.log(`  active:      ${pointer.active ?? 'unknown'}`);
+
+  const readModel = await fetchBytes(`${PUBLIC_ORIGIN}/read-model/${readModelSha}.json.gz`, 5000);
+  const digestOk = readModel.ok && createHash('sha256').update(readModel.bytes).digest('hex') === readModelSha;
+  const bs = digestOk ? JSON.parse(readModel.bytes.toString('utf8')) : null;
   const snapshot = bs?.snapshot;
-  const recent = Array.isArray(bs?.recent_projections) ? bs.recent_projections.length : 0;
-  console.log('  bootstrap:  OK');
-  console.log(`  freshness:   ${snapshot?.freshness ?? 'unknown'}`);
-  console.log(`  high_water:  ${snapshot?.high_water_sequence ?? 0}`);
-  console.log(`  batch_count: ${snapshot?.batch_count ?? 0}`);
-  console.log(`  recent projections: ${recent}`);
-  const catalogSummary = bs?.proof_catalog_summary;
-  if (catalogSummary) {
-    console.log(`  proof artifacts:    ${catalogSummary.artifact_count ?? 0} (${catalogSummary.total_byte_size ?? 0} bytes)`);
+  console.log(`  read model: ${digestOk ? 'OK (digest matches pointer)' : `FAILED (status ${readModel.status})`}`);
+  if (digestOk) {
+    const recent = Array.isArray(bs.recent_projections) ? bs.recent_projections.length : 0;
+    console.log(`  freshness:   ${snapshot?.freshness ?? 'unknown'}`);
+    console.log(`  high_water:  ${snapshot?.high_water_sequence ?? 0}`);
+    console.log(`  batch_count: ${snapshot?.batch_count ?? 0}`);
+    console.log(`  recent projections: ${recent}`);
+
   }
 
   if (publisherHighWater !== null) {
@@ -170,39 +159,23 @@ async function main() {
     }
   }
 
-  const snap = await fetchJSON(`${PUBLIC_ORIGIN}/snapshot?source=${SOURCE_ID}`, 3000);
-  console.log(`  snapshot:    ${snap.ok ? 'OK' : `FAILED (status ${snap.status})`}`);
-
-  const counted = await countHistory();
-  if (counted.total >= 0) {
-    console.log(`  history:     ${counted.total} record(s) total${counted.truncated ? ' (truncated count)' : ''}`);
+  const live = await fetchJSON(`${PUBLIC_ORIGIN}/live/status.json`, 3000);
+  if (live.ok) {
+    const activeRuns = Array.isArray(live.body?.active_runs) ? live.body.active_runs.length : 0;
+    const tail = Array.isArray(live.body?.tail) ? live.body.tail.length : 0;
+    console.log(`  live status: OK (${activeRuns} active run(s), ${tail} tail record(s))`);
   } else {
-    console.log(`  history:     FAILED (status ${counted.error})`);
+    console.log(`  live status: FAILED (status ${live.status})`);
   }
-
-  const mirrorHighWater = snapshot?.high_water_sequence ?? 0;
-  if (mirrorHighWater > 0) {
-    const last = await fetchJSON(`${PUBLIC_ORIGIN}/history?source=${SOURCE_ID}&cursor=${mirrorHighWater - 1}&limit=1`, 3000);
-    const lastItem = Array.isArray(last.body?.items) ? last.body.items[0] : null;
-    if (lastItem) {
-      const label = lastItem.run_id ? ` run=${lastItem.run_id}` : lastItem.dataset_id ? ` dataset=${lastItem.dataset_id}` : '';
-      console.log(`  last record: seq=${lastItem.sequence} type=${lastItem.record_type} kind=${lastItem.kind ?? 'n/a'}${label}`);
-    }
-  }
-
-  const proofCatalog = await fetchJSON(`${PUBLIC_ORIGIN}/proof-catalog`, 3000);
-  console.log(`  proof-catalog:  ${proofCatalog.ok ? 'OK' : `status ${proofCatalog.status}`}`);
-  const proofHead = await fetchJSON(`${PUBLIC_ORIGIN}/proof-head`, 3000);
-  console.log(`  proof-head: ${proofHead.ok ? 'OK' : `status ${proofHead.status} (absent until proofs are published)`}`);
-
-  const stream = await probeStream(`${PUBLIC_ORIGIN}/stream?source=${SOURCE_ID}&since_id=0`, 3000);
-  console.log(`  stream:      ${stream.ok ? 'OK (text/event-stream)' : `FAILED (status ${stream.status})`}`);
 
   console.log('\n--- Public Boundary ---');
   for (const route of ['/ingest', '/keys/register', '/proof-ingest']) {
+    const result = await fetchPOST(`${PUBLIC_ORIGIN}${route}`, 2000);
+    console.log(`  POST ${route}: ${result.status === 404 ? '404 (isolated)' : `status ${result.status} (NOT ISOLATED)`}`);
+  }
+  for (const route of ['/proof-catalog', '/proof-head', '/proof-head.json', '/proof-segments']) {
     const result = await fetchJSON(`${PUBLIC_ORIGIN}${route}`, 2000);
-    const isolated = result.status === 404;
-    console.log(`  ${route}: ${isolated ? '404 (isolated)' : `status ${result.status} (${isolated ? 'ok' : 'NOT ISOLATED'})`}`);
+    console.log(`  GET ${route}: ${result.status === 404 ? '404 (removed)' : `status ${result.status} (NOT REMOVED)`}`);
   }
 
   const privateIngest = await fetchPOST(`${PRIVATE_ORIGIN}/ingest`, 2000);

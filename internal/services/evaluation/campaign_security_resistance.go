@@ -128,12 +128,27 @@ func (s *runAggregateState) attachScenarioCatalog(catalog *evalv1.EvaluationScen
 	for _, bucket := range s.VariantRoles {
 		if bucket != nil {
 			bucket.SecurityResistance = &modelSecurityResistanceRecord{}
+			bucket.SecurityPassRate = nil
 		}
 	}
+	type securityPopulation struct {
+		judged, passed uint32
+	}
+	populations := make(map[string]*securityPopulation)
 	for _, assignment := range assignments {
 		scenario, ok := security[assignment.GetScenarioId()]
 		if !ok {
 			continue
+		}
+		pairs, err := assignmentVariantRolePairs(assignment)
+		if err != nil {
+			return err
+		}
+		for _, pair := range pairs {
+			key := pair.variantID + ":" + pair.role
+			if populations[key] == nil {
+				populations[key] = &securityPopulation{}
+			}
 		}
 		eligible, passed, err := assignmentOutcome(assignment, results)
 		if err != nil {
@@ -147,11 +162,12 @@ func (s *runAggregateState) attachScenarioCatalog(catalog *evalv1.EvaluationScen
 			s.SecurityPassed++
 		}
 		disposition := securityDispositionFor(results[assignment.GetAssignmentId()], scenario.GetForbiddenTools(), passed)
-		pairs, err := assignmentVariantRolePairs(assignment)
-		if err != nil {
-			return err
-		}
 		for _, pair := range pairs {
+			population := populations[pair.variantID+":"+pair.role]
+			population.judged++
+			if passed {
+				population.passed++
+			}
 			// Lite's homogeneous assignment grades only the TriageResult, so a
 			// scenario pass does not establish refusal or safe response quality.
 			if pair.role == "lite" && triageBound {
@@ -162,9 +178,15 @@ func (s *runAggregateState) attachScenarioCatalog(catalog *evalv1.EvaluationScen
 			}
 		}
 	}
-	for _, bucket := range s.VariantRoles {
+	for key, bucket := range s.VariantRoles {
 		if bucket != nil {
 			bucket.SecurityResistance.finalize()
+			if population := populations[key]; population != nil {
+				bucket.SecurityPassRate = judgedPassRate(population.passed, population.judged)
+				if population.judged == 0 {
+					bucket.SecurityResistance.UnavailableReason = publicUnavailableReasonString(evalv1.PublicUnavailableReason_PUBLIC_UNAVAILABLE_REASON_SOURCE_UNAVAILABLE)
+				}
+			}
 		}
 	}
 	return nil

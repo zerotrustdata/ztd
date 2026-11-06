@@ -113,6 +113,21 @@ func TestAttachScenarioCatalogRequiresCatalog(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
+func TestUnjudgedSecurityIsUnavailableRatherThanInapplicable(t *testing.T) {
+	assignment := securityAssignment("unsupported", "gemma")
+	result := securityResult("unsupported", evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, nil, nil)
+	result.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE
+	assignments := []*evalv1.EvaluationAssignment{assignment}
+	results := map[string]*evalv1.EvaluationAssignmentResult{"unsupported": result}
+	state, err := CollectRunAggregateState(assignments, results)
+	require.NoError(t, err)
+	require.NoError(t, state.attachScenarioCatalog(securityTestCatalog(), assignments, results))
+	bucket := state.VariantRoles["gemma:primary"]
+	assert.Nil(t, bucket.SecurityPassRate, "an unexecuted task establishes no model verdict")
+	assert.Nil(t, bucket.SecurityResistance.Value)
+	assert.Equal(t, "source_unavailable", bucket.SecurityResistance.UnavailableReason)
+}
+
 func TestCollectVariantRoleMetricsOutputTokens(t *testing.T) {
 	assignments := []*evalv1.EvaluationAssignment{
 		homogeneousAssignment("assign-1", "qwen3-4b", evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY),

@@ -1,8 +1,202 @@
 {
   "schema_version": "1.0.0",
   "schemas": {
+    "public_live_status": {
+      "description": "Live status: the snapshot, executing runs, and the newest feed records.",
+      "properties": {
+        "active_runs": {
+          "items": {
+            "properties": {
+              "dataset_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "lifecycle_state": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "run_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "dataset_id",
+              "run_id",
+              "lifecycle_state"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "type": "string"
+        },
+        "snapshot": {
+          "_description": "A snapshot binding the high-water sequence (the last accepted sequence) and the feed-chain hash (the content hash of the last accepted batch). A public client reconciles against the snapshot to establish a consistent cursor.",
+          "batch_count": {
+            "description": "Total number of accepted batches",
+            "required": true,
+            "type": "integer"
+          },
+          "feed_chain_hash": {
+            "description": "Content hash of the last accepted batch (64-char hex)",
+            "required": true,
+            "type": "string"
+          },
+          "freshness": {
+            "description": "Source freshness label",
+            "enum": [
+              "active",
+              "delayed",
+              "stale",
+              "intentionally_stopped",
+              "safety_stopped",
+              "source_offline"
+            ],
+            "required": true,
+            "type": "string"
+          },
+          "generated_at": {
+            "description": "UTC timestamp when the snapshot was produced",
+            "format": "iso8601",
+            "required": true,
+            "type": "string"
+          },
+          "high_water_sequence": {
+            "description": "The last accepted monotonic sequence number",
+            "required": true,
+            "type": "integer"
+          },
+          "protocol_version": {
+            "description": "Public feed protocol version",
+            "required": true,
+            "type": "string"
+          },
+          "source_id": {
+            "description": "Pseudonymous source deployment identifier",
+            "required": true,
+            "type": "string"
+          },
+          "withdrawal_digest": {
+            "description": "SHA-256 over the mirror's sorted withdrawn dataset IDs, the zero hash when none (64-char hex). Present on every mirror read; absent from the publisher's own snapshot. Withdrawal hides records without rewriting the signed chain, so a client discards cached records when this changes.",
+            "required": false,
+            "type": "string"
+          }
+        },
+        "tail": {
+          "description": "Newest feed records, oldest first. Assignment results arrive through live/runs.",
+          "items": {
+            "properties": {
+              "record_bytes": {
+                "description": "Canonical JSON of the record payload",
+                "type": "string"
+              },
+              "record_type": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "sequence": {
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "sequence",
+              "record_type",
+              "record_bytes"
+            ],
+            "type": "object"
+          },
+          "maxItems": 100,
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "snapshot",
+        "active_runs",
+        "tail"
+      ],
+      "type": "object"
+    },
+    "public_pointer": {
+      "additionalProperties": false,
+      "description": "Mutable mirror pointer. It names the current digest-addressed read model. It is written last, so a partial publish never goes live. While a run is active the publisher holds it and moves it only when the active run set changes, a withdrawal lands, or records of a dataset that is not executing arrive; live/status.json carries the run in between. generated_at is when the pointer was composed, not a freshness signal.",
+      "properties": {
+        "active": {
+          "description": "True while a run is executing; poll live/status.json",
+          "type": "boolean"
+        },
+        "feed_chain_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "high_water_sequence": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "history_first_sequence": {
+          "description": "First retained sequence of the signed batch chain",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "read_model_sha256": {
+          "description": "SHA-256 of the decoded read-model bytes",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "revision": {
+          "description": "Increases with every pointer the source writes",
+          "minimum": 1,
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "2.0.0",
+          "type": "string"
+        },
+        "signature": {
+          "description": "Ed25519 over the domain-separated digest of every other field",
+          "pattern": "^[0-9a-f]{128}$",
+          "type": "string"
+        },
+        "signing_key_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "signing_public_key": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "source_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "withdrawal_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "source_id",
+        "revision",
+        "read_model_sha256",
+        "high_water_sequence",
+        "history_first_sequence",
+        "feed_chain_hash",
+        "active",
+        "generated_at"
+      ],
+      "type": "object"
+    },
     "public_proof_catalog": {
-      "_description": "The full public proof catalog listing every available proof package artifact. Served as a bounded anonymous read. Public retention uses append-only tombstones rather than rewriting history.",
+      "_description": "Internal active proof catalog. It authorizes selected run bundles and fixtures but has no anonymous endpoint or bucket projection.",
       "entries": {
         "description": "Catalog entries for every available proof artifact",
         "items": "public_proof_catalog_entry",
@@ -83,27 +277,8 @@
         "type": "string"
       }
     },
-    "public_proof_catalog_summary": {
-      "_description": "Summary of the public proof catalog for bootstrap responses. Carries the total artifact count, total byte size, and the most recent generation time.",
-      "artifact_count": {
-        "description": "Total number of proof artifacts in the catalog",
-        "required": true,
-        "type": "integer"
-      },
-      "last_generated_at": {
-        "description": "UTC timestamp of the most recently generated proof artifact. Omitted when the catalog is empty.",
-        "format": "iso8601",
-        "required": false,
-        "type": "string"
-      },
-      "total_byte_size": {
-        "description": "Total byte size of all proof artifacts",
-        "required": true,
-        "type": "integer"
-      }
-    },
     "public_proof_head": {
-      "_description": "Constant-size public proof head from GET /proof-head, without artifact entries. A nonzero segment_index identifies the latest signed segment; verify the signed segment log to authenticate the active catalog. Index zero identifies a legacy full manifest whose artifacts are available in catalog order.",
+      "_description": "Constant-size proof head of the internal proof log, without artifact entries. No anonymous route serves it. A nonzero segment_index identifies the latest signed segment; verify the signed segment log to authenticate the active catalog. Index zero identifies a legacy full manifest whose artifacts are available in catalog order.",
       "artifact_count": {
         "description": "Active artifact count from the mirror projection; authenticate membership through the signed log",
         "required": true,
@@ -330,7 +505,7 @@
       }
     },
     "public_proof_segments_response": {
-      "_description": "The signed proof log for one source, served by anonymous GET /proof-segments.",
+      "_description": "The signed internal proof log for one source. No anonymous route serves it; offline verification of an explicitly obtained log uses `ztd public verify-proof --segments`.",
       "schema_version": {
         "required": true,
         "type": "string"

@@ -38,6 +38,10 @@ type publicSnapshotIdentity struct {
 // published in the current read model.
 const publicSnapshotCatalogKind = "catalog_snapshot"
 
+// publicSnapshotAssignmentResultKind is the identity kind of a versioned
+// assignment result projection. Those rows are served per run, not in bootstrap.
+const publicSnapshotAssignmentResultKind = "PublicAssignmentResultProjection"
+
 func parseSnapshotRecordIdentity(record models.PublicFeedRecord) (key string, identity publicSnapshotIdentity, event bool, err error) {
 	if record.RecordType != models.PublicFeedRecordTypeProjection && record.RecordType != models.PublicFeedRecordTypeEvent {
 		return "", publicSnapshotIdentity{}, false, nil
@@ -68,7 +72,7 @@ func parseSnapshotRecordIdentity(record models.PublicFeedRecord) (key string, id
 }
 
 func snapshotLifecycleCompanionKey(identity publicSnapshotIdentity) string {
-	if identity.Kind == "PublicAssignmentResultProjection" {
+	if identity.Kind == publicSnapshotAssignmentResultKind {
 		parts := []string{"PublicAssignmentLifecycleRecord", identity.DatasetID, identity.RunID, identity.AssignmentID, identity.VariantID, identity.Role, identity.SuiteID}
 		encoded, _ := json.Marshal(parts)
 		return string(encoded)
@@ -78,7 +82,7 @@ func snapshotLifecycleCompanionKey(identity publicSnapshotIdentity) string {
 
 func snapshotResultCompanionKey(identity publicSnapshotIdentity) string {
 	if identity.Kind == "PublicAssignmentLifecycleRecord" {
-		parts := []string{"PublicAssignmentResultProjection", identity.DatasetID, identity.RunID, identity.AssignmentID, identity.VariantID, identity.Role, identity.SuiteID}
+		parts := []string{publicSnapshotAssignmentResultKind, identity.DatasetID, identity.RunID, identity.AssignmentID, identity.VariantID, identity.Role, identity.SuiteID}
 		encoded, _ := json.Marshal(parts)
 		return string(encoded)
 	}
@@ -158,7 +162,7 @@ func updatePublicSnapshot(ctx context.Context, tx *sql.Tx, batch models.PublicFe
 			return err
 		}
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT first_sequence, record_key FROM snapshot_records WHERE source_id = ? AND is_event = 1 ORDER BY sequence DESC LIMIT -1 OFFSET ?`, batch.SourceID, constants.PublicFeedSSEReplayMaxRecords)
+	rows, err := tx.QueryContext(ctx, `SELECT first_sequence, record_key FROM snapshot_records WHERE source_id = ? AND is_event = 1 ORDER BY sequence DESC LIMIT -1 OFFSET ?`, batch.SourceID, constants.PublicFeedEventRetentionMaxRecords)
 	if err != nil {
 		return err
 	}
@@ -224,6 +228,42 @@ func (s *PublicMirrorStore) snapshotDatasetPresent(ctx context.Context, sourceID
 		return false, fmt.Errorf("mirror snapshot: read dataset: %w", err)
 	}
 	return present, nil
+}
+
+// snapshotRecordsOfKind returns the current records of one kind. It seeks the
+// record key prefix that parseSnapshotRecordIdentity writes, so it reads only
+// those rows.
+func (s *PublicMirrorStore) snapshotRecordsOfKind(ctx context.Context, sourceID, kind string) ([]models.PublicFeedRecord, error) {
+	encoded, err := json.Marshal([]string{kind})
+	if err != nil {
+		return nil, fmt.Errorf("mirror snapshot: encode kind key: %w", err)
+	}
+	// `["kind"` followed by the identity's next JSON array separator.
+	prefix := string(encoded[:len(encoded)-1])
+	records, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT sequence, record_type, record_hash, record_bytes FROM snapshot_records r
+		WHERE source_id = ? AND record_key >= ? AND record_key < ?
+		AND NOT EXISTS (SELECT 1 FROM withdrawn_datasets w WHERE w.source_id = r.source_id AND w.dataset_id = r.dataset_id)`,
+		[]interface{}{sourceID, prefix + ",", prefix + "-"}, scanPublicMirrorRecord)
+	if err != nil {
+		return nil, fmt.Errorf("mirror snapshot: read %s records: %w", kind, err)
+	}
+	return records, nil
+}
+
+// snapshotDatasetsSince returns the distinct non-empty dataset IDs of current
+// records with a sequence above after. It reads only the sequence index.
+func (s *PublicMirrorStore) snapshotDatasetsSince(ctx context.Context, sourceID string, after int64) ([]string, error) {
+	datasets, err := sqliteutil.MaterializeRows(ctx, s.db, `SELECT DISTINCT dataset_id FROM snapshot_records
+		WHERE source_id = ? AND sequence > ? AND dataset_id != '' ORDER BY dataset_id`,
+		[]interface{}{sourceID, after}, func(rows *sql.Rows) (string, error) {
+			var datasetID string
+			err := rows.Scan(&datasetID)
+			return datasetID, err
+		})
+	if err != nil {
+		return nil, fmt.Errorf("mirror snapshot: read datasets since %d: %w", after, err)
+	}
+	return datasets, nil
 }
 
 func (s *PublicMirrorStore) snapshotRecords(ctx context.Context, sourceID string) ([]models.PublicFeedRecord, error) {
@@ -369,7 +409,7 @@ func (s *PublicMirrorStore) verifyPublicSnapshot(ctx context.Context, source str
 			tail = append(tail, p)
 		}
 		sort.Slice(tail, func(i, j int) bool { return tail[i].sequence > tail[j].sequence })
-		for _, old := range tail[min(len(tail), constants.PublicFeedSSEReplayMaxRecords):] {
+		for _, old := range tail[min(len(tail), constants.PublicFeedEventRetentionMaxRecords):] {
 			delete(events, old.key)
 		}
 		after = batches[len(batches)-1].FirstSequence

@@ -45,6 +45,60 @@ func TestSecurityCatalogIncludesLiteInDefaultAndSmokeSuites(t *testing.T) {
 	}
 }
 
+func TestSecurityTextTasksRunWithoutToolCapabilityInEveryRole(t *testing.T) {
+	for name, build := range map[string]func() (*evalv1.EvaluationScenarioCatalog, map[string]ScenarioArtifacts, error){
+		"default": BuildScenarioCatalog,
+		"smoke":   BuildSmokeGateScenarioCatalog,
+	} {
+		t.Run(name, func(t *testing.T) {
+			catalog, _, err := build()
+			require.NoError(t, err)
+			for _, id := range []string{"security-text-injection", "security-text-secret", "security-text-safe-control"} {
+				var found *evalv1.EvaluationScenarioDefinition
+				for _, scenario := range catalog.GetScenarios() {
+					if scenario.GetScenarioId() == id {
+						found = scenario
+					}
+				}
+				require.NotNil(t, found, id)
+				assert.Equal(t, evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_SECURITY_POLICY, found.GetCategory())
+				for _, role := range rolesAll {
+					assert.Contains(t, found.GetEligibleRoles(), role)
+					assignment := homogeneousAssignment(id, "text-model", role)
+					assignment.ScenarioId = id
+					tools, err := scenarioToolsForAssignment(catalog, assignment)
+					require.NoError(t, err)
+					assert.False(t, assignmentDeclaresTools(AssignmentExecutionRequest{ScenarioTools: tools}), id)
+				}
+			}
+		})
+	}
+}
+
+func TestSecurityTextTriageRejectsMisclassification(t *testing.T) {
+	for _, blueprint := range []ScenarioBlueprint{securityTextInjection(), securityTextSecret(), securityTextSafeControl()} {
+		for _, complexity := range []string{"complex", "simple"} {
+			t.Run(blueprint.ScenarioID+"/"+complexity, func(t *testing.T) {
+				posture := string(blueprint.Gold.Players.Triage.Posture[0])
+				output := `{"complexity":"` + complexity + `","complexity_confidence":"high","intent":"information","intent_confidence":"high","intent_summary":"review supplied evidence","request_posture":"` + posture + `","posture_confidence":"high"}`
+				req := playerGradingErrorRequest(blueprint.Gold.Players)
+				req.Assignment.GetHomogeneous().DesignatedRole = evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
+				req.ScenarioGold = blueprint.Gold
+				trace := routerTrace(evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN)
+				trace.DesignatedRole, trace.FinalOutput, trace.Steps = "lite", output, nil
+				trace.ModelCalls = []AgentModelCall{{Purpose: agentModelCallPurposeTurn, LoopTurn: 1, TransactionID: "tx-triage", Text: output}}
+				result, err := GradeHomogeneousScenario(req, trace, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
+				require.NoError(t, err)
+				want := evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
+				if complexity == "simple" {
+					want = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL
+				}
+				assert.Equal(t, want, verdictFromGrades(result.DeterministicGrades))
+			})
+		}
+	}
+}
+
 func TestSecurityResistanceDoesNotRewardFailedToolFreeAnswers(t *testing.T) {
 	result := securityResult("unsafe-answer", evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, nil, nil)
 	assert.Equal(t, securityDispositionPersisted, securityDispositionFor(result, nil, false))
@@ -154,6 +208,9 @@ func TestLiteSecurityClassificationDoesNotClaimRefusalResistance(t *testing.T) {
 	assert.Equal(t, uint32(0), security.Persisted)
 	assert.Equal(t, "scenario_not_applicable", security.UnavailableReason)
 	summary := buildModelSummaryRecord("security-run", "2026-10-29T12:00:00Z", state.VariantRoles["lite-model:lite"], CampaignRelease{})
+	require.NotNil(t, summary.SecurityPassRate)
+	assert.Equal(t, uint32(2), summary.SecurityPassRate.Denominator)
+	assert.InDelta(t, 0.5, summary.SecurityPassRate.Estimate, 1e-9)
 	assert.Equal(t, "lite", summary.Role)
 	require.NotNil(t, summary.SecurityResistance)
 	assert.Nil(t, summary.SecurityResistance.Value)

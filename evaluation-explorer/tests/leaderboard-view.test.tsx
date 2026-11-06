@@ -12,6 +12,7 @@ import { MODEL_ROLE_WIRE_ORDER } from '../src/content/roles';
 import { evalStore } from '../src/state/store';
 import { PREF } from '../src/state/dataset';
 import { LeaderboardView } from '../src/views/LeaderboardView';
+import { formationRun } from './formation-fixture';
 
 const currentRelease = readFileSync('../VERSION', 'utf8').trim();
 const currentSeries = currentRelease.replace(/\.\d+$/, '.x');
@@ -20,6 +21,7 @@ const currentPatches = [0, 1, 2, 3].map((patch) => currentRelease.replace(/\.\d+
 describe('LeaderboardView', () => {
   beforeEach(() => {
     localStorage.removeItem(PREF.filters);
+    localStorage.removeItem(PREF.leaderboardCategory);
     evalStore.loadFixtures(allFixtureSnapshotRecords, fixtureLiveEvents);
   });
 
@@ -31,6 +33,7 @@ describe('LeaderboardView', () => {
       quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1,
       parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
       pass_rate: { estimate: index === 0 ? 0.5 : 1, lower: index === 0 ? 0.5 : 1, upper: index === 0 ? 0.5 : 1, denominator: index === 0 ? 10 : 30 },
+      security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: index === 0 ? 1 : 3 },
       security_resistance: { value: 1, refused: index === 0 ? 1 : 3, yielded: 0, persisted: 0 },
     }))), []);
     render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
@@ -39,10 +42,12 @@ describe('LeaderboardView', () => {
     expect(panel.getAllByRole('link', { name: 'Aggregate model' })).toHaveLength(1);
     expect(panel.getByText('2 runs · 120 judged assignments')).toBeInTheDocument();
     expect(panel.getByText('87.5%')).toBeInTheDocument();
+    expect(panel.getByText('12 scored')).toBeInTheDocument();
     expect(screen.getByTestId('stat-measured-models')).toHaveTextContent('1');
     fireEvent.click(panel.getByRole('button', { name: /^Primary/ }));
     expect(panel.getAllByRole('link', { name: 'Aggregate model' })).toHaveLength(1);
     expect(panel.getByText('2 runs · 40 judged assignments')).toBeInTheDocument();
+    expect(panel.getByText('4 scored')).toBeInTheDocument();
   });
 
   it('shows only fully evaluated, verified role leaders and their ranking evidence on the Leaderboard view', () => {
@@ -62,6 +67,7 @@ describe('LeaderboardView', () => {
       pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: 10 },
       latency_p50_ms: { value: 1200 },
       output_tokens: { value: 150 },
+      security_pass_rate: { estimate: 0.5, lower: 0.5, upper: 0.5, denominator: 2 },
       security_resistance: { value: 0.5, refused: 1, yielded: 0, persisted: 1 },
     };
     evalStore.loadFixtures(
@@ -112,7 +118,7 @@ describe('LeaderboardView', () => {
     expect(panel.getByText('50%')).toBeInTheDocument();
     expect(panel.getByText('4B')).toBeInTheDocument();
     expect(panel.getByText('1.20 s')).toBeInTheDocument();
-    for (const header of ['Score', 'Accuracy', 'Security', 'Speed', 'Tokens', 'Total parameters', 'Run time']) {
+    for (const header of ['Score', 'Accuracy', 'Security', 'Speed', 'Tokens', 'Parameters', 'Run time']) {
       expect(panel.getByRole('columnheader', { name: header })).toBeInTheDocument();
     }
     expect(panel.queryByRole('columnheader', { name: 'Status' })).not.toBeInTheDocument();
@@ -126,7 +132,7 @@ describe('LeaderboardView', () => {
     expect(panel.queryByRole('link', { name: /View all models/i })).not.toBeInTheDocument();
   });
 
-  it('scores absent security as zero in Primary and Assistant and 50% in Lite while showing N/A', () => {
+  it('gives absent security no credit in every role and labels it Not scored', () => {
     const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
     evalStore.loadFixtures(MODEL_ROLE_WIRE_ORDER.flatMap((role): ModelSummary[] => [
       {
@@ -141,16 +147,17 @@ describe('LeaderboardView', () => {
         quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1,
         parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
         pass_rate: { estimate: 0.75, lower: 0.75, upper: 0.75, denominator: 10 },
+        security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 4 },
         security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 },
       },
     ]), []);
     render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
     const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
 
-    // Overall: measured-security is 1st (56.3), no-security is 2nd (23.6)
+    // Overall: measured security ranks first; missing evidence earns no credit.
     const overallMissing = within(panel.getByRole('link', { name: 'No security evidence' }).closest('tr')!);
-    expect(overallMissing.getByText('23.6')).toBeInTheDocument();
-    expect(overallMissing.getByText('N/A')).toHaveAttribute('title', expect.stringContaining('scored as 0% security'));
+    expect(overallMissing.getByText('0.0')).toBeInTheDocument();
+    expect(overallMissing.getByText('Not scored')).toHaveAttribute('title', expect.stringContaining('scored as 0% security'));
     expect(overallMissing.getByText('2nd')).toBeInTheDocument();
     const overallMeasured = within(panel.getByRole('link', { name: 'Measured security' }).closest('tr')!);
     expect(overallMeasured.getByText('56.3')).toBeInTheDocument();
@@ -162,7 +169,7 @@ describe('LeaderboardView', () => {
       fireEvent.click(panel.getByRole('button', { name: new RegExp(`^${role}`) }));
       const missing = within(panel.getByRole('link', { name: 'No security evidence' }).closest('tr')!);
       expect(missing.getByText('0.0')).toBeInTheDocument();
-      expect(missing.getByText('N/A')).toHaveAttribute('title', expect.stringContaining('scored as 0% security'));
+      expect(missing.getByText('Not scored')).toHaveAttribute('title', expect.stringContaining('scored as 0% security'));
       expect(missing.getByText('2nd')).toBeInTheDocument();
       const measured = within(panel.getByRole('link', { name: 'Measured security' }).closest('tr')!);
       expect(measured.getByText('56.3')).toBeInTheDocument();
@@ -170,16 +177,16 @@ describe('LeaderboardView', () => {
       expect(measured.getByText('1st')).toBeInTheDocument();
     }
 
-    // Lite: no-security scores 70.7 (1st with 50% security credit), measured-security scores 56.3 (2nd)
+    // Lite uses the same measured-security rule as the other roles.
     fireEvent.click(panel.getByRole('button', { name: /^Lite/ }));
     const liteMissing = within(panel.getByRole('link', { name: 'No security evidence' }).closest('tr')!);
-    expect(liteMissing.getByText('70.7')).toBeInTheDocument();
-    expect(liteMissing.getByText('N/A')).toHaveAttribute('title', expect.stringContaining('scored as 0% security'));
-    expect(liteMissing.getByText('1st')).toBeInTheDocument();
+    expect(liteMissing.getByText('0.0')).toBeInTheDocument();
+    expect(liteMissing.getByText('Not scored')).toHaveAttribute('title', expect.stringContaining('scored as 0% security'));
+    expect(liteMissing.getByText('2nd')).toBeInTheDocument();
     const liteMeasured = within(panel.getByRole('link', { name: 'Measured security' }).closest('tr')!);
     expect(liteMeasured.getByText('56.3')).toBeInTheDocument();
     expect(liteMeasured.getByText('100%')).toBeInTheDocument();
-    expect(liteMeasured.getByText('2nd')).toBeInTheDocument();
+    expect(liteMeasured.getByText('1st')).toBeInTheDocument();
   });
 
   it('supports browsing leaderboard categories and sorting statistical columns', () => {
@@ -199,6 +206,7 @@ describe('LeaderboardView', () => {
       pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
       latency_p50_ms: { value: 500 },
       output_tokens: { value: 100 },
+      security_pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: 5 },
       security_resistance: { value: 0.8, refused: 4, yielded: 0, persisted: 1 },
     };
     const modelB: ModelSummary = {
@@ -211,6 +219,7 @@ describe('LeaderboardView', () => {
       pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: 10 },
       latency_p50_ms: { value: 1000 },
       output_tokens: { value: 50 },
+      security_pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
       security_resistance: { value: 0.9, refused: 9, yielded: 0, persisted: 1 },
     };
     const modelC: ModelSummary = {
@@ -223,6 +232,7 @@ describe('LeaderboardView', () => {
       pass_rate: { estimate: 0.95, lower: 0.95, upper: 0.95, denominator: 10 },
       latency_p50_ms: { value: 200 },
       output_tokens: { value: 80 },
+      security_pass_rate: { estimate: 0.7, lower: 0.7, upper: 0.7, denominator: 10 },
       security_resistance: { value: 0.7, refused: 7, yielded: 0, persisted: 3 },
     };
     evalStore.loadFixtures(
@@ -276,8 +286,8 @@ describe('LeaderboardView', () => {
     expect(within(rowsSpeed[1]!).getByRole('link', { name: 'Model Gamma' })).toBeInTheDocument();
     expect(within(rowsSpeed[1]!).getByText('1st')).toBeInTheDocument();
 
-    // 6. Sort by Total parameters
-    const sizeBtn = panel.getByRole('button', { name: 'Sort by Total parameters' });
+    // 6. Sort by Parameters
+    const sizeBtn = panel.getByRole('button', { name: 'Sort by Parameters' });
     fireEvent.click(sizeBtn);
     const rowsSize = panel.getAllByRole('row');
     expect(within(rowsSize[1]!).getByRole('link', { name: 'Model Gamma' })).toBeInTheDocument();
@@ -314,6 +324,7 @@ describe('LeaderboardView', () => {
         quality_state: 'exploratory_verified' as const, evaluation_coverage: 1,
         pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: role === 'lite' ? 10 : 100 },
         latency_p50_ms: { value: 100 }, output_tokens: { value: 100 },
+        security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 10 },
         security_resistance: { value: 1, refused: 10, yielded: 0, persisted: 0 },
       },
       {
@@ -322,6 +333,7 @@ describe('LeaderboardView', () => {
         quality_state: 'exploratory_verified' as const, evaluation_coverage: 1,
         pass_rate: { estimate: role === 'lite' ? 1 : 0.1, lower: 0, upper: 1, denominator: role === 'lite' ? 1000 : 10 },
         latency_p50_ms: { value: 100 }, output_tokens: { value: 100 },
+        security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 10 },
         security_resistance: { value: 1, refused: 10, yielded: 0, persisted: 0 },
       },
     ]);
@@ -360,6 +372,7 @@ describe('LeaderboardView', () => {
       parameter_count: 4_000_000_000,
       latency_p50_ms: { value: 1000 },
       output_tokens: { value: 100 },
+      security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 4 },
       security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 },
     };
     evalStore.loadFixtures(MODEL_ROLE_WIRE_ORDER.flatMap((role) => [
@@ -395,6 +408,7 @@ describe('LeaderboardView', () => {
         latency_p50_ms: { value: 1000 },
         output_tokens: { value: 100 },
         pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
+        security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 4 },
         security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 },
       }));
 
@@ -455,6 +469,7 @@ describe('LeaderboardView', () => {
         latency_p50_ms: { value: 1000 },
         output_tokens: { value: 100 },
         pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
+        security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 4 },
         security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 },
       }));
     const runningEvaluation: EvaluationSummary = {
@@ -523,5 +538,61 @@ describe('LeaderboardView', () => {
       render(<MemoryRouter initialEntries={['/leaderboard']}><LeaderboardView /></MemoryRouter>);
       expect(screen.getByRole('combobox', { name: 'Filter by release' })).toHaveValue(currentSeries);
     });
+  });
+  it('counts only runs whose dataset holds a displayed model summary as covered', () => {
+    const model = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary')!;
+    evalStore.loadFixtures([
+      model,
+      { ...formationRun, dataset_id: model.dataset_id, run_id: 'run-covered' },
+      { ...formationRun, dataset_id: 'ds-without-models', run_id: 'run-uncovered' },
+    ], []);
+    render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
+    expect(screen.getByTestId('stat-runs-covered')).toHaveTextContent('1');
+  });
+
+  it('opens on Formations when the release has formation results but no model rows', () => {
+    evalStore.loadFixtures([formationRun], []);
+    const { unmount } = render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
+    const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+    expect(panel.getByRole('button', { name: 'Formations 1' })).toHaveAttribute('aria-pressed', 'true');
+    expect(panel.getByRole('button', { name: 'Overall 0' })).toHaveAttribute('aria-pressed', 'false');
+    expect(panel.getByRole('region', { name: 'Formation suite formation-suite' })).toBeInTheDocument();
+    expect(panel.queryByText(/0 of 3 roles qualified/)).not.toBeInTheDocument();
+    expect(localStorage.getItem(PREF.leaderboardCategory)).toBeNull();
+    unmount();
+  });
+
+  it('opens on Overall when the release has model rows, even if formation results also exist', () => {
+    const source = allFixtureSnapshotRecords.find((record): record is ModelSummary => record.kind === 'model_summary' && Boolean(record.pass_rate))!;
+    evalStore.loadFixtures([
+      ...MODEL_ROLE_WIRE_ORDER.map((role): ModelSummary => ({
+        ...source, role, variant_id: 'overall-default', display_name: 'Overall default model',
+        quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1,
+        parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
+        pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
+        security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 4 },
+        security_resistance: { value: 1, refused: 4, yielded: 0, persisted: 0 },
+      })),
+      formationRun,
+    ], []);
+    render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
+    const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+    expect(panel.getByRole('button', { name: 'Overall 1' })).toHaveAttribute('aria-pressed', 'true');
+    expect(panel.getByRole('link', { name: 'Overall default model' })).toBeInTheDocument();
+    expect(panel.getByText(/3 of 3 roles qualified/)).toBeInTheDocument();
+  });
+
+  it('keeps an explicit category choice across a reload instead of the derived default', () => {
+    evalStore.loadFixtures([formationRun], []);
+    const first = render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
+    fireEvent.click(within(screen.getByRole('region', { name: 'Leaderboard' })).getByRole('button', { name: 'Overall 0' }));
+    expect(localStorage.getItem(PREF.leaderboardCategory)).not.toBeNull();
+    first.unmount();
+
+    render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
+    const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
+    expect(panel.getByRole('button', { name: 'Overall 0' })).toHaveAttribute('aria-pressed', 'true');
+    expect(panel.getByRole('button', { name: 'Formations 1' })).toHaveAttribute('aria-pressed', 'false');
+    expect(panel.getByText('No fully evaluated, verified models across datasets.')).toBeInTheDocument();
   });
 });

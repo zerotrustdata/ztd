@@ -8,7 +8,7 @@
 // body against its binding and the assignment's scenario before rendering.
 // Nested seed and gold criteria stay decoded objects: they render verbatim.
 
-import { sha256Hex } from './agent-trace';
+import { sha256Hex } from './digest';
 import { ValidationError, assert, assertObject, assertString } from './validators';
 
 export interface ScenarioInlineContent {
