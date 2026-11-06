@@ -10,11 +10,11 @@ import {
   formatDuration,
   formatNumber,
   formatPercent,
-  formatThroughput,
   formatTokens,
   formatRank,
   UnavailableValue,
 } from './shared';
+import { formatCompact } from '../utils/format';
 import {
   LEADERBOARD_SCORE_FORMULA,
   LEADERBOARD_SECURITY_SCORING_DESCRIPTION,
@@ -102,7 +102,7 @@ const LEADERBOARD_COLUMNS: LeaderboardColumnDef[] = [
   },
   {
     field: 'size',
-    label: 'Total parameters',
+    label: 'Parameters',
     title: 'Total-parameter penalty: each doubling of the frozen provider parameter count over the smallest qualifying count in the role costs 10% of the score. This is not measured memory or compute cost.',
     initialDirection: 'desc',
   },
@@ -475,7 +475,7 @@ export function RoleLeadersPanel({
                         </td>
                         <td>
                           {row.throughput_p50 !== undefined ? (
-                            formatThroughput(row.throughput_p50)
+                            formatCompact(row.throughput_p50)
                           ) : (
                             <UnavailableValue />
                           )}

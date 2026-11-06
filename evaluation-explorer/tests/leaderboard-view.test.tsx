@@ -118,7 +118,7 @@ describe('LeaderboardView', () => {
     expect(panel.getByText('50%')).toBeInTheDocument();
     expect(panel.getByText('4B')).toBeInTheDocument();
     expect(panel.getByText('1.20 s')).toBeInTheDocument();
-    for (const header of ['Score', 'Accuracy', 'Security', 'Speed', 'Tokens', 'Total parameters', 'Run time']) {
+    for (const header of ['Score', 'Accuracy', 'Security', 'Speed', 'Tokens', 'Parameters', 'Run time']) {
       expect(panel.getByRole('columnheader', { name: header })).toBeInTheDocument();
     }
     expect(panel.queryByRole('columnheader', { name: 'Status' })).not.toBeInTheDocument();
@@ -286,8 +286,8 @@ describe('LeaderboardView', () => {
     expect(within(rowsSpeed[1]!).getByRole('link', { name: 'Model Gamma' })).toBeInTheDocument();
     expect(within(rowsSpeed[1]!).getByText('1st')).toBeInTheDocument();
 
-    // 6. Sort by Total parameters
-    const sizeBtn = panel.getByRole('button', { name: 'Sort by Total parameters' });
+    // 6. Sort by Parameters
+    const sizeBtn = panel.getByRole('button', { name: 'Sort by Parameters' });
     fireEvent.click(sizeBtn);
     const rowsSize = panel.getAllByRole('row');
     expect(within(rowsSize[1]!).getByRole('link', { name: 'Model Gamma' })).toBeInTheDocument();

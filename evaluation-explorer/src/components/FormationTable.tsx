@@ -9,7 +9,8 @@ import { MODEL_ROLE_WIRE_ORDER } from '../content/roles';
 import { formatParameterCount } from '../content/framework-catalog';
 import { roleLabel } from '../views/derived';
 import type { FormationGroup, FormationLeaderboardRow } from '../views/formations';
-import { formatDuration, formatLatency, formatNumber, formatPercent, formatThroughput, formatTokens, UnavailableValue } from './shared';
+import { formatDuration, formatLatency, formatNumber, formatPercent, formatTokens, UnavailableValue } from './shared';
+import { formatCompact } from '../utils/format';
 import { OutcomeBreakdown } from './evidence';
 
 export function FormationTable({ formations, leaderboard = false }: { formations: Array<FormationGroup | FormationLeaderboardRow>; leaderboard?: boolean }) {
@@ -71,12 +72,12 @@ export function FormationTable({ formations, leaderboard = false }: { formations
       cell: ({ row }) => row.original.summary.output_tokens.value !== undefined ? formatTokens(row.original.summary.output_tokens.value) : <UnavailableValue />,
     },
     {
-      id: 'size', header: 'Total parameters', accessorFn: (group) => group.summary.parameter_count,
+      id: 'size', header: 'Parameters', accessorFn: (group) => group.summary.parameter_count,
       cell: ({ row }) => row.original.summary.parameter_count !== undefined ? formatParameterCount(row.original.summary.parameter_count) : <UnavailableValue />,
     },
     {
       id: 'throughput', header: 'Tokens/s', accessorFn: (group) => group.summary.output_throughput_p50.value,
-      cell: ({ row }) => row.original.summary.output_throughput_p50.value !== undefined ? formatThroughput(row.original.summary.output_throughput_p50.value) : <UnavailableValue />,
+      cell: ({ row }) => row.original.summary.output_throughput_p50.value !== undefined ? formatCompact(row.original.summary.output_throughput_p50.value) : <UnavailableValue />,
     },
     {
       id: 'run_time', header: 'Run time', accessorFn: (group) => group.summary.run_seconds,
