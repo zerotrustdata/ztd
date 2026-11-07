@@ -122,6 +122,9 @@ func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCat
 	if err := validateGroundedToolArguments(blueprint); err != nil {
 		return err
 	}
+	if err := validateModelAuthoredSamplesVisible(blueprint); err != nil {
+		return err
+	}
 	if err := validateWorkspaceFiles(blueprint); err != nil {
 		return err
 	}
@@ -487,6 +490,69 @@ func validatePromptHint(blueprint ScenarioBlueprint, catalog *agentToolCatalog) 
 			}
 			if err := validateHintArgumentSource(blueprint, matches[0]); err != nil {
 				return err
+			}
+		}
+	}
+	return nil
+}
+
+// validateModelAuthoredSamplesVisible requires every literal a model-authored
+// argument is graded against to be visible to the model before it authors the
+// argument: in the prompt, in the seed, or in a non-decoy workspace file the
+// scenario lets it read. A scrub token is visible whenever such a file is,
+// since the egress scrubber is what puts it in the model's view of a read. A validator that samples a hidden literal, such as a
+// search pattern checked against a log marker no tool can show, grades the
+// model on a guess.
+func validateModelAuthoredSamplesVisible(blueprint ScenarioBlueprint) error {
+	if blueprint.Gold.PromptHint == nil {
+		return nil
+	}
+	readable := slices.Contains(blueprint.AllowedTools, constants.MCPToolReadFile)
+	visible := func(literal string) bool {
+		if strings.Contains(blueprint.Input.UserPrompt, literal) || seedContains(blueprint.Input.Seed, literal) {
+			return true
+		}
+		if literal == constants.ScrubTokenPrefix {
+			return readable && slices.ContainsFunc(blueprint.Input.WorkspaceFiles, func(file ScenarioWorkspaceFile) bool { return !file.Decoy })
+		}
+		for _, file := range blueprint.Input.WorkspaceFiles {
+			if readable && !file.Decoy && strings.Contains(file.Content, literal) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, argument := range blueprint.Gold.PromptHint.Arguments {
+		if argument.Source != evalv1.EvaluationHintArgumentSource_EVALUATION_HINT_ARGUMENT_SOURCE_MODEL_AUTHORED {
+			continue
+		}
+		if err := modelAuthoredSamplesVisible(blueprint, argument, visible); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func modelAuthoredSamplesVisible(blueprint ScenarioBlueprint, argument ScenarioHintArgument, visible func(string) bool) error {
+	for _, validator := range blueprint.Gold.ArgumentValidators {
+		if validator.ToolName != argument.ToolName {
+			continue
+		}
+		for _, constraint := range validator.Arguments {
+			if constraint.Name != argument.Name {
+				continue
+			}
+			// Each regex sample must be visible; a required-term group needs
+			// one visible alternative.
+			groups := make([][]string, 0, len(constraint.RegexMatches)+len(constraint.RequiredTerms))
+			for _, sample := range constraint.RegexMatches {
+				groups = append(groups, []string{sample})
+			}
+			groups = append(groups, constraint.RequiredTerms...)
+			for _, group := range groups {
+				if !slices.ContainsFunc(group, visible) {
+					return scenarioUnanswerableError(blueprint, "model-authored %q.%q is graded against %q, which neither the prompt, the seed, nor a readable workspace file shows", argument.ToolName, argument.Name, strings.Join(group, " | "))
+				}
 			}
 		}
 	}

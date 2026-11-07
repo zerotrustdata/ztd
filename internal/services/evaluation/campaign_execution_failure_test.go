@@ -51,7 +51,7 @@ func TestBuildExecutorFailureAssignmentResult_ClassifiesProviderFailures(t *test
 func TestBuildExecutorFailureAssignmentResult_ClassifiesGraderFailures(t *testing.T) {
 	t.Parallel()
 	req := heterogeneousAssignmentExecutionRequest(t, mustHeterogeneousStack(t), testHeterogeneousVariants())
-	result, err := BuildExecutorFailureAssignmentResult(req, fmt.Errorf("evaluation: record content judgments: %w", constants.ErrEvaluationContentJudgeFailed), time.Unix(1_700_000_000, 0).UTC())
+	result, err := BuildExecutorFailureAssignmentResult(req, fmt.Errorf("evaluation: judge config: %w", constants.ErrEvaluationCampaignJudgeInvalid), time.Unix(1_700_000_000, 0).UTC())
 	require.NoError(t, err)
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED, result.GetLifecycleStatus())
 	assert.NotEmpty(t, result.GetResultDigest())
@@ -106,7 +106,7 @@ func TestExecuteNextAssignment_PersistsResultOnJudgeFailure(t *testing.T) {
 	store := NewStore(files)
 	executor := &failingCampaignExecutor{
 		message: "evaluation: record content judgments",
-		err:     constants.ErrEvaluationContentJudgeFailed,
+		err:     constants.ErrEvaluationCampaignJudgeInvalid,
 	}
 	controller := NewCampaignController(store, executor, func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }, func(prefix string) string { return prefix + "-1" })
 	req := testCampaignInitRequest(t)
@@ -648,7 +648,7 @@ func TestClassifyExecutionFailure_MapsSentinelsToClosedClasses(t *testing.T) {
 		{name: "inference backend", err: fmt.Errorf("infer: %w", constants.ErrInferenceBackendUnavailable), want: ExecutionFailureProvider},
 		{name: "provider stream error", err: fmt.Errorf("infer: %w", constants.ErrInferenceProviderStreamError), want: ExecutionFailureProvider},
 		{name: "rehydration", err: fmt.Errorf("infer: %w", constants.ErrL5ActuatorRehydrate), want: ExecutionFailureRehydration},
-		{name: "content judge failed", err: fmt.Errorf("judge: %w", constants.ErrEvaluationContentJudgeFailed), want: ExecutionFailureGrader},
+		{name: "request too large", err: fmt.Errorf("infer: %w", constants.ErrInferenceRequestTooLarge), want: ExecutionFailureRequestTooLarge},
 		{name: "campaign judge invalid", err: fmt.Errorf("judge: %w", constants.ErrEvaluationCampaignJudgeInvalid), want: ExecutionFailureGrader},
 		{name: "judge response invalid", err: fmt.Errorf("judge: %w", constants.ErrJudgeResponseInvalid), want: ExecutionFailureGrader},
 		{name: "unrecognized", err: fmt.Errorf("opaque failure"), want: ExecutionFailureInternal},

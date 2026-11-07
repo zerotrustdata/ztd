@@ -561,6 +561,14 @@ func TestClassifyReceiptFailureRehydration(t *testing.T) {
 	}
 }
 
+// A request the inference handler rejects as over its size bound is signed as
+// its own code, so the Gateway reports it rather than a generic receipt failure.
+func TestClassifyReceiptFailureRequestTooLarge(t *testing.T) {
+	t.Parallel()
+	wrapped := fmt.Errorf("inference handler: %w", constants.ErrInferenceRequestTooLarge)
+	assert.Equal(t, operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE, classifyReceiptFailure(wrapped))
+}
+
 // Ollama's mid-stream error event is signed as its own code, not as an invalid response.
 func TestClassifyReceiptFailureProviderStreamError(t *testing.T) {
 	t.Parallel()

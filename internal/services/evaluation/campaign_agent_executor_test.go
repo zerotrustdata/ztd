@@ -283,7 +283,11 @@ func (s *stubMemoryTraceStore) SaveAssignmentAgentTrace(_ context.Context, runID
 	return nil
 }
 
-func TestCampaignAgentExecutor_ExecuteAssignment_JudgeFailureIsRecoverable(t *testing.T) {
+// A judge that cannot decide a criterion does not discard the model's work:
+// the failed judgment is sealed into the persisted trace with its typed
+// failure (INV-EVAL-CAMP-54). The lifecycle it grades to needs signed
+// evidence and is proven against the real stack.
+func TestCampaignAgentExecutor_ExecuteAssignment_JudgeFailurePersistsTraceAsGraderFailed(t *testing.T) {
 	catalog, err := newAgentToolCatalog()
 	require.NoError(t, err)
 	inference := &stubInferenceWithJudgeFailure{t: t, judgeErr: constants.ErrInferenceGenerateFailed}
@@ -307,7 +311,18 @@ func TestCampaignAgentExecutor_ExecuteAssignment_JudgeFailureIsRecoverable(t *te
 	}
 
 	_, err = executor.ExecuteAssignment(t.Context(), req)
-	require.Error(t, err)
-	require.ErrorIs(t, err, constants.ErrEvaluationAssignmentExecutionFailed, "judge failure during ExecuteAssignment must be recoverable so the campaign run continues")
-	require.True(t, isRecoverableAssignmentExecutionError(err))
+	require.NoError(t, err, "a judge failure is a grading outcome, not an execution failure")
+	require.Len(t, traceStore.saved, 1, "the model's trace is persisted")
+	var persisted []byte
+	for _, body := range traceStore.saved {
+		persisted = body
+	}
+	trace, err := DecodeAgentTrace(persisted)
+	require.NoError(t, err)
+	require.Len(t, trace.ContentJudgments, 1)
+	failed := trace.ContentJudgments[0]
+	assert.Equal(t, "crit-1", failed.CriterionID)
+	assert.Equal(t, evalv1.JudgeFailure_JUDGE_FAILURE_DISPATCH_FAILED.String(), failed.Failure)
+	assert.Nil(t, failed.InferenceResult, "a dispatch failure has no result to vouch for")
+	assert.NotContains(t, string(persisted), constants.ErrInferenceGenerateFailed.Error(), "the failure is typed, never error text")
 }

@@ -289,8 +289,98 @@ func (b *OllamaBackend) releaseModel(ctx context.Context, model string) error {
 	return nil
 }
 
+// ollamaModelLoadRequest is a /api/chat request with no messages: Ollama loads
+// the model with the request's runner options and generates nothing.
+type ollamaModelLoadRequest struct {
+	Model    string                 `json:"model"`
+	Messages []ollamaChatMessage    `json:"messages"`
+	Options  ollamaModelLoadOptions `json:"options"`
+	Stream   bool                   `json:"stream"`
+}
+
+// ollamaModelLoadOptions are the runner options fixed when Ollama loads a
+// model. A generation that sends the same options runs on the loaded runner.
+type ollamaModelLoadOptions struct {
+	NumCtx *int32 `json:"num_ctx,omitempty"`
+}
+
+// loadModel loads model with the runner options a generation will send and
+// reads the context window Ollama loaded it with from /api/ps. A model already
+// resident with that window is not loaded again. The load request never sets
+// keep_alive, so a generation that unloads after its request still finds the
+// model resident when it starts.
+func (b *OllamaBackend) loadModel(ctx context.Context, model string, numCtx *int32) (loadedModel, error) {
+	if window, ok, err := b.residentContextWindow(ctx, model, numCtx); err != nil || ok {
+		if err != nil {
+			return loadedModel{}, err
+		}
+		var resident int64
+		return newLoadedModel(b.component, model, window, &resident)
+	}
+	body, err := json.Marshal(ollamaModelLoadRequest{Model: model, Messages: []ollamaChatMessage{}, Options: ollamaModelLoadOptions{NumCtx: numCtx}})
+	if err != nil {
+		return loadedModel{}, fmt.Errorf("ollama_backend: load model: marshal request: %w", err)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, b.apiURL("api", "chat"), bytes.NewReader(body))
+	if err != nil {
+		return loadedModel{}, fmt.Errorf("ollama_backend: load model: build request: %w", err)
+	}
+	httpReq.Header.Set(constants.HeaderContentType, constants.HeaderValueApplicationJSON)
+	startedAt := time.Now()
+	resp, err := b.client.Do(httpReq)
+	if err != nil {
+		return loadedModel{}, transportError(ctx, "ollama_backend", "load model", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrorBodyBytes))
+		if resp.StatusCode == http.StatusNotFound {
+			return loadedModel{}, fmt.Errorf("ollama_backend: load model: %w: model %q", constants.ErrInferenceModelNotFound, model)
+		}
+		return loadedModel{}, fmt.Errorf("ollama_backend: load model: %w: status %d", constants.ErrInferenceGenerateFailed, resp.StatusCode)
+	}
+	var loaded ollamaChatResponse
+	if err := b.decodeResponse("load model", resp.Body, &loaded); err != nil {
+		return loadedModel{}, err
+	}
+	loadDuration := time.Since(startedAt).Nanoseconds()
+	if loaded.Model != model || !loaded.Done || loaded.DoneReason != constants.OllamaDoneReasonLoad {
+		return loadedModel{}, fmt.Errorf("ollama_backend: load model: %w", constants.ErrInferenceProviderResponseInvalid)
+	}
+	window, ok, err := b.residentContextWindow(ctx, model, numCtx)
+	if err != nil {
+		return loadedModel{}, err
+	}
+	if !ok {
+		return loadedModel{}, fmt.Errorf("ollama_backend: load model %q: not resident after load: %w: %w", model, constants.ErrInferenceContextWindowUnavailable, constants.ErrInferenceProviderResponseInvalid)
+	}
+	return newLoadedModel(b.component, model, window, &loadDuration)
+}
+
+// residentContextWindow reports the context window of model's resident runner,
+// and whether one is resident with the requested window (any window when the
+// request states none).
+func (b *OllamaBackend) residentContextWindow(ctx context.Context, model string, numCtx *int32) (int64, bool, error) {
+	resident, err := b.readResidentModels(ctx)
+	if err != nil {
+		return 0, false, err
+	}
+	for _, candidate := range resident {
+		if candidate.Name != model {
+			continue
+		}
+		if numCtx != nil && candidate.ContextLength != int64(*numCtx) {
+			return 0, false, nil
+		}
+		return candidate.ContextLength, true, nil
+	}
+	return 0, false, nil
+}
+
 // Generate sends a generation request to Ollama's /api/chat endpoint and
-// returns the generated text, usage metadata, and finish reason.
+// returns the generated text, usage metadata, and finish reason. The model is
+// loaded first so the generation runs under the context window Ollama loaded
+// it with, which bounds its output.
 func (b *OllamaBackend) Generate(ctx context.Context, req models.GenerateRequest) (*models.GenerateResponse, error) {
 	if req.Model == "" {
 		return nil, fmt.Errorf("ollama_backend: generate: %w", constants.ErrInferenceModelRefInvalid)
@@ -341,6 +431,22 @@ func (b *OllamaBackend) Generate(ctx context.Context, req models.GenerateRequest
 	if err != nil {
 		return nil, fmt.Errorf("ollama_backend: generate: %w", err)
 	}
+	// Streaming scrubs at the source. Without an enabled scrubber the stream is refused before the
+	// provider is called, so no live output can leave unscrubbed.
+	var stream *streamSegmenter
+	if req.Stream {
+		if reporter := ProgressReporterFromContext(ctx); reporter != nil {
+			stream, err = newStreamSegmenter(req.Scrubber, reporter, req.ProviderAttemptID)
+			if err != nil {
+				return nil, fmt.Errorf("ollama_backend: generate: %w", err)
+			}
+		}
+	}
+
+	loaded, err := b.loadModel(ctx, req.Model, req.ContextLimit)
+	if err != nil {
+		return nil, err
+	}
 	chatReq := ollamaChatRequest{
 		Model:    req.Model,
 		Messages: messages,
@@ -350,7 +456,7 @@ func (b *OllamaBackend) Generate(ctx context.Context, req models.GenerateRequest
 		Format:   format,
 		Options: ollamaChatOptions{
 			Temperature: req.Temperature,
-			NumPredict:  resolveOutputTokenLimit(req.MaxTokens),
+			NumPredict:  outputTokenLimit(req.MaxTokens, loaded),
 			TopP:        req.TopP,
 			TopK:        req.TopK,
 			Seed:        req.Seed,
@@ -366,19 +472,11 @@ func (b *OllamaBackend) Generate(ctx context.Context, req models.GenerateRequest
 	}
 	normalizedRequestHash := models.SHA256Hex(body)
 
-	// Streaming scrubs at the source. Without an enabled scrubber the stream is refused before the
-	// provider is called, so no live output can leave unscrubbed.
-	var stream *streamSegmenter
-	if req.Stream {
-		if reporter := ProgressReporterFromContext(ctx); reporter != nil {
-			stream, err = newStreamSegmenter(req.Scrubber, reporter, req.ProviderAttemptID)
-			if err != nil {
-				return nil, fmt.Errorf("ollama_backend: generate: %w", err)
-			}
-		}
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, b.apiURL("api", "chat"), bytes.NewReader(body))
+	// The generation's own context lets the backend end the provider request
+	// when it stops a looping generation, without cancelling the caller.
+	generationCtx, stopGeneration := context.WithCancel(ctx)
+	defer stopGeneration()
+	httpReq, err := http.NewRequestWithContext(generationCtx, http.MethodPost, b.apiURL("api", "chat"), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("ollama_backend: build request: %w", err)
 	}
@@ -403,7 +501,15 @@ func (b *OllamaBackend) Generate(ctx context.Context, req models.GenerateRequest
 		allowParallelToolCalls := req.ParallelToolCalls == nil || *req.ParallelToolCalls
 		chatResp, parts, timeToFirstToken, decodeErr = b.decodeChatStream(ctx, capture, capture.arrivalTime, allowParallelToolCalls, req.ContextLimit, req.ProviderAttemptID, stream)
 	}
+	stoppedRepeating := decodeErr == nil && chatResp.DoneReason == constants.InferenceFinishReasonRepetition
+	if stoppedRepeating {
+		stopGeneration()
+	}
 	responseBody, readErr := capture.result()
+	if stoppedRepeating && ctx.Err() == nil {
+		// The read ended because the backend stopped the generation.
+		readErr = nil
+	}
 	// Only a 200 stream is bound to the attempt record, and only by digest and
 	// size. A non-200 body can echo prompt material and is never recorded.
 	if store := attemptStoreFromContext(ctx); store != nil && resp.StatusCode == http.StatusOK {
@@ -509,13 +615,14 @@ func (b *OllamaBackend) Generate(ctx context.Context, req models.GenerateRequest
 		TotalTokens:           promptTokens + completionTokens,
 		UsageReported:         usageReported,
 		CacheTokens:           cacheTokens,
-		LoadDurationNS:        chatResp.LoadDuration,
+		LoadDurationNS:        sumLoadDurations(loaded, chatResp.LoadDuration),
 		PromptEvalDurationNS:  chatResp.PromptEvalDuration,
 		GenerationDurationNS:  chatResp.EvalDuration,
 		TotalDurationNS:       chatResp.TotalDuration,
 		TimeToFirstTokenNS:    timeToFirstToken,
 		TimingSource:          timingSource,
 		FinishReason:          finishReason,
+		ContextWindow:         loaded.ContextWindow,
 		Model:                 chatResp.Model,
 		ServedModelDigest:     servedModelDigest,
 		NormalizedRequestHash: normalizedRequestHash,
@@ -829,7 +936,8 @@ func (b *OllamaBackend) decodeChatStream(
 	var timeToFirstToken *int64
 	toolCallCount := 0
 	inlineThink := &inlineThinkSplitter{}
-	for {
+	repetition := newRepetitionDetector()
+	for terminal == nil || terminal.DoneReason != constants.InferenceFinishReasonRepetition {
 		var event ollamaChatResponse
 		err := decoder.Decode(&event)
 		if errors.Is(err, io.EOF) {
@@ -869,6 +977,18 @@ func (b *OllamaBackend) decodeChatStream(
 		}
 		if len(eventParts) > 0 && timeToFirstToken == nil {
 			timeToFirstToken = arrivalTime(decoder.InputOffset())
+		}
+		if !event.Done && repetition.observe(eventParts) {
+			// The output has degenerated into a loop: stop here, releasing what
+			// the inline-think splitter still holds, as a done event would.
+			var held ollamaChatMessage
+			inlineThink.rewrite(&held, true)
+			heldParts, err := ollamaResponseParts(held, allowParallelToolCalls)
+			if err != nil {
+				return ollamaChatResponse{}, nil, nil, fmt.Errorf("ollama_backend: generate: response parts: %w", err)
+			}
+			eventParts = append(eventParts, heldParts...)
+			event = ollamaChatResponse{Model: servedModel, Done: true, DoneReason: constants.InferenceFinishReasonRepetition}
 		}
 		if stream != nil {
 			released, err := stream.accept(ctx, eventParts)

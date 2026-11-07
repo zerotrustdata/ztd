@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -66,7 +67,8 @@ func TestLlamaCppBackend_RejectsDigestDriftDuringProviderCall(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			root := testutil.TempDir(t)
 			digest := writeLlamaCppTestModel(t, root, "qwen3.gguf", []byte("before"))
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			router := newLlamaCppFakeRouter("qwen3")
+			router.provider = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if err := os.WriteFile(filepath.Join(root, "qwen3.gguf"), []byte("after"), constants.PermFilePrivate); err != nil {
 					t.Error(err)
 					w.WriteHeader(http.StatusInternalServerError)
@@ -79,7 +81,8 @@ func TestLlamaCppBackend_RejectsDigestDriftDuringProviderCall(t *testing.T) {
 					assert.Equal(t, "/v1/chat/completions", r.URL.Path)
 					_, _ = w.Write([]byte(llamaCppTestStream))
 				}
-			}))
+			})
+			server := httptest.NewServer(router)
 			t.Cleanup(server.Close)
 			backend, err := NewLlamaCppBackend(server.URL, root, testutil.NewTestLogger())
 			require.NoError(t, err)
@@ -159,8 +162,13 @@ func llamaCppTestGGUF(architecture string) []byte {
 	return out.Bytes()
 }
 
+// testLlamaCppContextWindow is the n_ctx llamaCppFakeRouter reports for a
+// loaded model.
+const testLlamaCppContextWindow = 8192
+
 // llamaCppFakeRouter is an in-process llama-server router: a fixed model
-// list with mutable status, a scripted chat stream, and a record of calls.
+// list with mutable status, the model lifecycle the backend drives (list,
+// load, props, unload), a scripted chat stream, and a record of calls.
 type llamaCppFakeRouter struct {
 	mu       sync.Mutex
 	statuses map[string]string
@@ -168,10 +176,19 @@ type llamaCppFakeRouter struct {
 	stream   string
 	calls    []string
 	chatBody llamaCppChatRequest
+	// contextWindow is the n_ctx /props reports for a loaded model; zero
+	// reports none.
+	contextWindow int64
+	// loadFails makes a load fall back to unloaded, as a runner that cannot
+	// start does.
+	loadFails bool
+	// provider, when set, answers every non-lifecycle route in place of the
+	// scripted chat stream.
+	provider http.Handler
 }
 
 func newLlamaCppFakeRouter(models ...string) *llamaCppFakeRouter {
-	router := &llamaCppFakeRouter{statuses: make(map[string]string)}
+	router := &llamaCppFakeRouter{statuses: make(map[string]string), contextWindow: testLlamaCppContextWindow}
 	for _, model := range models {
 		router.statuses[model] = "unloaded"
 		router.order = append(router.order, model)
@@ -181,8 +198,17 @@ func newLlamaCppFakeRouter(models ...string) *llamaCppFakeRouter {
 
 func (f *llamaCppFakeRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.calls = append(f.calls, r.Method+" "+r.URL.Path)
+	switch r.URL.Path {
+	case "/models", "/models/load", "/models/unload", "/props":
+	default:
+		if f.provider != nil {
+			f.mu.Unlock()
+			f.provider.ServeHTTP(w, r)
+			return
+		}
+	}
+	defer f.mu.Unlock()
 	switch r.URL.Path {
 	case "/models":
 		listed := llamaCppModelsResponse{}
@@ -190,6 +216,24 @@ func (f *llamaCppFakeRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			listed.Data = append(listed.Data, llamaCppRouterModel{ID: id, Status: llamaCppModelStatus{Value: f.statuses[id]}})
 		}
 		_ = json.NewEncoder(w).Encode(listed)
+	case "/models/load":
+		var request llamaCppModelRequest
+		_ = json.NewDecoder(r.Body).Decode(&request)
+		if _, ok := f.statuses[request.Model]; !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		f.statuses[request.Model] = "loaded"
+		if f.loadFails {
+			f.statuses[request.Model] = "unloaded"
+		}
+		_, _ = w.Write([]byte(`{"success":true}`))
+	case "/props":
+		if f.statuses[r.URL.Query().Get("model")] != "loaded" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"default_generation_settings":{"n_ctx":%d}}`, f.contextWindow)
 	case "/models/unload":
 		var request llamaCppModelRequest
 		_ = json.NewDecoder(r.Body).Decode(&request)
@@ -201,8 +245,6 @@ func (f *llamaCppFakeRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"success":true}`))
 	case "/v1/chat/completions":
 		_ = json.NewDecoder(r.Body).Decode(&f.chatBody)
-		model := f.chatBody.Model
-		f.statuses[model] = "loaded"
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(f.stream))
 	default:
@@ -267,7 +309,9 @@ func TestLlamaCppBackend_GenerateVerifiesDigestAndUnloadsOnKeepAliveZero(t *test
 	assert.NotEmpty(t, resp.OutputHash)
 	assert.True(t, router.chatBody.Stream)
 	assert.Zero(t, router.chatBody.Temperature)
-	assert.Equal(t, []string{"POST /v1/chat/completions", "POST /models/unload"}, router.recordedCalls())
+	assert.Equal(t, int32(testLlamaCppContextWindow), router.chatBody.MaxTokens, "an unstated limit runs to the loaded window")
+	assert.Equal(t, int32(testLlamaCppContextWindow), resp.ContextWindow)
+	assert.Equal(t, []string{"GET /models", "POST /models/load", "GET /models", "GET /props", "POST /v1/chat/completions", "POST /models/unload"}, router.recordedCalls())
 }
 
 func TestLlamaCppBackend_GenerateFailsClosedBeforeEgress(t *testing.T) {
@@ -296,16 +340,96 @@ func TestLlamaCppBackend_GenerateEnforcesContextLimit(t *testing.T) {
 }
 
 func TestLlamaCppBackend_GenerateClassifiesProviderErrors(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	router := newLlamaCppFakeRouter("qwen3")
+	router.provider = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"error":{"code":400,"type":"exceed_context_size_error","message":"request exceeds the available context size"}}`))
-	}))
-	t.Cleanup(server.Close)
-	backend, err := NewLlamaCppBackend(server.URL, testutil.TempDir(t), testutil.NewTestLogger())
-	require.NoError(t, err)
+	})
+	backend, _ := newLlamaCppTestBackend(t, router)
 
-	_, err = backend.Generate(testutil.Context(t), models.GenerateRequest{Model: "qwen3", Messages: textInferenceMessages("hi")})
+	_, err := backend.Generate(testutil.Context(t), models.GenerateRequest{Model: "qwen3", Messages: textInferenceMessages("hi")})
 	require.ErrorIs(t, err, constants.ErrInferenceContextOverflow)
+}
+
+func TestLlamaCppBackend_GenerateOutputIsBoundedByLoadedContextWindow(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		requested int32
+		want      int32
+	}{
+		{name: "unset runs to the loaded window", requested: 0, want: testLlamaCppContextWindow},
+		{name: "stated value below the window passes through", requested: 512, want: 512},
+		{name: "stated value above the window is the window", requested: testLlamaCppContextWindow * 2, want: testLlamaCppContextWindow},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			router := newLlamaCppFakeRouter("qwen3")
+			router.stream = llamaCppTestStream
+			backend, _ := newLlamaCppTestBackend(t, router)
+
+			response, err := backend.Generate(testutil.Context(t), models.GenerateRequest{Model: "qwen3", MaxTokens: tt.requested, Messages: textInferenceMessages("hi")})
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, router.chatBody.MaxTokens)
+			assert.Equal(t, int32(testLlamaCppContextWindow), response.ContextWindow)
+		})
+	}
+}
+
+func TestLlamaCppBackend_GenerateLoadsModelBeforeGenerating(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		status    string
+		wantCalls []string
+		wantWarm  bool
+	}{
+		{name: "unloaded model is loaded", status: "unloaded", wantCalls: []string{"GET /models", "POST /models/load", "GET /models", "GET /props", "POST /v1/chat/completions"}},
+		{name: "downloaded model is loaded", status: "downloaded", wantCalls: []string{"GET /models", "POST /models/load", "GET /models", "GET /props", "POST /v1/chat/completions"}},
+		{name: "loaded model is not reloaded", status: "loaded", wantCalls: []string{"GET /models", "GET /props", "POST /v1/chat/completions"}, wantWarm: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			router := newLlamaCppFakeRouter("qwen3")
+			router.statuses["qwen3"] = tt.status
+			router.stream = llamaCppTestStream
+			backend, _ := newLlamaCppTestBackend(t, router)
+
+			response, err := backend.Generate(testutil.Context(t), models.GenerateRequest{Model: "qwen3", Messages: textInferenceMessages("hi")})
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCalls, router.recordedCalls())
+			require.NotNil(t, response.LoadDurationNS)
+			if tt.wantWarm {
+				assert.Zero(t, *response.LoadDurationNS, "a resident model reports a zero load so the attempt classifies warm")
+			}
+		})
+	}
+}
+
+func TestLlamaCppBackend_GenerateFailsClosedWithoutALoadedWindow(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		mutate func(*llamaCppFakeRouter)
+		want   []error
+	}{
+		{name: "no window reported", mutate: func(f *llamaCppFakeRouter) { f.contextWindow = 0 }, want: []error{constants.ErrInferenceContextWindowUnavailable, constants.ErrInferenceProviderResponseInvalid}},
+		{name: "load falls back to unloaded", mutate: func(f *llamaCppFakeRouter) { f.loadFails = true }, want: []error{constants.ErrInferenceGenerateFailed}},
+		{name: "router reports a failed model", mutate: func(f *llamaCppFakeRouter) { f.statuses["qwen3"] = "incomplete" }, want: []error{constants.ErrInferenceBackendUnavailable}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			router := newLlamaCppFakeRouter("qwen3")
+			router.stream = llamaCppTestStream
+			tt.mutate(router)
+			backend, _ := newLlamaCppTestBackend(t, router)
+
+			response, err := backend.Generate(testutil.Context(t), models.GenerateRequest{Model: "qwen3", Messages: textInferenceMessages("hi")})
+
+			require.Error(t, err)
+			assert.Nil(t, response)
+			for _, want := range tt.want {
+				require.ErrorIs(t, err, want)
+			}
+			assert.NotContains(t, router.recordedCalls(), "POST /v1/chat/completions", "no generation runs without a loaded window")
+		})
+	}
 }
 
 func TestLlamaCppBackend_InventoryDescribesModelsUnderTheModelRoot(t *testing.T) {

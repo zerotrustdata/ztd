@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0.0",
   "id": "consensus-evidence",
-  "version": "1.9.0",
-  "description": "Consensus-compatible history grounding, read-only tool arguments, error-guided recovery, and contradiction handling. Search evidence, semantic interpretation, upstream identity, and concrete recovery checks use the corrected criteria from default-suite@1.30.0. Grading contract v4 requires the requested answer and accepts every frozen Triage label.",
+  "version": "1.10.0",
+  "description": "Consensus-compatible history grounding, read-only tool arguments, error-guided recovery, and contradiction handling. Search evidence, semantic interpretation, upstream identity, and concrete recovery checks use the corrected criteria from default-suite@1.30.0. Grading contract v4 requires the requested answer and accepts every frozen Triage label. The grep-pattern prompt names the AUTH_FAILURE marker its pattern is graded against.",
   "scenarios": [
     {
       "scenario_id": "tool-select-investigation",
@@ -503,7 +503,7 @@
     },
     {
       "scenario_id": "tool-arg-grep-pattern",
-      "scenario_version": "2.6.0",
+      "scenario_version": "2.6.1",
       "category": "tool_argument",
       "public_description": "Provide a valid grep pattern and bounded search target.",
       "grading_method": "deterministic",
@@ -526,7 +526,7 @@
         "schema_version": "1.3.0",
         "scenario_id": "tool-arg-grep-pattern",
         "synthetic_label": "SYNTHETIC - controlled evaluation fixture",
-        "user_prompt": "Which account failed authentication in the logs under {{workspace}}?",
+        "user_prompt": "The authentication log records each failed login with the marker AUTH_FAILURE. Which account failed authentication in the logs under {{workspace}}?",
         "workspace_files": [
           {
             "label": "auth-log",
@@ -667,8 +667,8 @@
             {
               "tool_name": "search_directory",
               "name": "pattern",
-              "source": "model_authored",
-              "value": "AUTH_FAILURE extracted from the workspace authentication logs"
+              "source": "prompt",
+              "value": "AUTH_FAILURE"
             },
             {
               "tool_name": "search_directory",

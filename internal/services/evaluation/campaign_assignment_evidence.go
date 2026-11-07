@@ -232,6 +232,8 @@ func publicFinishState(value string) (evalv1.PublicFinishState, error) {
 		return evalv1.PublicFinishState_PUBLIC_FINISH_STATE_TOOL_CALL, nil
 	case "error":
 		return evalv1.PublicFinishState_PUBLIC_FINISH_STATE_ERROR, nil
+	case constants.InferenceFinishReasonRepetition:
+		return evalv1.PublicFinishState_PUBLIC_FINISH_STATE_REPETITION, nil
 	case "":
 		return evalv1.PublicFinishState_PUBLIC_FINISH_STATE_UNAVAILABLE, nil
 	default:

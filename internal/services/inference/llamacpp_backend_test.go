@@ -81,7 +81,6 @@ func TestLlamaCppChatRequestFor_MapsGenerationOptions(t *testing.T) {
 		"stream":true,
 		"stream_options":{"include_usage":true},
 		"temperature":0.2,
-		"max_tokens":`+jsonInt(resolveOutputTokenLimit(0))+`,
 		"top_k":40,
 		"seed":7,
 		"stop":["</s>"],

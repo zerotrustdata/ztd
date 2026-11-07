@@ -48,9 +48,13 @@ const (
 	// withheld because its payload could not be rehydrated. The provider was
 	// never called, so it is not a provider failure.
 	ExecutionFailureRehydration ExecutionFailureClass = "rehydration_failed"
-	ExecutionFailureCanceled    ExecutionFailureClass = "canceled"
-	ExecutionFailureTimeout     ExecutionFailureClass = "timeout"
-	ExecutionFailureInternal    ExecutionFailureClass = "internal_error"
+	// ExecutionFailureRequestTooLarge is an inference turn the Inference
+	// Operator rejected because the request exceeded its size bound. The
+	// provider was never called, so it is not a provider failure.
+	ExecutionFailureRequestTooLarge ExecutionFailureClass = "request_too_large"
+	ExecutionFailureCanceled        ExecutionFailureClass = "canceled"
+	ExecutionFailureTimeout         ExecutionFailureClass = "timeout"
+	ExecutionFailureInternal        ExecutionFailureClass = "internal_error"
 	// ExecutionFailureRecovered is an assignment that reached a terminal lifecycle
 	// with no persisted result, such as one a run cancel stopped. Repair records
 	// it; nothing is known about an execution beyond that lifecycle, so this is
@@ -87,7 +91,9 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 		return ExecutionFailureScenarioContract
 	case errors.Is(err, constants.ErrL5ActuatorRehydrate):
 		return ExecutionFailureRehydration
-	case errors.Is(err, constants.ErrEvaluationContentJudgeFailed), errors.Is(err, constants.ErrEvaluationCampaignJudgeInvalid), errors.Is(err, constants.ErrJudgeResponseInvalid):
+	case errors.Is(err, constants.ErrInferenceRequestTooLarge):
+		return ExecutionFailureRequestTooLarge
+	case errors.Is(err, constants.ErrEvaluationCampaignJudgeInvalid), errors.Is(err, constants.ErrJudgeResponseInvalid):
 		return ExecutionFailureGrader
 	case errors.Is(err, constants.ErrEvaluationModelUnserved), errors.Is(err, constants.ErrInferenceOutcomeUnknown), errors.Is(err, constants.ErrInferenceReceiptFailed),
 		inference.ClassifyAttemptFailure(err) != inference.AttemptFailureInternal:
@@ -181,7 +187,7 @@ const (
 // executionFailureClasses is every class ClassifyExecutionFailure can return.
 var executionFailureClasses = []ExecutionFailureClass{
 	ExecutionFailureProvider, ExecutionFailureGrader, ExecutionFailureTarget, ExecutionFailurePosture, ExecutionFailureEvidence, ExecutionFailureHeldContext, ExecutionFailureVerification,
-	ExecutionFailureDispatch, ExecutionFailureInvalidInput, ExecutionFailureScenarioContract, ExecutionFailureRehydration, ExecutionFailureCanceled,
+	ExecutionFailureDispatch, ExecutionFailureInvalidInput, ExecutionFailureScenarioContract, ExecutionFailureRehydration, ExecutionFailureRequestTooLarge, ExecutionFailureCanceled,
 	ExecutionFailureTimeout, ExecutionFailureInternal, ExecutionFailureRecovered,
 }
 

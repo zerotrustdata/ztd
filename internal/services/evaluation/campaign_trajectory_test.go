@@ -148,3 +148,38 @@ func TestFailureSentences_WrongToolNamesExpectedCallAlongsideForbidden(t *testin
 	_, public = failureSentences(tools, ScenarioGoldCriteria{}, traj, true, "", view)
 	assert.Contains(t, public, "The model called forbidden tool `run_shell_command` instead.")
 }
+
+// An empty final answer cannot pass a trajectory, so an answer-policy cell
+// that replied with nothing is NO_ANSWER, not DIRECT; a loop that already
+// failed keeps its more specific outcome.
+func TestReadTrajectory_EmptyFinalAnswerIsNoAnswer(t *testing.T) {
+	answer := ScenarioToolExpectations{TrajectoryPolicy: evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_ANSWER}
+	for _, tc := range []struct {
+		name  string
+		trace *AgentTrace
+		tools ScenarioToolExpectations
+		want  evalv1.EvaluationTrajectoryOutcome
+		pass  bool
+	}{
+		{name: "answered", trace: &AgentTrace{FinalOutput: "READY"}, tools: answer, want: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_DIRECT, pass: true},
+		{name: "empty answer", trace: &AgentTrace{}, tools: answer, want: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_NO_ANSWER},
+		{name: "whitespace answer", trace: &AgentTrace{FinalOutput: " \n"}, tools: answer, want: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_NO_ANSWER},
+		{
+			name:  "failed loop keeps its outcome",
+			trace: &AgentTrace{},
+			tools: ScenarioToolExpectations{TrajectoryPolicy: evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GUIDED, ExpectedTools: []string{constants.MCPToolSearchDirectory}},
+			want:  evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_NO_TOOL_CALL,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			view, err := newAgentGradingView(tc.trace)
+			require.NoError(t, err)
+			result := readTrajectory(tc.tools, ScenarioGoldCriteria{}, view)
+			assert.Equal(t, tc.want, result.Outcome)
+			assert.Equal(t, tc.pass, result.Passed)
+		})
+	}
+	private, public := failureSentences(answer, ScenarioGoldCriteria{}, trajectoryResult{Outcome: evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_NO_ANSWER}, false, "", agentGradingView{Trace: &AgentTrace{}})
+	assert.Contains(t, private, "without an answer")
+	assert.Contains(t, public, "without an answer")
+}

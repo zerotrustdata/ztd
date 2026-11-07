@@ -68,6 +68,15 @@ func judgmentResponse(req *operatorv1.InferenceDispatchRequest, text string) *op
 	}
 }
 
+// repeatingJudgmentResponse is a judge generation the Inference Operator
+// stopped because its rationale degenerated into a loop. Its text opens like a
+// verdict, so only the finish reason distinguishes it.
+func repeatingJudgmentResponse(req *operatorv1.InferenceDispatchRequest) *operatorv1.InferenceDispatchResponse {
+	resp := judgmentResponse(req, `{"score": 2, "rationale": "`+strings.Repeat("The agent did not read the log. ", 200))
+	resp.Result.FinishReason = constants.InferenceFinishReasonRepetition
+	return resp
+}
+
 func judgeVariant() *evalv1.ModelVariant {
 	return &evalv1.ModelVariant{
 		VariantId:      "judge",
@@ -352,6 +361,14 @@ func TestScoreTrace_ScoreFailuresAreFailedScoresNeverErrors(t *testing.T) {
 			},
 			wantTxID:    "tx-judge-final_reply",
 			wantFailure: evalv1.JudgeFailure_JUDGE_FAILURE_VERDICT_INVALID,
+		},
+		{
+			name: "generation stopped repeating",
+			respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+				return repeatingJudgmentResponse(req), nil
+			},
+			wantTxID:    "tx-judge-final_reply",
+			wantFailure: evalv1.JudgeFailure_JUDGE_FAILURE_REPETITION,
 		},
 	}
 	for _, tc := range cases {
@@ -993,6 +1010,11 @@ func TestVerifyQualityResult_ReturnsTheRecordedScoreAndClassifiesEachFailure(t *
 	_, _, err = VerifyQualityResult(cfg, invalid.ProviderAttemptID, invalid.Result, invalid.Receipt)
 	assert.Equal(t, evalv1.JudgeFailure_JUDGE_FAILURE_VERDICT_INVALID, ResultFailure(err))
 
+	repeated := dispatched("")
+	repeated.Result.FinishReason = constants.InferenceFinishReasonRepetition
+	_, _, err = VerifyQualityResult(cfg, repeated.ProviderAttemptID, repeated.Result, repeated.Receipt)
+	assert.Equal(t, evalv1.JudgeFailure_JUDGE_FAILURE_REPETITION, ResultFailure(err), "offline verification classifies a stopped loop as the live judge did")
+
 	_, _, err = VerifyQualityResult(cfg, "other-attempt", scored.Result, scored.Receipt)
 	assert.Equal(t, evalv1.JudgeFailure_JUDGE_FAILURE_RESPONSE_MISMATCH, ResultFailure(err))
 
@@ -1184,35 +1206,29 @@ func TestDecodeVerdictAndJudgment_EmptyResponseWrapsErrJudgeResponseInvalidWitho
 	assert.Contains(t, err.Error(), "empty judge response")
 }
 
-func TestBuildDispatchRequest_MaxTokensBoundedByDefaultAndConfigurable(t *testing.T) {
-	t.Run("default max tokens", func(t *testing.T) {
-		j := newTestJudge(t, &fakeDispatcher{}, nil)
-		req, _, err := j.buildDispatchRequest(SubjectFinalReply, finalReplyPrompt())
-		require.NoError(t, err)
-		assert.Equal(t, constants.InferenceJudgeMaxOutputTokens, req.GetMaxTokens())
-	})
-
-	t.Run("explicit max tokens", func(t *testing.T) {
-		j := newTestJudge(t, &fakeDispatcher{}, func(cfg *Config) {
-			cfg.MaxTokens = 1024
-		})
-		req, _, err := j.buildDispatchRequest(SubjectFinalReply, finalReplyPrompt())
-		require.NoError(t, err)
-		assert.Equal(t, int32(1024), req.GetMaxTokens())
-	})
-
-	t.Run("capped at platform ceiling", func(t *testing.T) {
-		j := newTestJudge(t, &fakeDispatcher{}, func(cfg *Config) {
-			cfg.MaxTokens = 32_000
-		})
-		req, _, err := j.buildDispatchRequest(SubjectFinalReply, finalReplyPrompt())
-		require.NoError(t, err)
-		assert.Equal(t, constants.InferenceMaxOutputTokens, req.GetMaxTokens())
-	})
+func TestDecodeVerdictAndJudgment_StoppedRepetitionIsNeverAVerdict(t *testing.T) {
+	// A loop that happens to contain a complete verdict is still the loop.
+	result := &operatorv1.InferenceResult{
+		Parts:        []*operatorv1.InferenceResponsePart{{Part: &operatorv1.InferenceResponsePart_Text{Text: `{"met": true, "rationale": "ok"}`}}},
+		FinishReason: constants.InferenceFinishReasonRepetition,
+	}
+	_, _, err := decodeCriterionVerdict(result)
+	require.ErrorIs(t, err, constants.ErrJudgeResponseRepeated)
+	require.ErrorIs(t, err, constants.ErrJudgeResponseInvalid)
+	result.Parts[0].Part = &operatorv1.InferenceResponsePart_Text{Text: `{"score": 4, "rationale": "ok"}`}
+	_, _, err = decodeJudgment(result)
+	require.ErrorIs(t, err, constants.ErrJudgeResponseRepeated)
 }
 
-func TestDecodeVerdictAndJudgment_TruncatedResponseReportsTokenLimitAndTruncation(t *testing.T) {
-	t.Run("criterion verdict truncated at token limit", func(t *testing.T) {
+func TestBuildDispatchRequest_StatesNoOutputLimit(t *testing.T) {
+	j := newTestJudge(t, &fakeDispatcher{}, nil)
+	req, _, err := j.buildDispatchRequest(SubjectFinalReply, finalReplyPrompt())
+	require.NoError(t, err)
+	assert.Zero(t, req.GetMaxTokens(), "the judge's output is bounded by the context window its model is loaded with")
+}
+
+func TestDecodeVerdictAndJudgment_TruncatedResponseReportsContextWindowTruncation(t *testing.T) {
+	t.Run("criterion verdict truncated at the context window", func(t *testing.T) {
 		truncatedResult := &operatorv1.InferenceResult{
 			Parts: []*operatorv1.InferenceResponsePart{
 				{Part: &operatorv1.InferenceResponsePart_Text{Text: `{"met": true, "rationale": "incomplete string`}},
@@ -1225,12 +1241,12 @@ func TestDecodeVerdictAndJudgment_TruncatedResponseReportsTokenLimitAndTruncatio
 		require.ErrorIs(t, err, constants.ErrJudgeResponseInvalid)
 		assert.False(t, met)
 		assert.Empty(t, rationale)
-		assert.Contains(t, err.Error(), "generation truncated by token limit")
+		assert.Contains(t, err.Error(), "generation truncated at the loaded context window")
 		assert.Contains(t, err.Error(), "finish_reason: length")
 		assert.Contains(t, err.Error(), "16384")
 	})
 
-	t.Run("judgment truncated at token limit", func(t *testing.T) {
+	t.Run("judgment truncated at the context window", func(t *testing.T) {
 		truncatedResult := &operatorv1.InferenceResult{
 			Parts: []*operatorv1.InferenceResponsePart{
 				{Part: &operatorv1.InferenceResponsePart_Text{Text: `{"score": 5, "rationale": "incomplete string`}},
@@ -1243,7 +1259,7 @@ func TestDecodeVerdictAndJudgment_TruncatedResponseReportsTokenLimitAndTruncatio
 		require.ErrorIs(t, err, constants.ErrJudgeResponseInvalid)
 		assert.Zero(t, score)
 		assert.Empty(t, rationale)
-		assert.Contains(t, err.Error(), "generation truncated by token limit")
+		assert.Contains(t, err.Error(), "generation truncated at the loaded context window")
 		assert.Contains(t, err.Error(), "finish_reason: length")
 		assert.Contains(t, err.Error(), "4096")
 	})

@@ -30,6 +30,11 @@ const verifyContradictionScenarioVersion = "2.6.0"
 // techLogParseScenarioVersion accepts the service name within a sentence.
 const techLogParseScenarioVersion = "2.6.1"
 
+// toolArgGrepPatternScenarioVersion names the AUTH_FAILURE log marker in the
+// prompt. 2.6.0 validated the pattern against a marker the model could not
+// see: search_directory is its only tool and matches case-sensitively.
+const toolArgGrepPatternScenarioVersion = "2.6.1"
+
 var (
 	rolesAll              = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_ASSISTANT, evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE}
 	rolesLite             = []evalv1.ModelCampaignRole{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE}
@@ -378,12 +383,12 @@ func toolArgGrepPattern() ScenarioBlueprint {
 	)
 	gold.ContentCheck = authFailureContentCheck()
 	gold.PromptHint = hint([]string{constants.MCPToolSearchDirectory},
-		hintArg(constants.MCPToolSearchDirectory, "pattern", sourceModelAuthored, "AUTH_FAILURE extracted from the workspace authentication logs"),
+		hintArg(constants.MCPToolSearchDirectory, "pattern", sourcePrompt, "AUTH_FAILURE"),
 		hintArg(constants.MCPToolSearchDirectory, "path", sourceWorkspace, ScenarioWorkspaceToken),
 	)
 	gold.ArgumentValidators = grepAuthFailureValidators()
 	return ScenarioBlueprint{
-		ScenarioID: "tool-arg-grep-pattern", ScenarioVersion: scenarioVersion,
+		ScenarioID: "tool-arg-grep-pattern", ScenarioVersion: toolArgGrepPatternScenarioVersion,
 		EligibleRoles:     rolesPrimaryAssistant,
 		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_TOOL_ARGUMENT,
 		PublicDescription: "Provide a valid grep pattern and bounded search target.",
@@ -393,7 +398,7 @@ func toolArgGrepPattern() ScenarioBlueprint {
 		ExpectedTools:     []string{constants.MCPToolSearchDirectory},
 		RequiredConcepts:  []string{"tool-arguments", "grep"},
 		Input: ScenarioInputFixture{
-			UserPrompt:     "Which account failed authentication in the logs under " + ScenarioWorkspaceToken + "?",
+			UserPrompt:     "The authentication log records each failed login with the marker AUTH_FAILURE. Which account failed authentication in the logs under " + ScenarioWorkspaceToken + "?",
 			WorkspaceFiles: authFailureWorkspaceFiles(),
 			Seed:           InvestigationSeed{CaseTitle: "Auth failure sweep"},
 		},

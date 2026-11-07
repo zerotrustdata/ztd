@@ -699,6 +699,8 @@ enum ReceiptFailureCode {
   // The provider accepted the request, then ended its response stream with an error event instead of a done event,
   // such as when its own tool-call parser rejected the model's output. The provider's message is never signed.
   RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR = 26;
+  // The request exceeded the Inference Operator's request size bound, so it was rejected before the provider was called.
+  RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE = 27;
 }
 
 // GovernanceRejectionCode names the verification check that rejected a
@@ -1689,7 +1691,8 @@ message InferenceRequested {
   // Generation temperature override (0 = use backend default).
   float temperature = 4;
 
-  // Maximum tokens to generate (0 = use backend default).
+  // Maximum tokens to generate. 0 states no limit: the generation runs until
+  // the model stops or fills the context window it is loaded with.
   int32 max_tokens = 5;
 
   // Ollama keep-alive duration override (empty = use config default).
@@ -1799,7 +1802,7 @@ message InferenceResult {
   // Total tokens (prompt + completion).
   int32 total_tokens = 4;
 
-  // Finish reason (e.g., "stop", "length").
+  // Finish reason (e.g., "stop", "length", "repetition").
   string finish_reason = 5;
 
   // Model that produced the result (echoed from the request or resolved by
@@ -1843,6 +1846,11 @@ message InferenceResult {
   // Exclusive with response parts. Covered by result_digest.
   InferenceDecisionResult decision = 33;
   InferenceHostedEgressAttestation hosted_egress = 34;
+  // Context window, in tokens, of the runner the provider loaded the model
+  // with. It is the one bound on the generation's output: a request that
+  // states no max_tokens runs until the model stops or fills this window.
+  // Unset for decision inference, which generates no text.
+  optional int32 context_window = 35;
 }
 
 // InferenceProgressEvent carries bounded incremental provider output for
@@ -1902,7 +1910,8 @@ message InferenceDispatchRequest {
   // Generation temperature override (0 = use backend default).
   float temperature = 4;
 
-  // Maximum tokens to generate (0 = use backend default).
+  // Maximum tokens to generate. 0 states no limit: the generation runs until
+  // the model stops or fills the context window it is loaded with.
   int32 max_tokens = 5;
 
   // Ollama keep-alive duration override (empty = use config default).
@@ -2019,6 +2028,7 @@ enum InferenceDispatchFailureCode {
   INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED = 47;
   INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR = 48;
   INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED = 49;
+  INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE = 50;
 }
 
 // InferenceDispatchFailure is the protocol-owned error body for a non-2xx

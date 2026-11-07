@@ -210,9 +210,13 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	if req.GradingActivity != nil {
 		req.GradingActivity.DeterministicGrading(ctx, result.GetDeterministicGrades())
 	}
-	// A trace the Data Operator's evidence does not back, and a trace whose
-	// provider produced no answer or timed out, are never judged and never
-	// promoted: their imported lifecycle and grades stand as they are.
+	// A trace the Data Operator's evidence does not back, a trace whose
+	// provider produced no answer or timed out, and a trace whose content judge
+	// failed are never quality-judged and never promoted: their imported
+	// lifecycle and grades stand as they are.
+	if _, failed := run.trace.failedContentJudgment(); failed {
+		return result, nil
+	}
 	switch result.GetLifecycleStatus() {
 	case evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE,
 		evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED,
@@ -621,6 +625,9 @@ func (r *agentRun) loop(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if stoppedRepeating(call) {
+			return r.endOnRepetition(text)
+		}
 		if r.persona.ID == agentpersona.IDTriage {
 			// Triage runs once at initial ingest. Its signed first result is the
 			// complete classifier output; it never asks the Interrogator, invokes
@@ -638,12 +645,15 @@ func (r *agentRun) loop(ctx context.Context) error {
 			interrogationErr error
 		)
 		if missing, signalled := ParseClarificationSignal(text); signalled {
-			asked, ok, err := r.interrogate(ctx, turn, messages, missing)
+			asked, askedCall, err := r.interrogate(ctx, turn, messages, missing)
 			if err != nil {
 				return err
 			}
-			if !ok {
+			if askedCall == nil {
 				return r.endAfterFailedInference(ctx)
+			}
+			if stoppedRepeating(askedCall) {
+				return r.endOnRepetition(asked)
 			}
 			text = asked
 			interrogation, interrogated, interrogationErr = ParseInterrogationForGold(text, r.req.ScenarioGold)
@@ -920,7 +930,7 @@ func (r *agentRun) systemPrompt() (string, error) {
 	default:
 		b.WriteString(agentExecutionPrompt)
 	}
-	fmt.Fprintf(&b, "Operator ID: %s\nWorking Directory: %s\n", r.target.OperatorID, r.workspace.OperatorWorkingDirectory)
+	fmt.Fprintf(&b, "Operator ID: %s\n", r.target.OperatorID)
 	if r.trace != nil {
 		fmt.Fprintf(&b, "Investigation ID: %s\n", r.trace.InvestigationID)
 	}
@@ -986,27 +996,63 @@ func interrogationContext(conversation []*operatorv1.InferenceMessage) []*operat
 
 // interrogate dispatches the frozen Interrogator persona for a reasoner's
 // clarification signal: its system prompt, the conversation's text messages so
-// far, and the missing context the reasoner named. ok is false when the call
-// failed and infer already recorded the failure on the trace.
-func (r *agentRun) interrogate(ctx context.Context, turn int, conversation []*operatorv1.InferenceMessage, missing string) (string, bool, error) {
+// far, and the missing context the reasoner named. The returned call is nil
+// when the call failed and infer already recorded the failure on the trace.
+func (r *agentRun) interrogate(ctx context.Context, turn int, conversation []*operatorv1.InferenceMessage, missing string) (string, *AgentModelCall, error) {
 	persona, err := frozenPersona(r.req.Binding.Personas, agentpersona.IDInterrogator)
 	if err != nil {
-		return "", false, assignmentExecutionError("evaluation: interrogate: persona", err)
+		return "", nil, assignmentExecutionError("evaluation: interrogate: persona", err)
 	}
 	messages := []*operatorv1.InferenceMessage{agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, persona.SystemPrompt())}
 	messages = append(messages, interrogationContext(conversation)...)
 	messages = append(messages, agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, interrogationMissingPrefix+missing))
 	input, err := agentTraceMessages(messages)
 	if err != nil {
-		return "", false, err
+		return "", nil, err
 	}
 	result, call := r.infer(ctx, AgentModelCall{Purpose: agentModelCallPurposeInterrogation, LoopTurn: turn, Persona: persona.ID, Input: input}, messages, nil)
 	if call == nil {
-		return "", false, nil
+		return "", nil, nil
 	}
 	text, thinking, toolCalls := agentResponseParts(result)
 	call.Text, call.Thinking, call.ToolCallCount = text, thinking, len(toolCalls)
-	return text, true, nil
+	return text, call, nil
+}
+
+// shellWorkingDir is the directory a run_shell_command runs in: the attempt's
+// investigation workspace, or a directory within it the model named. It is
+// never the Operator directory, which holds every other attempt's workspace,
+// so a model cannot list or read another attempt's fixtures through it.
+func (r *agentRun) shellWorkingDir(requested string) (string, *agentToolFailure, error) {
+	if r.workspace.Root == "" {
+		return "", nil, fmt.Errorf("evaluation: run_shell_command working directory: %w", constants.ErrEvaluationWorkspaceUnavailable)
+	}
+	if requested == "" {
+		return r.workspace.Root, nil, nil
+	}
+	resolved := r.workspace.Resolve(requested)
+	if !pathWithin(resolved, r.workspace.Root) {
+		return "", &agentToolFailure{
+			ErrorType: agentToolErrorSecurity,
+			Error:     fmt.Sprintf("security violation: working directory %q is outside the investigation workspace %s", requested, r.workspace.Root),
+		}, nil
+	}
+	return resolved, nil, nil
+}
+
+// stoppedRepeating reports whether the Inference Operator stopped call's
+// generation because its output degenerated into a loop.
+func stoppedRepeating(call *AgentModelCall) bool {
+	return call.FinishReason == constants.InferenceFinishReasonRepetition
+}
+
+// endOnRepetition ends the episode on a turn the Inference Operator stopped
+// for repetition. The looping output is the model's answer: tool calls it
+// emitted are not run, and the attempt is graded on what it produced.
+func (r *agentRun) endOnRepetition(text string) error {
+	r.trace.FinalOutput = text
+	r.trace.TerminalClassification = AgentTerminalClassificationRepetition
+	return nil
 }
 
 // agentResponseParts splits one response into the answer text sent back to
@@ -1263,22 +1309,14 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, r
 	var argsJSON []byte
 	if request.Shell != nil {
 		shellReq := *request.Shell
-		if shellReq.WorkingDir == "" {
-			targetDir := r.workspace.Root
-			if targetDir == "" {
-				targetDir = r.workspace.OperatorWorkingDirectory
-			}
-			shellReq.WorkingDir = targetDir
-		} else {
-			resolved := r.workspace.Resolve(shellReq.WorkingDir)
-			if !pathWithin(resolved, r.workspace.OperatorWorkingDirectory) {
-				return r.fail(record, agentToolFailure{
-					ErrorType: agentToolErrorSecurity,
-					Error:     fmt.Sprintf("security violation: working directory %q is outside operator workspace", shellReq.WorkingDir),
-				})
-			}
-			shellReq.WorkingDir = resolved
+		workingDir, failure, err := r.shellWorkingDir(shellReq.WorkingDir)
+		if err != nil {
+			return AgentToolCall{}, err
 		}
+		if failure != nil {
+			return r.fail(record, *failure)
+		}
+		shellReq.WorkingDir = workingDir
 		argsJSON = []byte(shellReq.CanonicalJSON())
 	} else {
 		canonical, err := args.CanonicalJSON()
@@ -1552,18 +1590,22 @@ func utf8RuneStart(b byte) bool {
 // agentTraceLifecycle is the single lifecycle rule for an agent trace, shared
 // by import and verification. A provider failure before any agent turn
 // answered is PROVIDER_FAILED; a turn the inference runtime withheld because
-// its payload could not be rehydrated never reached the provider and is
-// FAILED; a completed trace under a semantic-judge catalog is GRADER_FAILED
-// because this executor records no judge evidence.
+// its payload could not be rehydrated or exceeded its request size bound never
+// reached the provider and is FAILED; a trace whose pinned judge failed to decide a content criterion is
+// GRADER_FAILED (INV-EVAL-CAMP-54); a completed trace under a semantic-judge
+// catalog is GRADER_FAILED because this executor records no judge evidence.
 func agentTraceLifecycle(req AssignmentExecutionRequest, trace *AgentTrace) evalv1.EvaluationAssignmentLifecycleStatus {
 	if trace.ProviderFailure != "" && trace.FinalOutput == "" && !trace.ToolTurnLimitReached {
-		if trace.ProviderFailure == string(ExecutionFailureRehydration) {
+		if trace.ProviderFailure == string(ExecutionFailureRehydration) || trace.ProviderFailure == string(ExecutionFailureRequestTooLarge) {
 			return evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED
 		}
 		return evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_PROVIDER_FAILED
 	}
 	if trace.TerminalClassification == AgentTerminalClassificationTimeout {
 		return evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED
+	}
+	if _, failed := trace.failedContentJudgment(); failed {
+		return evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED
 	}
 	if req.GradingMethod == evalv1.EvaluationGradingMethod_EVALUATION_GRADING_METHOD_SEMANTIC_JUDGE {
 		return evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_GRADER_FAILED
@@ -1698,6 +1740,10 @@ func ImportAssignmentResultFromAgentTrace(req AssignmentExecutionRequest, trace 
 		result.GuidedRetryCount = grading.Trajectory.GuidedRetryCount
 		result.FailureReason = grading.Trajectory.FailureReason
 		result.PublicFailureReason = grading.Trajectory.PublicFailureReason
+		if failure, failed := contentJudgeFailure(trace); failed {
+			result.FailureReason = judgeFailureReasons[failure]
+			result.PublicFailureReason = result.FailureReason
+		}
 		if err := attachContentJudgmentEvidence(result, traceEvidence, trace, newID); err != nil {
 			return nil, err
 		}

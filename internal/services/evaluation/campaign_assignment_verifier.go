@@ -307,6 +307,11 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 	if req.Result.GetLifecycleStatus() != lifecycle {
 		failures = append(failures, fmt.Sprintf("stored lifecycle %s does not match agent trace lifecycle %s", req.Result.GetLifecycleStatus(), lifecycle))
 	}
+	if failure, failed := contentJudgeFailure(trace); failed && assessment.invalid == nil {
+		if want := judgeFailureReasons[failure]; req.Result.GetPublicFailureReason() != want || req.Result.GetFailureReason() != want {
+			failures = append(failures, fmt.Sprintf("stored grader failure reason %q does not match agent trace reason %q", req.Result.GetPublicFailureReason(), want))
+		}
+	}
 	if assessment.invalid != nil || !CatalogRecomputesGrades(req.CatalogRef) {
 		return failures
 	}

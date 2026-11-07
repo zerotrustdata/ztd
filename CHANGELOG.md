@@ -15,6 +15,7 @@ compatible with the previous release in the same minor series. See `INV-REL-VER-
 
 | Version | Date | Description | Notes |
 |---------|------|-------------|-------|
+| 1.10.1 | 2026-11-07 | Generation bounded by the provider's loaded context window in place of the 16k output cap, a separate repetition stop with typed outcomes, judge failures that keep the model's trace as `GRADER_FAILED`, typed `request_too_large` failures, shell commands confined to the attempt workspace, a fair `tool-arg-grep-pattern`, `agent-trace.v12`, and Explorer view schema 1.15.0 requiring public-feed consumers to upgrade together. | [v1.10.1](docs/release_notes/v1.10.x/v1.10.1.md) |
 | 1.10.0 | 2026-11-06 | Public feed served from an S3-compatible bucket with a signed pointer and polled live status, on-demand content-addressed run bundles in place of assignment results in `/bootstrap`, published per-model security pass rates, corrected verification state with `ztd public status` drift reporting, pointer-rooted `ztd public verify-proof`, full agent traces and assignment audit databases bound by digest instead of published, Nemesis `1.3.0` as the Tribunal's calibrated adversarial seat with new suite versions that campaigns frozen earlier fail to verify against, and Explorer view schema 1.14.0 requiring public-feed consumers to upgrade together. | [v1.10.0](docs/release_notes/v1.10.x/v1.10.0.md) |
 
 ## v1.9.x

@@ -33,23 +33,36 @@ type ollamaPsResponse struct {
 
 type ollamaPsModel struct {
 	Name string `json:"name"`
+	// ContextLength is the context window the resident runner was loaded with.
+	ContextLength int64 `json:"context_length"`
+}
+
+// readResidentModels reads and validates one bounded typed /api/ps response.
+func (b *OllamaBackend) readResidentModels(ctx context.Context) ([]ollamaPsModel, error) {
+	ctx, cancel := context.WithTimeout(ctx, ProviderStatusTimeout)
+	defer cancel()
+	var listed ollamaPsResponse
+	if err := b.getJSON(ctx, "read residency", &listed, "api", "ps"); err != nil {
+		return nil, err
+	}
+	for _, model := range listed.Models {
+		if model.Name == "" {
+			return nil, fmt.Errorf("ollama_backend: read residency: %w: model name is required", constants.ErrInferenceProviderResponseInvalid)
+		}
+	}
+	return listed.Models, nil
 }
 
 // ReadResidency reads and validates one bounded typed /api/ps response. It is
 // bounded by ProviderStatusTimeout like every other read-only provider query.
 func (b *OllamaBackend) ReadResidency(ctx context.Context) (ProviderResidency, error) {
-	ctx, cancel := context.WithTimeout(ctx, ProviderStatusTimeout)
-	defer cancel()
-	var listed ollamaPsResponse
-	if err := b.getJSON(ctx, "read residency", &listed, "api", "ps"); err != nil {
+	listed, err := b.readResidentModels(ctx)
+	if err != nil {
 		return ProviderResidency{}, err
 	}
-	residency := ProviderResidency{Models: make([]ProviderResidencyModel, 0, len(listed.Models))}
-	for _, model := range listed.Models {
-		if model.Name == "" {
-			return ProviderResidency{}, fmt.Errorf("ollama_backend: read residency: %w: model name is required", constants.ErrInferenceProviderResponseInvalid)
-		}
-		residency.Models = append(residency.Models, ProviderResidencyModel(model))
+	residency := ProviderResidency{Models: make([]ProviderResidencyModel, 0, len(listed))}
+	for _, model := range listed {
+		residency.Models = append(residency.Models, ProviderResidencyModel{Name: model.Name})
 	}
 	return residency, nil
 }

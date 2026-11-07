@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -229,12 +230,6 @@ func (b *LlamaCppBackend) Generate(ctx context.Context, req models.GenerateReque
 	if err != nil {
 		return nil, err
 	}
-	body, err := json.Marshal(chatReq)
-	if err != nil {
-		return nil, fmt.Errorf("llamacpp_backend: marshal request: %w", err)
-	}
-	normalizedRequestHash := models.SHA256Hex(body)
-
 	// Streaming scrubs at the source. Without an enabled scrubber the stream is refused before the
 	// provider is called, so no live output can leave unscrubbed.
 	var stream *streamSegmenter
@@ -247,8 +242,23 @@ func (b *LlamaCppBackend) Generate(ctx context.Context, req models.GenerateReque
 		}
 	}
 
+	loaded, err := b.loadModel(ctx, req.Model)
+	if err != nil {
+		return nil, err
+	}
+	chatReq.MaxTokens = outputTokenLimit(req.MaxTokens, loaded)
+	body, err := json.Marshal(chatReq)
+	if err != nil {
+		return nil, fmt.Errorf("llamacpp_backend: marshal request: %w", err)
+	}
+	normalizedRequestHash := models.SHA256Hex(body)
+
+	// The generation's own context lets the backend end the provider request
+	// when it stops a looping generation, without cancelling the caller.
+	generationCtx, stopGeneration := context.WithCancel(ctx)
+	defer stopGeneration()
 	requestStartedAt := time.Now()
-	resp, err := b.postJSON(ctx, "generate", chatReq, "v1", "chat", "completions")
+	resp, err := b.postJSON(generationCtx, "generate", chatReq, "v1", "chat", "completions")
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +279,15 @@ func (b *LlamaCppBackend) Generate(ctx context.Context, req models.GenerateReque
 		allowParallelToolCalls := req.ParallelToolCalls == nil || *req.ParallelToolCalls
 		result, parts, timeToFirstToken, decodeErr = b.decodeChatStream(ctx, capture, capture.arrivalTime, req.Model, allowParallelToolCalls, req.ProviderAttemptID, stream)
 	}
+	stoppedRepeating := decodeErr == nil && result.finishReason == constants.InferenceFinishReasonRepetition
+	if stoppedRepeating {
+		stopGeneration()
+	}
 	responseBody, readErr := capture.result()
+	if stoppedRepeating && ctx.Err() == nil {
+		// The read ended because the backend stopped the generation.
+		readErr = nil
+	}
 	// Only a 200 stream is bound to the attempt record, and only by digest and
 	// size. A non-200 body can echo prompt material and is never recorded.
 	if store := attemptStoreFromContext(ctx); store != nil && resp.StatusCode == http.StatusOK {
@@ -299,8 +317,9 @@ func (b *LlamaCppBackend) Generate(ctx context.Context, req models.GenerateReque
 		return nil, err
 	}
 	// llama-server fixes the context window when it loads a model, so a
-	// requested limit is enforced on the reported usage instead of sent.
-	if req.ContextLimit != nil {
+	// requested limit is enforced on the reported usage instead of sent. A
+	// generation stopped for repetition ends before the provider reports usage.
+	if req.ContextLimit != nil && !stoppedRepeating {
 		if !usageReported {
 			return nil, fmt.Errorf("llamacpp_backend: generate: context limit requires token usage: %w", constants.ErrInferenceProviderResponseInvalid)
 		}
@@ -335,11 +354,13 @@ func (b *LlamaCppBackend) Generate(ctx context.Context, req models.GenerateReque
 		TotalTokens:           promptTokens + completionTokens,
 		UsageReported:         usageReported,
 		CacheTokens:           cacheTokens,
+		LoadDurationNS:        loaded.LoadDurationNS,
 		PromptEvalDurationNS:  promptEvalDuration,
 		GenerationDurationNS:  generationDuration,
 		TimeToFirstTokenNS:    timeToFirstToken,
 		TimingSource:          timingSource,
 		FinishReason:          finishReason,
+		ContextWindow:         loaded.ContextWindow,
 		Model:                 req.Model,
 		ServedModelDigest:     servedModelDigest,
 		NormalizedRequestHash: normalizedRequestHash,
@@ -348,7 +369,8 @@ func (b *LlamaCppBackend) Generate(ctx context.Context, req models.GenerateReque
 }
 
 // llamaCppChatRequestFor maps a generation request onto llama-server's chat
-// completion request.
+// completion request. Its output limit is set once the model is loaded, from
+// the loaded context window.
 func llamaCppChatRequestFor(req models.GenerateRequest) (llamaCppChatRequest, error) {
 	ollamaMessages, err := inferenceMessagesToOllama(req.Messages)
 	if err != nil {
@@ -366,7 +388,6 @@ func llamaCppChatRequestFor(req models.GenerateRequest) (llamaCppChatRequest, er
 		Stream:            true,
 		StreamOptions:     llamaCppStreamOptions{IncludeUsage: true},
 		Temperature:       req.Temperature,
-		MaxTokens:         resolveOutputTokenLimit(req.MaxTokens),
 		TopP:              req.TopP,
 		TopK:              req.TopK,
 		Seed:              req.Seed,
@@ -490,6 +511,7 @@ func (b *LlamaCppBackend) decodeChatStream(
 	var toolCallOrder []int
 	var timeToFirstToken *int64
 	done := false
+	repetition := newRepetitionDetector()
 	invalid := func(reason string) (llamaCppStreamResult, []*operatorv1.InferenceResponsePart, *int64, error) {
 		return llamaCppStreamResult{}, nil, nil, fmt.Errorf("llamacpp_backend: generate: %s: %w", reason, constants.ErrInferenceProviderResponseInvalid)
 	}
@@ -592,6 +614,11 @@ func (b *LlamaCppBackend) decodeChatStream(
 			}
 			if err := deliver(eventParts); err != nil {
 				return llamaCppStreamResult{}, nil, nil, err
+			}
+			if result.finishReason == "" && repetition.observe(eventParts) {
+				// The output has degenerated into a loop: stop here. A tool call
+				// still streaming is incomplete and is not assembled.
+				return b.stopRepeatingStream(ctx, parts, timeToFirstToken, requestedModel, providerAttemptID, stream)
 			}
 		default:
 			return invalid("event field")
@@ -853,6 +880,119 @@ func (b *LlamaCppBackend) ReleaseModels(ctx context.Context, release []string) e
 		}
 	}
 	return awaitModelsAbsent(ctx, b.component, b.ReadResidency, release)
+}
+
+// llamaCppPropsResponse is the part of a router model's GET /props response
+// that names the context window its llama-server instance was loaded with.
+type llamaCppPropsResponse struct {
+	DefaultGenerationSettings struct {
+		NCtx int64 `json:"n_ctx"`
+	} `json:"default_generation_settings"`
+}
+
+// loadModel loads model through the router unless it is already resident and
+// reads the context window its instance runs under from /props. llama-server
+// fixes that window when it starts the instance.
+func (b *LlamaCppBackend) loadModel(ctx context.Context, model string) (loadedModel, error) {
+	status, err := b.routerModelStatus(ctx, model)
+	if err != nil {
+		return loadedModel{}, err
+	}
+	var loadDuration int64
+	switch status {
+	case "loaded", "sleeping":
+	case "unloaded", "downloaded", "loading":
+		startedAt := time.Now()
+		if status != "loading" {
+			if err := b.requestModelLoad(ctx, model); err != nil {
+				return loadedModel{}, err
+			}
+		}
+		if err := b.awaitModelLoaded(ctx, model); err != nil {
+			return loadedModel{}, err
+		}
+		loadDuration = time.Since(startedAt).Nanoseconds()
+	default:
+		return loadedModel{}, fmt.Errorf("llamacpp_backend: load model: %w: model %q is %s", constants.ErrInferenceBackendUnavailable, model, status)
+	}
+	var props llamaCppPropsResponse
+	if err := b.getJSONQuery(ctx, "load model", &props, url.Values{"model": {model}}, "props"); err != nil {
+		return loadedModel{}, err
+	}
+	return newLoadedModel(b.component, model, props.DefaultGenerationSettings.NCtx, &loadDuration)
+}
+
+// stopRepeatingStream ends a stream the repetition detector stopped. The
+// segmenter's held tail is released as a terminal event would release it, so
+// the result's parts remain exactly the published segments.
+func (b *LlamaCppBackend) stopRepeatingStream(ctx context.Context, parts []*operatorv1.InferenceResponsePart, timeToFirstToken *int64, model, providerAttemptID string, stream *streamSegmenter) (llamaCppStreamResult, []*operatorv1.InferenceResponsePart, *int64, error) {
+	if stream != nil {
+		tail := stream.finish(ctx)
+		if err := stream.publish(tail, model, timeToFirstToken); err != nil {
+			b.logger.Warn("Inference progress delivery failed", "provider_attempt_id", providerAttemptID, "error", err)
+		}
+		parts = append(parts, tail...)
+	}
+	return llamaCppStreamResult{finishReason: constants.InferenceFinishReasonRepetition}, parts, timeToFirstToken, nil
+}
+
+// routerModelStatus returns the router's status for model.
+func (b *LlamaCppBackend) routerModelStatus(ctx context.Context, model string) (string, error) {
+	routerModels, err := b.listRouterModels(ctx, "load model")
+	if err != nil {
+		return "", err
+	}
+	index := slices.IndexFunc(routerModels, func(candidate llamaCppRouterModel) bool { return candidate.ID == model })
+	if index < 0 {
+		return "", fmt.Errorf("llamacpp_backend: load model: %w: model %q", constants.ErrInferenceModelNotFound, model)
+	}
+	return routerModels[index].Status.Value, nil
+}
+
+func (b *LlamaCppBackend) requestModelLoad(ctx context.Context, model string) error {
+	resp, err := b.postJSON(ctx, "load model", llamaCppModelRequest{Model: model}, "models", "load")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrorBodyBytes))
+		if resp.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("llamacpp_backend: load model: %w: model %q", constants.ErrInferenceModelNotFound, model)
+		}
+		return fmt.Errorf("llamacpp_backend: load model: %w: status %d", constants.ErrInferenceGenerateFailed, resp.StatusCode)
+	}
+	var loaded llamaCppModelActionResponse
+	if err := b.decodeResponse("load model", resp.Body, &loaded); err != nil {
+		return err
+	}
+	if !loaded.Success {
+		return fmt.Errorf("llamacpp_backend: load model: %w", constants.ErrInferenceProviderResponseInvalid)
+	}
+	return nil
+}
+
+// awaitModelLoaded polls the router until model is loaded. A model that falls
+// back to unloaded while it was loading failed to start.
+func (b *LlamaCppBackend) awaitModelLoaded(ctx context.Context, model string) error {
+	for {
+		status, err := b.routerModelStatus(ctx, model)
+		if err != nil {
+			return err
+		}
+		switch status {
+		case "loaded", "sleeping":
+			return nil
+		case "loading":
+		default:
+			return fmt.Errorf("llamacpp_backend: load model: %w: model %q is %s after load", constants.ErrInferenceGenerateFailed, model, status)
+		}
+		select {
+		case <-ctx.Done():
+			return transportError(ctx, b.component, "load model", ctx.Err())
+		case <-time.After(providerUnloadRecheckInterval):
+		}
+	}
 }
 
 func (b *LlamaCppBackend) unloadModel(ctx context.Context, model string) error {

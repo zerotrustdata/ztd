@@ -953,6 +953,23 @@ function assertPublicActivitySummary(value: unknown, path: string): void {
   assertPublicActivityFamily(value.governed_actions, `${path}.governed_actions`, assertPublicGovernedActionRecord, MAX_TOOL_LOOP_RECORDS);
 }
 
+/** View schema 1.15.0 adds the `repetition` finish state and trajectory
+ *  outcome, a generation the Inference Operator stopped because its output
+ *  degenerated into a loop, and the `no_answer` trajectory outcome, an episode
+ *  that ended with an empty final answer. An earlier record carries none. */
+function assertSchema115Values(value: Record<string, unknown>): void {
+  if (schemaAtLeast(value.schema_version, '1.15.0')) return;
+  for (const outcome of ['repetition', 'no_answer']) {
+    assert(value.trajectory_outcome !== outcome, 'assignment_result.trajectory_outcome', `${outcome} requires schema 1.15.0`);
+  }
+  const summary = value.activity_summary;
+  const models = isObject(summary) ? summary.model_activity : undefined;
+  const records = isObject(models) && Array.isArray(models.records) ? models.records : [];
+  records.forEach((record, index) => {
+    assert(!isObject(record) || record.finish_state !== 'repetition', `assignment_result.activity_summary.model_activity.records[${index}].finish_state`, 'repetition requires schema 1.15.0');
+  });
+}
+
 function assertPublicEvidenceBindings(value: unknown, path: string): void {
   assert(Array.isArray(value), path, 'expected array');
   assert(value.length <= 32, path, 'expected at most 32 entries');
@@ -1093,6 +1110,7 @@ export function isAssignmentResult(value: unknown): asserts value is AssignmentR
     if (value.scenario_summary !== undefined) assertPublicScenarioSummary(value.scenario_summary, 'assignment_result.scenario_summary');
     if (value.semantic_grade_summaries !== undefined) assertPublicSemanticGrades(value.semantic_grade_summaries, 'assignment_result.semantic_grade_summaries');
     if (value.activity_summary !== undefined) assertPublicActivitySummary(value.activity_summary, 'assignment_result.activity_summary');
+    assertSchema115Values(value);
     if (value.evidence_bindings !== undefined) assertPublicEvidenceBindings(value.evidence_bindings, 'assignment_result.evidence_bindings');
     if (value.verification_metadata !== undefined) assertPublicVerificationMetadata(value.verification_metadata, 'assignment_result.verification_metadata');
   }
@@ -1249,6 +1267,7 @@ export function isLiveEvent(value: unknown): asserts value is LiveEvent {
     assert(value.assignment_id !== undefined && value.task_id !== undefined && value.variant_id !== undefined && value.role !== undefined, 'live_event', 'a judge event names its assignment row and graded subject');
     assert(value.metric_delta === undefined && value.stage_label === undefined && value.lifecycle_status === 'running', 'live_event', 'a judge event carries no metric or stage label and is running');
     assertLiveJudgeActivity(value.judge, value.kind === 'judge_completed', 'live_event.judge');
+    assert(value.judge.failure !== 'repetition' || schemaAtLeast(value.schema_version, '1.15.0'), 'live_event.judge.failure', 'repetition requires schema 1.15.0');
   } else {
     assert(value.judge === undefined, 'live_event.judge', 'judge is set only on judge events');
   }

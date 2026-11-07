@@ -416,6 +416,8 @@ const (
 	// The provider accepted the request, then ended its response stream with an error event instead of a done event,
 	// such as when its own tool-call parser rejected the model's output. The provider's message is never signed.
 	ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR ReceiptFailureCode = 26
+	// The request exceeded the Inference Operator's request size bound, so it was rejected before the provider was called.
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE ReceiptFailureCode = 27
 )
 
 // Enum value maps for ReceiptFailureCode.
@@ -448,6 +450,7 @@ var (
 		24: "RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED",
 		25: "RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED",
 		26: "RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR",
+		27: "RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE",
 	}
 	ReceiptFailureCode_value = map[string]int32{
 		"RECEIPT_FAILURE_CODE_UNSPECIFIED":                0,
@@ -477,6 +480,7 @@ var (
 		"RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED":       24,
 		"RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED":         25,
 		"RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR":      26,
+		"RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE":          27,
 	}
 )
 
@@ -1214,6 +1218,7 @@ const (
 	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED         InferenceDispatchFailureCode = 47
 	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR      InferenceDispatchFailureCode = 48
 	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED         InferenceDispatchFailureCode = 49
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE          InferenceDispatchFailureCode = 50
 )
 
 // Enum value maps for InferenceDispatchFailureCode.
@@ -1269,6 +1274,7 @@ var (
 		47: "INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED",
 		48: "INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR",
 		49: "INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED",
+		50: "INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE",
 	}
 	InferenceDispatchFailureCode_value = map[string]int32{
 		"INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED":                0,
@@ -1321,6 +1327,7 @@ var (
 		"INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED":         47,
 		"INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR":      48,
 		"INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED":         49,
+		"INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE":          50,
 	}
 )
 
@@ -12560,7 +12567,8 @@ type InferenceRequested struct {
 	Model string `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
 	// Generation temperature override (0 = use backend default).
 	Temperature float32 `protobuf:"fixed32,4,opt,name=temperature,proto3" json:"temperature,omitempty"`
-	// Maximum tokens to generate (0 = use backend default).
+	// Maximum tokens to generate. 0 states no limit: the generation runs until
+	// the model stops or fills the context window it is loaded with.
 	MaxTokens int32 `protobuf:"varint,5,opt,name=max_tokens,json=maxTokens,proto3" json:"max_tokens,omitempty"`
 	// Ollama keep-alive duration override (empty = use config default).
 	KeepAlive string `protobuf:"bytes,6,opt,name=keep_alive,json=keepAlive,proto3" json:"keep_alive,omitempty"`
@@ -12977,7 +12985,7 @@ type InferenceResult struct {
 	CompletionTokens int32 `protobuf:"varint,3,opt,name=completion_tokens,json=completionTokens,proto3" json:"completion_tokens,omitempty"`
 	// Total tokens (prompt + completion).
 	TotalTokens int32 `protobuf:"varint,4,opt,name=total_tokens,json=totalTokens,proto3" json:"total_tokens,omitempty"`
-	// Finish reason (e.g., "stop", "length").
+	// Finish reason (e.g., "stop", "length", "repetition").
 	FinishReason string `protobuf:"bytes,5,opt,name=finish_reason,json=finishReason,proto3" json:"finish_reason,omitempty"`
 	// Model that produced the result (echoed from the request or resolved by
 	// the backend).
@@ -13015,8 +13023,13 @@ type InferenceResult struct {
 	LoadState             InferenceLoadState           `protobuf:"varint,31,opt,name=load_state,json=loadState,proto3,enum=ztd.operator.v1.InferenceLoadState" json:"load_state,omitempty"`
 	RetryClassification   InferenceRetryClassification `protobuf:"varint,32,opt,name=retry_classification,json=retryClassification,proto3,enum=ztd.operator.v1.InferenceRetryClassification" json:"retry_classification,omitempty"`
 	// Exclusive with response parts. Covered by result_digest.
-	Decision      *InferenceDecisionResult          `protobuf:"bytes,33,opt,name=decision,proto3" json:"decision,omitempty"`
-	HostedEgress  *InferenceHostedEgressAttestation `protobuf:"bytes,34,opt,name=hosted_egress,json=hostedEgress,proto3" json:"hosted_egress,omitempty"`
+	Decision     *InferenceDecisionResult          `protobuf:"bytes,33,opt,name=decision,proto3" json:"decision,omitempty"`
+	HostedEgress *InferenceHostedEgressAttestation `protobuf:"bytes,34,opt,name=hosted_egress,json=hostedEgress,proto3" json:"hosted_egress,omitempty"`
+	// Context window, in tokens, of the runner the provider loaded the model
+	// with. It is the one bound on the generation's output: a request that
+	// states no max_tokens runs until the model stops or fills this window.
+	// Unset for decision inference, which generates no text.
+	ContextWindow *int32 `protobuf:"varint,35,opt,name=context_window,json=contextWindow,proto3,oneof" json:"context_window,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -13282,6 +13295,13 @@ func (x *InferenceResult) GetHostedEgress() *InferenceHostedEgressAttestation {
 	return nil
 }
 
+func (x *InferenceResult) GetContextWindow() int32 {
+	if x != nil && x.ContextWindow != nil {
+		return *x.ContextWindow
+	}
+	return 0
+}
+
 // InferenceProgressEvent carries bounded incremental provider output for
 // live cross-boundary delivery telemetry. It is not authoritative; the
 // signed InferenceCompletion remains the sole terminal outcome.
@@ -13444,7 +13464,8 @@ type InferenceDispatchRequest struct {
 	Model string `protobuf:"bytes,3,opt,name=model,proto3" json:"model,omitempty"`
 	// Generation temperature override (0 = use backend default).
 	Temperature float32 `protobuf:"fixed32,4,opt,name=temperature,proto3" json:"temperature,omitempty"`
-	// Maximum tokens to generate (0 = use backend default).
+	// Maximum tokens to generate. 0 states no limit: the generation runs until
+	// the model stops or fills the context window it is loaded with.
 	MaxTokens int32 `protobuf:"varint,5,opt,name=max_tokens,json=maxTokens,proto3" json:"max_tokens,omitempty"`
 	// Ollama keep-alive duration override (empty = use config default).
 	KeepAlive string `protobuf:"bytes,6,opt,name=keep_alive,json=keepAlive,proto3" json:"keep_alive,omitempty"`
@@ -15627,7 +15648,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x0ffailure_summary\x18\t \x01(\tR\x0efailureSummary\x12.\n" +
 	"\x13raw_response_digest\x18\n" +
 	" \x01(\tR\x11rawResponseDigest\x125\n" +
-	"\x17raw_response_size_bytes\x18\v \x01(\x04R\x14rawResponseSizeBytes\"\x8f\x0e\n" +
+	"\x17raw_response_size_bytes\x18\v \x01(\x04R\x14rawResponseSizeBytes\"\xce\x0e\n" +
 	"\x0fInferenceResult\x12#\n" +
 	"\rprompt_tokens\x18\x02 \x01(\x05R\fpromptTokens\x12+\n" +
 	"\x11completion_tokens\x18\x03 \x01(\x05R\x10completionTokens\x12!\n" +
@@ -15667,14 +15688,16 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"load_state\x18\x1f \x01(\x0e2#.ztd.operator.v1.InferenceLoadStateR\tloadState\x12`\n" +
 	"\x14retry_classification\x18  \x01(\x0e2-.ztd.operator.v1.InferenceRetryClassificationR\x13retryClassification\x12D\n" +
 	"\bdecision\x18! \x01(\v2(.ztd.operator.v1.InferenceDecisionResultR\bdecision\x12V\n" +
-	"\rhosted_egress\x18\" \x01(\v21.ztd.operator.v1.InferenceHostedEgressAttestationR\fhostedEgressB\x12\n" +
+	"\rhosted_egress\x18\" \x01(\v21.ztd.operator.v1.InferenceHostedEgressAttestationR\fhostedEgress\x12*\n" +
+	"\x0econtext_window\x18# \x01(\x05H\aR\rcontextWindow\x88\x01\x01B\x12\n" +
 	"\x10_thinking_tokensB\x0f\n" +
 	"\r_cache_tokensB\x13\n" +
 	"\x11_load_duration_nsB\x1a\n" +
 	"\x18_prompt_eval_duration_nsB\x19\n" +
 	"\x17_generation_duration_nsB\x14\n" +
 	"\x12_total_duration_nsB\x19\n" +
-	"\x17_time_to_first_token_nsJ\x04\b\x01\x10\x02R\x04text\"\x99\x02\n" +
+	"\x17_time_to_first_token_nsB\x11\n" +
+	"\x0f_context_windowJ\x04\b\x01\x10\x02R\x04text\"\x99\x02\n" +
 	"\x16InferenceProgressEvent\x12.\n" +
 	"\x13provider_attempt_id\x18\x01 \x01(\tR\x11providerAttemptId\x12\x1a\n" +
 	"\bsequence\x18\x02 \x01(\rR\bsequence\x12<\n" +
@@ -15812,7 +15835,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"$DETERMINISTIC_STAGE_OUTCOME_VERIFIED\x10\x01\x12,\n" +
 	"(DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED\x10\x02\x12)\n" +
 	"%DETERMINISTIC_STAGE_OUTCOME_COMPLETED\x10\x03\x12&\n" +
-	"\"DETERMINISTIC_STAGE_OUTCOME_FAILED\x10\x04*\xf7\t\n" +
+	"\"DETERMINISTIC_STAGE_OUTCOME_FAILED\x10\x04*\xa3\n" +
+	"\n" +
 	"\x12ReceiptFailureCode\x12$\n" +
 	" RECEIPT_FAILURE_CODE_UNSPECIFIED\x10\x00\x12,\n" +
 	"(RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED\x10\x01\x12.\n" +
@@ -15841,7 +15865,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	".RECEIPT_FAILURE_CODE_DECISION_RESPONSE_INVALID\x10\x17\x12-\n" +
 	")RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED\x10\x18\x12+\n" +
 	"'RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED\x10\x19\x12.\n" +
-	"*RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR\x10\x1a*\xb2\n" +
+	"*RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR\x10\x1a\x12*\n" +
+	"&RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE\x10\x1b*\xb2\n" +
 	"\n" +
 	"\x17GovernanceRejectionCode\x12)\n" +
 	"%GOVERNANCE_REJECTION_CODE_UNSPECIFIED\x10\x00\x12*\n" +
@@ -15930,7 +15955,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"-INFERENCE_PROVIDER_ATTEMPT_STATUS_UNSPECIFIED\x10\x00\x121\n" +
 	"-INFERENCE_PROVIDER_ATTEMPT_STATUS_IN_PROGRESS\x10\x01\x12/\n" +
 	"+INFERENCE_PROVIDER_ATTEMPT_STATUS_COMPLETED\x10\x02\x12,\n" +
-	"(INFERENCE_PROVIDER_ATTEMPT_STATUS_FAILED\x10\x03*\x8e\x16\n" +
+	"(INFERENCE_PROVIDER_ATTEMPT_STATUS_FAILED\x10\x03*\xc5\x16\n" +
 	"\x1cInferenceDispatchFailureCode\x12/\n" +
 	"+INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED\x10\x00\x12,\n" +
 	"(INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL\x10\x01\x123\n" +
@@ -15982,7 +16007,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"4INFERENCE_DISPATCH_FAILURE_CODE_DECISION_UNSUPPORTED\x10.\x126\n" +
 	"2INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED\x10/\x129\n" +
 	"5INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR\x100\x126\n" +
-	"2INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED\x1012\xb8\x03\n" +
+	"2INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED\x101\x125\n" +
+	"1INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE\x1022\xb8\x03\n" +
 	"\x0fOperatorService\x12S\n" +
 	"\x0eExecuteCommand\x12!.ztd.operator.v1.CommandRequested\x1a\x1e.ztd.operator.v1.CommandResult\x12X\n" +
 	"\rCancelCommand\x12'.ztd.operator.v1.CommandCancelRequested\x1a\x1e.ztd.operator.v1.CommandResult\x12N\n" +

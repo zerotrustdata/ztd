@@ -1437,6 +1437,7 @@ var (
 	ErrInferenceCapabilityUnsupported     = errors.New("inference: requested capability unsupported")
 	ErrInferenceToolsUnsupported          = errors.New("inference: tools unsupported")
 	ErrInferenceContextOverflow           = errors.New("inference: context window exceeded")
+	ErrInferenceContextWindowUnavailable  = errors.New("inference: provider reports no context window for the loaded model")
 	ErrInferenceProviderAttemptRequired   = errors.New("inference: provider attempt ID required")
 	ErrInferenceProviderAttemptIDInvalid  = errors.New("inference: provider attempt ID invalid")
 	ErrInferenceIdentityMismatch          = errors.New("inference: request and result identity mismatch")
@@ -1527,7 +1528,6 @@ var (
 	ErrEvaluationRefusalCriterionRequired    = errors.New("evaluation: policy_decision evidence requires a refusal criterion that names a judged content criterion")
 	ErrEvaluationContentJudgmentMissing      = errors.New("evaluation: trace does not carry exactly one judge verdict per judged content criterion")
 	ErrEvaluationContentJudgmentMismatch     = errors.New("evaluation: recorded judge verdict does not match its re-rendered prompt, frozen judge, or signed inference result")
-	ErrEvaluationContentJudgeFailed          = errors.New("evaluation: pinned judge could not decide a judged content criterion")
 	ErrEvaluationInterrogationAnswerRequired = errors.New("evaluation: interrogation does not satisfy the required answer objective")
 	ErrEvaluationInterrogationMissing        = errors.New("evaluation: answer is not an interrogation block")
 	ErrEvaluationInterrogationNotWhole       = errors.New("evaluation: interrogation block is not the entire response")
@@ -1622,6 +1622,9 @@ var (
 
 	// Secondary judge errors
 	ErrJudgeResponseInvalid = errors.New("evaluation judge response invalid")
+	// ErrJudgeResponseRepeated is a judge generation the Inference Operator
+	// stopped because its output degenerated into a loop.
+	ErrJudgeResponseRepeated = errors.New("evaluation judge response stopped repeating")
 
 	// Event registry errors (constgen validation)
 	ErrEventRequestWireValue     = errors.New("non-governed request event wire value must end in .requested")

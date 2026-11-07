@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.14.0",
+  "schema_version": "1.15.0",
   "enums": {
     "ReleaseBasis": ["recorded", "asserted", "unknown"],
     "QualityState": [
@@ -161,7 +161,7 @@
     ],
     "LiveJudgeSubject": ["criterion", "final_reply", "memory"],
     "LiveJudgeState": ["judging", "met", "not_met", "scored", "failed"],
-    "LiveJudgeFailure": ["request_invalid", "dispatch_failed", "response_mismatch", "result_digest", "verdict_invalid", "receipt_unverified"],
+    "LiveJudgeFailure": ["request_invalid", "dispatch_failed", "response_mismatch", "result_digest", "verdict_invalid", "receipt_unverified", "repetition"],
     "FeedRecordType": [
       "projection",
       "event",
@@ -202,7 +202,8 @@
       "length",
       "tool_call",
       "error",
-      "unavailable"
+      "unavailable",
+      "repetition"
     ],
     "PublicLoadState": [
       "cold",
@@ -276,7 +277,9 @@
       "abandoned_after_error",
       "circumvented_denial",
       "loop_exhausted",
-      "provider_rejected_tool_declaration"
+      "provider_rejected_tool_declaration",
+      "repetition",
+      "no_answer"
     ],
     "PublicHintArgumentSource": [
       "prompt",

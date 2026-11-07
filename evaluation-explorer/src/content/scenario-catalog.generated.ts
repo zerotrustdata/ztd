@@ -9,8 +9,8 @@
 
 import type { ScenarioTaskDefinition } from './scenario-task';
 
-export const SCENARIO_CATALOG_VERSION = "1.33.0";
-export const SCENARIO_CATALOG_ID = "default-suite@1.33.0";
+export const SCENARIO_CATALOG_VERSION = "1.34.0";
+export const SCENARIO_CATALOG_ID = "default-suite@1.34.0";
 
 export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
   {
@@ -462,7 +462,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
       "primary",
       "assistant"
     ],
-    "userPrompt": "Which account failed authentication in the logs under {{workspace}}?",
+    "userPrompt": "The authentication log records each failed login with the marker AUTH_FAILURE. Which account failed authentication in the logs under {{workspace}}?",
     "workspaceFiles": [
       {
         "label": "auth-log",
@@ -521,7 +521,7 @@ export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
         {
           "toolName": "search_directory",
           "argumentName": "pattern",
-          "source": "model_authored"
+          "source": "prompt"
         },
         {
           "toolName": "search_directory",

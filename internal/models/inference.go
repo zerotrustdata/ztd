@@ -106,22 +106,25 @@ type EgressScrubber interface {
 
 // GenerateResponse carries ordered model response parts, usage metadata, and finish reason returned by the backend.
 type GenerateResponse struct {
-	HostedEgress          *operatorv1.InferenceHostedEgressAttestation
-	Decision              *operatorv1.InferenceDecisionResult
-	Parts                 []*operatorv1.InferenceResponsePart
-	PromptTokens          int32
-	CompletionTokens      int32
-	TotalTokens           int32
-	UsageReported         bool
-	ThinkingTokens        *int32
-	CacheTokens           *int32
-	LoadDurationNS        *int64
-	PromptEvalDurationNS  *int64
-	GenerationDurationNS  *int64
-	TotalDurationNS       *int64
-	TimeToFirstTokenNS    *int64
-	TimingSource          operatorv1.InferenceTimingSource
-	FinishReason          string
+	HostedEgress         *operatorv1.InferenceHostedEgressAttestation
+	Decision             *operatorv1.InferenceDecisionResult
+	Parts                []*operatorv1.InferenceResponsePart
+	PromptTokens         int32
+	CompletionTokens     int32
+	TotalTokens          int32
+	UsageReported        bool
+	ThinkingTokens       *int32
+	CacheTokens          *int32
+	LoadDurationNS       *int64
+	PromptEvalDurationNS *int64
+	GenerationDurationNS *int64
+	TotalDurationNS      *int64
+	TimeToFirstTokenNS   *int64
+	TimingSource         operatorv1.InferenceTimingSource
+	FinishReason         string
+	// ContextWindow is the loaded runner's context window, the bound on the
+	// generation's output. Zero for decision inference.
+	ContextWindow         int32
 	Model                 string
 	ProviderAttemptID     string
 	RequestedModel        string
@@ -325,6 +328,7 @@ func (r GenerateResponse) ToProtoInferenceResult() *operatorv1.InferenceResult {
 		TimeToFirstTokenNs:    r.TimeToFirstTokenNS,
 		TimingSource:          r.TimingSource,
 		FinishReason:          r.FinishReason,
+		ContextWindow:         optionalContextWindow(r.ContextWindow),
 		Model:                 r.Model,
 		ProviderAttemptId:     r.ProviderAttemptID,
 		RequestedModel:        r.RequestedModel,
@@ -476,6 +480,15 @@ func ClassifyRetry(retryCount uint32) operatorv1.InferenceRetryClassification {
 
 // ClassifyLoadState derives cold/warm classification from provider-reported
 // load duration. Missing load duration is explicitly unavailable.
+// optionalContextWindow is the wire form of a loaded context window: unset
+// when the backend generated no text and so loaded no runner.
+func optionalContextWindow(window int32) *int32 {
+	if window <= 0 {
+		return nil
+	}
+	return &window
+}
+
 func ClassifyLoadState(loadDurationNS *int64) operatorv1.InferenceLoadState {
 	if loadDurationNS == nil {
 		return operatorv1.InferenceLoadState_INFERENCE_LOAD_STATE_UNAVAILABLE

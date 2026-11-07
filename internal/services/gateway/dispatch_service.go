@@ -1108,6 +1108,8 @@ func inferenceReceiptFailureError(receipt *operatorv1.EventReceipt) error {
 		return constants.ErrInferenceToolsUnsupported
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW:
 		return constants.ErrInferenceContextOverflow
+	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE:
+		return constants.ErrInferenceRequestTooLarge
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED:
 		return constants.ErrInferenceProviderAttemptRequired
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_IDENTITY_MISMATCH:

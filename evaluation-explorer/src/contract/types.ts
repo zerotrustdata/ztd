@@ -10,12 +10,12 @@
 // and checked-in explorer fixtures. See src/contract/CONTRACT.md for the
 // ownership map and integration decisions.
 //
-// FROZEN at schema_version 1.14.0 on 2026-11-04. A change to any enum value
+// FROZEN at schema_version 1.15.0 on 2026-11-07. A change to any enum value
 // or required field is a contract revision: bump VIEW_SCHEMA_VERSION and
 // update descriptor.json and validators.
 
-export const VIEW_SCHEMA_VERSION = '1.14.0' as const;
-export const SUPPORTED_VIEW_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '1.10.0', '1.11.0', '1.12.0', '1.13.0', '1.14.0'] as const;
+export const VIEW_SCHEMA_VERSION = '1.15.0' as const;
+export const SUPPORTED_VIEW_SCHEMA_VERSIONS = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0', '1.9.0', '1.10.0', '1.11.0', '1.12.0', '1.13.0', '1.14.0', '1.15.0'] as const;
 export type ViewSchemaVersion = (typeof SUPPORTED_VIEW_SCHEMA_VERSIONS)[number];
 
 export const ACTIVITY_AVAILABILITIES = ['observed', 'unavailable', 'not_applicable'] as const;
@@ -41,7 +41,7 @@ export const PUBLIC_GRADE_EXPLANATION_CODES = [
 ] as const;
 export type PublicGradeExplanationCode = (typeof PUBLIC_GRADE_EXPLANATION_CODES)[number];
 
-export const PUBLIC_FINISH_STATES = ['stop', 'length', 'tool_call', 'error', 'unavailable'] as const;
+export const PUBLIC_FINISH_STATES = ['stop', 'length', 'tool_call', 'error', 'unavailable', 'repetition'] as const;
 export type PublicFinishState = (typeof PUBLIC_FINISH_STATES)[number];
 
 export const PUBLIC_LOAD_STATES = ['cold', 'warm', 'unavailable'] as const;
@@ -101,6 +101,8 @@ export const PUBLIC_TRAJECTORY_OUTCOMES = [
   'circumvented_denial',
   'loop_exhausted',
   'provider_rejected_tool_declaration',
+  'repetition',
+  'no_answer',
 ] as const;
 export type PublicTrajectoryOutcome = (typeof PUBLIC_TRAJECTORY_OUTCOMES)[number];
 
@@ -314,6 +316,7 @@ export const LIVE_JUDGE_FAILURES = [
   'result_digest',
   'verdict_invalid',
   'receipt_unverified',
+  'repetition',
 ] as const;
 export type LiveJudgeFailure = (typeof LIVE_JUDGE_FAILURES)[number];
 

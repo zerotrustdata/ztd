@@ -1683,7 +1683,7 @@ inference request to the Inference Node.
 | role | [ModelRole](#ztd-operator-v1-ModelRole) |  | Chat-tier role for this request (primary, assistant, lite). |
 | model | [string](#string) |  | Requested provider model. A campaign Inference Operator accepts it only when the exact model and digest occur in the frozen registry committed by model_registry_digest; standard inference uses the configured role model. |
 | temperature | [float](#float) |  | Generation temperature override (0 = use backend default). |
-| max_tokens | [int32](#int32) |  | Maximum tokens to generate (0 = use backend default). |
+| max_tokens | [int32](#int32) |  | Maximum tokens to generate. 0 states no limit: the generation runs until the model stops or fills the context window it is loaded with. |
 | keep_alive | [string](#string) |  | Ollama keep-alive duration override (empty = use config default). |
 | target_operator_session_id | [string](#string) |  | Explicit Inference Node target. When empty, the gateway requires exactly one enrolled inference-capable operator for the requestor; zero or multiple matches are rejected. |
 | acting_app_id | [string](#string) |  | Application that initiated the inference request. |
@@ -1928,7 +1928,7 @@ finalized only after terminal receipt/result evidence is available.
 | role | [ModelRole](#ztd-operator-v1-ModelRole) |  | Chat-tier role for this request (primary, assistant, lite). |
 | model | [string](#string) |  | Ollama model name (e.g., &#34;gemma3:4b&#34;). Encodes the role; Ollama routes by model name in the API call. |
 | temperature | [float](#float) |  | Generation temperature override (0 = use backend default). |
-| max_tokens | [int32](#int32) |  | Maximum tokens to generate (0 = use backend default). |
+| max_tokens | [int32](#int32) |  | Maximum tokens to generate. 0 states no limit: the generation runs until the model stops or fills the context window it is loaded with. |
 | keep_alive | [string](#string) |  | Ollama keep-alive duration override (empty = use config default). |
 | messages | [InferenceMessage](#ztd-operator-v1-InferenceMessage) | repeated | Ordered conversation turns sent to the backend. |
 | tools | [InferenceToolDeclaration](#ztd-operator-v1-InferenceToolDeclaration) | repeated | Ordered callable function declarations available to the model. |
@@ -2004,7 +2004,7 @@ InferenceResult carries ordered response parts, usage metadata, and the finish r
 | prompt_tokens | [int32](#int32) |  | Number of prompt tokens consumed. |
 | completion_tokens | [int32](#int32) |  | Number of completion tokens generated. |
 | total_tokens | [int32](#int32) |  | Total tokens (prompt &#43; completion). |
-| finish_reason | [string](#string) |  | Finish reason (e.g., &#34;stop&#34;, &#34;length&#34;). |
+| finish_reason | [string](#string) |  | Finish reason (e.g., &#34;stop&#34;, &#34;length&#34;, &#34;repetition&#34;). |
 | model | [string](#string) |  | Model that produced the result (echoed from the request or resolved by the backend). |
 | result_digest | [string](#string) |  | Canonical digest of the complete result: lowercase hex SHA-256 over the deterministic protobuf serialization of this message with result_digest cleared. The Inference Node computes it at execution time; the signed EventReceipt&#39;s result_summary binds it, and the User Gateway verifies digest equality before returning success to the caller. |
 | parts | [InferenceResponsePart](#ztd-operator-v1-InferenceResponsePart) | repeated | Ordered model response parts covered by result_digest. |
@@ -2034,6 +2034,7 @@ InferenceResult carries ordered response parts, usage metadata, and the finish r
 | retry_classification | [InferenceRetryClassification](#ztd-operator-v1-InferenceRetryClassification) |  |  |
 | decision | [InferenceDecisionResult](#ztd-operator-v1-InferenceDecisionResult) |  | Exclusive with response parts. Covered by result_digest. |
 | hosted_egress | [InferenceHostedEgressAttestation](#ztd-operator-v1-InferenceHostedEgressAttestation) |  |  |
+| context_window | [int32](#int32) | optional | Context window, in tokens, of the runner the provider loaded the model with. It is the one bound on the generation&#39;s output: a request that states no max_tokens runs until the model stops or fills this window. Unset for decision inference, which generates no text. |
 
 
 
@@ -3557,6 +3558,7 @@ the error text.
 | INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED | 47 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR | 48 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED | 49 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE | 50 |  |
 
 
 
@@ -3769,6 +3771,7 @@ string-matching the result_summary. It is bound into the receipt signature.
 | RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED | 24 |  |
 | RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED | 25 |  |
 | RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR | 26 | The provider accepted the request, then ended its response stream with an error event instead of a done event, such as when its own tool-call parser rejected the model&#39;s output. The provider&#39;s message is never signed. |
+| RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE | 27 | The request exceeded the Inference Operator&#39;s request size bound, so it was rejected before the provider was called. |
 
 
  

@@ -30,7 +30,9 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// agentTraceSchemaVersion is the version every new trace is sealed with. v11
+// agentTraceSchemaVersion is the version every new trace is sealed with. v12
+// records a content judgment the pinned judge failed to decide, with its typed
+// failure, so the trace persists when grading fails; v11
 // records the frozen persona (ID, version, digest) the designated role ran
 // under; v10 records each pinned-judge verdict on a judged content criterion with its
 // dispatched prompt and signed inference result; v9
@@ -43,7 +45,8 @@ import (
 // remain valid evidence; a v3 trace's model input was not captured and is
 // never reconstructed.
 const (
-	agentTraceSchemaVersion    = "agent-trace.v11"
+	agentTraceSchemaVersion    = "agent-trace.v12"
+	agentTraceSchemaVersionV11 = "agent-trace.v11"
 	agentTraceSchemaVersionV10 = "agent-trace.v10"
 	agentTraceSchemaVersionV9  = "agent-trace.v9"
 	agentTraceSchemaVersionV8  = "agent-trace.v8"
@@ -86,6 +89,9 @@ const (
 	AgentTerminalClassificationHarnessFailure           = "harness_failure"
 	AgentTerminalClassificationUnsupportedClarification = "unsupported_clarification"
 	AgentTerminalClassificationTimeout                  = "timeout"
+	// AgentTerminalClassificationRepetition ends an episode on a model turn
+	// the Inference Operator stopped because its output degenerated into a loop.
+	AgentTerminalClassificationRepetition = "repetition"
 )
 
 // AgentTraceWorkspace is the attempt-scoped workspace one agent trace ran in.
@@ -303,6 +309,11 @@ type AgentContentJudgment struct {
 	Rationale         string                     `json:"rationale"`
 	InferenceResult   *AgentTraceInferenceResult `json:"inference_result"`
 	Receipt           *AgentTraceReceipt         `json:"receipt"`
+	// Failure is the JudgeFailure enum name of a judgment the pinned judge
+	// failed to decide (v12). A failed judgment is the trace's last, carries no
+	// verdict, and carries the signed result and receipt only when its failure
+	// is read from the judge's own output (verdict invalid, repetition).
+	Failure string `json:"failure,omitempty"`
 }
 
 // AgentTraceInput is the rendered conversation and the complete tool
@@ -537,6 +548,16 @@ func (t *AgentTrace) contentJudgment(criterionID string) (AgentContentJudgment, 
 	return AgentContentJudgment{}, false
 }
 
+// failedContentJudgment returns the content judgment the pinned judge failed
+// to decide, which ends the trace's judgments.
+func (t *AgentTrace) failedContentJudgment() (AgentContentJudgment, bool) {
+	if t == nil || len(t.ContentJudgments) == 0 {
+		return AgentContentJudgment{}, false
+	}
+	last := t.ContentJudgments[len(t.ContentJudgments)-1]
+	return last, last.Failure != ""
+}
+
 // interrogationAt returns the completed Interrogator call a turn's
 // clarification signal dispatched.
 func (t *AgentTrace) interrogationAt(loopTurn int) (AgentModelCall, bool) {
@@ -557,13 +578,20 @@ func (t *AgentTrace) CarriesModelIdentity() bool {
 // carriesObservationEvidence reports whether the trace's schema records
 // harness observations and native tool request evidence (v9 and later).
 func (t *AgentTrace) carriesObservationEvidence() bool {
-	return t != nil && (t.SchemaVersion == agentTraceSchemaVersion || t.SchemaVersion == agentTraceSchemaVersionV10 || t.SchemaVersion == agentTraceSchemaVersionV9)
+	return t != nil && (t.carriesContentJudgments() || t.SchemaVersion == agentTraceSchemaVersionV9)
 }
 
 // carriesContentJudgments reports whether the trace's schema records pinned
 // judge verdicts (v10 and later).
 func (t *AgentTrace) carriesContentJudgments() bool {
-	return t != nil && (t.SchemaVersion == agentTraceSchemaVersion || t.SchemaVersion == agentTraceSchemaVersionV10)
+	return t != nil && (t.carriesPersona() || t.SchemaVersion == agentTraceSchemaVersionV10)
+}
+
+// carriesPersona reports whether the trace's schema records the frozen
+// persona the designated role ran under and the Interrogator's exact input
+// (v11 and later).
+func (t *AgentTrace) carriesPersona() bool {
+	return t != nil && (t.SchemaVersion == agentTraceSchemaVersion || t.SchemaVersion == agentTraceSchemaVersionV11)
 }
 
 // SharedRuntime reports whether both roles executed on one runtime.
@@ -582,6 +610,8 @@ func (t *AgentTrace) ToProto() *evalv1.AgentTrace {
 		finishReason = evalv1.AgentFinishReason_AGENT_FINISH_REASON_TOOL_TURN_LIMIT
 	} else if t.TerminalClassification == AgentTerminalClassificationTimeout {
 		finishReason = evalv1.AgentFinishReason_AGENT_FINISH_REASON_WALL_CLOCK_LIMIT
+	} else if t.TerminalClassification == AgentTerminalClassificationRepetition {
+		finishReason = evalv1.AgentFinishReason_AGENT_FINISH_REASON_REPETITION
 	} else if t.ProviderFailure != "" {
 		finishReason = evalv1.AgentFinishReason_AGENT_FINISH_REASON_ERROR
 	}
@@ -846,7 +876,7 @@ func validateAgentTraceRules(trace *AgentTrace) error {
 		return fmt.Errorf("evaluation: validate agent trace: evidence_digest: %w", constants.ErrMissingRequiredField)
 	}
 	switch trace.SchemaVersion {
-	case agentTraceSchemaVersion, agentTraceSchemaVersionV10, agentTraceSchemaVersionV9, agentTraceSchemaVersionV8, agentTraceSchemaVersionV7, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
+	case agentTraceSchemaVersion, agentTraceSchemaVersionV11, agentTraceSchemaVersionV10, agentTraceSchemaVersionV9, agentTraceSchemaVersionV8, agentTraceSchemaVersionV7, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
 		if trace.Input == nil || len(trace.Input.Messages) == 0 {
 			return fmt.Errorf("evaluation: validate agent trace: input: %w", constants.ErrMissingRequiredField)
 		}
@@ -863,17 +893,22 @@ func validateAgentTraceRules(trace *AgentTrace) error {
 	default:
 		return fmt.Errorf("evaluation: validate agent trace: schema version %q: %w", trace.SchemaVersion, constants.ErrEvidenceArtifactMalformed)
 	}
-	// A v11 trace without a persona is rejected as evidence by verifyTracePersona.
-	if trace.SchemaVersion != agentTraceSchemaVersion && trace.Persona != nil {
+	// A v11 or later trace without a persona is rejected as evidence by verifyTracePersona.
+	if !trace.carriesPersona() && trace.Persona != nil {
 		return fmt.Errorf("evaluation: validate agent trace: historical trace carries a persona: %w", constants.ErrEvidenceArtifactMalformed)
 	}
 	for _, call := range trace.ModelCalls {
-		if (call.Purpose == agentModelCallPurposeInterrogation) != (len(call.Input) > 0) || (trace.SchemaVersion != agentTraceSchemaVersion && len(call.Input) > 0) {
+		if (call.Purpose == agentModelCallPurposeInterrogation) != (len(call.Input) > 0) || (!trace.carriesPersona() && len(call.Input) > 0) {
 			return fmt.Errorf("evaluation: validate agent trace: model call %q input: %w", call.ProviderAttemptID, constants.ErrEvidenceArtifactMalformed)
 		}
 	}
 	if !trace.carriesContentJudgments() && len(trace.ContentJudgments) > 0 {
 		return fmt.Errorf("evaluation: validate agent trace: historical trace carries content judgments: %w", constants.ErrEvidenceArtifactMalformed)
+	}
+	for _, judgment := range trace.ContentJudgments {
+		if judgment.Failure != "" && trace.SchemaVersion != agentTraceSchemaVersion {
+			return fmt.Errorf("evaluation: validate agent trace: historical trace carries a failed content judgment: %w", constants.ErrEvidenceArtifactMalformed)
+		}
 	}
 	if !trace.carriesObservationEvidence() && len(trace.Observations) > 0 {
 		return fmt.Errorf("evaluation: validate agent trace: historical trace carries scenario observations: %w", constants.ErrEvidenceArtifactMalformed)

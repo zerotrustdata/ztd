@@ -116,7 +116,7 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 			contentPassed, contentDetail = evaluateContentCheckForGold(trace.FinalOutput, *g.req.ScenarioGold.ContentCheck, ws, g.req.ScenarioGold)
 			// Only the Interrogator asks: a v11 reasoner that writes the block
 			// itself did not signal for clarification.
-			if contentPassed && trace.SchemaVersion == agentTraceSchemaVersion && endedInInterrogationForGold(trace.FinalOutput, g.req.ScenarioGold) && !trace.interrogatorAsked(trace.FinalOutput) {
+			if contentPassed && trace.carriesPersona() && endedInInterrogationForGold(trace.FinalOutput, g.req.ScenarioGold) && !trace.interrogatorAsked(trace.FinalOutput) {
 				contentPassed, contentDetail = false, constants.ErrEvaluationInterrogationNotSignalled.Error()
 			}
 			if contentPassed && g.req.ScenarioGold.ContentCheck.SearchPattern != "" {
@@ -738,6 +738,9 @@ func (g homogeneousGrader) gradePlayerCriteria() ([]*evalv1.DeterministicGrade, 
 		failDetail := fmt.Sprintf("role %s failed persona expectations", roleName)
 		if sg.Fail != "" {
 			failDetail = fmt.Sprintf("role %s failed persona expectations: %s", roleName, sg.Fail)
+		}
+		if sg.Detail != "" {
+			failDetail += " (" + sg.Detail + ")"
 		}
 		grades = append(grades, g.newGrade(criterionID, basisObservation, passed, passDetail, failDetail))
 	}

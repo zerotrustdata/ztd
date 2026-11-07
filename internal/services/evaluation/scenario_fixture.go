@@ -28,7 +28,7 @@ const (
 	// DefaultSuiteID and DefaultSuiteVersion identify the built-in suite every
 	// campaign freezes unless it names another one.
 	DefaultSuiteID             = "default-suite"
-	DefaultSuiteVersion        = "1.33.0"
+	DefaultSuiteVersion        = "1.34.0"
 	SmokeSuiteVersion          = "1.32.0"
 	InvestigationsSuiteVersion = "1.28.0"
 	QuickstartSuiteVersion     = "1.2.0"

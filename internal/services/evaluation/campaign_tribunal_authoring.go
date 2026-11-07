@@ -83,7 +83,7 @@ func formationTribunalRoleForPurpose(purpose string) evalv1.ModelCampaignRole {
 }
 
 func formationTribunalRoleForTrace(trace *AgentTrace, purpose string) evalv1.ModelCampaignRole {
-	if trace != nil && trace.SchemaVersion != agentTraceSchemaVersion {
+	if trace != nil && !trace.carriesPersona() {
 		// v7-v10 recorded every formation Tribunal stage on the Lite slot.
 		return formationTribunalMemberRole
 	}
@@ -122,13 +122,12 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 	if len(proposal.Hostnames) > 0 {
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: "run_shell_command Tribunal authoring does not accept hostnames"})
 	}
-	workingDir := r.workspace.Root
-	if proposal.WorkingDir != "" {
-		workingDir = r.workspace.Resolve(proposal.WorkingDir)
-		if !pathWithin(workingDir, r.workspace.OperatorWorkingDirectory) {
-			return r.fail(record, agentToolFailure{ErrorType: agentToolErrorSecurity,
-				Error: fmt.Sprintf("security violation: working directory %q is outside operator workspace", proposal.WorkingDir)})
-		}
+	workingDir, failure, err := r.shellWorkingDir(proposal.WorkingDir)
+	if err != nil {
+		return AgentToolCall{}, err
+	}
+	if failure != nil {
+		return r.fail(record, *failure)
 	}
 	tiers := map[tribunal.Stage]evalv1.ModelCampaignRole{tribunal.StageGenerate: r.designated, tribunal.StageMarshal: r.designated, tribunal.StageAudit: r.designated}
 	if IsHeterogeneousAssignment(r.req.Assignment) {

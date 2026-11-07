@@ -134,7 +134,7 @@ func verifyTracePersona(trace *AgentTrace, bindings []*evalv1.AgentPersonaBindin
 // personas, and binds every Interrogator call's recorded system prompt to the
 // frozen Interrogator persona.
 func tracePersonaError(req AssignmentExecutionRequest, trace *AgentTrace) error {
-	if trace == nil || trace.SchemaVersion != agentTraceSchemaVersion {
+	if !trace.carriesPersona() {
 		return nil
 	}
 	if err := verifyTracePersona(trace, req.Binding.Personas); err != nil {

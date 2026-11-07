@@ -531,7 +531,7 @@ func (m *PublicMirrorServer) handleLayoutPointer(w http.ResponseWriter, r *http.
 	defer m.layout.pointerMu.Unlock()
 	state, err := m.LayoutState(r.Context(), sourceID)
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: compose layout pointer", err)
+		m.writeStoreUnavailable(w, r, "mirror: compose layout pointer", err)
 		return
 	}
 	pointer := state.Pointer
@@ -541,7 +541,7 @@ func (m *PublicMirrorServer) handleLayoutPointer(w http.ResponseWriter, r *http.
 		if m.layout.signer != nil {
 			signed, err := m.layout.signer(pointer)
 			if err != nil {
-				m.writeStoreUnavailable(w, "mirror: sign layout pointer", err)
+				m.writeStoreUnavailable(w, r, "mirror: sign layout pointer", err)
 				return
 			}
 			pointer = signed
@@ -580,7 +580,7 @@ func (m *PublicMirrorServer) handleLayoutReadModel(w http.ResponseWriter, r *htt
 	}
 	cached, digest, err := m.layoutReadModel(r.Context(), sourceID)
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read layout read model", err)
+		m.writeStoreUnavailable(w, r, "mirror: read layout read model", err)
 		return
 	}
 	if !ok || name != digest {
@@ -603,7 +603,7 @@ func (m *PublicMirrorServer) handleLayoutHistory(w http.ResponseWriter, r *http.
 	}
 	body, found, err := m.LayoutHistoryPage(r.Context(), r.URL.Query().Get("source"), first)
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read layout history", err)
+		m.writeStoreUnavailable(w, r, "mirror: read layout history", err)
 		return
 	}
 	if !found {
@@ -620,7 +620,7 @@ func (m *PublicMirrorServer) handleLayoutLiveStatus(w http.ResponseWriter, r *ht
 	}
 	status, err := m.LayoutLiveStatus(r.Context(), r.URL.Query().Get("source"))
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read layout live status", err)
+		m.writeStoreUnavailable(w, r, "mirror: read layout live status", err)
 		return
 	}
 	w.Header().Set(constants.HeaderCacheControl, constants.PublicLayoutCacheLive)
@@ -641,7 +641,7 @@ func (m *PublicMirrorServer) handleLayoutLiveRun(w http.ResponseWriter, r *http.
 	sourceID, _, freshness, _ := m.layoutSource(r.URL.Query().Get("source"))
 	runs, err := m.activePublicRuns(r.Context(), sourceID, freshness)
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read layout active runs", err)
+		m.writeStoreUnavailable(w, r, "mirror: read layout active runs", err)
 		return
 	}
 	if !slices.ContainsFunc(runs, func(run models.PublicLiveRun) bool { return run.RunID == runID }) {
@@ -650,7 +650,7 @@ func (m *PublicMirrorServer) handleLayoutLiveRun(w http.ResponseWriter, r *http.
 	}
 	body, found, err := m.LayoutLiveRunBundle(r.Context(), sourceID, runID)
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read layout run bundle", err)
+		m.writeStoreUnavailable(w, r, "mirror: read layout run bundle", err)
 		return
 	}
 	if !found {
@@ -675,7 +675,7 @@ func (m *PublicMirrorServer) handleLayoutArtifact(w http.ResponseWriter, r *http
 	}
 	sourceID, hasManifest, err := m.resolveProofManifestSource(r.Context(), r.URL.Query().Get("source"))
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: resolve layout artifact source", err)
+		m.writeStoreUnavailable(w, r, "mirror: resolve layout artifact source", err)
 		return
 	}
 	if !hasManifest {
@@ -684,7 +684,7 @@ func (m *PublicMirrorServer) handleLayoutArtifact(w http.ResponseWriter, r *http
 	}
 	entry, found, err := m.store.proofCatalogEntry(r.Context(), sourceID, artifactID)
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read layout artifact", err)
+		m.writeStoreUnavailable(w, r, "mirror: read layout artifact", err)
 		return
 	}
 	allowedKey, allowed := publicLayoutArtifactKey(entry)

@@ -110,13 +110,17 @@ func judgedCriteria(req AssignmentExecutionRequest) []judge.Criterion {
 
 // contentJudgmentsRequired reports whether the trace must carry one verdict per
 // judged criterion: criteria are declared and the trace holds a final answer
-// from a run that was not cut off. A trace without an answer is graded failed
-// without a judge.
+// from a run that was not cut off by its wall clock or stopped for repetition.
+// A trace without an answer is graded failed without a judge.
 func contentJudgmentsRequired(req AssignmentExecutionRequest, trace *AgentTrace) bool {
 	if liteTriageCell(req) || len(judgedCriteria(req)) == 0 || trace == nil || trace.FinalOutput == "" {
 		return false
 	}
-	return trace.TerminalClassification != AgentTerminalClassificationTimeout && trace.ProviderFailure == ""
+	switch trace.TerminalClassification {
+	case AgentTerminalClassificationTimeout, AgentTerminalClassificationRepetition:
+		return false
+	}
+	return trace.ProviderFailure == ""
 }
 
 // campaignJudgeConfig is the one construction of the pinned judge's config, for
@@ -207,8 +211,10 @@ func (e *CampaignAgentExecutor) executionJudgeConfig(ctx context.Context, req As
 
 // recordContentJudgments asks the pinned judge for one verdict per judged
 // criterion, in declaration order, and records them on the trace before it is
-// sealed. A judge that cannot decide a criterion fails the assignment as an
-// execution failure: the cell is never graded on a missing verdict.
+// sealed. A judge that cannot decide a criterion records that failed judgment
+// with its typed failure and ends the judgments: the trace is still sealed and
+// persisted, the assignment is GRADER_FAILED, and the cell is never graded on
+// a missing verdict (INV-EVAL-CAMP-54).
 func (e *CampaignAgentExecutor) recordContentJudgments(ctx context.Context, req AssignmentExecutionRequest, trace *AgentTrace) error {
 	if !contentJudgmentsRequired(req, trace) {
 		return nil
@@ -220,13 +226,21 @@ func (e *CampaignAgentExecutor) recordContentJudgments(ctx context.Context, req 
 	if err != nil {
 		return err
 	}
+	criteria := judgedCriteria(req)
 	j, err := judge.New(e.inference, cfg)
+	//nolint:nilerr // A judge that cannot be built is the failed judgment the trace records, not an execution error.
 	if err != nil {
-		return fmt.Errorf("evaluation: judge content criteria: %w: %w", constants.ErrEvaluationContentJudgeFailed, err)
+		trace.ContentJudgments = append(trace.ContentJudgments, AgentContentJudgment{
+			CriterionID:    criteria[0].ID,
+			JudgeVariantID: cfg.Variant.GetVariantId(),
+			ServedModelTag: cfg.Variant.GetServedModelTag(),
+			ModelDigest:    cfg.Variant.GetModelDigest(),
+			Failure:        evalv1.JudgeFailure_JUDGE_FAILURE_REQUEST_INVALID.String(),
+		})
+		return nil
 	}
 	objective := contentJudgeObjective(req.ScenarioInput, trace, req.ScenarioGold.ContentCheck)
 	typed := contentJudgeTypedObjective(req, trace)
-	criteria := judgedCriteria(req)
 	for i, criterion := range criteria {
 		position := judge.Position{Index: i + 1, Count: len(criteria)}
 		var score judge.Score
@@ -235,12 +249,13 @@ func (e *CampaignAgentExecutor) recordContentJudgments(ctx context.Context, req 
 		} else {
 			score = j.ScoreCriterion(ctx, criterion, position, objective, trace.FinalOutput)
 		}
-		if score.Status != judge.StatusScored {
-			return fmt.Errorf("evaluation: judge content criterion %q: %w: %s", criterion.ID, constants.ErrEvaluationContentJudgeFailed, score.Detail)
-		}
 		messages, err := agentTraceMessages(score.Messages)
 		if err != nil {
 			return fmt.Errorf("evaluation: record judge prompt for criterion %q: %w", criterion.ID, err)
+		}
+		if score.Status != judge.StatusScored {
+			trace.ContentJudgments = append(trace.ContentJudgments, failedContentJudgment(cfg, criterion, score, messages))
+			return nil
 		}
 		trace.ContentJudgments = append(trace.ContentJudgments, AgentContentJudgment{
 			CriterionID:       criterion.ID,
@@ -260,6 +275,58 @@ func (e *CampaignAgentExecutor) recordContentJudgments(ctx context.Context, req 
 	return nil
 }
 
+// judgeFailureFromOutput reports whether a judge failure is read from the
+// judge's own signed output, so the failed judgment carries that result and
+// receipt and verification re-derives the failure from them. Every other
+// failure has no trustworthy result to carry.
+func judgeFailureFromOutput(failure evalv1.JudgeFailure) bool {
+	return failure == evalv1.JudgeFailure_JUDGE_FAILURE_VERDICT_INVALID || failure == evalv1.JudgeFailure_JUDGE_FAILURE_REPETITION
+}
+
+// failedContentJudgment records a judgment the pinned judge failed to decide.
+// The failure is the typed code, never the error text, which can echo the
+// judged reply.
+func failedContentJudgment(cfg judge.Config, criterion judge.Criterion, score judge.Score, messages []AgentTraceMessage) AgentContentJudgment {
+	judgment := AgentContentJudgment{
+		CriterionID:       criterion.ID,
+		ProviderAttemptID: score.ProviderAttemptID,
+		TransactionID:     score.TransactionID,
+		JudgeVariantID:    cfg.Variant.GetVariantId(),
+		ServedModelTag:    score.JudgeModelTag,
+		ModelDigest:       score.JudgeModelDigest,
+		RubricVersion:     score.RubricVersion,
+		Messages:          messages,
+		Failure:           score.Failure.String(),
+	}
+	if judgeFailureFromOutput(score.Failure) && score.Result != nil && score.Receipt != nil {
+		judgment.InferenceResult = &AgentTraceInferenceResult{InferenceResult: proto.Clone(score.Result).(*operatorv1.InferenceResult)}
+		judgment.Receipt = &AgentTraceReceipt{EventReceipt: score.Receipt}
+	}
+	return judgment
+}
+
+// judgeFailureReasons is the fixed public sentence for each judge failure. A
+// GRADER_FAILED result publishes it instead of the failure's error text.
+var judgeFailureReasons = map[evalv1.JudgeFailure]string{
+	evalv1.JudgeFailure_JUDGE_FAILURE_REQUEST_INVALID:    "Grading failed: the judge request could not be built.",
+	evalv1.JudgeFailure_JUDGE_FAILURE_DISPATCH_FAILED:    "Grading failed: the judge inference returned no result.",
+	evalv1.JudgeFailure_JUDGE_FAILURE_RESPONSE_MISMATCH:  "Grading failed: the judge result answered a different request.",
+	evalv1.JudgeFailure_JUDGE_FAILURE_RESULT_DIGEST:      "Grading failed: the judge result did not match its signed receipt.",
+	evalv1.JudgeFailure_JUDGE_FAILURE_VERDICT_INVALID:    "Grading failed: the judge's reply was not a verdict in the rubric's format.",
+	evalv1.JudgeFailure_JUDGE_FAILURE_RECEIPT_UNVERIFIED: "Grading failed: the judge receipt did not verify.",
+	evalv1.JudgeFailure_JUDGE_FAILURE_REPETITION:         "Grading failed: the judge's output degenerated into a repeating loop and was stopped.",
+}
+
+// contentJudgeFailure returns the typed failure of the trace's failed content
+// judgment, if it has one.
+func contentJudgeFailure(trace *AgentTrace) (evalv1.JudgeFailure, bool) {
+	judgment, failed := trace.failedContentJudgment()
+	if !failed {
+		return evalv1.JudgeFailure_JUDGE_FAILURE_UNSPECIFIED, false
+	}
+	return evalv1.JudgeFailure(evalv1.JudgeFailure_value[judgment.Failure]), true
+}
+
 // verifyContentJudgments proves the trace carries exactly the verdicts its
 // scenario requires and that each one is what the frozen judge returned: the
 // recorded prompt is the re-rendered prompt, the receipt is signed by the
@@ -273,7 +340,13 @@ func verifyContentJudgments(req AssignmentExecutionRequest, trace *AgentTrace) e
 		}
 		return nil
 	}
-	if len(trace.ContentJudgments) != len(criteria) {
+	// A failed judgment ends the judgments, so only the criteria up to it are
+	// judged.
+	judged := len(criteria)
+	if _, failed := trace.failedContentJudgment(); failed {
+		judged = len(trace.ContentJudgments)
+	}
+	if len(trace.ContentJudgments) != judged || judged > len(criteria) {
 		return fmt.Errorf("evaluation: trace carries %d content judgments for %d judged criteria: %w", len(trace.ContentJudgments), len(criteria), constants.ErrEvaluationContentJudgmentMissing)
 	}
 	cfg, err := campaignJudgeConfig(req, nil)
@@ -286,9 +359,14 @@ func verifyContentJudgments(req AssignmentExecutionRequest, trace *AgentTrace) e
 	}
 	attempts := make(map[string]struct{}, len(criteria))
 	var errs []error
-	for i, criterion := range criteria {
+	for i, criterion := range criteria[:judged] {
 		rubricVersion, expected := contentJudgeMessages(req, trace, criterion)
-		errs = append(errs, verifyContentJudgment(cfg, anchors, trace, criterion, rubricVersion, expected, trace.ContentJudgments[i], attempts))
+		judgment := trace.ContentJudgments[i]
+		if judgment.Failure != "" && i != judged-1 {
+			errs = append(errs, fmt.Errorf("evaluation: content judgment %q fails before the last judgment: %w", criterion.ID, constants.ErrEvaluationContentJudgmentMismatch))
+			continue
+		}
+		errs = append(errs, verifyContentJudgment(cfg, anchors, trace, criterion, rubricVersion, expected, judgment, attempts))
 	}
 	return errors.Join(errs...)
 }
@@ -302,6 +380,9 @@ func verifyContentJudgment(cfg judge.Config, anchors *oracle.AnchorSet, trace *A
 	}
 	if judgment.JudgeVariantID != cfg.Variant.GetVariantId() || judgment.ServedModelTag != cfg.Variant.GetServedModelTag() || judgment.ModelDigest != cfg.Variant.GetModelDigest() {
 		return mismatch("judge %q is not the frozen judge %q", judgment.JudgeVariantID, cfg.Variant.GetVariantId())
+	}
+	if judgment.Failure != "" {
+		return verifyFailedContentJudgment(cfg, anchors, trace, criterion, rubricVersion, rendered, judgment, attempts)
 	}
 	if judgment.RubricVersion != rubricVersion {
 		return mismatch("rubric %q is not %q", judgment.RubricVersion, rubricVersion)
@@ -335,6 +416,60 @@ func verifyContentJudgment(cfg judge.Config, anchors *oracle.AnchorSet, trace *A
 	}
 	if met != judgment.Met || rationale != judgment.Rationale {
 		return mismatch("recorded verdict does not match the signed inference result")
+	}
+	return nil
+}
+
+// verifyFailedContentJudgment proves a failed judgment is the failure the
+// frozen judge's evidence produces. A failure read from the judge's output
+// carries the dispatched prompt, a signed result and receipt, and is
+// re-derived from them exactly; any other failure carries no verdict and no
+// result, and only its typed code is recorded.
+func verifyFailedContentJudgment(cfg judge.Config, anchors *oracle.AnchorSet, trace *AgentTrace, criterion judge.Criterion, rubricVersion string, rendered []*operatorv1.InferenceMessage, judgment AgentContentJudgment, attempts map[string]struct{}) error {
+	mismatch := func(format string, args ...any) error {
+		return fmt.Errorf("evaluation: failed content judgment %q: %s: %w", criterion.ID, fmt.Sprintf(format, args...), constants.ErrEvaluationContentJudgmentMismatch)
+	}
+	failure, known := evalv1.JudgeFailure_value[judgment.Failure]
+	if !known || evalv1.JudgeFailure(failure) == evalv1.JudgeFailure_JUDGE_FAILURE_UNSPECIFIED {
+		return mismatch("failure %q is not a judge failure", judgment.Failure)
+	}
+	if judgment.Met || judgment.Rationale != "" {
+		return mismatch("a failed judgment carries a verdict")
+	}
+	hasResult := judgment.InferenceResult != nil || judgment.Receipt != nil
+	if !judgeFailureFromOutput(evalv1.JudgeFailure(failure)) {
+		if hasResult {
+			return mismatch("failure %s carries a result it cannot vouch for", judgment.Failure)
+		}
+		return nil
+	}
+	if judgment.RubricVersion != rubricVersion {
+		return mismatch("rubric %q is not %q", judgment.RubricVersion, rubricVersion)
+	}
+	if _, seen := attempts[judgment.ProviderAttemptID]; seen || judgment.ProviderAttemptID == "" {
+		return mismatch("provider attempt %q is empty or reused", judgment.ProviderAttemptID)
+	}
+	attempts[judgment.ProviderAttemptID] = struct{}{}
+	expected, err := agentTraceMessages(rendered)
+	if err != nil {
+		return fmt.Errorf("evaluation: failed content judgment %q: render prompt: %w", criterion.ID, err)
+	}
+	if !reflect.DeepEqual(expected, judgment.Messages) {
+		return mismatch("recorded prompt is not the prompt rendered from the frozen objective and final reply")
+	}
+	if judgment.InferenceResult == nil || judgment.InferenceResult.InferenceResult == nil || judgment.Receipt == nil || judgment.Receipt.EventReceipt == nil {
+		return fmt.Errorf("evaluation: failed content judgment %q has no signed inference result or receipt: %w", criterion.ID, constants.ErrEvaluationContentJudgmentMissing)
+	}
+	result, receipt := judgment.InferenceResult.InferenceResult, judgment.Receipt.EventReceipt
+	if err := verifyJudgeReceipt(anchors, trace.Inference, judge.Score{Status: judge.StatusScored, TransactionID: judgment.TransactionID, Receipt: receipt, Result: result}); err != nil {
+		return fmt.Errorf("evaluation: failed content judgment %q: %w: %w", criterion.ID, constants.ErrEvaluationContentJudgmentMismatch, err)
+	}
+	_, _, err = judge.VerifyCriterionResult(cfg, judgment.ProviderAttemptID, result, receipt)
+	if err == nil {
+		return mismatch("the signed result decodes to a verdict")
+	}
+	if derived := judge.ResultFailure(err); derived != evalv1.JudgeFailure(failure) {
+		return mismatch("recorded failure %s is not %s, the failure of the signed result", judgment.Failure, derived)
 	}
 	return nil
 }
@@ -380,6 +515,14 @@ func gradeJudgedCriteria(req AssignmentExecutionRequest, trace *AgentTrace) judg
 			CriterionId: contentCriterionID(criterion.ID),
 		}
 		switch {
+		case judgment.Failure != "":
+			// The frozen judge did not decide this criterion: the grade is
+			// unmeasured and binds no grader call.
+			reason := judgeFailureReasons[evalv1.JudgeFailure(evalv1.JudgeFailure_value[judgment.Failure])]
+			grade.Status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE
+			grade.JudgeVariantId = judgment.JudgeVariantID
+			grade.Detail = reason
+			unmet = append(unmet, criterion.ID+": "+reason)
 		case judgment.Met:
 			grade.Status = evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
 			grade.JudgeVariantId = judgment.JudgeVariantID
@@ -413,7 +556,7 @@ func attachContentJudgmentEvidence(result *evalv1.EvaluationAssignmentResult, tr
 	}
 	for _, grade := range result.GetSemanticGrades() {
 		judgment, ok := byCriterion[grade.GetCriterionId()]
-		if !ok {
+		if !ok || judgment.Failure != "" {
 			continue
 		}
 		ref, err := agentReceiptEvidenceReference(traceEvidence, trace, judgment.TransactionID, judgment.Receipt)
@@ -448,8 +591,9 @@ func attachContentJudgmentEvidence(result *evalv1.EvaluationAssignmentResult, tr
 }
 
 // contentGradesMatch reports whether the stored judged content grades are the
-// grades recomputed from the trace's sealed verdicts, and each is bound to a
-// receipt reference.
+// grades recomputed from the trace's sealed verdicts, and each decided grade is
+// bound to a receipt reference. A criterion the judge failed to decide is
+// UNAVAILABLE and binds none.
 func contentGradesMatch(stored, recomputed []*evalv1.SemanticGrade) bool {
 	want := make(map[string]*evalv1.SemanticGrade)
 	for _, grade := range recomputed {
@@ -468,7 +612,8 @@ func contentGradesMatch(stored, recomputed []*evalv1.SemanticGrade) bool {
 			grade.GetJudgeVariantId() != expected.GetJudgeVariantId() || grade.GetDetail() != expected.GetDetail() {
 			return false
 		}
-		if expected.GetJudgeVariantId() != "" && grade.GetGraderCallRef() == nil {
+		decided := expected.GetJudgeVariantId() != "" && expected.GetStatus() != evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE
+		if decided != (grade.GetGraderCallRef() != nil) {
 			return false
 		}
 	}
