@@ -24,6 +24,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
@@ -41,6 +42,52 @@ func TestRunsList_EmptyProject(t *testing.T) {
 	env := newStoreRunEnv(t)
 
 	assert.Contains(t, env.mustRun(t, "runs", "list"), "No runs found")
+}
+
+func TestRunsExecution_StalePersonasFailBeforeSchedulingOrConsumingAssignments(t *testing.T) {
+	env := newStoreRunEnv(t)
+	const campaignID = "old-personas"
+	env.createCampaign(t, campaignID)
+	store := env.store(t)
+	ctx := context.Background()
+	catalog, err := store.LoadScenarioCatalog(ctx, campaignID)
+	require.NoError(t, err)
+	catalog.Personas[0].Version = "0.0.0"
+	catalog.Personas[0].Digest = strings.Repeat("0", 64)
+	catalog.CatalogDigest, err = evaluation.ComputeScenarioCatalogDigest(catalog)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveScenarioCatalog(ctx, campaignID, catalog))
+	spec, err := store.LoadCampaignSpec(ctx, campaignID)
+	require.NoError(t, err)
+	spec.CatalogDigest = catalog.GetCatalogDigest()
+	spec.CampaignDigest, err = evaluation.ComputeCampaignSpecDigest(spec)
+	require.NoError(t, err)
+	require.NoError(t, store.SaveCampaignSpec(ctx, spec))
+
+	_, err = runStartFlow(env.cmd, env.deps, runStartFlowOptions{CampaignID: campaignID, DryRun: true})
+	require.ErrorIs(t, err, constants.ErrPersonaDigestMismatch)
+	assert.Contains(t, err.Error(), "create a new campaign")
+	runIDs, err := store.ListRunIDs(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, runIDs, "a refused start must not schedule a run")
+
+	// A historical run already exists when the binary is upgraded.
+	runID := env.startStoredRun(t, campaignID, "old-personas-run")
+	before, err := store.ListAssignments(ctx, runID)
+	require.NoError(t, err)
+	executed, err := executeRun(env.cmd, env.deps, runExecuteOptions{RunID: runID, Limit: 1})
+	require.ErrorIs(t, err, constants.ErrPersonaDigestMismatch)
+	assert.Contains(t, err.Error(), "create a new campaign")
+	assert.Zero(t, executed)
+	after, err := store.ListAssignments(ctx, runID)
+	require.NoError(t, err)
+	require.Len(t, after, len(before))
+	for i := range before {
+		assert.True(t, proto.Equal(before[i], after[i]), "assignment must remain queued")
+		exists, err := store.AssignmentResultExists(ctx, runID, before[i].GetAssignmentId())
+		require.NoError(t, err)
+		assert.False(t, exists, "preflight must not write an invalid-evidence result")
+	}
 }
 
 func TestRunsList_AfterPrepare(t *testing.T) {

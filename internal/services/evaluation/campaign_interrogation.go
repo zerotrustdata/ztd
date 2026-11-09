@@ -96,7 +96,7 @@ func parseInterrogation(text string, gold ScenarioGoldCriteria) (interrogation A
 	}
 	for i, line := range lines {
 		questionPattern, markerPattern := interrogationQuestion, interrogationBinaryMarker
-		if gold.GradingContract == ScenarioGradingContractV4 {
+		if gold.answerRequiredContract() {
 			questionPattern, markerPattern = interrogationQuestionV4, interrogationBinaryMarkerV4
 		}
 		numbered := questionPattern.FindStringSubmatch(line)

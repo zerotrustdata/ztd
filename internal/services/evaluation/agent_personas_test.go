@@ -73,6 +73,32 @@ func TestFrozenRolePersona_FailsClosedOnMissingOrStaleBinding(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrPersonaDigestMismatch, "an edited vote rendering needs a fresh catalog binding")
 }
 
+func TestValidateCampaignExecutionPersonas_RejectsStalePromptsAndVotes(t *testing.T) {
+	for _, field := range []string{"current", "missing", "version", "digest", "vote"} {
+		t.Run(field, func(t *testing.T) {
+			catalog := &evalv1.EvaluationScenarioCatalog{Personas: testCatalogPersonas(t)}
+			binding := personaBinding(catalog.GetPersonas(), agentpersona.IDNemesis)
+			switch field {
+			case "missing":
+				catalog.Personas = nil
+			case "version":
+				binding.Version = "0.0.0"
+			case "digest":
+				binding.Digest = "stale"
+			case "vote":
+				binding.VoteDigest = "stale"
+			}
+			err := ValidateCampaignExecutionPersonas(catalog)
+			if field == "current" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, constants.ErrPersonaDigestMismatch)
+			assert.Contains(t, err.Error(), "create a new campaign")
+		})
+	}
+}
+
 func TestBuildScenarioCatalog_FreezesEveryPersonaIntoTheDigest(t *testing.T) {
 	catalog, _, err := BuildScenarioCatalog()
 	require.NoError(t, err)
@@ -163,6 +189,10 @@ func TestMaterializeSuite_RejectsStaleOrMissingPersonas(t *testing.T) {
 // was released with. A persona edit fails this test until every built-in suite
 // is bumped and its new version is pinned here; never re-pin an old version.
 var builtinSuitePersonaPins = map[string]string{
+	DefaultSuiteID + "@1.35.0":        "17ceadfc5cf71f0e404f7e74085d77fdcbe4e43dc65f2c5cf9d8043a00ee43d0",
+	SmokeSuiteID + "@1.33.0":          "17ceadfc5cf71f0e404f7e74085d77fdcbe4e43dc65f2c5cf9d8043a00ee43d0",
+	InvestigationsSuiteID + "@1.29.0": "17ceadfc5cf71f0e404f7e74085d77fdcbe4e43dc65f2c5cf9d8043a00ee43d0",
+	QuickstartSuiteID + "@1.3.0":      "17ceadfc5cf71f0e404f7e74085d77fdcbe4e43dc65f2c5cf9d8043a00ee43d0",
 	DefaultSuiteID + "@1.34.0":        "15845bfc0100f1e3db571b939d541807234c1298d9b3416b8d36eaf4f0468448",
 	DefaultSuiteID + "@1.33.0":        "15845bfc0100f1e3db571b939d541807234c1298d9b3416b8d36eaf4f0468448",
 	SmokeSuiteID + "@1.32.0":          "15845bfc0100f1e3db571b939d541807234c1298d9b3416b8d36eaf4f0468448",

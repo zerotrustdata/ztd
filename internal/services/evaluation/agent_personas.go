@@ -58,6 +58,22 @@ func catalogPersonaBindings() ([]*evalv1.AgentPersonaBinding, error) {
 	return bindings, nil
 }
 
+// ValidateCampaignExecutionPersonas rejects a campaign whose frozen prompts
+// cannot be executed by this binary. Call before scheduling or resuming work;
+// historical evidence verification continues to use its recorded prompts.
+func ValidateCampaignExecutionPersonas(catalog *evalv1.EvaluationScenarioCatalog) error {
+	registry, err := agentpersona.NewRegistry()
+	if err != nil {
+		return err
+	}
+	for _, persona := range registry.All() {
+		if _, err := frozenPersona(catalog.GetPersonas(), persona.ID); err != nil {
+			return fmt.Errorf("evaluation: campaign persona preflight: create a new campaign with this binary; restarting the Gateway does not update frozen personas: %w", err)
+		}
+	}
+	return nil
+}
+
 // frozenRolePersona returns the persona a campaign role runs under. It fails
 // closed when the campaign froze no persona for the role or when the
 // registry's text no longer matches the frozen digest: a persona edit needs a

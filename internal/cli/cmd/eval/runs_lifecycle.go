@@ -158,6 +158,9 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}
+	if err := evaluation.ValidateCampaignExecutionPersonas(catalog); err != nil {
+		return nil, fmt.Errorf("evaluation: runs start: campaign %q: %w", opts.CampaignID, err)
+	}
 	var topology evaluation.CampaignOperatorTopology
 	var governance evaluation.RunGovernance
 	if !opts.DryRun {

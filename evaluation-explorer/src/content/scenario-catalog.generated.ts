@@ -9,8 +9,8 @@
 
 import type { ScenarioTaskDefinition } from './scenario-task';
 
-export const SCENARIO_CATALOG_VERSION = "1.34.0";
-export const SCENARIO_CATALOG_ID = "default-suite@1.34.0";
+export const SCENARIO_CATALOG_VERSION = "1.35.0";
+export const SCENARIO_CATALOG_ID = "default-suite@1.35.0";
 
 export const SCENARIO_TASKS: readonly ScenarioTaskDefinition[] = [
   {
