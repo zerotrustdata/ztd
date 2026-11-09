@@ -7,7 +7,7 @@ require (
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/ebitengine/purego v0.11.2
+	github.com/ebitengine/purego v0.11.3
 	github.com/fxamacker/cbor/v2 v2.10.0
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/go-webauthn/webauthn v0.18.2
