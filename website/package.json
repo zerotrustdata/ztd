@@ -9,7 +9,7 @@
     "deploy": "npm run check && npm run build && wrangler deploy"
   },
   "devDependencies": {
-    "marked": "18.1.2",
+    "marked": "18.1.3",
     "wrangler": "4.156.0"
   },
   "engines": {
