@@ -3,8 +3,8 @@ doc_id: troubleshooting
 title: Troubleshooting Guide
 audience: maintainers and coding agents
 status: current
-version: v1.7.0
-last_updated: 2026-10-30
+version: v1.10.0
+last_updated: 2026-11-11
 owners:
   - internal/cli/cmd/
   - internal/services/gateway/
@@ -89,7 +89,7 @@ Managed startup failures include the latest bounded child diagnostic from the cu
 | ID | Rule |
 | :--- | :--- |
 | INV-TROUBLE-AUTH-01 | The canonical trust bundle path is `.ztd/pki/trust/ztdg-ca-bundle.pem`. Tests and tools MUST NOT use non-canonical bundle paths or mutate host PKI to fix test failures. |
-| INV-TROUBLE-AUTH-02 | CLI sessions and certificates expire in 7 days; web sessions expire in 24 hours. When a CLI certificate is valid but session expired, run `ztd auth refresh` rather than re-enrolling. |
+| INV-TROUBLE-AUTH-02 | CLI sessions and certificates expire in 7 days; web sessions expire in 24 hours. Gateway client commands renew the CLI certificate in place at two-thirds of its lifetime, including during long-running commands, while the identity is valid and the Gateway is reachable. Local lifecycle and tooling commands, and `logout --local-only`, do not renew it. When a CLI certificate is valid but session expired, run `ztd auth refresh` rather than re-enrolling. A CLI certificate expired for at most 7 days is reinstated automatically by the next Gateway client command, by proof of possession of its keystore-sealed key, with no human approval. One expired longer (`CLI certificate expired`) is recovered with `ztd auth enroll user`. |
 | INV-TROUBLE-AUTH-03 | Headless enrollment (`ztd login`, `ztd login cli`, alias `ztd login headless`, or `ztd auth enroll user --headless`) skips OS trust and passkey ceremony, producing an mTLS-capable CLI identity that does not support web Console sessions. |
 | INV-TROUBLE-AUTH-04 | `ztd logout` ends every web and CLI session of the user on every machine and revokes their CLI certificates. A machine that was logged in elsewhere reports its certificate revoked, and `ztd auth refresh` cannot recover it. Run `ztd logout --local-only` to discard the stale local credentials, then `ztd login`. |
 
@@ -278,9 +278,17 @@ A run that stops with `the provider does not have the requested model` and a que
 
 ### CLI Authentication and Session Recovery
 
+CLI renewal preserves the CLI session and operator binding. A 412 (`ErrCLIRenewalStaleCertificate`) means the Gateway already replaced the local certificate, for example after a lost response; run the explicit `--rotate-cli` command below while the old certificate remains valid. Rotation revokes the session's certificates, so other processes holding them must reload or re-enroll. `ErrCLIRenewalUnavailable` means the Gateway lacks the renewal route: rebuild and restart the Gateway together with the CLI. See [CLI certificate renewal](../architecture/auth.md#cli-certificate-renewal) for the lifecycle and overlap contract.
+
+A CLI certificate that expired within the last 7 days is reinstated by the next Gateway client command. The CLI proves possession of the expired certificate's key, which needs the keystore unlocked (for an ssh-agent seal, the sealing key loaded). `ErrCLIReinstateUnavailable` means the Gateway lacks the reinstatement route: rebuild and restart it. A refusal names its cause. `ErrCLIReinstateWindowElapsed`, a logged-out session (409), or a revoked certificate leaves human-approved recovery through `ztd auth enroll user`. See [CLI certificate reinstatement](../architecture/auth.md#cli-certificate-reinstatement).
+
 ```bash
 # Refresh an expired CLI session with a valid certificate
 ./ztd auth refresh
+
+# Reinstate a CLI certificate expired within 7 days (no approval); past that,
+# start human-approved recovery
+./ztd auth enroll user
 
 # Force certificate rotation before expiry
 ./ztd auth enroll user --rotate-cli

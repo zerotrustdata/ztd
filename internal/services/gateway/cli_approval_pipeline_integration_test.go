@@ -11,7 +11,12 @@ package gateway_test
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
 	"io"
@@ -325,4 +330,81 @@ func TestCLIApproval_SignedApprovalSurvivesRefreshInPlace(t *testing.T) {
 	require.Equal(t, txHash, receipt.GetTransactionHash())
 	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, receipt.GetStatus())
 	require.EqualValues(t, 1, mutationCount.Load(), "approval from the refreshed CLI session must execute the mutation once")
+}
+
+// renewCLIIdentityOverHTTPS renews identity's CLI certificate through the
+// Gateway's mTLS renewal route with client, and returns the renewed identity:
+// the same user and CLI session with the new certificate and key.
+func renewCLIIdentityOverHTTPS(t *testing.T, f *fixtures.GatewayFixture, client *http.Client, identity *fixtures.ClientIdentity) *fixtures.ClientIdentity {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	csr, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{Subject: pkix.Name{CommonName: "fixture-cli-renewed"}}, key)
+	require.NoError(t, err)
+	status, body := postCLIRenewal(t, f, client, string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csr})))
+	require.Equalf(t, http.StatusCreated, status, "CLI renewal: %s", body)
+	var renewal models.CLIRotationResponse
+	require.NoError(t, json.Unmarshal(body, &renewal))
+	require.Equal(t, identity.CLISessionID, renewal.CLISessionID, "renewal keeps the CLI session")
+	require.Equal(t, identity.UserID, renewal.UserID)
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	require.NoError(t, err)
+	renewed := *identity
+	renewed.CLICertificate = renewal.CLICert
+	renewed.CLIPrivateKey = keyDER
+	return &renewed
+}
+
+// postCLIRenewal posts a renewal for csrPEM with client and returns the
+// response status and body.
+func postCLIRenewal(t *testing.T, f *fixtures.GatewayFixture, client *http.Client, csrPEM string) (int, []byte) {
+	t.Helper()
+	reqBody, err := json.Marshal(models.CLIRotationRequest{CLICSRPEM: csrPEM})
+	require.NoError(t, err)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost,
+		network.LocalhostHTTPSURL(f.Service.GetHTTPSPort())+constants.APIPaths.AuthCLIRenew, bytes.NewReader(reqBody))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, resp.Body.Close())
+	require.NoError(t, err)
+	return resp.StatusCode, body
+}
+
+// TestCLIApproval_SignedApprovalSurvivesRenewalInPlace renews the enrolled CLI
+// certificate over the Gateway's HTTPS listener, then approves governed
+// mutations with both the renewed certificate and the certificate it replaced.
+// Renewal keeps the CLI session, so the session header, route authentication,
+// revocation check, and L3 certificate pin accept either certificate until the
+// replaced one expires, while only the current certificate can renew again.
+func TestCLIApproval_SignedApprovalSurvivesRenewalInPlace(t *testing.T) {
+	var mutationCount atomic.Int32
+	downstream := newCLIApprovalMutationDownstream(t, &mutationCount)
+
+	f := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
+		TestName:      "cli-approval-renewal-in-place",
+		Posture:       constants.PostureRatify,
+		DownstreamURL: downstream.URL,
+	})
+	f.WaitForReady(t)
+	identity := fixtures.BootstrapCLIIdentity(t, f, "cli-approval-renewal-in-place")
+	originalClient := fixtures.CreateCLIMTLSClient(t, f, identity)
+	t.Cleanup(originalClient.CloseIdleConnections)
+
+	renewed := renewCLIIdentityOverHTTPS(t, f, originalClient, identity)
+	renewedClient := fixtures.CreateCLIMTLSClient(t, f, renewed)
+	t.Cleanup(renewedClient.CloseIdleConnections)
+
+	txHash := suspendCLIApprovalMutation(t, f, renewedClient, "renewal", "approved-after-renewal")
+	approveCLISuspension(t, f, renewedClient, renewed, txHash)
+	require.EqualValues(t, 1, mutationCount.Load(), "the renewed certificate approves in the same CLI session")
+
+	txHash = suspendCLIApprovalMutation(t, f, originalClient, "renewal", "approved-with-replaced-certificate")
+	approveCLISuspension(t, f, originalClient, identity, txHash)
+	require.EqualValues(t, 2, mutationCount.Load(), "the replaced certificate keeps working until it expires")
+
+	status, body := postCLIRenewal(t, f, originalClient, "unused")
+	require.Equalf(t, http.StatusPreconditionFailed, status, "renewal with the replaced certificate: %s", body)
 }

@@ -128,7 +128,11 @@ func TestBuildMTLSClient_ValidCertsAndBundle(t *testing.T) {
 	require.True(t, ok)
 	tlsConfig := transport.TLSClientConfig
 	require.NotNil(t, tlsConfig)
-	assert.Len(t, tlsConfig.Certificates, 1)
+	assert.Empty(t, tlsConfig.Certificates, "the CLI certificate is read per handshake, not snapshotted")
+	require.NotNil(t, tlsConfig.GetClientCertificate)
+	presented, err := tlsConfig.GetClientCertificate(&tls.CertificateRequestInfo{})
+	require.NoError(t, err)
+	assert.Len(t, presented.Certificate, 1)
 	assert.NotNil(t, tlsConfig.RootCAs)
 	assert.Equal(t, uint16(0x0304), tlsConfig.MinVersion) // tls.VersionTLS13
 	assert.Equal(t, 30*time.Second, client.Timeout)

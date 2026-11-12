@@ -124,7 +124,7 @@ func newComplianceRealRun(t *testing.T) *complianceRealRun {
 
 	authContext, err := auth.LoadClientAuthContext(plain, cfg)
 	require.NoError(t, err)
-	cliCredentials := harnessconfig.Auth{ClientCert: authContext.ClientCert, ClientKey: authContext.ClientKey, Certificate: authContext.Certificate, CABundle: cfg.ResolvedTrustBundlePath()}
+	cliCredentials := harnessconfig.Auth{ClientCert: authContext.ClientCert, ClientKey: authContext.ClientKey, GetClientCertificate: authContext.GetClientCertificate, CABundle: cfg.ResolvedTrustBundlePath()}
 	gateway, err := harnessclient.New(harnessconfig.Config{
 		MTLSBaseURL: cfg.OperatorHTTPURL(), PublicBaseURL: cfg.OperatorDiscoveryURL(),
 		Auth: cliCredentials, CLIAuth: cliCredentials, UseCLIConfig: true,
@@ -135,7 +135,7 @@ func newComplianceRealRun(t *testing.T) *complianceRealRun {
 	require.NoError(t, err)
 	appClient, err := harnessclient.New(harnessconfig.Config{
 		MTLSBaseURL: cfg.OperatorHTTPURL(),
-		Auth:        harnessconfig.Auth{Certificate: appCertificate, CABundle: cfg.ResolvedTrustBundlePath()},
+		Auth:        harnessconfig.Auth{GetClientCertificate: harnessconfig.StaticClientCertificate(appCertificate), CABundle: cfg.ResolvedTrustBundlePath()},
 		UserID:      authContext.UserID,
 	})
 	require.NoError(t, err)

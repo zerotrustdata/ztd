@@ -187,6 +187,9 @@ const (
 	CliCertFilename     = "cli.crt"
 	CliKeyFilename      = "cli.key"
 	CredentialsFilename = "credentials"
+	// CliIdentityLockFilename serializes CLI certificate renewal across ztd
+	// processes sharing one runtime root.
+	CliIdentityLockFilename = "cli-identity.lock"
 
 	// Non-secret Operator deployment state, persisted under the runtime tree
 	// so a deploying CLI can discover enrollment progress without parsing logs.

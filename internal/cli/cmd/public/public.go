@@ -272,18 +272,18 @@ func Cmd() *cobra.Command {
 	sourceCmd := &cobra.Command{Use: "source", Short: "Manage the active public-feed source"}
 	sourceCmd.AddCommand(publicSourceTransitionCmdWithConfig(shared.LoadConfig, shared.NewFileSvc))
 	cmd.AddCommand(
-		publicInitCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
-		configCmd,
-		sourceCmd,
+		shared.DeclareNoCLIRenewal(publicInitCmdWithConfig(shared.LoadConfig, shared.NewFileSvc)),
+		shared.DeclareNoCLIRenewal(configCmd),
+		shared.DeclareNoCLIRenewal(sourceCmd),
 		publicPublishCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
 		publicPushCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
 		publicRepairOutboxCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
 		eval.PublicRestoreCmdWithConfig(shared.LoadConfig, shared.NewEvidenceFileSvc),
 		publicStatusCmdWithConfig(shared.LoadConfig, shared.NewEvidenceFileSvc),
-		publicRotateKeyCmdWithConfig(shared.LoadConfig, shared.NewFileSvc),
-		publicVerifyAssignmentCmd(),
-		publicVerifyAgentTraceCmd(),
-		publicVerifyProofCmd(),
+		shared.DeclareNoCLIRenewal(publicRotateKeyCmdWithConfig(shared.LoadConfig, shared.NewFileSvc)),
+		shared.DeclareNoCLIRenewal(publicVerifyAssignmentCmd()),
+		shared.DeclareNoCLIRenewal(publicVerifyAgentTraceCmd()),
+		shared.DeclareNoCLIRenewal(publicVerifyProofCmd()),
 	)
 	return cmd
 }

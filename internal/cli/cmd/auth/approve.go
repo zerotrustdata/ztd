@@ -164,6 +164,11 @@ func denyWithCLI(cmd *cobra.Command, client APIClient, txHash string) error {
 }
 
 func approveWithCLI(cmd *cobra.Command, fileSvc fs.RuntimeFileService, cfg *config.Config, client APIClient, txHash string) error {
+	lock, err := auth.LockCLIIdentityForSigning(shared.CommandContext(cmd), fileSvc, cfg)
+	if err != nil {
+		return fmt.Errorf("approve: lock CLI identity for signing: %w", err)
+	}
+	defer func() { _ = lock.Close() }()
 	clientAuth, err := auth.LoadClientAuthContext(fileSvc, cfg)
 	if err != nil {
 		return fmt.Errorf("approve: load enrolled CLI identity: %w", err)

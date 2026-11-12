@@ -59,6 +59,10 @@ type mockGateway struct {
 	rotateArtifact           EnrollmentArtifacts
 	rotateErr                error
 	rotateCalls              int
+	renewCalls               int
+	reinstateArtifact        EnrollmentArtifacts
+	reinstateErr             error
+	reinstateCalls           int
 
 	// DiscoverGatewayCA mock fields.
 	discoveryBundlePEM   []byte
@@ -130,6 +134,21 @@ func (m *mockGateway) Rotate(ctx context.Context, fileSvc fs.RuntimeFileService,
 	m.rotateCalls++
 	m.mu.Unlock()
 	return m.rotateArtifact, m.rotateErr
+}
+
+// Renew is unused by Enroll: commands renew a due certificate at start.
+func (m *mockGateway) Renew(ctx context.Context, fileSvc fs.RuntimeFileService, cliCSR string, cliKey *ecdsa.PrivateKey, caFingerprint string) (EnrollmentArtifacts, error) {
+	m.mu.Lock()
+	m.renewCalls++
+	m.mu.Unlock()
+	return EnrollmentArtifacts{}, constants.ErrCLIRenewalUnavailable
+}
+
+func (m *mockGateway) Reinstate(ctx context.Context, fileSvc fs.RuntimeFileService, cliCSR string, cliKey *ecdsa.PrivateKey, caFingerprint string) (EnrollmentArtifacts, error) {
+	m.mu.Lock()
+	m.reinstateCalls++
+	m.mu.Unlock()
+	return m.reinstateArtifact, m.reinstateErr
 }
 
 // DiscoverGatewayCA returns the configured mock discovery response. By
@@ -671,38 +690,26 @@ func TestEnroll_CompleteHealthy_ReusesIdentity(t *testing.T) {
 	assert.True(t, recorder.contains("Reusing"))
 }
 
-func TestEnroll_CompleteExpiring_RotatesOnce(t *testing.T) {
+// TestEnroll_CompleteRenewalDue_ReusesIdentity verifies the coordinator does
+// not rotate a certificate that is past its renewal time: every ztd command
+// renews it in place before it runs (RenewCLIIdentityIfDue), keeping the CLI
+// session, and rotation stays an explicit --rotate-cli choice.
+func TestEnroll_CompleteRenewalDue_ReusesIdentity(t *testing.T) {
 	t.Parallel()
-	coord, gw, keys, trust, _, passkey, recorder, fileSvc, cfg := setupCoordinatorTest(t)
+	coord, gw, _, _, _, _, _, fileSvc, cfg := setupCoordinatorTest(t)
 
-	// Write a complete identity with a cert expiring within rotationThreshold.
-	_, _, bundleFP, _ := writeCompleteIdentityWithBundleFP(t, fileSvc, cfg, time.Now().Add(1*time.Hour))
+	// NotBefore is an hour ago, so a minute of validity left is past two
+	// thirds of the lifetime.
+	userID, cliSessionID, bundleFP, liveBundlePEM := writeCompleteIdentityWithBundleFP(t, fileSvc, cfg, time.Now().Add(time.Minute))
+	gw.discoveryBundlePEM = []byte(liveBundlePEM)
 	gw.discoveryFingerprint = bundleFP
-
-	artifacts := buildTestArtifacts(t, EnrollmentSourceRotation)
-	gw.rotateArtifact = artifacts
-	keys.csr, keys.key = "test-csr", artifacts.CLIKey
 
 	result, err := coord.Enroll(context.Background(), EnrollmentOptions{})
 	require.NoError(t, err)
-	assert.Equal(t, EnrollmentSourceRotation, result.Source)
-	assert.False(t, result.Reused)
-
-	assert.Equal(t, 0, gw.bootstrapCalls)
-	assert.Equal(t, 0, gw.recoveryRequestCalls)
-	assert.Equal(t, 1, gw.rotateCalls, "rotation should be called exactly once")
-
-	// System trust + passkey.
-	assert.Equal(t, 1, trust.isTrustedCalls)
-	assert.Equal(t, 1, trust.installCalls)
-	assert.Equal(t, 1, passkey.calls)
-
-	// New credentials committed.
-	creds, err := LoadCredentials(fileSvc, cfg)
-	require.NoError(t, err)
-	assert.Equal(t, "cli-session-123", creds.CLISessionID)
-
-	assert.True(t, recorder.contains("Rotating"))
+	assert.True(t, result.Reused)
+	assert.Equal(t, userID, result.UserID)
+	assert.Equal(t, cliSessionID, result.CLISessionID)
+	assert.Equal(t, 0, gw.rotateCalls, "a renewal-due identity is renewed by the root command, not rotated")
 }
 
 func TestEnroll_CompleteExplicitRotate_RotatesOnce(t *testing.T) {
@@ -724,7 +731,34 @@ func TestEnroll_CompleteExplicitRotate_RotatesOnce(t *testing.T) {
 	assert.Equal(t, 1, gw.rotateCalls)
 }
 
-func TestEnroll_CompleteExpired_UsesRecoveryNotRotation(t *testing.T) {
+func TestEnroll_CompleteExpired_ReinstatesWithoutRecovery(t *testing.T) {
+	t.Parallel()
+	coord, gw, keys, _, browser, _, recorder, fileSvc, cfg := setupCoordinatorTest(t)
+
+	// A complete identity whose cert expired within the reinstatement window.
+	_, cliSessionID, bundleFP, bundlePEM := writeCompleteIdentityWithBundleFP(t, fileSvc, cfg, time.Now().Add(-time.Hour))
+	require.NoError(t, SaveCredentials(fileSvc, cfg, &Credentials{
+		UserID: "user-existing", CLISessionID: cliSessionID, OperatorSessionID: "op-session-1", OperatorID: "op-1",
+	}))
+	gw.discoveryFingerprint = bundleFP
+	gw.bootstrapped = true
+	artifacts := renewedArtifacts(t, cliSessionID, bundlePEM)
+	artifacts.Source = EnrollmentSourceReinstatement
+	gw.reinstateArtifact = artifacts
+	keys.csr, keys.key = "test-csr", artifacts.CLIKey
+
+	result, err := coord.Enroll(context.Background(), EnrollmentOptions{SkipPasskey: true})
+	require.NoError(t, err)
+	assert.True(t, result.Reused, "the reinstated identity keeps its CLI session")
+	assert.Equal(t, cliSessionID, result.CLISessionID)
+	assert.Equal(t, 1, gw.reinstateCalls)
+	assert.Equal(t, 0, gw.recoveryRequestCalls, "no human-approved recovery")
+	assert.Equal(t, 0, browser.calls)
+	assert.Equal(t, 0, gw.rotateCalls)
+	assert.True(t, recorder.contains("Reinstated the expired CLI certificate"))
+}
+
+func TestEnroll_CompleteExpired_RefusedReinstatementUsesRecoveryNotRotation(t *testing.T) {
 	t.Parallel()
 	coord, gw, keys, _, browser, _, recorder, fileSvc, cfg := setupCoordinatorTest(t)
 
@@ -732,7 +766,9 @@ func TestEnroll_CompleteExpired_UsesRecoveryNotRotation(t *testing.T) {
 	_, _, bundleFP, _ := writeCompleteIdentityWithBundleFP(t, fileSvc, cfg, time.Now().Add(-time.Hour))
 	gw.discoveryFingerprint = bundleFP
 
-	// Gateway is bootstrapped — recovery is the correct path for an expired cert.
+	// The Gateway refuses reinstatement (for example, the session was logged
+	// out), so the bootstrapped Gateway's recovery flow is the fallback.
+	gw.reinstateErr = constants.ErrCLISessionAlreadyDeactivated
 	gw.bootstrapped = true
 	artifacts := buildTestArtifacts(t, EnrollmentSourceRecovery)
 	gw.recoveryRequestID = "req-exp"
@@ -748,9 +784,10 @@ func TestEnroll_CompleteExpired_UsesRecoveryNotRotation(t *testing.T) {
 
 	// Rotation must NOT be called — expired certs can't authenticate via mTLS.
 	assert.Equal(t, 0, gw.rotateCalls)
+	assert.Equal(t, 1, gw.reinstateCalls)
 	assert.Equal(t, 1, gw.recoveryRequestCalls)
 	assert.Equal(t, 1, browser.calls)
-	assert.True(t, recorder.contains("expired"))
+	assert.True(t, recorder.contains("Could not reinstate the expired CLI certificate"))
 }
 
 func TestEnroll_PartialState_UsesRecovery(t *testing.T) {
@@ -1215,8 +1252,8 @@ func TestEnroll_RotationError_ReturnsError(t *testing.T) {
 	gw.rotateErr = constants.ErrEnrollmentFailed
 	keys.csr, keys.key = "test-csr", nil
 
-	_, err := coord.Enroll(context.Background(), EnrollmentOptions{})
-	require.Error(t, err)
+	_, err := coord.Enroll(context.Background(), EnrollmentOptions{RotateCLI: true})
+	require.ErrorIs(t, err, constants.ErrEnrollmentFailed)
 }
 
 func TestEnroll_BrowserOpenFailure_ContinuesRecovery(t *testing.T) {

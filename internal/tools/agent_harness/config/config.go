@@ -21,13 +21,20 @@ type Auth struct {
 	// `ztd auth bootstrap` / `ztd auth login` (PEM paths).
 	ClientCert string `json:"client_cert"`
 	ClientKey  string `json:"client_key"`
-	// Certificate is an already-loaded client identity. It takes precedence
-	// over ClientCert/ClientKey, which must be plaintext PEM. The CLI and app
-	// keys under .ztd/ are sealed by the keystore, so callers unseal them in
-	// memory and pass the result here.
-	Certificate *tls.Certificate `json:"-"`
+	// GetClientCertificate supplies the current identity at each handshake.
+	// It takes precedence over ClientCert/ClientKey (plaintext PEM paths).
+	// Managed CLI identities use a source that reloads after renewal. It is
+	// also called during construction to validate and identify the credential.
+	GetClientCertificate func(*tls.CertificateRequestInfo) (*tls.Certificate, error) `json:"-"`
 	// CABundle is the Gateway root/hub bundle (.well-known/ztd/pki/hub-bundle.pem).
 	CABundle string `json:"ca_bundle"`
+}
+
+// StaticClientCertificate is an Auth.GetClientCertificate that always presents
+// cert, for an identity that is not renewed in place, such as an application
+// leaf unsealed in memory.
+func StaticClientCertificate(cert *tls.Certificate) func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+	return func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { return cert, nil }
 }
 
 // Config is the full Agent Harness runtime configuration.

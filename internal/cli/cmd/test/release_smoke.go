@@ -409,12 +409,12 @@ func (r *releaseSmokeRun) loginCLI(ctx context.Context) error {
 	r.identity.UserID = creds.UserID
 	r.identity.CLISessionID = creds.CLISessionID
 	cfg.Keyring = r.agent.Keyring(fileSvc)
-	cliCert, err := auth.LoadCLICertificate(fileSvc, cfg)
+	cliCert, err := auth.NewCLICertificateSource(fileSvc, cfg)
 	if err != nil {
 		return err
 	}
 	// The smoke run acts as the host CLI on every request, so the CLI identity is both Auth and CLIAuth.
-	cliIdentity := harnessconfig.Auth{Certificate: &cliCert, CABundle: cfg.ResolvedTrustBundlePath()}
+	cliIdentity := harnessconfig.Auth{GetClientCertificate: cliCert.GetClientCertificate, CABundle: cfg.ResolvedTrustBundlePath()}
 	r.client, err = harness.New(harnessconfig.Config{MTLSBaseURL: fmt.Sprintf("https://127.0.0.1:%d", r.ports.https), Auth: cliIdentity, CLIAuth: cliIdentity, UserID: r.identity.UserID, CLISessionID: r.identity.CLISessionID, OutDir: filepath.Join(r.opts.RunDir, "evidence")})
 	if err != nil {
 		return err

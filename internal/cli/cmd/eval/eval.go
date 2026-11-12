@@ -116,9 +116,9 @@ func evalCmdWithConfig(deps nativeEvalDeps) *cobra.Command {
 		modelsEvalCmd(deps),
 		campaignsEvalCmd(deps),
 		runsEvalCmd(deps),
-		suitesEvalCmd(deps),
+		shared.DeclareNoCLIRenewal(suitesEvalCmd(deps)),
 		rolloutEvalCmd(deps),
-		formationsEvalCmd(deps),
+		shared.DeclareNoCLIRenewal(formationsEvalCmd(deps)),
 		gatesEvalCmd(deps),
 		conformanceEvalCmd(deps),
 		jsonLeaf(backupEvalCmd(deps)),
@@ -173,7 +173,7 @@ func nativeEvalEnvironment(cmd *cobra.Command, deps nativeEvalDeps) (*config.Con
 }
 
 func nativeEvalClientConfig(cfg *config.Config, authContext *auth.ClientAuthContext) harnessconfig.Config {
-	credentials := harnessconfig.Auth{ClientCert: authContext.ClientCert, ClientKey: authContext.ClientKey, Certificate: authContext.Certificate, CABundle: cfg.ResolvedTrustBundlePath()}
+	credentials := harnessconfig.Auth{ClientCert: authContext.ClientCert, ClientKey: authContext.ClientKey, GetClientCertificate: authContext.GetClientCertificate, CABundle: cfg.ResolvedTrustBundlePath()}
 	return harnessconfig.Config{MTLSBaseURL: cfg.OperatorHTTPURL(), PublicBaseURL: cfg.OperatorDiscoveryURL(), Auth: credentials, CLIAuth: credentials, UseCLIConfig: true, UserID: authContext.UserID, CLISessionID: authContext.CLISessionID, OperatorSessionID: authContext.OperatorSessionID}
 }
 

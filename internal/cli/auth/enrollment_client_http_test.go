@@ -110,19 +110,19 @@ func TestNewEnrollmentClient_DefaultsFingerprintGeneratorWhenNotInjected(t *test
 // Local helpers
 // ---------------------------------------------------------------------------
 
-func TestSignRecoveryProof_RejectsMissingInputsAndProducesVerifiableSignature(t *testing.T) {
+func TestSignPossessionProof_RejectsMissingInputsAndProducesVerifiableSignature(t *testing.T) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 
-	sig, err := signRecoveryProof(nil, "rec-1")
+	sig, err := signPossessionProof(nil, []byte("rec-1"), constants.ErrCLIRecoveryProofInvalid)
 	require.ErrorIs(t, err, constants.ErrCLIRecoveryProofInvalid)
 	assert.Empty(t, sig)
 
-	sig, err = signRecoveryProof(key, "")
+	sig, err = signPossessionProof(key, nil, constants.ErrCLIRecoveryProofInvalid)
 	require.ErrorIs(t, err, constants.ErrCLIRecoveryProofInvalid)
 	assert.Empty(t, sig)
 
-	sig, err = signRecoveryProof(key, "rec-1")
+	sig, err = signPossessionProof(key, []byte("rec-1"), constants.ErrCLIRecoveryProofInvalid)
 	require.NoError(t, err)
 	raw, err := base64.StdEncoding.DecodeString(sig)
 	require.NoError(t, err)

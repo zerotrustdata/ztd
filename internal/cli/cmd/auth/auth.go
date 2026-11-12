@@ -175,7 +175,8 @@ The coordinator inspects the local CLI identity and chooses the correct action:
   - No local identity on a bootstrapped gateway: human-approved CLI recovery (a one-time
     approval in the gateway console with an existing passkey).
   - Complete, valid identity: reuse it (no new certificate is issued).
-  - Complete, expiring identity: rotate via the mTLS rotation endpoint exactly once.
+  - Complete identity past two-thirds of its lifetime: renewed in place (same CLI session)
+    before Gateway client commands run, so enrollment reuses it.
   - Partial or corrupt local state: human-approved recovery (never silently overwrite one file).
 
 OS trust installation runs BEFORE the browser-based passkey ceremony by default. If
@@ -205,7 +206,7 @@ The Gateway must already be running. Start it with:
 	cmd.Flags().BoolVar(&noSystemTrust, "no-system-trust", false,
 		"Skip OS trust installation (administrator must have pre-installed the gateway root CA). The passkey ceremony still runs.")
 	cmd.Flags().BoolVar(&rotateCLI, "rotate-cli", false,
-		"Force an mTLS CLI rotation even when the local identity is complete and not expiring.")
+		"Rotate the CLI certificate and CLI session over mTLS; the previous session is ended and its certificates revoked.")
 	cmd.Flags().BoolVar(&headless, "headless", false,
 		"Enroll a CLI-only identity without a browser. Skips passkey registration and OS trust installation; recovery approval is delegated to an already-enrolled CLI by running ztd auth approve-recovery <token>. The resulting identity is mTLS-only and cannot authenticate to the Console SPA.")
 	return cmd

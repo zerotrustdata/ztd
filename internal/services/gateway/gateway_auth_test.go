@@ -544,6 +544,10 @@ func TestRouteAuthRegistry_RotationAndRemovedEnroll(t *testing.T) {
 	// derived from the verified mTLS certificate URI SAN.
 	assert.Equal(t, RouteAuthMTLS, registry.AuthMode(constants.APIPaths.AuthCLIRotate),
 		"CLI rotation must be RouteAuthMTLS (mTLS-derived identity)")
+	assert.Equal(t, RouteAuthMTLS, registry.AuthMode(constants.APIPaths.AuthCLIRenew),
+		"CLI renewal must be RouteAuthMTLS (mTLS-derived identity)")
+	assert.Equal(t, RouteAuthNone, registry.AuthMode(constants.APIPaths.AuthCLIReinstate),
+		"CLI reinstatement authenticates by proof of possession; an expired certificate cannot complete mTLS")
 
 	// The deprecated enroll route must NOT be explicitly classified. It
 	// relies on the fail-closed default (RouteAuthMTLS), and the handler is

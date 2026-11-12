@@ -239,13 +239,23 @@ const (
 	// CLISessionTTL defines the lifetime of a CLI session. It is aligned with
 	// the CLI certificate TTL (7 days, per leafCertValidityDays in
 	// gateway_certs.go) so the session does not expire while the cert is
-	// still valid. The previous 1-hour TTL created a window where the cert
-	// was valid but the session was expired, leaving no recovery path short
-	// of nuking the gateway volume. When the session does expire (gateway
-	// restart, manual deactivation, or cert expiry), the auth/cli/refresh
-	// endpoint extends that same session in place for the still-valid cert,
-	// which is the proof of identity.
+	// still valid. Renewal (auth/cli/renew), which Gateway client commands run
+	// once the cert passes two thirds of its lifetime, moves the session
+	// expiry forward with the renewed cert. When the session does expire
+	// anyway, the auth/cli/refresh endpoint extends that same session in
+	// place for the still-valid cert, which is the proof of identity.
 	CLISessionTTL = 7 * 24 * time.Hour
+
+	// CLIReinstateWindow bounds how long after its expiry a CLI certificate
+	// can still be reinstated (POST /api/v1/auth/cli/reinstate) by proving
+	// possession of its keystore-sealed key. It is one CLI certificate
+	// lifetime. A certificate expired for longer needs human-approved
+	// recovery (ztd auth enroll user).
+	CLIReinstateWindow = 7 * 24 * time.Hour
+	// CLIReinstateProofDomain prefixes the CLI reinstatement proof message so
+	// the expired certificate's key cannot be induced to sign one for any
+	// other purpose (certutil.CLIReinstateProofDigest).
+	CLIReinstateProofDomain = "ztd-cli-reinstate-v1"
 
 	// CLIBindMaxOperators caps how many operator sessions one bind call may
 	// target. 5000 UUIDs stay well inside the gateway's 512KB request limit.

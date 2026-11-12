@@ -136,7 +136,7 @@ func newEvalRunStack(t *testing.T, opts evalRunOptions) *evalRunStack {
 
 	authContext, err := auth.LoadClientAuthContext(fileSvc, cfg)
 	require.NoError(t, err)
-	cliCredentials := harnessconfig.Auth{ClientCert: authContext.ClientCert, ClientKey: authContext.ClientKey, Certificate: authContext.Certificate, CABundle: cfg.ResolvedTrustBundlePath()}
+	cliCredentials := harnessconfig.Auth{ClientCert: authContext.ClientCert, ClientKey: authContext.ClientKey, GetClientCertificate: authContext.GetClientCertificate, CABundle: cfg.ResolvedTrustBundlePath()}
 	gatewayClient, err := harnessclient.New(harnessconfig.Config{
 		MTLSBaseURL: cfg.OperatorHTTPURL(), PublicBaseURL: cfg.OperatorDiscoveryURL(),
 		Auth: cliCredentials, CLIAuth: cliCredentials, UseCLIConfig: true,
@@ -147,7 +147,7 @@ func newEvalRunStack(t *testing.T, opts evalRunOptions) *evalRunStack {
 	require.NoError(t, err)
 	appClient, err := harnessclient.New(harnessconfig.Config{
 		MTLSBaseURL: cfg.OperatorHTTPURL(),
-		Auth:        harnessconfig.Auth{Certificate: appCertificate, CABundle: cfg.ResolvedTrustBundlePath()},
+		Auth:        harnessconfig.Auth{GetClientCertificate: harnessconfig.StaticClientCertificate(appCertificate), CABundle: cfg.ResolvedTrustBundlePath()},
 		UserID:      authContext.UserID,
 	})
 	require.NoError(t, err)

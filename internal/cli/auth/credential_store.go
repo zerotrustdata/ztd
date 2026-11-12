@@ -26,12 +26,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/vault"
 )
 
-// rotationThreshold is the window before CLI certificate expiry within
-// which the coordinator will rotate via the mTLS rotation endpoint. Kept
-// here (not in constants) because it is a coordinator policy, not a wire
-// contract.
-const rotationThreshold = 24 * time.Hour
-
 // CredentialStore is the coordinator's typed API over the local CLI
 // identity files. It owns:
 //
@@ -164,13 +158,11 @@ func (s *CredentialStore) Inspect(ctx context.Context) (LocalIdentity, error) {
 		return out, nil
 	}
 
-	// Complete and consistent. Inspect expiry to drive the rotation
-	// decision.
+	// Complete and consistent. Inspect expiry to drive the reinstatement and
+	// recovery decisions.
 	out.State = LocalStateComplete
 	if cliCert != nil {
-		remaining := time.Until(cliCert.NotAfter)
-		out.CertExpiring = remaining <= rotationThreshold && remaining > 0
-		out.CertExpired = remaining <= 0
+		out.CertExpired = !time.Now().Before(cliCert.NotAfter)
 	}
 	return out, nil
 }

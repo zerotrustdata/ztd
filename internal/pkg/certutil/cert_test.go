@@ -164,3 +164,15 @@ func TestEncodeCertAndKey_SeparatorNoDuplicateNewline(t *testing.T) {
 
 	assert.NotContains(t, content, "-----END CERTIFICATE-----\n\n\n", "no triple newline")
 }
+
+func TestCLIReinstateProofDigest_BindsSessionAndCSR(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	digest := CLIReinstateProofDigest("session-1", "csr-a")
+	assert.Len(t, digest, 32, "a SHA-256 digest, so ECDSA does not truncate the bound fields away")
+	sig, err := ecdsa.SignASN1(rand.Reader, key, digest)
+	require.NoError(t, err)
+	assert.True(t, ecdsa.VerifyASN1(&key.PublicKey, CLIReinstateProofDigest("session-1", "csr-a"), sig))
+	assert.False(t, ecdsa.VerifyASN1(&key.PublicKey, CLIReinstateProofDigest("session-1", "csr-b"), sig), "bound to the CSR")
+	assert.False(t, ecdsa.VerifyASN1(&key.PublicKey, CLIReinstateProofDigest("session-2", "csr-a"), sig), "bound to the session")
+}

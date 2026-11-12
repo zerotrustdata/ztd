@@ -422,17 +422,26 @@ type CLISession struct {
 	// `operator bind` call. OperatorSessionID is always its first element when
 	// the list is non-empty; it stays the primary identity the auth middleware
 	// stamps on requests.
-	BoundOperatorSessionIDs []string  `json:"bound_operator_session_ids,omitempty"`
-	SystemFingerprint       string    `json:"system_fingerprint,omitempty"`
-	CertFingerprint         string    `json:"cert_fingerprint,omitempty"` // SHA-256 fingerprint of the mTLS certificate
-	CertSerial              string    `json:"cert_serial,omitempty"`      // Serial number for revocation checking
-	CreatedAt               time.Time `json:"created_at"`
-	ExpiresAt               time.Time `json:"expires_at"`
-	AbsoluteExpiresAt       time.Time `json:"absolute_expires_at"`
-	IdleExpiresAt           time.Time `json:"idle_expires_at"`
-	SessionType             string    `json:"session_type"`
-	IsActive                bool      `json:"is_active"`
-	LoginMethod             string    `json:"login_method"`
+	BoundOperatorSessionIDs []string `json:"bound_operator_session_ids,omitempty"`
+	SystemFingerprint       string   `json:"system_fingerprint,omitempty"`
+	CertFingerprint         string   `json:"cert_fingerprint,omitempty"` // SHA-256 fingerprint of the mTLS certificate
+	CertSerial              string   `json:"cert_serial,omitempty"`      // Serial number for revocation checking
+	// PreviousCertFingerprint and PreviousCertSerial name the certificate a
+	// renewal replaced. That certificate names the same session and stays
+	// valid until its own NotAfter, so signed CLI approvals still verify
+	// against it and logout still revokes it.
+	PreviousCertFingerprint string `json:"previous_cert_fingerprint,omitempty"`
+	PreviousCertSerial      string `json:"previous_cert_serial,omitempty"`
+	// CertificateSerials retains every renewal's serial for logout and
+	// rotation, including certificates older than the approval overlap.
+	CertificateSerials []string  `json:"certificate_serials,omitempty"`
+	CreatedAt          time.Time `json:"created_at"`
+	ExpiresAt          time.Time `json:"expires_at"`
+	AbsoluteExpiresAt  time.Time `json:"absolute_expires_at"`
+	IdleExpiresAt      time.Time `json:"idle_expires_at"`
+	SessionType        string    `json:"session_type"`
+	IsActive           bool      `json:"is_active"`
+	LoginMethod        string    `json:"login_method"`
 }
 
 // LocalOSUser represents local OS user account information.
@@ -754,6 +763,17 @@ type CLIRecoveryCompleteResponse struct {
 // derived from the authenticated certificate context.
 type CLIRotationRequest struct {
 	CLICSRPEM string `json:"cli_csr_pem"`
+}
+
+// CLIReinstateRequest is the wire request for POST /api/v1/auth/cli/reinstate.
+// An expired CLI certificate cannot complete the mTLS handshake, so the caller
+// presents it in the body with a proof of possession of its private key: an
+// ECDSA signature over certutil.CLIReinstateProofDigest(session, CSR). The
+// response is a CLIRotationResponse naming the same CLI session.
+type CLIReinstateRequest struct {
+	CLICertPEM string `json:"cli_cert_pem"` // The session's current, expired CLI certificate
+	CLICSRPEM  string `json:"cli_csr_pem"`  // CSR for the replacement certificate
+	Signature  string `json:"signature"`    // Base64 ASN.1 ECDSA signature by the expired certificate's key
 }
 
 // CLIRotationResponse is the wire response for POST /api/v1/auth/cli/rotate.

@@ -176,6 +176,10 @@ func (c *Config) CLIKeyFile() string {
 	return filepath.Join(c.RuntimeDir, constants.CliKeyFilename)
 }
 
+func (c *Config) CLIIdentityLockFile() string {
+	return filepath.Join(c.RuntimeDir, constants.CliIdentityLockFilename)
+}
+
 func (c *Config) AppCertFile(name string) string {
 	return filepath.Join(c.RuntimeDir, constants.PkiSubdirApps, name+constants.FileExtCert)
 }

@@ -51,12 +51,12 @@ func (v *cliSessionVerifier) VerifyCLISession(ctx context.Context, userID, cliSe
 		return err
 	}
 
-	session, err := v.verifyCLISession(ctx, userID, cliSessionID, certFingerprint)
+	certSerial, err := v.verifyCLISession(ctx, userID, cliSessionID, certFingerprint)
 	if err != nil {
 		return err
 	}
 
-	if err := v.verifyCertNotRevoked(ctx, userID, cliSessionID, session); err != nil {
+	if err := v.verifyCertNotRevoked(ctx, userID, cliSessionID, certSerial); err != nil {
 		return err
 	}
 
@@ -84,37 +84,48 @@ func (v *cliSessionVerifier) verifyUserActive(ctx context.Context, userID string
 }
 
 // verifyCLISession loads the CLI session by ID and verifies session ownership,
-// certificate fingerprint match, active status, and expiry.
-func (v *cliSessionVerifier) verifyCLISession(ctx context.Context, userID, cliSessionID, certFingerprint string) (*models.CLISession, error) {
+// certificate fingerprint match, active status, and expiry. The fingerprint
+// matches the session's current certificate or the one its last renewal
+// replaced: both name this session, and the approval certificate's own
+// validity window was already checked. It returns the serial of the matched
+// certificate for the revocation check.
+func (v *cliSessionVerifier) verifyCLISession(ctx context.Context, userID, cliSessionID, certFingerprint string) (string, error) {
 	if v.db == nil {
-		return nil, constants.ErrGatewayDatabaseServiceNotConfigured
+		return "", constants.ErrGatewayDatabaseServiceNotConfigured
 	}
 	if cliSessionID == "" {
-		return nil, constants.ErrCLIL3SessionIDRequired
+		return "", constants.ErrCLIL3SessionIDRequired
 	}
 
 	doc, err := v.db.DocGet(ctx, marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID)
 	if err != nil {
 		v.logger.Error("Failed to load CLI session for L3 verification", "cli_session_id", cliSessionID, "error", err)
-		return nil, fmt.Errorf("cli session verifier: load cli session: %w", err)
+		return "", fmt.Errorf("cli session verifier: load cli session: %w", err)
 	}
 	if doc == nil {
 		v.logger.Warn("CLI L3 verification failed: CLI session not found", "cli_session_id", cliSessionID)
-		return nil, constants.ErrCLIL3SessionNotFound
+		return "", constants.ErrCLIL3SessionNotFound
 	}
 
 	var session models.CLISession
 	if err := doc.DecodeWire(&session); err != nil {
 		v.logger.Warn("Failed to decode CLI session", "cli_session_id", doc.ID, "error", err)
-		return nil, fmt.Errorf("cli session verifier: decode cli session: %w", err)
+		return "", fmt.Errorf("cli session verifier: decode cli session: %w", err)
 	}
 
 	if session.UserID != userID {
 		v.logger.Warn("CLI L3 verification failed: session user mismatch", "cli_session_id", cliSessionID, "session_user_id", session.UserID, "envelope_user_id", userID)
-		return nil, constants.ErrCLIL3SessionUserMismatch
+		return "", constants.ErrCLIL3SessionUserMismatch
 	}
 
-	if subtle.ConstantTimeCompare([]byte(session.CertFingerprint), []byte(certFingerprint)) != 1 {
+	certSerial := session.CertSerial
+	matchesCurrent := subtle.ConstantTimeCompare([]byte(session.CertFingerprint), []byte(certFingerprint)) == 1
+	matchesPrevious := session.PreviousCertFingerprint != "" &&
+		subtle.ConstantTimeCompare([]byte(session.PreviousCertFingerprint), []byte(certFingerprint)) == 1
+	if matchesPrevious && !matchesCurrent {
+		certSerial = session.PreviousCertSerial
+	}
+	if !matchesCurrent && !matchesPrevious {
 		expectedPrefix := session.CertFingerprint
 		providedPrefix := certFingerprint
 		if len(session.CertFingerprint) > 16 {
@@ -124,36 +135,37 @@ func (v *cliSessionVerifier) verifyCLISession(ctx context.Context, userID, cliSe
 			providedPrefix = certFingerprint[:16]
 		}
 		v.logger.Warn("CLI L3 verification failed: certificate fingerprint mismatch", "cli_session_id", cliSessionID, "expected", expectedPrefix, "provided", providedPrefix)
-		return nil, constants.ErrCLIL3FingerprintMismatch
+		return "", constants.ErrCLIL3FingerprintMismatch
 	}
 
 	if !session.IsActive {
 		v.logger.Warn("CLI L3 verification failed: CLI session is not active", "cli_session_id", cliSessionID)
-		return nil, constants.ErrCLIL3SessionInactive
+		return "", constants.ErrCLIL3SessionInactive
 	}
 
 	if time.Now().UTC().After(session.ExpiresAt) {
 		v.logger.Warn("CLI L3 verification failed: CLI session expired", "user_id", userID, "cli_session_id", cliSessionID)
-		return nil, constants.ErrCLIL3SessionExpired
+		return "", constants.ErrCLIL3SessionExpired
 	}
 
-	return &session, nil
+	return certSerial, nil
 }
 
-// verifyCertNotRevoked checks that the session's certificate has not been revoked
-// via the PKI authority. Returns constants.ErrCLISessionDenied if the certificate is revoked.
-func (v *cliSessionVerifier) verifyCertNotRevoked(ctx context.Context, userID, cliSessionID string, session *models.CLISession) error {
+// verifyCertNotRevoked checks that the approving certificate has not been
+// revoked via the PKI authority. Returns constants.ErrCLISessionDenied if the
+// certificate is revoked.
+func (v *cliSessionVerifier) verifyCertNotRevoked(ctx context.Context, userID, cliSessionID, certSerial string) error {
 	if v.pki == nil {
 		return constants.ErrCLIL3PKINotConfigured
 	}
-	if session.CertSerial != "" {
-		revoked, err := v.pki.IsRevoked(ctx, session.CertSerial)
+	if certSerial != "" {
+		revoked, err := v.pki.IsRevoked(ctx, certSerial)
 		if err != nil {
-			v.logger.Error("Failed to check certificate revocation status", "user_id", userID, "cli_session_id", cliSessionID, "cert_serial", session.CertSerial, "error", err)
+			v.logger.Error("Failed to check certificate revocation status", "user_id", userID, "cli_session_id", cliSessionID, "cert_serial", certSerial, "error", err)
 			return fmt.Errorf("cli session verifier: check cert revocation: %w", err)
 		}
 		if revoked {
-			v.logger.Warn("CLI L3 verification failed: certificate is revoked", "user_id", userID, "cli_session_id", cliSessionID, "cert_serial", session.CertSerial)
+			v.logger.Warn("CLI L3 verification failed: certificate is revoked", "user_id", userID, "cli_session_id", cliSessionID, "cert_serial", certSerial)
 			return constants.ErrCLISessionDenied
 		}
 	}

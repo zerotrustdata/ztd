@@ -16,6 +16,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -28,6 +29,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/pkg/certutil"
 	"github.com/zerotrustdata/ztd/internal/services/auth"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
@@ -219,7 +221,7 @@ func (c *EnrollmentClient) RecoveryStatus(ctx context.Context, token, baseURL st
 //
 // baseURL, when non-empty, overrides the discovery URL.
 func (c *EnrollmentClient) CompleteRecovery(ctx context.Context, requestID, token string, cliCSR string, cliKey *ecdsa.PrivateKey, caFingerprint, baseURL string) (EnrollmentArtifacts, error) {
-	sig, err := signRecoveryProof(cliKey, requestID)
+	sig, err := signPossessionProof(cliKey, []byte(requestID), constants.ErrCLIRecoveryProofInvalid)
 	if err != nil {
 		return EnrollmentArtifacts{}, err
 	}
@@ -264,10 +266,25 @@ func (c *EnrollmentClient) CompleteRecovery(ctx context.Context, requestID, toke
 // caller's existing CLI identity is used to build the mTLS client; the
 // gateway derives the user and CLI session from the authenticated
 // certificate context. The request body carries only the new CLI CSR.
+// Rotation replaces the CLI session: the returned artifacts name a new one.
 //
 // The caller supplies the new CLI CSR and its private key for staging.
 // caFingerprint, when non-empty, pins the expected root CA fingerprint.
 func (c *EnrollmentClient) Rotate(ctx context.Context, fileSvc fs.RuntimeFileService, cliCSR string, cliKey *ecdsa.PrivateKey, caFingerprint string) (EnrollmentArtifacts, error) {
+	return c.reissueCLICertificate(ctx, fileSvc, constants.APIPaths.AuthCLIRotate, EnrollmentSourceRotation, cliCSR, cliKey, caFingerprint)
+}
+
+// Renew performs the session-preserving mTLS CLI renewal
+// (POST /api/v1/auth/cli/renew over the public HTTPS surface). It takes the
+// same inputs as Rotate, but the renewed certificate names the caller's
+// existing CLI session, so the returned artifacts carry the same session ID.
+func (c *EnrollmentClient) Renew(ctx context.Context, fileSvc fs.RuntimeFileService, cliCSR string, cliKey *ecdsa.PrivateKey, caFingerprint string) (EnrollmentArtifacts, error) {
+	return c.reissueCLICertificate(ctx, fileSvc, constants.APIPaths.AuthCLIRenew, EnrollmentSourceRenewal, cliCSR, cliKey, caFingerprint)
+}
+
+// reissueCLICertificate posts a CLI CSR to the rotation or renewal route over
+// mTLS with the current CLI identity and validates the returned identity.
+func (c *EnrollmentClient) reissueCLICertificate(ctx context.Context, fileSvc fs.RuntimeFileService, path string, source EnrollmentSource, cliCSR string, cliKey *ecdsa.PrivateKey, caFingerprint string) (EnrollmentArtifacts, error) {
 	mtlsClient, err := BuildMTLSClient(fileSvc, c.cfg, httpTimeout)
 	if err != nil {
 		return EnrollmentArtifacts{}, err
@@ -284,15 +301,30 @@ func (c *EnrollmentClient) Rotate(ctx context.Context, fileSvc fs.RuntimeFileSer
 	}
 
 	var resp models.CLIRotationResponse
-	if err := postJSON(ctx, mtlsClient, publicURL+constants.APIPaths.AuthCLIRotate, req, &resp, headers); err != nil {
+	if err := postJSON(ctx, mtlsClient, publicURL+path, req, &resp, headers); err != nil {
+		var status *HTTPStatusError
+		if source == EnrollmentSourceRenewal && errors.As(err, &status) && status.StatusCode == http.StatusNotFound {
+			return EnrollmentArtifacts{}, fmt.Errorf("%w: %w", constants.ErrCLIRenewalUnavailable, err)
+		}
+		if source == EnrollmentSourceRenewal && errors.As(err, &status) && status.StatusCode == http.StatusPreconditionFailed {
+			// A renewal the Gateway committed but this CLI never stored
+			// leaves the local certificate as the session's replaced one,
+			// which cannot renew again. Rotation still accepts it.
+			return EnrollmentArtifacts{}, fmt.Errorf("%w\nRotate the CLI identity with:\n./ztd auth enroll user --rotate-cli", constants.ErrCLIRenewalStaleCertificate)
+		}
 		return EnrollmentArtifacts{}, err
 	}
-	if !resp.Success {
-		return EnrollmentArtifacts{}, fmt.Errorf("%w: rotation unsuccessful", constants.ErrEnrollmentFailed)
-	}
+	return reissuedCLIArtifacts(resp, source, cliKey, caFingerprint)
+}
 
+// reissuedCLIArtifacts validates a rotation, renewal, or reinstatement
+// response and maps it to staged artifacts carrying the new key.
+func reissuedCLIArtifacts(resp models.CLIRotationResponse, source EnrollmentSource, cliKey *ecdsa.PrivateKey, caFingerprint string) (EnrollmentArtifacts, error) {
+	if !resp.Success {
+		return EnrollmentArtifacts{}, fmt.Errorf("%w: %s unsuccessful", constants.ErrEnrollmentFailed, source)
+	}
 	artifacts := EnrollmentArtifacts{
-		Source:          EnrollmentSourceRotation,
+		Source:          source,
 		CLISessionID:    resp.CLISessionID,
 		UserID:          resp.UserID,
 		CLICertPEM:      resp.CLICert,
@@ -304,6 +336,56 @@ func (c *EnrollmentClient) Rotate(ctx context.Context, fileSvc fs.RuntimeFileSer
 		return EnrollmentArtifacts{}, err
 	}
 	return artifacts, nil
+}
+
+// Reinstate reissues the local CLI certificate after it has expired, keeping
+// its CLI session (POST /api/v1/auth/cli/reinstate over the public HTTPS
+// surface). An expired certificate cannot complete the mTLS handshake, so the
+// request goes over server-authenticated TLS (the local trust bundle) and
+// carries the expired certificate with a proof of possession of its private
+// key, unsealed from the keystore: a signature over
+// certutil.CLIReinstateProofDigest, which binds the CLI session and the new
+// CSR. The Gateway accepts it only for the session's current certificate,
+// within constants.CLIReinstateWindow of its expiry, while the session and
+// user are active. No human approval is involved.
+func (c *EnrollmentClient) Reinstate(ctx context.Context, fileSvc fs.RuntimeFileService, cliCSR string, cliKey *ecdsa.PrivateKey, caFingerprint string) (EnrollmentArtifacts, error) {
+	expired, err := LoadIdentityCertificate(ctx, fileSvc, c.cfg, c.cfg.CLICertFile(), c.cfg.CLIKeyFile())
+	if err != nil {
+		return EnrollmentArtifacts{}, fmt.Errorf("%w: %w", constants.ErrFailedToLoadClientCertificate, err)
+	}
+	expiredKey, ok := expired.PrivateKey.(*ecdsa.PrivateKey)
+	if !ok || len(expired.Certificate) == 0 {
+		return EnrollmentArtifacts{}, constants.ErrCLIReinstateProofInvalid
+	}
+	creds, err := NewCredentialStore(fileSvc, c.cfg).LoadCredentials(ctx)
+	if err != nil {
+		return EnrollmentArtifacts{}, fmt.Errorf("%w: %w", constants.ErrFailedToLoadCredentials, err)
+	}
+	if creds == nil || creds.CLISessionID == "" {
+		return EnrollmentArtifacts{}, fmt.Errorf("%w: CLI session ID", constants.ErrMissingRequiredField)
+	}
+	sig, err := signPossessionProof(expiredKey, certutil.CLIReinstateProofDigest(creds.CLISessionID, cliCSR), constants.ErrCLIReinstateProofInvalid)
+	if err != nil {
+		return EnrollmentArtifacts{}, err
+	}
+	client, err := BuildTrustedClient(fileSvc, c.cfg, httpTimeout)
+	if err != nil {
+		return EnrollmentArtifacts{}, err
+	}
+	req := models.CLIReinstateRequest{
+		CLICertPEM: string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: expired.Certificate[0]})),
+		CLICSRPEM:  cliCSR,
+		Signature:  sig,
+	}
+	var resp models.CLIRotationResponse
+	if err := postJSON(ctx, client, c.cfg.OperatorPublicURL()+constants.APIPaths.AuthCLIReinstate, req, &resp); err != nil {
+		var status *HTTPStatusError
+		if errors.As(err, &status) && status.StatusCode == http.StatusNotFound {
+			return EnrollmentArtifacts{}, fmt.Errorf("%w: %w", constants.ErrCLIReinstateUnavailable, err)
+		}
+		return EnrollmentArtifacts{}, err
+	}
+	return reissuedCLIArtifacts(resp, EnrollmentSourceReinstatement, cliKey, caFingerprint)
 }
 
 // Refresh performs the mTLS CLI session refresh
@@ -663,12 +745,28 @@ func postJSON(ctx context.Context, httpClient *http.Client, url string, reqBody 
 		return fmt.Errorf("%w: %w", constants.ErrHTTPResponseReadFailed, err)
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("%w: HTTP %d", constants.ErrHTTPStatusError, resp.StatusCode)
+		return &HTTPStatusError{StatusCode: resp.StatusCode}
 	}
 	if err := json.Unmarshal(respBytes, respBody); err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrInvalidJSONResponse, err)
 	}
 	return nil
+}
+
+// HTTPStatusError is a Gateway response with a non-2xx status on the
+// enrollment client's JSON routes. It matches constants.ErrHTTPStatusError
+// with errors.Is; use errors.As to branch on the status code.
+type HTTPStatusError struct {
+	StatusCode int
+}
+
+func (e *HTTPStatusError) Error() string {
+	return fmt.Sprintf("%s: HTTP %d", constants.ErrHTTPStatusError, e.StatusCode)
+}
+
+// Is reports whether target is constants.ErrHTTPStatusError.
+func (e *HTTPStatusError) Is(target error) bool {
+	return target == constants.ErrHTTPStatusError
 }
 
 // validateLocalCLI centralizes the post-response validation for local CLI
@@ -681,10 +779,10 @@ func validateLocalCLI(a EnrollmentArtifacts, caFingerprint string) error {
 	if a.CLISessionID == "" || a.UserID == "" || a.CLICertPEM == "" {
 		return constants.ErrMissingRequiredField
 	}
-	// Rotation inherits the persisted operator binding from local
-	// credentials; bootstrap and recovery must carry the authoritative
-	// operator pair returned by the gateway.
-	if a.Source != EnrollmentSourceRotation && (a.OperatorSessionID == "" || a.OperatorID == "") {
+	// Rotation, renewal, and reinstatement inherit the persisted operator
+	// binding from local credentials; bootstrap and recovery must carry the
+	// authoritative operator pair returned by the gateway.
+	if !a.Source.inheritsOperatorBinding() && (a.OperatorSessionID == "" || a.OperatorID == "") {
 		return fmt.Errorf("%w: operator binding", constants.ErrMissingRequiredField)
 	}
 	if a.TrustBundlePEM == "" {
@@ -709,15 +807,19 @@ func validateLocalCLI(a EnrollmentArtifacts, caFingerprint string) error {
 	return nil
 }
 
-// signRecoveryProof signs the requestID bytes with the CSR private key
-// and returns the base64-encoded signature. Used by CompleteRecovery.
-func signRecoveryProof(key *ecdsa.PrivateKey, requestID string) (string, error) {
-	if key == nil || requestID == "" {
-		return "", constants.ErrCLIRecoveryProofInvalid
+// signPossessionProof signs message with key and returns the base64-encoded
+// ASN.1 ECDSA signature. ECDSA treats message as a digest, truncated to the
+// curve size. CompleteRecovery signs the recovery request ID with the new CSR
+// key, as the Gateway verifies it; Reinstate signs
+// certutil.CLIReinstateProofDigest with the expired certificate's key.
+// Failures wrap invalid, the caller's sentinel.
+func signPossessionProof(key *ecdsa.PrivateKey, message []byte, invalid error) (string, error) {
+	if key == nil || len(message) == 0 {
+		return "", invalid
 	}
-	sig, err := ecdsa.SignASN1(randReader(), key, []byte(requestID))
+	sig, err := ecdsa.SignASN1(randReader(), key, message)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", constants.ErrCLIRecoveryProofInvalid, err)
+		return "", fmt.Errorf("%w: %w", invalid, err)
 	}
 	return base64.StdEncoding.EncodeToString(sig), nil
 }
@@ -741,7 +843,7 @@ func osHostname() (string, error) {
 }
 
 // randReader returns the default crypto/rand reader for signature
-// generation. Indirectable in tests by replacing signRecoveryProof's
+// generation. Indirectable in tests by replacing signPossessionProof's
 // caller rather than this package-level var.
 func randReader() interface {
 	Read(b []byte) (n int, err error)

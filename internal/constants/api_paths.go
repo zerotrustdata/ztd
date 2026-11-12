@@ -123,6 +123,8 @@ var APIPaths = struct {
 	AuthCLIRecoveryApproveCLI                string `json:"auth_cli_recovery_approve_cli"`
 	AuthCLIRecoveryComplete                  string `json:"auth_cli_recovery_complete"`
 	AuthCLIRotate                            string `json:"auth_cli_rotate"`
+	AuthCLIRenew                             string `json:"auth_cli_renew"`
+	AuthCLIReinstate                         string `json:"auth_cli_reinstate"`
 	AuthCLIRefresh                           string `json:"auth_cli_refresh"`
 	AuthCLIBind                              string `json:"auth_cli_bind"`
 	AuthCLIUnbind                            string `json:"auth_cli_unbind"`
@@ -295,6 +297,8 @@ var APIPaths = struct {
 	AuthCLIRecoveryApproveCLI:                "/api/v1/auth/cli/recovery/approve-cli",
 	AuthCLIRecoveryComplete:                  "/api/v1/auth/cli/recovery/complete",
 	AuthCLIRotate:                            "/api/v1/auth/cli/rotate",
+	AuthCLIRenew:                             "/api/v1/auth/cli/renew",
+	AuthCLIReinstate:                         "/api/v1/auth/cli/reinstate",
 	AuthCLIRefresh:                           "/api/v1/auth/cli/refresh",
 	AuthCLIBind:                              "/api/v1/auth/cli/bind",
 	AuthCLIUnbind:                            "/api/v1/auth/cli/unbind",

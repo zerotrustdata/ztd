@@ -75,7 +75,7 @@ func liveClient(t *testing.T, f *fixtures.GatewayFixture, ident *fixtures.Client
 	caPath := filepath.Join(testutil.TempDir(t), "ca.pem")
 	require.NoError(t, os.WriteFile(caPath, caBundle, constants.PermFilePrivate))
 
-	identity := agentconfig.Auth{Certificate: &cliCert, CABundle: caPath}
+	identity := agentconfig.Auth{GetClientCertificate: agentconfig.StaticClientCertificate(&cliCert), CABundle: caPath}
 	c, err := client.New(agentconfig.Config{
 		MTLSBaseURL:   mtlsURL,
 		PublicBaseURL: publicURL,

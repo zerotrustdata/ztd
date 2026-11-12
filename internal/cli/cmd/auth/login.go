@@ -44,8 +44,10 @@ func loginCmdWithConfig(
 	cmd.Short = "Log in to the Gateway (headless CLI by default; 'login web' for browser passkey)"
 	cmd.Long = `Log in to the running Gateway. Bare 'login' and 'login cli' sign in without a
 browser: passkey registration and OS trust installation are skipped. The resulting
-identity is mTLS-only and cannot authenticate to the Console. On a bootstrapped
-Gateway, recovery is approved from an already-enrolled CLI with:
+identity is mTLS-only and cannot authenticate to the Console. A CLI certificate
+that expired within the last 7 days is reinstated for its session by proving
+possession of its keystore-sealed key, with no approval. Otherwise, on a
+bootstrapped Gateway, recovery is approved from an already-enrolled CLI with:
 ztd auth approve-recovery <token>
 
   cli (headless)   Headless CLI-only login (the default). Same as bare login.
@@ -88,7 +90,7 @@ the OS trust store, and register or confirm a passkey.`,
 	cmd.Flags().BoolVar(&noSystemTrust, "no-system-trust", false,
 		"Skip OS trust installation (administrator must have pre-installed the gateway root CA). The passkey ceremony still runs.")
 	cmd.Flags().BoolVar(&rotateCLI, "rotate-cli", false,
-		"Force an mTLS CLI rotation even when the local identity is complete and not expiring.")
+		"Rotate the CLI certificate and CLI session over mTLS; the previous session is ended and its certificates revoked.")
 	return cmd
 }
 
@@ -108,7 +110,7 @@ identity is mTLS-only and cannot authenticate to the Console.`,
 		},
 	}
 	cmd.Flags().BoolVar(&rotateCLI, "rotate-cli", false,
-		"Force an mTLS CLI rotation even when the local identity is complete and not expiring.")
+		"Rotate the CLI certificate and CLI session over mTLS; the previous session is ended and its certificates revoked.")
 	if use == "cli" {
 		cmd.Aliases = []string{"headless"}
 	}

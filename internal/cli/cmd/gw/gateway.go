@@ -330,20 +330,20 @@ func Cmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(
-		gatewayStartCmd(),
-		gatewayRecoverCmd(),
-		gatewayStopCmd(),
-		gatewayStatusCmd(),
-		gatewayRestartCmd(),
-		gatewayConnectCmd(),
-		gatewayLogsCmd(),
+		shared.DeclareNoCLIRenewal(gatewayStartCmd()),
+		shared.DeclareNoCLIRenewal(gatewayRecoverCmd()),
+		shared.DeclareNoCLIRenewal(gatewayStopCmd()),
+		shared.DeclareNoCLIRenewal(gatewayStatusCmd()),
+		shared.DeclareNoCLIRenewal(gatewayRestartCmd()),
+		shared.DeclareNoCLIRenewal(gatewayConnectCmd()),
+		shared.DeclareNoCLIRenewal(gatewayLogsCmd()),
 		gatewaySettingsCmd(),
-		gatewayResetCmd(),
-		gatewayCleanCmd(),
-		gatewaySetupCmd(),
+		shared.DeclareNoCLIRenewal(gatewayResetCmd()),
+		shared.DeclareNoCLIRenewal(gatewayCleanCmd()),
+		shared.DeclareNoCLIRenewal(gatewaySetupCmd()),
 		dataCmd(),
-		securityCmd(),
-		tunnelCmd(),
+		shared.DeclareNoCLIRenewal(securityCmd()),
+		shared.DeclareNoCLIRenewal(tunnelCmd()),
 	)
 
 	return cmd

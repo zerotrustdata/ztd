@@ -25,6 +25,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -679,6 +680,31 @@ func (pki *PKIAuthority) VerifyCertificate(ctx context.Context, cert *x509.Certi
 	}
 
 	return nil
+}
+
+// VerifyExpiredCLICertificate verifies that cert is a client certificate this
+// Gateway's current Operator intermediate signed, which signs every CLI leaf
+// (SignCSR), and that it is not revoked, regardless of the leaf's expiry. CLI
+// reinstatement (POST /api/v1/auth/cli/reinstate) bounds how long after expiry
+// it accepts the certificate and checks that its URI SAN names a CLI session;
+// this method does neither.
+func (pki *PKIAuthority) VerifyExpiredCLICertificate(ctx context.Context, cert *x509.Certificate) error {
+	if cert == nil {
+		return constants.ErrPKINoCertificate
+	}
+	pki.mu.RLock()
+	issuer := pki.operatorCert
+	pki.mu.RUnlock()
+	if issuer == nil {
+		return constants.ErrPKIOperatorCANotLoaded
+	}
+	if err := cert.CheckSignatureFrom(issuer); err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrCLIReinstateCertInvalid, err)
+	}
+	if !slices.Contains(cert.ExtKeyUsage, x509.ExtKeyUsageClientAuth) {
+		return fmt.Errorf("%w: not a client certificate", constants.ErrCLIReinstateCertInvalid)
+	}
+	return pki.VerifyCertificate(ctx, cert)
 }
 
 // SignCSR signs a certificate signing request using the appropriate intermediate CA.

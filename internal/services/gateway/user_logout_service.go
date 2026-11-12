@@ -39,10 +39,8 @@ type UserLogoutServiceDeps struct {
 // UserLogoutService terminates a user's web and CLI sessions together with
 // the operator bindings and CLI certificates behind them.
 //
-// Terminating CLI sessions alone does not log a CLI out: the refresh endpoint
-// re-issues a session for any unrevoked certificate, whatever state its old
-// session is in. A CLI logout is therefore only complete once the
-// certificates are revoked, and that revocation is the last step.
+// CLI logout deactivates sessions and revokes every recorded certificate.
+// Revocation is the last step, and retries skip already-revoked serials.
 type UserLogoutService struct {
 	logger      *slog.Logger
 	cliSessions *CLISessionService
@@ -124,6 +122,12 @@ func (s *UserLogoutService) Logout(ctx context.Context, userID, currentCLISessio
 		if err := s.terminateCLISessions(ctx, sessions, currentCLISessionID, result, unbound); err != nil {
 			return finish(), fmt.Errorf("logout CLI sessions: %w", err)
 		}
+		// Renewal may have committed after the first inventory. Once a session
+		// is inactive, its guarded renewal cannot write another certificate.
+		sessions, err = s.cliSessions.ListUserCLISessions(ctx, userID)
+		if err != nil {
+			return finish(), fmt.Errorf("logout CLI certificate inventory: %w", err)
+		}
 		revoked, err := s.revokeCLICertificates(ctx, sessions, presentedCertSerial)
 		result.CertificatesRevoked = revoked
 		if err != nil {
@@ -181,11 +185,9 @@ func (s *UserLogoutService) terminateCLISessions(ctx context.Context, sessions [
 	return nil
 }
 
-// revokeCLICertificates revokes the certificate serial of every CLI session
-// the user ever held, active or not, plus presentedCertSerial. Sessions that
-// refresh or bind replaced share their certificate, so the serial set is
-// small; an expired-but-active session's certificate is the very thing
-// refresh would otherwise revive. It attempts every serial and returns the
+// revokeCLICertificates revokes the certificate serials of every CLI session
+// the user ever held, active or not, including the full renewal history,
+// plus presentedCertSerial. It attempts every serial and returns the
 // number it revoked together with the joined failures.
 func (s *UserLogoutService) revokeCLICertificates(ctx context.Context, sessions []*models.CLISession, presentedCertSerial string) (int, error) {
 	if s.pki == nil {
@@ -196,8 +198,8 @@ func (s *UserLogoutService) revokeCLICertificates(ctx context.Context, sessions 
 		serials[presentedCertSerial] = struct{}{}
 	}
 	for _, session := range sessions {
-		if session.CertSerial != "" {
-			serials[session.CertSerial] = struct{}{}
+		for _, serial := range cliSessionCertificateSerials(session) {
+			serials[serial] = struct{}{}
 		}
 	}
 

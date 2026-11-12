@@ -493,6 +493,118 @@ func (s *CLISessionService) RefreshCLISession(ctx context.Context, cliSessionID 
 	return existing, nil
 }
 
+type cliSessionRenewalUpdate struct {
+	CertFingerprint         string    `json:"cert_fingerprint"`
+	CertSerial              string    `json:"cert_serial"`
+	PreviousCertFingerprint string    `json:"previous_cert_fingerprint"`
+	PreviousCertSerial      string    `json:"previous_cert_serial"`
+	CertificateSerials      []string  `json:"certificate_serials"`
+	ExpiresAt               time.Time `json:"expires_at"`
+	AbsoluteExpiresAt       time.Time `json:"absolute_expires_at"`
+	IdleExpiresAt           time.Time `json:"idle_expires_at"`
+}
+
+// RenewCLISessionCertificate moves an active CLI session onto a renewed
+// certificate in place. The session keeps its ID, so the renewed certificate's
+// URI SAN names the same session and every client holding the session ID keeps
+// working. The certificate it replaces becomes the previous certificate: it
+// names the same session and stays valid until its own NotAfter, so approvals
+// it signs still verify and logout still revokes it. The three expiry fields
+// move to constants.CLISessionTTL from now.
+//
+// presentedFingerprint is the certificate the caller authenticated with. Only
+// the session's current certificate renews, and the write is conditional on
+// it, so two concurrent renewals cannot both succeed. The loser receives
+// constants.ErrCLIRenewalStaleCertificate. A deactivated session is never
+// renewed (constants.ErrCLISessionAlreadyDeactivated), including one a
+// concurrent logout deactivated while the write was in flight. A session of
+// another user is reported as constants.ErrCLISessionNotFound.
+func (s *CLISessionService) RenewCLISessionCertificate(ctx context.Context, cliSessionID, userID, presentedFingerprint, newFingerprint, newSerial string) (*models.CLISession, error) {
+	if cliSessionID == "" || userID == "" || presentedFingerprint == "" || newFingerprint == "" || newSerial == "" {
+		return nil, fmt.Errorf("renew CLI session certificate: %w", constants.ErrMissingRequiredField)
+	}
+	existing, err := s.loadCLISession(ctx, cliSessionID)
+	if err != nil {
+		return nil, fmt.Errorf("renew CLI session certificate: load: %w", err)
+	}
+	if existing.UserID != userID {
+		return nil, fmt.Errorf("renew CLI session certificate: %w", constants.ErrCLISessionNotFound)
+	}
+	if !existing.IsActive {
+		return nil, constants.ErrCLISessionAlreadyDeactivated
+	}
+	if existing.CertFingerprint != presentedFingerprint {
+		return nil, constants.ErrCLIRenewalStaleCertificate
+	}
+
+	expiry := time.Now().UTC().Add(constants.CLISessionTTL)
+	update, err := json.Marshal(cliSessionRenewalUpdate{
+		CertFingerprint:         newFingerprint,
+		CertSerial:              newSerial,
+		PreviousCertFingerprint: existing.CertFingerprint,
+		PreviousCertSerial:      existing.CertSerial,
+		CertificateSerials:      append(cliSessionCertificateSerials(existing), newSerial),
+		ExpiresAt:               expiry,
+		AbsoluteExpiresAt:       expiry,
+		IdleExpiresAt:           expiry,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal CLI session renewal: %w", err)
+	}
+	fingerprintJSON, err := json.Marshal(presentedFingerprint)
+	if err != nil {
+		return nil, fmt.Errorf("marshal CLI certificate condition: %w", err)
+	}
+	applied, err := s.db.DocConditionalUpdateAll(
+		ctx, marshaler.CollectionName(constants.CollectionCLISessions),
+		cliSessionID,
+		update,
+		[]DocumentUpdateCondition{
+			{Field: "cert_fingerprint", Value: fingerprintJSON},
+			{Field: "is_active", Value: json.RawMessage("true")},
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("renew CLI session certificate: conditional update: %w", err)
+	}
+	// Re-read after the guarded write to classify a concurrent logout and
+	// let the caller revoke its newly signed certificate on any failure.
+	current, err := s.loadCLISession(ctx, cliSessionID)
+	if err != nil {
+		return nil, fmt.Errorf("renew CLI session certificate: reload: %w", err)
+	}
+	if !current.IsActive {
+		return nil, constants.ErrCLISessionAlreadyDeactivated
+	}
+	if !applied {
+		return nil, constants.ErrCLIRenewalStaleCertificate
+	}
+	s.logger.Info("CLI session certificate renewed in place",
+		"cli_session_id_prefix", safeTruncateID(cliSessionID),
+		"user_id", userID,
+	)
+	return current, nil
+}
+
+// cliSessionCertificateSerials returns every non-empty certificate serial the
+// session has held, sorted. CertificateSerials is written only by renewal, so
+// the current and previous serials are included too: a session that never
+// renewed, including one from an existing root, is revoked without a back-fill.
+func cliSessionCertificateSerials(session *models.CLISession) []string {
+	serials := make(map[string]struct{}, len(session.CertificateSerials)+2)
+	for _, serial := range session.CertificateSerials {
+		if serial != "" {
+			serials[serial] = struct{}{}
+		}
+	}
+	for _, serial := range []string{session.CertSerial, session.PreviousCertSerial} {
+		if serial != "" {
+			serials[serial] = struct{}{}
+		}
+	}
+	return sortedKeys(serials)
+}
+
 // BindOperatorSessions rebinds an active CLI session to the given operator
 // sessions in place. bound lists every target with primary first, so primary
 // must equal bound[0]. The session keeps its ID, certificate fingerprint and

@@ -294,8 +294,8 @@ func inferenceEvalAppClient(ctx context.Context, out io.Writer, deps nativeEvalD
 	appConfig := harnessconfig.Config{
 		MTLSBaseURL: cfg.OperatorHTTPURL(),
 		Auth: harnessconfig.Auth{
-			Certificate: appCert,
-			CABundle:    trustBundle,
+			GetClientCertificate: harnessconfig.StaticClientCertificate(appCert),
+			CABundle:             trustBundle,
 		},
 		UserID: authContext.UserID,
 	}

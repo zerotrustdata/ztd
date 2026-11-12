@@ -11,6 +11,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -43,10 +44,16 @@ func TestLoadClientAuthContext_ReturnsIdentityOnlyWhenCredentialsAndKeyMaterialA
 	require.NotNil(t, got.Certificate, "the sealed CLI key is unsealed in memory for the mTLS identity")
 	assert.NotEmpty(t, got.Certificate.Certificate)
 	wantCertificate := got.Certificate
+	require.NotNil(t, got.GetClientCertificate)
+	loaded, err := got.GetClientCertificate(&tls.CertificateRequestInfo{})
+	require.NoError(t, err)
+	assert.Equal(t, wantCertificate.Certificate, loaded.Certificate)
+	snapshot := *got
+	snapshot.GetClientCertificate = nil
 	assert.Equal(t, &ClientAuthContext{
 		OperatorSessionID: "op-sess", CLISessionID: cliSessionID, UserID: userID, OperatorID: "op-1",
 		ClientCert: cfg.CLICertFile(), ClientKey: cfg.CLIKeyFile(), Certificate: wantCertificate,
-	}, got)
+	}, &snapshot)
 }
 
 func TestLoadClientAuthContext_FailsClosedWhenIdentityIsAbsentOrIncomplete(t *testing.T) {
@@ -142,29 +149,25 @@ func TestCredentialStore_ResolvedPathsMatchTheConfiguredLocations(t *testing.T) 
 }
 
 // ---------------------------------------------------------------------------
-// LocalIdentity.NeedsRecovery / NeedsRotation
+// LocalIdentity.NeedsRecovery
 // ---------------------------------------------------------------------------
 
-func TestLocalIdentity_RecoveryAndRotationDecisions(t *testing.T) {
+func TestLocalIdentity_RecoveryDecisions(t *testing.T) {
 	tests := []struct {
 		name         string
 		identity     LocalIdentity
 		wantRecovery bool
-		wantRotation bool
 	}{
-		{"absent identity bootstraps rather than recovers", LocalIdentity{State: LocalStateAbsent}, false, false},
-		{"partial identity must recover", LocalIdentity{State: LocalStatePartial}, true, false},
-		{"corrupt identity must recover", LocalIdentity{State: LocalStateCorrupt}, true, false},
-		{"healthy complete identity needs nothing", LocalIdentity{State: LocalStateComplete}, false, false},
-		{"expiring complete identity rotates", LocalIdentity{State: LocalStateComplete, CertExpiring: true}, false, true},
-		{"expired complete identity recovers because it cannot authenticate", LocalIdentity{State: LocalStateComplete, CertExpiring: true, CertExpired: true}, true, false},
-		{"unknown state is not recoverable by this path", LocalIdentity{State: LocalEnrollmentState(99)}, false, false},
-		{"expiry flags on a partial identity do not trigger rotation", LocalIdentity{State: LocalStatePartial, CertExpiring: true}, true, false},
+		{"absent identity bootstraps rather than recovers", LocalIdentity{State: LocalStateAbsent}, false},
+		{"partial identity must recover", LocalIdentity{State: LocalStatePartial}, true},
+		{"corrupt identity must recover", LocalIdentity{State: LocalStateCorrupt}, true},
+		{"healthy complete identity needs nothing", LocalIdentity{State: LocalStateComplete}, false},
+		{"expired complete identity recovers because it cannot authenticate", LocalIdentity{State: LocalStateComplete, CertExpired: true}, true},
+		{"unknown state is not recoverable by this path", LocalIdentity{State: LocalEnrollmentState(99)}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.wantRecovery, tt.identity.NeedsRecovery(), "NeedsRecovery")
-			assert.Equal(t, tt.wantRotation, tt.identity.NeedsRotation(), "NeedsRotation")
+			assert.Equal(t, tt.wantRecovery, tt.identity.NeedsRecovery())
 		})
 	}
 }

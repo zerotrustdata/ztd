@@ -122,13 +122,14 @@ func evalBindSessions(
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Bound CLI session to %d operator session(s); primary %s\n", len(bind.Bound), bind.OperatorSessionID)
 	}
 	return &auth.ClientAuthContext{
-		OperatorSessionID: bind.OperatorSessionID,
-		CLISessionID:      bind.CLISessionID,
-		UserID:            bind.UserID,
-		OperatorID:        bind.OperatorID,
-		ClientCert:        authContext.ClientCert,
-		ClientKey:         authContext.ClientKey,
-		Certificate:       authContext.Certificate,
+		OperatorSessionID:    bind.OperatorSessionID,
+		CLISessionID:         bind.CLISessionID,
+		UserID:               bind.UserID,
+		OperatorID:           bind.OperatorID,
+		ClientCert:           authContext.ClientCert,
+		ClientKey:            authContext.ClientKey,
+		Certificate:          authContext.Certificate,
+		GetClientCertificate: authContext.GetClientCertificate,
 	}, nil
 }
 

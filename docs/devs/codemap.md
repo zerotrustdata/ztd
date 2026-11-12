@@ -3,11 +3,15 @@ doc_id: codemap
 title: ztd Code Map
 audience: maintainers and coding agents
 status: current
-version: v1.9.1
-last_updated: 2026-11-05
+version: v1.10.0
+last_updated: 2026-11-11
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
+  - internal/cli/cmd/cli_renewal.go
+  - internal/cli/auth/cli_renewal.go
+  - internal/cli/auth/cli_renewal_loop.go
+  - internal/cli/auth/tls.go
   - internal/cli/cmd/test/test.go
   - internal/cli/cmd/test/public_loop.go
   - internal/cli/cmd/test/release_smoke.go
@@ -170,7 +174,7 @@ To enable deterministic multi-agent delegation, parallel execution without merge
 
 | Surface | Assigned paths | Authorized agent role | Work scope & invariants | Verification command |
 | :--- | :--- | :--- | :--- | :--- |
-| **Core Platform & CLI** (`surface-core-go`) | `cmd/ztd/`, `internal/cli/`, `internal/services/` (excluding gateway static embeds and `internal/services/evaluation/`), `internal/config/`, `internal/constants/` (excluding generated files), `internal/fileidentity/`, `internal/governance/`, `internal/infra/`, `internal/llamacpp/`, `internal/models/`, `internal/netutil/`, `internal/paths/`, `internal/pkg/`, `internal/security/`, `internal/timesvc/`, `internal/uuid/` | Core Platform Engineer / Platform Agent | Core Go execution, HTTP routing, PKI, SQLite queries/schema, storage, CLI flags, process lifecycle, runtime file service, and long-running service logic. Bounded to Go backend sources. | `./ztd test unit`, `./ztd test integration --pkg <package>` |
+| **Core Platform & CLI** (`surface-core-go`) | `cmd/ztd/`, `internal/cli/` (excluding `internal/cli/cmd/eval/`), `internal/services/` (excluding gateway static embeds and `internal/services/evaluation/`), `internal/config/`, `internal/constants/` (excluding generated files), `internal/fileidentity/`, `internal/governance/`, `internal/infra/`, `internal/llamacpp/`, `internal/models/`, `internal/netutil/`, `internal/paths/`, `internal/pkg/`, `internal/security/`, `internal/timesvc/`, `internal/uuid/` | Core Platform Engineer / Platform Agent | Core Go execution, HTTP routing, PKI, SQLite queries/schema, storage, CLI flags, process lifecycle, runtime file service, and long-running service logic. Bounded to Go backend sources. | `./ztd test unit`, `./ztd test integration --pkg <package>` |
 | **Protocol & Serialization Contracts** (`surface-protocol`) | `protocol/proto/ztd/`, `protocol/constants/`, `protocol/models/`, `protocol/schemas/`, `protocol/vectors/`, `protocol/conformance/`, `protocol/node/`, `internal/tools/constgen/`, `buf.gen.yaml`, `protocol/node/buf.gen.yaml` | Protocol & Code Generation Auditor | Canonical Protobuf schemas, JSON constant registries, generated Go and TypeScript bindings, doctrine definitions, wire models, and cross-language conformance vectors. Hand edits restricted to source `.proto` and JSON registries (`INV-GEN-01`, `INV-PROTO-01`). | `make proto-generate && make constants-check && make doctrines-validate` |
 | **Documentation, Guides & References** (`surface-docs`) | `docs/devs/`, `docs/architecture/`, `docs/core/`, `docs/guides/`, `docs/reference/`, `docs/release_notes/`, `protocol/docs/`, `README.md`, `CHANGELOG.md`, `.github/CONTRIBUTING.md`, `AGENTS.md`, `CLAUDE.md`, `EARLY_TESTERS.md`, `THIRD_PARTY_NOTICES.md` | Release Notes & Documentation Auditor / Tech Writer Agent | Platform architecture specifications, developer guidelines, quick starts, release notes, changelog indexing, contributor guidance, and agent operational instructions. Formatting strictly governed by `docs/devs/docs.md`. | Link verification, `make doctrines-validate`, `make third-party-notices-check`, `docs/devs/docs.md` audit checklist |
 | **Frontends, Adapters & Web Distribution** (`surface-frontend`) | `console/`, `evaluation-explorer/`, `ztd-adapter/`, `website/`, `internal/services/gateway/console/static/`, `internal/services/gateway/explorer/static/` | Frontend engineer | Browser SPAs (React + TypeScript + Vite), observe-frontend contract pack, Cloudflare Worker + Astro website, and Gateway-embedded production asset builds. Hand edits in frontend source trees; static embed trees refreshed exclusively via build targets (`INV-DOC-GEN-04`, `INV-DOC-GEN-06`). | `make console-lint console-test console-embed-check && make explorer-lint explorer-test explorer-embed && make website-test website-build` |
@@ -218,16 +222,18 @@ Live group inventory: `./ztd --help`. Group placement: `INV-CLI-01`. Name except
 | `compliance` | `compliancecmd` | `internal/cli/cmd/compliance/` | `compliances` | `ksi`, `ksi-history`, `overlay`, `release-evidence`, `release-prepare`, `evidence`, `evidence-graph`, and `report`. |
 | `eval` | `eval` | `internal/cli/cmd/eval/` | | `models`, `campaigns`, `runs`, `rollout`, `formations`, `gates`, `conformance`, `suites`, `backup`, `restore`, and `quickstart`. Also constructs `public restore`. |
 
-Files at `internal/cli/cmd/` root are the root command, its tests, and shared file-service and config-load tests. Factory-error tests reside beside the group they cover (`factory_error_<group>_test.go`). Factory rule is `INV-FS-08`.
+Files at `internal/cli/cmd/` root own the root command, CLI renewal lifecycle wiring, and root and shared dependency tests. Factory-error tests reside beside the group they cover (`factory_error_<group>_test.go`). Factory rule is `INV-FS-08`.
 
 | Path | Package | Owns |
 | :--- | :--- | :--- |
-| `internal/cli/cmd/shared/` | `shared` | Config load, `NewFileSvc` (`fs.NewRuntimeFileService`), source-root lookup, command context, version-info context, and destructive-action confirmation with pre-clean backups. Exists so group packages do not import root `cmd` package. |
+| `internal/cli/cmd/cli_renewal.go` | `cmd` | Command-start renewal and cancellation/join of renewal loops scoped to command execution. |
+| `internal/cli/cmd/shared/` | `shared` | Config load, `NewFileSvc` (`fs.NewRuntimeFileService`), source-root lookup, command context, CLI renewal and launch-profile annotations, version-info context, and destructive-action confirmation with pre-clean backups. Exists so group packages do not import root `cmd` package. |
 | `internal/cli/cmd/gwremote/` | `gwremote` | Gateway HTTP publication, model provenance, provider observation, and health hook used by `eval` and `public`. Exists so those packages do not import `gw`. |
 | `internal/cli/cmd/cmdtest/` | `cmdtest` | Cross-package test helpers. Not a Cobra group. |
 | `internal/cli/agent/` | | Registry of external coding agents launcher supports: per-agent config writing, launch arguments, tool-lockdown level, and verify hooks. Consumed by `mcp agent list/run/show/verify`. |
 | `internal/cli/api/` | | Typed CLI HTTP client. |
 | `internal/cli/auth/` | | CLI enrollment, credential staging, key generation, passkey registration, trust bundles, and mTLS clients. `approval.go` owns L3 approval page URL and status verification shared by `auth approve` and TUI; `platform_enrollment.go` owns enrollment fingerprint, issued-identity, and response helpers shared by `auth enroll` and TUI; `operator_binding.go` owns bind/unbind response validation shared by CLI and TUI. |
+| `internal/cli/auth/cli_renewal.go`, `internal/cli/auth/cli_renewal_loop.go`, `internal/cli/auth/tls.go` | `auth` | Locked in-place CLI renewal, scheduling and retries, and per-handshake certificate reloads. Contract: CLI certificate renewal in `docs/architecture/auth.md`. |
 | `internal/cli/browserorigin/` | | Frontend-origin validation and normalization. |
 | `internal/cli/config/` | | CLI configuration resolution and endpoint overrides. `env_file.go` owns `LoadEnvFile` (working-directory `.env`, `secret` and `user_endpoint` keys only; owner and mode checks in `env_file_posix.go`) and `InferenceOllamaEndpoint` (`--inference-ollama-endpoint`, else `ZTD_OLLAMA_ENDPOINT`). |
 | `internal/cli/frontendverify/` | | Frontend connection and running-Gateway verification. |
@@ -287,7 +293,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 
 | Domain | Controllers |
 | :--- | :--- |
-| Identity and enrollment | PKI, bootstrap, CLI recovery, CLI rotation, CLI refresh, CLI session, enrollment token, user, session, passkey, platform enrollment |
+| Identity and enrollment | PKI, bootstrap, CLI recovery, CLI rotation and in-place certificate renewal, CLI refresh, CLI session, enrollment token, user, session, passkey, platform enrollment |
 | Data and audit | Data, signer, audit |
 | Operators and dispatch | Operator, dispatch, inference dispatch, Tribunal authoring of typed `run_shell_command` arguments for governed `MCP_CALL` |
 | Streams and ingress | SSE, MCP, pub/sub |

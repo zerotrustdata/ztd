@@ -28,6 +28,8 @@
   "auth_cli_recovery_request": "/api/v1/auth/cli/recovery/request",
   "auth_cli_recovery_status": "/api/v1/auth/cli/recovery/status",
   "auth_cli_refresh": "/api/v1/auth/cli/refresh",
+  "auth_cli_reinstate": "/api/v1/auth/cli/reinstate",
+  "auth_cli_renew": "/api/v1/auth/cli/renew",
   "auth_cli_rotate": "/api/v1/auth/cli/rotate",
   "auth_cli_session": "/api/v1/auth/cli/session",
   "auth_cli_unbind": "/api/v1/auth/cli/unbind",

@@ -124,6 +124,7 @@ ztd tui`,
 			if err := config.LoadEnvFile(constants.EnvFilename); err != nil {
 				return fmt.Errorf("root: load env file: %w", err)
 			}
+			renewCLIIdentity(cmd)
 			return nil
 		},
 	}
@@ -147,17 +148,18 @@ ztd tui`,
 		mcp.Cmd(),
 		operatorcmd.Cmd(),
 		autochthoncmd.Cmd(),
-		vaultcmd.Cmd(),
-		testcmd.Cmd(),
+		shared.DeclareNoCLIRenewal(vaultcmd.Cmd()),
+		shared.DeclareNoCLIRenewal(testcmd.Cmd()),
 		audit.Cmd(),
-		report.Cmd(),
+		shared.DeclareNoCLIRenewal(report.Cmd()),
 		public.Cmd(),
-		swagger.Cmd(),
+		shared.DeclareNoCLIRenewal(swagger.Cmd()),
 		tuicmd.Cmd(),
-		version.Cmd(),
-		compliancecmd.Cmd(),
+		shared.DeclareNoCLIRenewal(version.Cmd()),
+		shared.DeclareNoCLIRenewal(compliancecmd.Cmd()),
 		eval.Cmd(),
 	)
+	wrapCLIRenewal(rootCmd)
 
 	return rootCmd
 }
