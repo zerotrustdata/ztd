@@ -321,6 +321,20 @@ func toolCallingResultMatchesRequest(runID, registryDigest string, variant *eval
 		result.GetRequestedModelDigest() == variant.GetModelDigest() && result.GetServedModelDigest() == variant.GetModelDigest()
 }
 
+// isToolCallingExclusionResult reports whether result is a cell the run's
+// verified tool-calling probe excluded, as built by toolCallingExclusionResult.
+func isToolCallingExclusionResult(result *evalv1.EvaluationAssignmentResult) bool {
+	if result.GetLifecycleStatus() != evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE {
+		return false
+	}
+	for _, grade := range result.GetDeterministicGrades() {
+		if grade.GetCriterionId() == toolCallingProbeCriterion && grade.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE {
+			return true
+		}
+	}
+	return false
+}
+
 func toolCallingExclusionResult(assignment *evalv1.EvaluationAssignment, observation *evalv1.ModelCapabilityObservation, reference *compliancev1.ComplianceEvidenceReference, completedAt *timestamppb.Timestamp) (*evalv1.EvaluationAssignmentResult, error) {
 	reason := toolCallingProbeFailure
 	if observation.GetOutcome() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNSUPPORTED {

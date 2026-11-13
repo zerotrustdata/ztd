@@ -17,7 +17,7 @@
 //     observed; model_failed assignments have no pass metric and are
 //     reported separately, not silently dropped.
 
-import { resolveModelProfile } from '../content/framework-catalog';
+import { MODEL_CAPABILITY_KEYS, resolveModelProfile, type ModelCapabilityKey } from '../content/framework-catalog';
 import { CURRENT_PLATFORM_RELEASE, newestAdmittedRelease, toReleaseSeries } from '../content/release';
 import { MODEL_ROLE_WIRE_ORDER, MODEL_ROLES } from '../content/roles';
 import { SCENARIO_CATEGORY_COPY, TRAJECTORY_POLICY_META } from '../content/scenario-task';
@@ -1419,6 +1419,8 @@ export function modelSummaryGroups(models: ModelSummary[]): Array<{ model: Model
           denominator: securityDenominator,
         } : undefined,
         terminal_outcomes: sources.some((model) => model.terminal_outcomes) ? outcomes : undefined,
+        tool_calling_exclusions: sources.every((model) => model.tool_calling_exclusions !== undefined)
+          ? sources.reduce((sum, model) => sum + model.tool_calling_exclusions!, 0) : undefined,
         repeatability: contributors.every((model) => model.repeatability) ? {
           consistently_correct: contributors.reduce((sum, model) => sum + model.repeatability!.consistently_correct, 0),
           consistently_wrong: contributors.reduce((sum, model) => sum + model.repeatability!.consistently_wrong, 0),
@@ -1491,11 +1493,35 @@ export function resolveModelSecurity(model: ModelSummary): number | undefined {
   return model.security_pass_rate?.estimate;
 }
 
-/** Whether the Leaderboard can rank a model: full coverage, verified scored evidence, a
- *  parameter count, latency and token observations, and security evidence or an allowed N/A. */
+/** Capabilities each role's leaderboard requires. Primary and Assistant work through tools, so a
+ *  model that cannot call tools is not ranked there however accurate its text answers are. Lite
+ *  works from supplied context with no tool surface and requires none. Overall requires every
+ *  capability. Tool calling is proven only by the run's own verified probe on the frozen model
+ *  (`tool_calling_exclusions`); the other capabilities come from the capability catalog. */
+export const LEADERBOARD_ROLE_CAPABILITIES: Record<ModelRole, readonly ModelCapabilityKey[]> = {
+  primary: ['tool_calling'],
+  assistant: ['tool_calling'],
+  lite: [],
+};
+export const LEADERBOARD_OVERALL_CAPABILITIES: readonly ModelCapabilityKey[] = MODEL_CAPABILITY_KEYS;
+
+/** Every listed catalog capability passed; failed, unsupported and unprobed all fail closed.
+ *  Tool calling is never read from the catalog: the run's verified probe decides it. */
+function passesCatalogCapabilities(model: ModelSummary, keys: readonly ModelCapabilityKey[]): boolean {
+  const { capabilities } = resolveModelProfile(model);
+  return keys.every((key) => key === 'tool_calling' || capabilities[key].status === 'pass');
+}
+
+/** Whether the Leaderboard can rank a model: full coverage, verified scored evidence, the role's
+ *  required capabilities, a parameter count, latency and token observations, and security
+ *  evidence or an allowed N/A. A tool-bearing role requires the run's own published proof that
+ *  its tool-calling probe excluded no assignment; a record without that count is unranked. */
 function isLeaderboardQualified(model: ModelSummary): boolean {
   if (model.inventory_only || !model.pass_rate || model.pass_rate.denominator <= 0) return false;
   if (model.evaluation_coverage !== 1 || model.quality_state !== 'exploratory_verified') return false;
+  const required = LEADERBOARD_ROLE_CAPABILITIES[model.role];
+  if (!passesCatalogCapabilities(model, required)) return false;
+  if (required.includes('tool_calling') && model.tool_calling_exclusions !== 0) return false;
   if (positive(model.latency_p50_ms?.value) === undefined || positive(model.output_tokens?.value) === undefined ||
     positive(resolveModelProfile(model).parameter_count) === undefined) return false;
   const security = resolveModelSecurity(model);
@@ -1523,7 +1549,7 @@ export function defaultLeaderboardRelease(models: ModelSummary[], qualifiedForma
  *  it earn no security credit in any role. Each doubling of parameters costs 10%,
  *  so a larger model must be clearly more accurate to outrank a smaller one. Efficiency can cost
  *  at most 15%, so it only separates models of similar quality. Leaders require full coverage,
- *  verified scored evidence, a parameter count, latency and token observations, and security
+ *  verified scored evidence, the role's required capabilities (LEADERBOARD_ROLE_CAPABILITIES), a parameter count, latency and token observations, and security
  *  evidence or an allowed N/A state; equal score breaks ties by higher accuracy, then smaller size, then name. */
 export function modelRoleLeaderboardRows(
   models: ModelSummary[],
@@ -1531,8 +1557,12 @@ export function modelRoleLeaderboardRows(
   evaluations: EvaluationSummary[] = [],
 ): ModelRoleLeaderboardRow[] {
   const formationDatasets = new Set(evaluations.filter((run) => run.evaluation_unit === 'system').map((run) => run.dataset_id));
+  // A run whose verified probe excluded tool tasks shows the variant cannot call tools, so no
+  // other run or role ranks it where tools are required.
+  const toolless = new Set(models.filter((model) => (model.tool_calling_exclusions ?? 0) > 0).map((model) => model.variant_id));
   const qualified = models.filter((model) => !formationDatasets.has(model.dataset_id) &&
-    (role === 'all' || model.role === role) && isLeaderboardQualified(model));
+    (role === 'all' || model.role === role) && isLeaderboardQualified(model) &&
+    !(LEADERBOARD_ROLE_CAPABILITIES[model.role].includes('tool_calling') && toolless.has(model.variant_id)));
   const measured = modelSummaryGroups(qualified).map(({ model, sources }) => ({
     model, sources,
     latency: model.latency_p50_ms!.value!, tokens: model.output_tokens!.value!, size: model.parameter_count!,
@@ -1595,7 +1625,9 @@ function compareModelLeaderboardScores(a: ModelLeaderboardRow, b: ModelLeaderboa
     a.model.variant_id.localeCompare(b.model.variant_id);
 }
 
-/** One row per stable variant, with one-third weight per qualified role.
+/** One row per stable variant, with one-third weight per qualified role. Only a variant that
+ * qualifies in every role and has every capability is ranked overall: its Primary and Assistant
+ * rows prove tool calling, and the catalog supplies the rest.
  * Runs are pooled before role scoring. Execution duration counts each dataset once. */
 export function modelOverallLeaderboardRows(roleRows: ModelRoleLeaderboardRow[]): ModelOverallLeaderboardRow[] {
   const byVariant = new Map<string, Map<ModelRole, ModelRoleLeaderboardRow>>();
@@ -1611,6 +1643,7 @@ export function modelOverallLeaderboardRows(roleRows: ModelRoleLeaderboardRow[])
     const contributors = MODEL_ROLE_WIRE_ORDER.map((role) => roles.get(role)!);
     const sources = contributors.flatMap((row) => row.sources);
     const representative = contributors[0]!.model;
+    if (!passesCatalogCapabilities(representative, LEADERBOARD_OVERALL_CAPABILITIES)) continue;
     const security = contributors.flatMap((row) => row.security !== undefined ? [row.security] : []);
     const throughputs = contributors.map((row) => row.throughput_p50);
     const runDurations: Record<string, number | undefined> = Object.assign({}, ...contributors.map((row) => row.run_durations));

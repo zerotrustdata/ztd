@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { decodeLiveEventWire } from '../src/contract/live-event-wire';
 import { decodeViewRecord, ValidationError } from '../src/contract/validators';
-import { fixtureEnrichedAssignmentResult } from '../src/fixtures/fixtures';
+import { fixtureEnrichedAssignmentResult, fixtureModelSummaries } from '../src/fixtures/fixtures';
 
 // View schema 1.15.0 names a generation the Inference Operator stopped because
 // its output degenerated into a loop, in three fields, and an episode that
@@ -65,5 +65,21 @@ describe('view schema 1.15.0: repetition', () => {
 
   it('rejects a repetition judge failure below 1.15.0', () => {
     expect(() => decodeViewRecord('judge_completed', failedJudgeEvent('1.14.0'))).toThrow(ValidationError);
+  });
+});
+
+describe('view schema 1.15.0: model_summary.tool_calling_exclusions', () => {
+  const summary = (schemaVersion: string, count: unknown) => ({ ...fixtureModelSummaries[0]!, schema_version: schemaVersion, tool_calling_exclusions: count });
+
+  it.each([0, 3])('accepts %d exclusions at 1.15.0', (count) => {
+    expect(() => decodeViewRecord('model_summary', summary('1.15.0', count))).not.toThrow();
+  });
+
+  it.each([-1, 1.5, '0'])('rejects %p at 1.15.0', (count) => {
+    expect(() => decodeViewRecord('model_summary', summary('1.15.0', count))).toThrow(ValidationError);
+  });
+
+  it('rejects the count below 1.15.0', () => {
+    expect(() => decodeViewRecord('model_summary', summary('1.14.0', 0))).toThrow(ValidationError);
   });
 });

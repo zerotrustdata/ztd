@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -467,4 +468,41 @@ func TestCampaignToolCallingGateRejectsDuplicateFrozenProbe(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrEvidenceScopeMismatch)
 	assert.Nil(t, result)
 	assert.Zero(t, executor.probeCalls, "an ambiguous frozen probe must not trigger a fresh probe")
+}
+
+func TestModelSummaryCountsToolCallingExclusions(t *testing.T) {
+	primary := evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY
+	lite := evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE
+	assignments := []*evalv1.EvaluationAssignment{
+		homogeneousAssignment("tool-cell", "gemma", primary),
+		homogeneousAssignment("text-cell", "gemma", primary),
+		homogeneousAssignment("lite-cell", "gemma", lite),
+	}
+	for _, assignment := range assignments {
+		assignment.CampaignId = "campaign-1"
+		assignment.LifecycleStatus = evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED
+	}
+	observation := capabilityObservation(evalv1.ModelCapabilityKind_MODEL_CAPABILITY_KIND_TOOL_CALLING, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, "no probe_echo")
+	excluded, err := toolCallingExclusionResult(assignments[0], observation, &compliancev1.ComplianceEvidenceReference{}, timestamppb.New(time.Unix(1, 0).UTC()))
+	require.NoError(t, err)
+	require.True(t, isToolCallingExclusionResult(excluded))
+	results := map[string]*evalv1.EvaluationAssignmentResult{
+		"tool-cell": excluded,
+		"text-cell": terminalResultWithEvidence("text-cell", nil),
+		"lite-cell": terminalResultWithEvidence("lite-cell", nil),
+	}
+	require.False(t, isToolCallingExclusionResult(results["text-cell"]))
+
+	state, err := CollectRunAggregateState(assignments, results)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(1), state.VariantRoles["gemma:primary"].ToolCallingExclusions)
+	assert.Equal(t, uint32(0), state.VariantRoles["gemma:lite"].ToolCallingExclusions)
+
+	body, err := marshalCanonicalViewRecord(buildModelSummaryRecord("ds", "2026-01-01T00:00:00Z", state.VariantRoles["gemma:primary"], CampaignRelease{}))
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"tool_calling_exclusions":1`)
+	// Zero is published evidence that no cell was excluded, never omitted.
+	body, err = marshalCanonicalViewRecord(buildModelSummaryRecord("ds", "2026-01-01T00:00:00Z", state.VariantRoles["gemma:lite"], CampaignRelease{}))
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"tool_calling_exclusions":0`)
 }

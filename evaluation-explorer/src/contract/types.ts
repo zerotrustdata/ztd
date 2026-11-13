@@ -494,6 +494,9 @@ export interface ModelSummary extends ViewRecordEnvelope {
   cache_tokens?: MetricValue<number>;
   security_resistance?: SecurityResistance;
   terminal_outcomes?: Record<TerminalStatus, number>;
+  /** Assignments the run's verified tool-calling probe excluded for the variant and designated role
+   *  (schema 1.15.0). Zero is evidence that none were; absent means the record predates the field. */
+  tool_calling_exclusions?: number;
   unavailable_reasons?: string[];
 }
 

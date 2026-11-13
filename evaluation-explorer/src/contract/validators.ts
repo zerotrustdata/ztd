@@ -252,7 +252,7 @@ const ENVELOPE_FIELDS = [
   'source_revision',
 ] as const;
 const CATALOG_FIELDS = [...ENVELOPE_FIELDS, 'dataset_kind', 'title', 'description', 'limitations', 'model_count', 'evaluated_count', 'suite_count', 'run_count', 'assignment_count', 'provider_request_count', 'provider_token_count', 'retry_count', 'verifier_passed_count', 'verifier_failed_count', 'generated_at', 'provider_environment'] as const;
-const MODEL_FIELDS = [...ENVELOPE_FIELDS, 'variant_id', 'display_name', 'served_model_tag', 'parameter_count', 'parameter_count_source', 'model_digest', 'model_family', 'model_format', 'artifact_size_bytes', 'context_limit', 'role', 'backend_provider_class', 'quantization_weight_class', 'inventory_only', 'evaluation_coverage', 'pass_rate', 'security_pass_rate', 'agreement_pairwise', 'agreement_all_five', 'repeatability', 'latency_p50_ms', 'latency_p95_ms', 'output_throughput_p50', 'output_throughput_p95', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'security_resistance', 'terminal_outcomes', 'unavailable_reasons'] as const;
+const MODEL_FIELDS = [...ENVELOPE_FIELDS, 'variant_id', 'display_name', 'served_model_tag', 'parameter_count', 'parameter_count_source', 'model_digest', 'model_family', 'model_format', 'artifact_size_bytes', 'context_limit', 'role', 'backend_provider_class', 'quantization_weight_class', 'inventory_only', 'evaluation_coverage', 'pass_rate', 'security_pass_rate', 'agreement_pairwise', 'agreement_all_five', 'repeatability', 'latency_p50_ms', 'latency_p95_ms', 'output_throughput_p50', 'output_throughput_p95', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cache_tokens', 'security_resistance', 'terminal_outcomes', 'tool_calling_exclusions', 'unavailable_reasons'] as const;
 const SUITE_FIELDS = [...ENVELOPE_FIELDS, 'suite_id', 'display_name', 'task_count', 'assignment_count', 'status', 'verifier_state', 'verifier_failure_summary', 'model_coverage', 'metric_summaries', 'limitations'] as const;
 const EVALUATION_FIELDS = [...ENVELOPE_FIELDS, 'run_id', 'campaign_id', 'suite_id', 'arm', 'evaluation_unit', 'stack_id', 'formations', 'primary_invocation_share', 'correlated_failure_rate', 'benchmark_unavailable_reasons', 'model_role_mapping', 'lifecycle_state', 'run_status', 'assignment_total', 'assignment_completed', 'assignment_failed', 'terminal_outcomes', 'started_at', 'ended_at', 'elapsed_seconds', 'run_seconds', 'verifier_state', 'verifier_failure_summary', 'verification_metadata', 'assignment_bundle_sha256', 'headline_metrics', 'evidence_link', 'native_result'] as const;
 const ASSIGNMENT_FIELDS = [...ENVELOPE_FIELDS, 'assignment_id', 'run_id', 'task_id', 'scenario_id', 'variant_id', 'role', 'repetition', 'scenario_category', 'evaluation_unit', 'stack_id', 'scenario_summary', 'semantic_grade_summaries', 'activity_summary', 'evidence_bindings', 'benchmark_observations', 'terminal_status', 'metric_values', 'missingness_reason', 'stage_summary', 'resource_summary', 'verification_disposition', 'verification_metadata', 'model_response', 'failure_output', 'role_transcripts', 'trajectory_outcome', 'guided_retry_count', 'failure_reason', 'tools_declared'] as const;
@@ -518,6 +518,11 @@ export function isModelSummary(value: unknown): asserts value is ModelSummary {
       assertInteger(count, `model_summary.terminal_outcomes.${key}`);
       assert(count >= 0, `model_summary.terminal_outcomes.${key}`, 'must be >= 0');
     }
+  }
+  if (value.tool_calling_exclusions !== undefined) {
+    assert(schemaAtLeast(value.schema_version, '1.15.0'), 'model_summary.tool_calling_exclusions', 'requires schema 1.15.0');
+    assertInteger(value.tool_calling_exclusions, 'model_summary.tool_calling_exclusions');
+    assert(value.tool_calling_exclusions >= 0, 'model_summary.tool_calling_exclusions', 'must be >= 0');
   }
   if (value.unavailable_reasons !== undefined) assertStringArray(value.unavailable_reasons, 'model_summary.unavailable_reasons');
 }
