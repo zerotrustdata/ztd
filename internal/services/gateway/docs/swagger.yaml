@@ -2855,6 +2855,7 @@ definitions:
     - 47
     - 48
     - 49
+    - 50
     format: int32
     type: integer
     x-enum-varnames:
@@ -2908,6 +2909,7 @@ definitions:
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE
   operatorv1.InferenceDispatchRequest:
     properties:
       acting_app_id:
@@ -2936,7 +2938,9 @@ definitions:
         description: Ollama keep-alive duration override (empty = use config default).
         type: string
       max_tokens:
-        description: Maximum tokens to generate (0 = use backend default).
+        description: |-
+          Maximum tokens to generate. 0 states no limit: the generation runs until
+          the model stops or fills the context window it is loaded with.
         type: integer
       messages:
         description: Ordered conversation turns sent to the Inference Node. The node
@@ -3129,6 +3133,13 @@ definitions:
       completion_tokens:
         description: Number of completion tokens generated.
         type: integer
+      context_window:
+        description: |-
+          Context window, in tokens, of the runner the provider loaded the model
+          with. It is the one bound on the generation's output: a request that
+          states no max_tokens runs until the model stops or fills this window.
+          Unset for decision inference, which generates no text.
+        type: integer
       decision:
         allOf:
         - $ref: '#/definitions/operatorv1.InferenceDecisionResult'
@@ -3136,7 +3147,7 @@ definitions:
       evaluation_attempt_id:
         type: string
       finish_reason:
-        description: Finish reason (e.g., "stop", "length").
+        description: Finish reason (e.g., "stop", "length", "repetition").
         type: string
       generation_duration_ns:
         type: integer
@@ -3407,6 +3418,7 @@ definitions:
     - 24
     - 25
     - 26
+    - 27
     format: int32
     type: integer
     x-enum-varnames:
@@ -3437,6 +3449,7 @@ definitions:
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE
   operatorv1.ReceiptPersistenceAttestation:
     properties:
       audit_record_id:
