@@ -64,8 +64,10 @@ or one that was logged out, cannot be refreshed. Use 'auth enroll user' instead
 to establish a new session.
 
 When the certificate itself has expired, this command cannot help (an expired
-cert cannot authenticate via mTLS). Use 'auth enroll user --headless' instead to
-initiate the human-approved CLI recovery flow, which issues a new certificate.
+cert cannot authenticate via mTLS). Any Gateway client command reinstates a
+certificate that expired within the last 7 days, keeping its session, by proving
+possession of its keystore-sealed key. Past that, use 'auth enroll user' to
+start the human-approved CLI recovery flow, which issues a new certificate.
 
 The gateway must already be running.`,
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -756,9 +756,9 @@ generated JSON to your agent's MCP settings file.`,
 	}
 
 	cmd.AddCommand(
-		agentListCmd(),
-		agentShowCmd(),
-		agentVerifyCmd(shared.NewFileSvc),
+		shared.DeclareNoCLIRenewal(agentListCmd()),
+		shared.DeclareNoCLIRenewal(agentShowCmd()),
+		shared.DeclareNoCLIRenewal(agentVerifyCmd(shared.NewFileSvc)),
 		agentRunCmd(),
 	)
 

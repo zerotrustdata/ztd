@@ -83,7 +83,7 @@ func newClient(fileSvc fs.RuntimeFileService, cfg *config.Config, baseURL string
 		return nil, constants.ErrNotAuthenticated
 	}
 
-	cert, err := auth.LoadCLICertificate(fileSvc, cfg)
+	cert, err := auth.NewCLICertificateSource(fileSvc, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -99,9 +99,9 @@ func newClient(fileSvc fs.RuntimeFileService, cfg *config.Config, baseURL string
 	}
 
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      caPool,
-		MinVersion:   tls.VersionTLS13,
+		GetClientCertificate: cert.GetClientCertificate,
+		RootCAs:              caPool,
+		MinVersion:           tls.VersionTLS13,
 	}
 
 	transport := httpclient.NewIPv4Transport(tlsConfig)

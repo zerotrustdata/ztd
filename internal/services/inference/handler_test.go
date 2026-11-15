@@ -793,17 +793,6 @@ func TestInferenceHandler_ExecuteVerifiedTransaction_InvalidTypedInputRejectedBe
 			err: constants.ErrInferenceGenerationOptionsInvalid,
 		},
 		{
-			name: "max tokens above the 16k platform ceiling",
-			req: &operatorv1.InferenceRequested{
-				RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
-				Role:                 operatorv1.ModelRole_MODEL_ROLE_PRIMARY,
-				Model:                "test-model",
-				Messages:             textInferenceMessages("test"),
-				MaxTokens:            16_385,
-			},
-			err: constants.ErrInferenceGenerationOptionsInvalid,
-		},
-		{
 			name: "negative max tokens",
 			req: &operatorv1.InferenceRequested{
 				RequestSchemaVersion: constants.InferenceRequestSchemaVersion,

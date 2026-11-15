@@ -9,6 +9,7 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"io/fs"
 	"net/http"
@@ -24,6 +25,17 @@ import (
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 )
+
+func TestNew_CertificateCallbackFailsClosed(t *testing.T) {
+	_, err := New(config.Config{Auth: config.Auth{GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+		return nil, constants.ErrCLICertificateExpired
+	}}})
+	require.ErrorIs(t, err, constants.ErrCLICertificateExpired)
+	_, err = New(config.Config{Auth: config.Auth{GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+		return nil, nil
+	}}})
+	require.ErrorIs(t, err, constants.ErrMissingCertificate)
+}
 
 func TestNew(t *testing.T) {
 	tests := []struct {

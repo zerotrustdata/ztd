@@ -1192,8 +1192,15 @@ func safePublicProofFilename(filename string) bool {
 	return cleaned == filename && cleaned != "." && cleaned != ".." && path.Base(cleaned) == cleaned
 }
 
-// writeStoreUnavailable reports a mirror store read failure.
-func (m *PublicMirrorServer) writeStoreUnavailable(w http.ResponseWriter, message string, err error) {
+// writeStoreUnavailable reports a mirror store read failure as a 500. A read
+// whose client canceled it is logged at debug and answered with nothing.
+func (m *PublicMirrorServer) writeStoreUnavailable(w http.ResponseWriter, r *http.Request, message string, err error) {
+	// A read the client abandoned did not fail in the store: there is no one
+	// to answer, and it is not an operational error.
+	if errors.Is(err, context.Canceled) && errors.Is(r.Context().Err(), context.Canceled) {
+		m.logger.Debug(message+": client canceled the request", "path", r.URL.Path)
+		return
+	}
 	m.logger.Error(message, "error", err)
 	http.Error(w, "mirror store unavailable", http.StatusInternalServerError)
 }
@@ -1206,7 +1213,7 @@ func (m *PublicMirrorServer) handleBootstrap(w http.ResponseWriter, r *http.Requ
 	}
 	cached, err := m.currentBootstrapCached(r.Context(), r.URL.Query().Get("source"))
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read current snapshot", err)
+		m.writeStoreUnavailable(w, r, "mirror: read current snapshot", err)
 		return
 	}
 	w.Header().Set(constants.HeaderVary, "Accept-Encoding")
@@ -1412,7 +1419,7 @@ func (m *PublicMirrorServer) handleSnapshot(w http.ResponseWriter, r *http.Reque
 		}
 		contentHash, later, found, err := m.store.batchAnchor(r.Context(), sourceID, sequence, summary.HighWaterSequence)
 		if err != nil {
-			m.writeStoreUnavailable(w, "mirror: read snapshot anchor", err)
+			m.writeStoreUnavailable(w, r, "mirror: read snapshot anchor", err)
 			return
 		}
 		if !found {
@@ -1441,7 +1448,7 @@ func (m *PublicMirrorServer) handleSnapshotDataset(w http.ResponseWriter, r *htt
 	}
 	present, err := m.store.snapshotDatasetPresent(r.Context(), sourceID, datasetID)
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read snapshot dataset", err)
+		m.writeStoreUnavailable(w, r, "mirror: read snapshot dataset", err)
 		return
 	}
 	if !present {
@@ -1510,7 +1517,7 @@ scan:
 			records, err = m.store.recordsAfter(r.Context(), sourceID, after, summary.HighWaterSequence, pageSize)
 		}
 		if err != nil {
-			m.writeStoreUnavailable(w, "mirror: read history", err)
+			m.writeStoreUnavailable(w, r, "mirror: read history", err)
 			return
 		}
 		for _, rec := range records {
@@ -1601,7 +1608,7 @@ func (m *PublicMirrorServer) handleProofRoot(w http.ResponseWriter, r *http.Requ
 	}
 	summary, found, err := m.store.proofSummary(r.Context(), sourceID)
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read proof root", err)
+		m.writeStoreUnavailable(w, r, "mirror: read proof root", err)
 		return
 	}
 	if !found {
@@ -1619,7 +1626,7 @@ func (m *PublicMirrorServer) handleProofRoot(w http.ResponseWriter, r *http.Requ
 func (m *PublicMirrorServer) serveProofArtifact(w http.ResponseWriter, r *http.Request, artifactID string) {
 	artifact, found, err := m.store.proofArtifact(r.Context(), artifactID)
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read proof artifact", err)
+		m.writeStoreUnavailable(w, r, "mirror: read proof artifact", err)
 		return
 	}
 	if !found {
@@ -1628,7 +1635,7 @@ func (m *PublicMirrorServer) serveProofArtifact(w http.ResponseWriter, r *http.R
 	}
 	file, err := m.store.openProofArtifact(r.Context(), artifactID)
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: open proof artifact", err)
+		m.writeStoreUnavailable(w, r, "mirror: open proof artifact", err)
 		return
 	}
 	defer file.Close()
@@ -1637,7 +1644,7 @@ func (m *PublicMirrorServer) serveProofArtifact(w http.ResponseWriter, r *http.R
 	hash := sha256.New()
 	hashed, err := io.Copy(hash, file)
 	if err != nil {
-		m.writeStoreUnavailable(w, "mirror: read proof artifact", err)
+		m.writeStoreUnavailable(w, r, "mirror: read proof artifact", err)
 		return
 	}
 	if hashed != artifact.ByteSize || hex.EncodeToString(hash.Sum(nil)) != artifactID {
@@ -1645,7 +1652,7 @@ func (m *PublicMirrorServer) serveProofArtifact(w http.ResponseWriter, r *http.R
 		return
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		m.writeStoreUnavailable(w, "mirror: rewind proof artifact", err)
+		m.writeStoreUnavailable(w, r, "mirror: rewind proof artifact", err)
 		return
 	}
 

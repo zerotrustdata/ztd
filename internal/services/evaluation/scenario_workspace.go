@@ -25,9 +25,9 @@ import (
 // the CLI's: a POSIX working directory keeps POSIX paths, and a drive-letter
 // working directory makes every path a slash-form Windows path ("D:/x/y"),
 // which Windows file APIs accept. The root sits under the operator's reported
-// working directory, so the production `./` instruction and the prompt's
-// "Working Directory" line resolve to its parent, and it is unique per run and
-// attempt, so concurrent or repeated attempts never see each other's fixtures.
+// working directory and is unique per run and attempt. The prompt names only
+// the root, and a model's shell commands run inside it, so concurrent or
+// repeated attempts never work in each other's fixtures.
 // The one exception is a held-context repetition, which deliberately reuses
 // the previous repetition's workspace (heldScenarioWorkspace).
 type ScenarioWorkspace struct {

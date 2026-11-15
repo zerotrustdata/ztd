@@ -48,3 +48,33 @@ func NeedsLaunchProfile(cmd *cobra.Command) bool {
 	}
 	return true
 }
+
+const annotationNoCLIRenewal = "ztd/no-cli-renewal"
+
+// DeclareNoCLIRenewal marks a command subtree that does not use the CLI's
+// Gateway identity. It must not unseal that identity or attempt renewal.
+func DeclareNoCLIRenewal(cmd *cobra.Command) *cobra.Command {
+	if cmd.Annotations == nil {
+		cmd.Annotations = make(map[string]string, 1)
+	}
+	cmd.Annotations[annotationNoCLIRenewal] = "true"
+	return cmd
+}
+
+// NeedsCLIRenewal reports whether the command uses the CLI Gateway identity.
+func NeedsCLIRenewal(cmd *cobra.Command) bool {
+	if !NeedsLaunchProfile(cmd) {
+		return false
+	}
+	if cmd != nil && cmd.Flags().Lookup("local-only") != nil {
+		if localOnly, err := cmd.Flags().GetBool("local-only"); err == nil && localOnly {
+			return false
+		}
+	}
+	for c := cmd; c != nil; c = c.Parent() {
+		if _, declared := c.Annotations[annotationNoCLIRenewal]; declared {
+			return false
+		}
+	}
+	return true
+}

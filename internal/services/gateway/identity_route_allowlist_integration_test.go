@@ -94,6 +94,7 @@ func TestMTLSIdentityRouteAllowlistInventory(t *testing.T) {
 		{name: "PKI CSR signing", method: http.MethodPost, path: constants.APIPaths.PKICSRSign},
 		{name: "CLI enrollment token generation", method: http.MethodPost, path: constants.APIPaths.AuthEnrollmentTokenGenerate},
 		{name: "CLI rotation", method: http.MethodPost, path: constants.APIPaths.AuthCLIRotate},
+		{name: "CLI renewal", method: http.MethodPost, path: constants.APIPaths.AuthCLIRenew},
 		{name: "CLI refresh", method: http.MethodPost, path: constants.APIPaths.AuthCLIRefresh},
 		{name: "CLI bind", method: http.MethodPost, path: constants.APIPaths.AuthCLIBind},
 		{name: "CLI unbind", method: http.MethodPost, path: constants.APIPaths.AuthCLIUnbind},

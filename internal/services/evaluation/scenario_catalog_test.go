@@ -601,6 +601,15 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 		{"tribunal commands without run_shell_command allowed", toolArgGrepPattern, func(b *ScenarioBlueprint) {
 			b.TribunalCommands = true
 		}, constants.ErrEvaluationScenarioContractInvalid},
+		{"model-authored pattern graded against a marker the model cannot see", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			// The 2.6.0 fixture: the prompt never names AUTH_FAILURE and the
+			// only tool is a case-sensitive search.
+			b.Input.UserPrompt = "Which account failed authentication in the logs under " + ScenarioWorkspaceToken + "?"
+			b.Gold.PromptHint = hint([]string{constants.MCPToolSearchDirectory},
+				hintArg(constants.MCPToolSearchDirectory, "pattern", sourceModelAuthored, "a pattern for the failure marker"),
+				hintArg(constants.MCPToolSearchDirectory, "path", sourceWorkspace, ScenarioWorkspaceToken),
+			)
+		}, constants.ErrEvaluationPromptUnanswerable},
 		{"tribunal hint omits the shell command argument", tribunalInvestigationBlueprint, func(b *ScenarioBlueprint) {
 			b.TrajectoryPolicy = evalv1.EvaluationTrajectoryPolicy_EVALUATION_TRAJECTORY_POLICY_GUIDED
 			b.ExpectedTools = []string{constants.MCPToolRunShellCommand}
@@ -618,6 +627,23 @@ func TestValidateScenarioContract_RejectsContractViolations(t *testing.T) {
 			assert.Contains(t, err.Error(), blueprint.ScenarioID)
 		})
 	}
+}
+
+// A model-authored pattern may be graded against a marker the model can read
+// before it searches: one in a non-decoy workspace file read_file can open.
+func TestValidateScenarioContract_ModelAuthoredSampleReadableFromWorkspace(t *testing.T) {
+	catalog, err := newAgentToolCatalog()
+	require.NoError(t, err)
+	blueprint := toolArgGrepPattern()
+	blueprint.Input.UserPrompt = "Which account failed authentication in the logs under " + ScenarioWorkspaceToken + "?"
+	blueprint.Gold.PromptHint = hint([]string{constants.MCPToolSearchDirectory},
+		hintArg(constants.MCPToolSearchDirectory, "pattern", sourceModelAuthored, "the failure marker read from the log"),
+		hintArg(constants.MCPToolSearchDirectory, "path", sourceWorkspace, ScenarioWorkspaceToken),
+	)
+	require.ErrorIs(t, validateScenarioContract(blueprint, catalog), constants.ErrEvaluationPromptUnanswerable)
+
+	blueprint.AllowedTools = append(blueprint.AllowedTools, constants.MCPToolReadFile)
+	require.NoError(t, validateScenarioContract(blueprint, catalog))
 }
 
 func TestBuildScenarioCatalog_RejectsABlueprintThatBreaksTheContract(t *testing.T) {

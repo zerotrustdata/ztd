@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -83,6 +84,20 @@ func TestAgentTraceLifecycle_RehydrationFailureIsNotProviderFailure(t *testing.T
 	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED, agentTraceLifecycle(req, trace))
 }
 
+// A turn the Inference Operator rejected as over its request size bound never
+// reached the provider: it is an execution failure, never PROVIDER_FAILED.
+func TestAgentTraceLifecycle_OversizedRequestIsNotProviderFailure(t *testing.T) {
+	req := providerFailureGradeRequest()
+	err := fmt.Errorf("turn 3: %w", constants.ErrInferenceRequestTooLarge)
+	trace := &AgentTrace{
+		RunID: "run-1", AssignmentID: "assign-1", DesignatedRole: "primary",
+		ProviderFailure: string(ClassifyExecutionFailure(err)), ProviderFailureClass: string(ProviderFailureClass(err)),
+	}
+	assert.Equal(t, string(ExecutionFailureRequestTooLarge), trace.ProviderFailure)
+	assert.Empty(t, trace.ProviderFailureClass, "the provider never saw the request")
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_FAILED, agentTraceLifecycle(req, trace))
+}
+
 func TestGradeHomogeneousScenario_ContextFailureIsNotReportedAsModelBehavior(t *testing.T) {
 	req := providerFailureGradeRequest()
 	trace := &AgentTrace{
@@ -144,4 +159,29 @@ func TestGradeHomogeneousScenario_TimeoutRecordedAsFailedLifecycle(t *testing.T)
 	protoTrace := trace.ToProto()
 	require.NotNil(t, protoTrace)
 	assert.Equal(t, evalv1.AgentFinishReason_AGENT_FINISH_REASON_WALL_CLOCK_LIMIT, protoTrace.FinishReason)
+}
+
+// A turn the Inference Operator stopped for repetition is the model's answer
+// (INV-EVAL-CAMP-53): the assignment completes and grades FAIL with its own
+// trajectory outcome, never LOOP_EXHAUSTED, PROVIDER_FAILED, or a timeout.
+func TestGradeHomogeneousScenario_RepetitionGradesModelFail(t *testing.T) {
+	req := providerFailureGradeRequest()
+	req.ScenarioGold.ContentCheck = &ScenarioContentCheck{ExactToken: "READY"}
+	loop := strings.Repeat("READY? Let me check again. ", 200)
+	trace := &AgentTrace{
+		RunID: "run-1", AssignmentID: "assign-1", DesignatedRole: "primary",
+		FinalOutput:            loop,
+		TerminalClassification: AgentTerminalClassificationRepetition,
+		ModelCalls:             []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-1", ResultDigest: "digest-1", Text: loop, FinishReason: constants.InferenceFinishReasonRepetition}},
+	}
+	lifecycle := agentTraceLifecycle(req, trace)
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, lifecycle)
+	assert.False(t, contentJudgmentsRequired(req, trace), "a stopped loop is not sent to the content judge")
+
+	grading, err := GradeHomogeneousScenario(req, trace, lifecycle)
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, verdictFromGrades(grading.DeterministicGrades), "a loop containing the token still fails")
+	assert.Equal(t, evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_REPETITION, grading.Trajectory.Outcome)
+	assert.Contains(t, grading.Trajectory.PublicFailureReason, "degenerated into a repeating loop")
+	assert.Equal(t, evalv1.AgentFinishReason_AGENT_FINISH_REASON_REPETITION, trace.ToProto().FinishReason)
 }

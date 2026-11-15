@@ -10,7 +10,7 @@ package constants
 // ExplorerViewSchemaVersion is the Evaluation Explorer view contract version
 // every public feed record producer stamps. The Explorer's VIEW_SCHEMA_VERSION
 // (evaluation-explorer/src/contract/types.ts) names the same version.
-const ExplorerViewSchemaVersion = "1.14.0"
+const ExplorerViewSchemaVersion = "1.15.0"
 
 // PublicTaskIndexResultLimit bounds the recent results the public bootstrap's
 // task index keeps per task. The Explorer's TASK_INDEX_RESULT_LIMIT names the

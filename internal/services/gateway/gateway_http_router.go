@@ -83,6 +83,11 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 	// (plain HTTP) because rotation requires mTLS, which the plain router
 	// does not provide.
 	mux.HandleFunc(constants.APIPaths.AuthCLIRotate, h.cliRotationController.handleRotate)
+	mux.HandleFunc(constants.APIPaths.AuthCLIRenew, h.cliRotationController.handleRenew)
+	// CLI reinstatement — public HTTPS (server-authenticated TLS, no client
+	// certificate); an expired CLI certificate proves possession of its key
+	// in the body instead of over mTLS.
+	mux.HandleFunc(constants.APIPaths.AuthCLIReinstate, h.cliRotationController.handleReinstate)
 
 	// CLI session refresh — mTLS-protected; the caller's identity is
 	// derived from the verified CLI certificate. The cert is the proof of

@@ -114,10 +114,14 @@ func New(cfg config.Config) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("agent harness: CLI identity: %w", err)
 	}
-	if cfg.CLIAuth.Certificate == nil && cfg.CLIAuth.ClientCert == "" && cfg.CLIAuth.ClientKey == "" {
+	if cfg.CLIAuth.GetClientCertificate == nil && cfg.CLIAuth.ClientCert == "" && cfg.CLIAuth.ClientKey == "" {
 		return c, nil
 	}
-	if cfg.CLIAuth == cfg.Auth {
+	same, err := sameClientIdentity(cfg.Auth, tlsCfg, cfg.CLIAuth, cliTLS)
+	if err != nil {
+		return nil, fmt.Errorf("agent harness: identify client credentials: %w", err)
+	}
+	if same {
 		c.cliHTTP = c.http
 		c.cliTLS = tlsCfg
 		return c, nil
@@ -151,8 +155,15 @@ func loadTLS(auth config.Auth) (*tls.Config, error) {
 	}
 
 	switch {
-	case auth.Certificate != nil:
-		tlsCfg.Certificates = []tls.Certificate{*auth.Certificate}
+	case auth.GetClientCertificate != nil:
+		cert, err := auth.GetClientCertificate(&tls.CertificateRequestInfo{})
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", constants.ErrFailedToLoadClientCertificate, err)
+		}
+		if cert == nil || len(cert.Certificate) == 0 || cert.PrivateKey == nil {
+			return nil, constants.ErrMissingCertificate
+		}
+		tlsCfg.GetClientCertificate = auth.GetClientCertificate
 	case auth.ClientCert != "" && auth.ClientKey != "":
 		crt, err := tls.LoadX509KeyPair(auth.ClientCert, auth.ClientKey)
 		if err != nil {
@@ -163,6 +174,33 @@ func loadTLS(auth config.Auth) (*tls.Config, error) {
 		return nil, fmt.Errorf("%w: client certificate and key", constants.ErrIncompleteCredentialPair)
 	}
 	return tlsCfg, nil
+}
+
+// sameClientIdentity compares the actual initial certificates, never function
+// pointers: closures backed by different identities can share the same code.
+// Both transports retain the callback and follow later renewals.
+func sameClientIdentity(a config.Auth, aTLS *tls.Config, b config.Auth, bTLS *tls.Config) (bool, error) {
+	if a.CABundle != b.CABundle {
+		return false, nil
+	}
+	certificate := func(cfg *tls.Config) (*tls.Certificate, error) {
+		if cfg.GetClientCertificate != nil {
+			return cfg.GetClientCertificate(&tls.CertificateRequestInfo{})
+		}
+		if len(cfg.Certificates) > 0 {
+			return &cfg.Certificates[0], nil
+		}
+		return nil, nil
+	}
+	aCert, err := certificate(aTLS)
+	if err != nil {
+		return false, err
+	}
+	bCert, err := certificate(bTLS)
+	if err != nil {
+		return false, err
+	}
+	return aCert != nil && bCert != nil && len(aCert.Certificate) > 0 && len(bCert.Certificate) > 0 && bytes.Equal(aCert.Certificate[0], bCert.Certificate[0]), nil
 }
 
 // Config exposes the live config (scenarios need TTLs, key ids, etc.).

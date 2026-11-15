@@ -23,6 +23,9 @@ import (
 const (
 	evalModelTag    = "qwen3:4b"
 	evalModelDigest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	// evalContextWindow is the context window every served model loads with,
+	// matching the num_ctx /api/show reports.
+	evalContextWindow = 8192
 )
 
 // OllamaToolCall is one frozen tool call returned by the scripted provider.
@@ -43,6 +46,17 @@ type OllamaChatMessage struct {
 type OllamaChatRequest struct {
 	Model    string              `json:"model"`
 	Messages []OllamaChatMessage `json:"messages"`
+	Stream   bool                `json:"stream"`
+	Options  struct {
+		NumCtx *int64 `json:"num_ctx,omitempty"`
+	} `json:"options"`
+}
+
+// isModelLoad reports whether the request is the Operator's load step: a
+// non-streaming chat with no messages, which loads the model and generates
+// nothing.
+func (r OllamaChatRequest) isModelLoad() bool {
+	return !r.Stream && len(r.Messages) == 0
 }
 
 // OllamaReply is one complete response to an Ollama /api/chat request.
@@ -55,6 +69,11 @@ type OllamaReply struct {
 	Failure string `json:"-"`
 	// FailureStatus overrides the failing turn's HTTP status.
 	FailureStatus int `json:"-"`
+	// Loop makes the turn a runaway generation: after any scripted tool calls,
+	// the provider streams Loop back to back and never sends a done event, so
+	// only the Inference Operator's repetition stop can end the turn. A turn
+	// still streaming once its bound is reached fails the owning test.
+	Loop string `json:"-"`
 	// BeforeReply runs in the request handler before the reply is served, so a
 	// test can drive governed work while the model turn is in flight.
 	BeforeReply func() `json:"-"`
@@ -79,6 +98,9 @@ func (r OllamaReply) withResponse(responded OllamaReply) OllamaReply {
 	if responded.Failure == "" {
 		responded.Failure = r.Failure
 		responded.FailureStatus = r.FailureStatus
+	}
+	if responded.Loop == "" {
+		responded.Loop = r.Loop
 	}
 	if responded.BeforeReply == nil {
 		responded.BeforeReply = r.BeforeReply
@@ -132,15 +154,18 @@ type scriptedOllamaChatEvent struct {
 // ScriptedOllama serves only the Ollama endpoints used by the evaluation
 // inference path. Replies are consumed once, in order, whichever served model
 // tag each request names; an extra turn fails the owning test rather than
-// inventing a response.
+// inventing a response. The load step the Operator sends before each turn
+// makes the model resident with its context window and consumes no reply.
 type ScriptedOllama struct {
-	server        *httptest.Server
-	mu            sync.Mutex
-	replies       []OllamaReply
-	requests      []json.RawMessage
-	next          int
-	served        map[string]string
-	resident      map[string]bool
+	server   *httptest.Server
+	mu       sync.Mutex
+	replies  []OllamaReply
+	requests []json.RawMessage
+	next     int
+	served   map[string]string
+	// resident maps each resident model to the context window it loaded with.
+	resident      map[string]int64
+	loads         []string
 	chatResidency []OllamaChatResidency
 	released      []string
 	nextReplyGate *OllamaReplyGate
@@ -182,7 +207,7 @@ func NewScriptedOllama(t *testing.T, replies []OllamaReply) *ScriptedOllama {
 	p := &ScriptedOllama{
 		replies:  frozen,
 		served:   map[string]string{evalModelTag: evalModelDigest},
-		resident: map[string]bool{},
+		resident: map[string]int64{},
 	}
 	p.server = httptest.NewServer(p.serveHTTP(t))
 	t.Cleanup(p.server.Close)
@@ -239,6 +264,42 @@ func (p *ScriptedOllama) ChatResidency() []OllamaChatResidency {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return append([]OllamaChatResidency(nil), p.chatResidency...)
+}
+
+// scriptedLoopBytes bounds a Loop turn's stream. It is far past the Inference
+// Operator's repetition window, so a stream still running at the bound means
+// the stop never fired.
+const scriptedLoopBytes = 1 << 20
+
+// streamLoop streams one runaway generation: the scripted tool calls, then
+// text repeated back to back with no done event, until the client disconnects.
+func streamLoop(t *testing.T, w http.ResponseWriter, r *http.Request, model string, calls []scriptedToolCall, text string) {
+	t.Helper()
+	encoder := json.NewEncoder(w)
+	flusher, _ := w.(http.Flusher)
+	if len(calls) > 0 {
+		_ = encoder.Encode(scriptedOllamaChatEvent{Model: model, Message: scriptedOllamaMessage{Role: "assistant", ToolCalls: calls}})
+	}
+	for sent := 0; sent < scriptedLoopBytes; sent += len(text) {
+		if r.Context().Err() != nil {
+			return
+		}
+		if encoder.Encode(scriptedOllamaChatEvent{Model: model, Message: scriptedOllamaMessage{Role: "assistant", Content: text}}) != nil {
+			return
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	t.Errorf("scripted Ollama: a looping %q turn streamed %d bytes without being stopped", model, scriptedLoopBytes)
+}
+
+// LoadedModels returns every model tag the Operator's load step made
+// resident, in load order. A model already resident is not loaded again.
+func (p *ScriptedOllama) LoadedModels() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]string(nil), p.loads...)
 }
 
 // ReleasedModels returns every model tag a keep-alive 0 release unloaded, in
@@ -301,22 +362,18 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 			show.Details.QuantizationLevel = "Q4_K_M"
 			_ = json.NewEncoder(w).Encode(show)
 		case r.Method == http.MethodGet && r.URL.Path == "/api/ps":
+			type residentModel struct {
+				Name          string `json:"name"`
+				ContextLength int64  `json:"context_length"`
+			}
 			p.mu.Lock()
-			models := []struct {
-				Name string `json:"name"`
-			}{}
-			for name, resident := range p.resident {
-				if resident {
-					models = append(models, struct {
-						Name string `json:"name"`
-					}{Name: name})
-				}
+			models := []residentModel{}
+			for name, window := range p.resident {
+				models = append(models, residentModel{Name: name, ContextLength: window})
 			}
 			p.mu.Unlock()
 			_ = json.NewEncoder(w).Encode(struct {
-				Models []struct {
-					Name string `json:"name"`
-				} `json:"models"`
+				Models []residentModel `json:"models"`
 			}{Models: models})
 		case r.Method == http.MethodPost && r.URL.Path == "/api/chat":
 			body, err := io.ReadAll(r.Body)
@@ -334,6 +391,18 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 				http.Error(w, "unexpected model", http.StatusBadRequest)
 				return
 			}
+			if request.isModelLoad() {
+				window := int64(evalContextWindow)
+				if request.Options.NumCtx != nil {
+					window = *request.Options.NumCtx
+				}
+				p.mu.Lock()
+				p.resident[request.Model] = window
+				p.loads = append(p.loads, request.Model)
+				p.mu.Unlock()
+				_ = json.NewEncoder(w).Encode(scriptedOllamaChatEvent{Model: request.Model, Done: true, DoneReason: "load"})
+				return
+			}
 			p.mu.Lock()
 			if p.next >= len(p.replies) {
 				p.mu.Unlock()
@@ -345,14 +414,16 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 			p.requests = append(p.requests, body)
 			p.next++
 			others := []string{}
-			for name, resident := range p.resident {
-				if resident && name != request.Model {
+			for name := range p.resident {
+				if name != request.Model {
 					others = append(others, name)
 				}
 			}
 			slices.Sort(others)
 			p.chatResidency = append(p.chatResidency, OllamaChatResidency{Model: request.Model, Others: others})
-			p.resident[request.Model] = true
+			if _, ok := p.resident[request.Model]; !ok {
+				t.Errorf("scripted Ollama: chat for %q arrived before its load", request.Model)
+			}
 			gate := p.nextReplyGate
 			p.nextReplyGate = nil
 			p.mu.Unlock()
@@ -386,6 +457,10 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 				calls = append(calls, scriptedToolCall{ID: call.ID, Type: call.Type, Function: scriptedToolFunction{Name: call.Name, Arguments: call.Arguments}})
 			}
 			w.Header().Set("Content-Type", "application/x-ndjson")
+			if reply.Loop != "" {
+				streamLoop(t, w, r, request.Model, calls, reply.Loop)
+				return
+			}
 			_ = json.NewEncoder(w).Encode(scriptedOllamaChatEvent{
 				Model:   request.Model,
 				Message: scriptedOllamaMessage{Role: "assistant", Content: reply.Content, Thinking: reply.Thinking, ToolCalls: calls},
@@ -407,7 +482,7 @@ func (p *ScriptedOllama) serveHTTP(t *testing.T) http.HandlerFunc {
 				return
 			}
 			p.mu.Lock()
-			p.resident[request.Model] = false
+			delete(p.resident, request.Model)
 			p.released = append(p.released, request.Model)
 			p.mu.Unlock()
 			_ = json.NewEncoder(w).Encode(struct {

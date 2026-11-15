@@ -89,6 +89,29 @@ func TestCatchAllRedirect(t *testing.T) {
 	}
 }
 
+// TestPlainHTTPRouter_RedirectsCLICertificateReissueRoutes verifies that the
+// routes reissuing a CLI certificate are served only on HTTPS: renewal and
+// rotation need mTLS, and reinstatement carries a certificate and proof of
+// possession. The plain HTTP listener redirects them unhandled.
+func TestPlainHTTPRouter_RedirectsCLICertificateReissueRoutes(t *testing.T) {
+	h, cfg, _ := setupTestHTTPHandler(t)
+	cfg.Gateway.HTTPSPort = 8443
+	router := h.buildHTTPRouter()
+
+	for _, path := range []string{constants.APIPaths.AuthCLIRotate, constants.APIPaths.AuthCLIRenew, constants.APIPaths.AuthCLIReinstate} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "http://localhost"+path, bytes.NewReader([]byte(`{}`)))
+			req.Host = "localhost"
+			rr := httptest.NewRecorder()
+
+			router.ServeHTTP(rr, req)
+
+			assert.Equal(t, http.StatusMovedPermanently, rr.Code)
+			assert.Equal(t, "https://localhost:8443"+path, rr.Header().Get("Location"))
+		})
+	}
+}
+
 func setupTestHTTPHandler(t *testing.T) (*HTTPHandler, *config.Config, *TestInfrastructure) {
 	t.Helper()
 	infra := setupTestInfrastructure(t, false)

@@ -368,6 +368,26 @@ func decodeDocumentUpdateFields(data json.RawMessage) ([]documentUpdateField, er
 // Returns (true, nil) if the update was applied, (false, nil) if the condition
 // was not met or the document was not found.
 func (s *DocumentStoreService) DocConditionalUpdate(ctx context.Context, collection, id string, setFields json.RawMessage, conditionField string, conditionValue interface{}) (bool, error) {
+	value, err := json.Marshal(conditionValue)
+	if err != nil {
+		return false, fmt.Errorf("gateway: document store: encode condition: %w", err)
+	}
+	return s.DocConditionalUpdateAll(ctx, collection, id, setFields, []DocumentUpdateCondition{{Field: conditionField, Value: value}})
+}
+
+// DocumentUpdateCondition is one JSON field predicate on an atomic update.
+// Value is a JSON scalar, preserving string and boolean types in SQLite.
+type DocumentUpdateCondition struct {
+	Field string
+	Value json.RawMessage
+}
+
+// DocConditionalUpdateAll applies fields only when every condition matches in
+// the same SQL statement. An empty condition set is refused.
+func (s *DocumentStoreService) DocConditionalUpdateAll(ctx context.Context, collection, id string, setFields json.RawMessage, conditions []DocumentUpdateCondition) (bool, error) {
+	if len(conditions) == 0 {
+		return false, fmt.Errorf("gateway: document store: conditions required: %w", constants.ErrMissingRequiredField)
+	}
 	updates, err := decodeDocumentUpdateFields(setFields)
 	if err != nil {
 		return false, fmt.Errorf("gateway: document store: conditional update: decode fields: %w", err)
@@ -383,8 +403,12 @@ func (s *DocumentStoreService) DocConditionalUpdate(ctx context.Context, collect
 		args = append(args, "$."+update.Name, string(update.Value))
 	}
 
-	query := "UPDATE documents SET data = " + dataExpr + ", updated_at = ? WHERE collection = ? AND id = ? AND json_extract(data, ?) = ?"
-	args = append(args, nowStr, collection, id, "$."+conditionField, conditionValue)
+	query := "UPDATE documents SET data = " + dataExpr + ", updated_at = ? WHERE collection = ? AND id = ?"
+	args = append(args, nowStr, collection, id)
+	for _, condition := range conditions {
+		query += " AND json_extract(data, ?) = json_extract(?, '$')"
+		args = append(args, "$."+condition.Field, string(condition.Value))
+	}
 
 	result, err := s.db.ExecWithRetry(ctx, query, args...)
 	if err != nil {

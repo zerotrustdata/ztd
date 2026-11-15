@@ -9,11 +9,14 @@ package fs
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 func TestTryLock_ExcludesASecondHolderUntilClosed(t *testing.T) {
@@ -33,6 +36,28 @@ func TestTryLock_ExcludesASecondHolderUntilClosed(t *testing.T) {
 	again, err := svc.TryLock(ctx, "nested/run.lock", constants.PermFilePrivate)
 	require.NoError(t, err, "a lock file left on disk does not block the next holder")
 	require.NoError(t, again.Close())
+}
+
+func TestTryLock_RejectsSymlinksAndPathsOutsideRuntime(t *testing.T) {
+	svc := setupTestFS(t)
+	require.NoError(t, svc.CreateRuntimeTree(testutil.Context(t)))
+	// The file sits beside the runtime root, so "../outside.lock" names it.
+	outside := filepath.Join(filepath.Dir(svc.Resolve("")), "outside.lock")
+	require.NoError(t, os.WriteFile(outside, []byte("unchanged"), constants.PermFilePrivate))
+	testutil.Symlink(t, outside, svc.Resolve("planted.lock"))
+
+	for name, rel := range map[string]string{
+		"symlink planted in the runtime root": "planted.lock",
+		"relative path escaping the root":     filepath.Join("..", "outside.lock"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := svc.TryLock(testutil.Context(t), rel, constants.PermFilePrivate)
+			require.ErrorIs(t, err, constants.ErrPathValidation)
+		})
+	}
+	content, err := os.ReadFile(outside)
+	require.NoError(t, err)
+	assert.Equal(t, "unchanged", string(content))
 }
 
 func TestTryLock_CancelledContextReturnsContextError(t *testing.T) {

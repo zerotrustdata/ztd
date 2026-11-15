@@ -799,6 +799,12 @@ const (
 	EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_CIRCUMVENTED_DENIAL                EvaluationTrajectoryOutcome = 9
 	EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_LOOP_EXHAUSTED                     EvaluationTrajectoryOutcome = 10
 	EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_PROVIDER_REJECTED_TOOL_DECLARATION EvaluationTrajectoryOutcome = 11
+	// The Inference Operator stopped a model turn whose output degenerated into
+	// a loop (finish_reason "repetition"); the episode ended on that turn.
+	EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_REPETITION EvaluationTrajectoryOutcome = 12
+	// The episode ended with an empty final answer. A trajectory cannot pass
+	// without an answer, however its tool calls went.
+	EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_NO_ANSWER EvaluationTrajectoryOutcome = 13
 )
 
 // Enum value maps for EvaluationTrajectoryOutcome.
@@ -816,6 +822,8 @@ var (
 		9:  "EVALUATION_TRAJECTORY_OUTCOME_CIRCUMVENTED_DENIAL",
 		10: "EVALUATION_TRAJECTORY_OUTCOME_LOOP_EXHAUSTED",
 		11: "EVALUATION_TRAJECTORY_OUTCOME_PROVIDER_REJECTED_TOOL_DECLARATION",
+		12: "EVALUATION_TRAJECTORY_OUTCOME_REPETITION",
+		13: "EVALUATION_TRAJECTORY_OUTCOME_NO_ANSWER",
 	}
 	EvaluationTrajectoryOutcome_value = map[string]int32{
 		"EVALUATION_TRAJECTORY_OUTCOME_UNSPECIFIED":                        0,
@@ -830,6 +838,8 @@ var (
 		"EVALUATION_TRAJECTORY_OUTCOME_CIRCUMVENTED_DENIAL":                9,
 		"EVALUATION_TRAJECTORY_OUTCOME_LOOP_EXHAUSTED":                     10,
 		"EVALUATION_TRAJECTORY_OUTCOME_PROVIDER_REJECTED_TOOL_DECLARATION": 11,
+		"EVALUATION_TRAJECTORY_OUTCOME_REPETITION":                         12,
+		"EVALUATION_TRAJECTORY_OUTCOME_NO_ANSWER":                          13,
 	}
 )
 
@@ -1047,6 +1057,9 @@ const (
 	PublicFinishState_PUBLIC_FINISH_STATE_TOOL_CALL   PublicFinishState = 3
 	PublicFinishState_PUBLIC_FINISH_STATE_ERROR       PublicFinishState = 4
 	PublicFinishState_PUBLIC_FINISH_STATE_UNAVAILABLE PublicFinishState = 5
+	// The Inference Operator stopped the generation because its output
+	// degenerated into a loop.
+	PublicFinishState_PUBLIC_FINISH_STATE_REPETITION PublicFinishState = 6
 )
 
 // Enum value maps for PublicFinishState.
@@ -1058,6 +1071,7 @@ var (
 		3: "PUBLIC_FINISH_STATE_TOOL_CALL",
 		4: "PUBLIC_FINISH_STATE_ERROR",
 		5: "PUBLIC_FINISH_STATE_UNAVAILABLE",
+		6: "PUBLIC_FINISH_STATE_REPETITION",
 	}
 	PublicFinishState_value = map[string]int32{
 		"PUBLIC_FINISH_STATE_UNSPECIFIED": 0,
@@ -1066,6 +1080,7 @@ var (
 		"PUBLIC_FINISH_STATE_TOOL_CALL":   3,
 		"PUBLIC_FINISH_STATE_ERROR":       4,
 		"PUBLIC_FINISH_STATE_UNAVAILABLE": 5,
+		"PUBLIC_FINISH_STATE_REPETITION":  6,
 	}
 )
 
@@ -2462,6 +2477,7 @@ const (
 	JudgeFailure_JUDGE_FAILURE_RESULT_DIGEST      JudgeFailure = 4 // the result digest does not match the result and receipt
 	JudgeFailure_JUDGE_FAILURE_VERDICT_INVALID    JudgeFailure = 5 // the reply is not the rubric's JSON shape
 	JudgeFailure_JUDGE_FAILURE_RECEIPT_UNVERIFIED JudgeFailure = 6 // the signed receipt did not verify
+	JudgeFailure_JUDGE_FAILURE_REPETITION         JudgeFailure = 7 // the judge's output degenerated into a loop and was stopped
 )
 
 // Enum value maps for JudgeFailure.
@@ -2474,6 +2490,7 @@ var (
 		4: "JUDGE_FAILURE_RESULT_DIGEST",
 		5: "JUDGE_FAILURE_VERDICT_INVALID",
 		6: "JUDGE_FAILURE_RECEIPT_UNVERIFIED",
+		7: "JUDGE_FAILURE_REPETITION",
 	}
 	JudgeFailure_value = map[string]int32{
 		"JUDGE_FAILURE_UNSPECIFIED":        0,
@@ -2483,6 +2500,7 @@ var (
 		"JUDGE_FAILURE_RESULT_DIGEST":      4,
 		"JUDGE_FAILURE_VERDICT_INVALID":    5,
 		"JUDGE_FAILURE_RECEIPT_UNVERIFIED": 6,
+		"JUDGE_FAILURE_REPETITION":         7,
 	}
 )
 
@@ -3014,6 +3032,9 @@ const (
 	AgentFinishReason_AGENT_FINISH_REASON_TOOL_TURN_LIMIT  AgentFinishReason = 2
 	AgentFinishReason_AGENT_FINISH_REASON_WALL_CLOCK_LIMIT AgentFinishReason = 3
 	AgentFinishReason_AGENT_FINISH_REASON_ERROR            AgentFinishReason = 4
+	// A model turn's output degenerated into a loop and the Inference Operator
+	// stopped it.
+	AgentFinishReason_AGENT_FINISH_REASON_REPETITION AgentFinishReason = 5
 )
 
 // Enum value maps for AgentFinishReason.
@@ -3024,6 +3045,7 @@ var (
 		2: "AGENT_FINISH_REASON_TOOL_TURN_LIMIT",
 		3: "AGENT_FINISH_REASON_WALL_CLOCK_LIMIT",
 		4: "AGENT_FINISH_REASON_ERROR",
+		5: "AGENT_FINISH_REASON_REPETITION",
 	}
 	AgentFinishReason_value = map[string]int32{
 		"AGENT_FINISH_REASON_UNSPECIFIED":      0,
@@ -3031,6 +3053,7 @@ var (
 		"AGENT_FINISH_REASON_TOOL_TURN_LIMIT":  2,
 		"AGENT_FINISH_REASON_WALL_CLOCK_LIMIT": 3,
 		"AGENT_FINISH_REASON_ERROR":            4,
+		"AGENT_FINISH_REASON_REPETITION":       5,
 	}
 )
 
@@ -14941,7 +14964,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"#EVALUATION_TRAJECTORY_POLICY_ANSWER\x10\x01\x12-\n" +
 	")EVALUATION_TRAJECTORY_POLICY_FIRST_CHOICE\x10\x02\x12'\n" +
 	"#EVALUATION_TRAJECTORY_POLICY_GUIDED\x10\x03\x12)\n" +
-	"%EVALUATION_TRAJECTORY_POLICY_GOVERNED\x10\x04*\x85\x05\n" +
+	"%EVALUATION_TRAJECTORY_POLICY_GOVERNED\x10\x04*\xe0\x05\n" +
 	"\x1bEvaluationTrajectoryOutcome\x12-\n" +
 	")EVALUATION_TRAJECTORY_OUTCOME_UNSPECIFIED\x10\x00\x12(\n" +
 	"$EVALUATION_TRAJECTORY_OUTCOME_DIRECT\x10\x01\x12+\n" +
@@ -14955,7 +14978,9 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"1EVALUATION_TRAJECTORY_OUTCOME_CIRCUMVENTED_DENIAL\x10\t\x120\n" +
 	",EVALUATION_TRAJECTORY_OUTCOME_LOOP_EXHAUSTED\x10\n" +
 	"\x12D\n" +
-	"@EVALUATION_TRAJECTORY_OUTCOME_PROVIDER_REJECTED_TOOL_DECLARATION\x10\v*\xbe\x02\n" +
+	"@EVALUATION_TRAJECTORY_OUTCOME_PROVIDER_REJECTED_TOOL_DECLARATION\x10\v\x12,\n" +
+	"(EVALUATION_TRAJECTORY_OUTCOME_REPETITION\x10\f\x12+\n" +
+	"'EVALUATION_TRAJECTORY_OUTCOME_NO_ANSWER\x10\r*\xbe\x02\n" +
 	"\x1cEvaluationHintArgumentSource\x12/\n" +
 	"+EVALUATION_HINT_ARGUMENT_SOURCE_UNSPECIFIED\x10\x00\x12*\n" +
 	"&EVALUATION_HINT_ARGUMENT_SOURCE_PROMPT\x10\x01\x12(\n" +
@@ -14975,14 +15000,15 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	",PUBLIC_UNAVAILABLE_REASON_SOURCE_UNAVAILABLE\x10\x03\x125\n" +
 	"1PUBLIC_UNAVAILABLE_REASON_SCENARIO_NOT_APPLICABLE\x10\x04\x12=\n" +
 	"9PUBLIC_UNAVAILABLE_REASON_INCOMPLETE_CONTRIBUTOR_EVIDENCE\x10\x05\x12-\n" +
-	")PUBLIC_UNAVAILABLE_REASON_NO_SCORED_CALLS\x10\x06*\xdd\x01\n" +
+	")PUBLIC_UNAVAILABLE_REASON_NO_SCORED_CALLS\x10\x06*\x81\x02\n" +
 	"\x11PublicFinishState\x12#\n" +
 	"\x1fPUBLIC_FINISH_STATE_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18PUBLIC_FINISH_STATE_STOP\x10\x01\x12\x1e\n" +
 	"\x1aPUBLIC_FINISH_STATE_LENGTH\x10\x02\x12!\n" +
 	"\x1dPUBLIC_FINISH_STATE_TOOL_CALL\x10\x03\x12\x1d\n" +
 	"\x19PUBLIC_FINISH_STATE_ERROR\x10\x04\x12#\n" +
-	"\x1fPUBLIC_FINISH_STATE_UNAVAILABLE\x10\x05*\x9e\x01\n" +
+	"\x1fPUBLIC_FINISH_STATE_UNAVAILABLE\x10\x05\x12\"\n" +
+	"\x1ePUBLIC_FINISH_STATE_REPETITION\x10\x06*\x9e\x01\n" +
 	"\x14PublicEvidenceSource\x12&\n" +
 	"\"PUBLIC_EVIDENCE_SOURCE_UNSPECIFIED\x10\x00\x12/\n" +
 	"+PUBLIC_EVIDENCE_SOURCE_APPLICATION_REPORTED\x10\x01\x12-\n" +
@@ -15120,7 +15146,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x19JUDGE_SUBJECT_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17JUDGE_SUBJECT_CRITERION\x10\x01\x12\x1d\n" +
 	"\x19JUDGE_SUBJECT_FINAL_REPLY\x10\x02\x12\x18\n" +
-	"\x14JUDGE_SUBJECT_MEMORY\x10\x03*\x82\x02\n" +
+	"\x14JUDGE_SUBJECT_MEMORY\x10\x03*\xa0\x02\n" +
 	"\fJudgeFailure\x12\x1d\n" +
 	"\x19JUDGE_FAILURE_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dJUDGE_FAILURE_REQUEST_INVALID\x10\x01\x12!\n" +
@@ -15128,7 +15154,8 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x1fJUDGE_FAILURE_RESPONSE_MISMATCH\x10\x03\x12\x1f\n" +
 	"\x1bJUDGE_FAILURE_RESULT_DIGEST\x10\x04\x12!\n" +
 	"\x1dJUDGE_FAILURE_VERDICT_INVALID\x10\x05\x12$\n" +
-	" JUDGE_FAILURE_RECEIPT_UNVERIFIED\x10\x06*\xde\x01\n" +
+	" JUDGE_FAILURE_RECEIPT_UNVERIFIED\x10\x06\x12\x1c\n" +
+	"\x18JUDGE_FAILURE_REPETITION\x10\a*\xde\x01\n" +
 	"\x12JudgeActivityState\x12$\n" +
 	" JUDGE_ACTIVITY_STATE_UNSPECIFIED\x10\x00\x12 \n" +
 	"\x1cJUDGE_ACTIVITY_STATE_JUDGING\x10\x01\x12\x1c\n" +
@@ -15194,13 +15221,14 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	" AGENT_REVIEW_VERDICT_UNSPECIFIED\x10\x00\x12 \n" +
 	"\x1cAGENT_REVIEW_VERDICT_APPROVE\x10\x01\x12\x1f\n" +
 	"\x1bAGENT_REVIEW_VERDICT_REVISE\x10\x02\x12\x1d\n" +
-	"\x19AGENT_REVIEW_VERDICT_SWAP\x10\x03*\xcb\x01\n" +
+	"\x19AGENT_REVIEW_VERDICT_SWAP\x10\x03*\xef\x01\n" +
 	"\x11AgentFinishReason\x12#\n" +
 	"\x1fAGENT_FINISH_REASON_UNSPECIFIED\x10\x00\x12\x1f\n" +
 	"\x1bAGENT_FINISH_REASON_STOPPED\x10\x01\x12'\n" +
 	"#AGENT_FINISH_REASON_TOOL_TURN_LIMIT\x10\x02\x12(\n" +
 	"$AGENT_FINISH_REASON_WALL_CLOCK_LIMIT\x10\x03\x12\x1d\n" +
-	"\x19AGENT_FINISH_REASON_ERROR\x10\x04*\xa8\x01\n" +
+	"\x19AGENT_FINISH_REASON_ERROR\x10\x04\x12\"\n" +
+	"\x1eAGENT_FINISH_REASON_REPETITION\x10\x05*\xa8\x01\n" +
 	"\x12ContainmentVerdict\x12#\n" +
 	"\x1fCONTAINMENT_VERDICT_UNSPECIFIED\x10\x00\x12!\n" +
 	"\x1dCONTAINMENT_VERDICT_CONTAINED\x10\x01\x12 \n" +

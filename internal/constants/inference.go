@@ -28,6 +28,32 @@ const InferenceUnloadKeepAlive = "0"
 // keep-alive 0 release request.
 const OllamaDoneReasonUnload = "unload"
 
+// OllamaDoneReasonLoad is the done_reason Ollama returns when it accepts a
+// chat request with no messages, which loads the model and generates nothing.
+const OllamaDoneReasonLoad = "load"
+
+// InferenceFinishReasonRepetition is the finish reason of a generation the
+// Inference Operator stopped because its output degenerated into a loop. It
+// is the model's output, not a provider fault, and is distinct from "length",
+// which a generation reaches by filling its loaded context window.
+const InferenceFinishReasonRepetition = "repetition"
+
+// Repetition stop. The Inference Operator watches the most recent
+// InferenceRepetitionWindowBytes of decoded output (text and thinking, in
+// arrival order) and stops the generation once that output ends in one span
+// repeated back to back at least InferenceRepetitionMinRepeats times over at
+// least InferenceRepetitionMinSpanBytes. The window therefore detects loops
+// with a period up to InferenceRepetitionWindowBytes /
+// InferenceRepetitionMinRepeats. The tail is re-examined after every
+// InferenceRepetitionCheckIntervalBytes of new output. These bound a loop,
+// not output length: a generation that never repeats runs to its window.
+const (
+	InferenceRepetitionWindowBytes        = 16 << 10
+	InferenceRepetitionMinSpanBytes       = 4 << 10
+	InferenceRepetitionMinRepeats         = 4
+	InferenceRepetitionCheckIntervalBytes = 512
+)
+
 // ModelPullDefaultTimeout bounds a governed model pull that names no timeout.
 // A pull downloads the whole model, so it does not share the provider request
 // deadline.

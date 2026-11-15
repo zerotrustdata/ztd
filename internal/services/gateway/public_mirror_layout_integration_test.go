@@ -8,12 +8,14 @@ package gateway
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +25,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
 // layoutResponse is the status and headers of one layout GET; the body is already read and closed.
@@ -489,4 +492,30 @@ func TestPublicMirrorLayout_UIArtifactsAreSelectedAndWithdrawn(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, found)
 	}
+}
+
+// A pointer request whose client went away before the store answered is not a
+// store failure: it is logged at debug, never as an error, and nothing is
+// written to the abandoned connection.
+func TestPublicMirrorLayout_PointerClientCancellationIsNotAStoreFailure(t *testing.T) {
+	env := newMirrorTestEnv(t)
+	_, accepted := env.sendIngest(env.buildBatch([]models.PublicFeedRecord{layoutProjection(env, 1)}, constants.PublicFeedZeroHashHex))
+	require.True(t, accepted.Accepted)
+	logger, logs := testutil.NewBufferLogger(t)
+	env.mirror.logger = logger
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	request := httptest.NewRequest(http.MethodGet, "/pointer.json", nil).WithContext(ctx)
+	recorder := httptest.NewRecorder()
+
+	env.mirror.PublicHandler().ServeHTTP(recorder, request)
+
+	assert.Empty(t, recorder.Body.String(), "no response is written to a canceled request")
+	assert.NotEqual(t, http.StatusInternalServerError, recorder.Code)
+	assert.NotContains(t, logs.String(), "level=ERROR")
+	assert.Contains(t, logs.String(), "client canceled the request")
+
+	live := httptest.NewRecorder()
+	env.mirror.PublicHandler().ServeHTTP(live, httptest.NewRequest(http.MethodGet, "/pointer.json", nil))
+	assert.Equal(t, http.StatusOK, live.Code, "a live request is still served")
 }

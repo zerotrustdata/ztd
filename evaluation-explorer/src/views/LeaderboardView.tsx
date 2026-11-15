@@ -110,6 +110,7 @@ export function LeaderboardView() {
         <details className="models-score-notes">
           <summary>Scoring & model notes</summary>
           <ul>
+            <li>Primary and Assistant rank only models whose run's tool-calling probe excluded no task. A model that cannot call tools is not ranked there, however accurate its text answers. Lite has no tools and requires none. Overall also requires every other capability probe to pass.</li>
             <li>{LEADERBOARD_SECURITY_SCORING_DESCRIPTION}.</li>
             <li>Doublings = log<sub>2</sub>(total parameters ÷ smallest in role). Each doubling costs 10%. This is not measured resource cost.</li>
             <li>Speed and tokens are best-in-role ÷ model; lower latency and fewer tokens score higher.</li>

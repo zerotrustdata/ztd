@@ -82,9 +82,6 @@ type Config struct {
 	Observer Observer
 	// Clock times each dispatch for Observer; nil is time.Now.
 	Clock func() time.Time
-	// MaxTokens bounds the output tokens for each judge dispatch.
-	// If <= 0, constants.InferenceJudgeMaxOutputTokens is used.
-	MaxTokens int32
 }
 
 // Observer receives each judgment as it happens. Started gets the score once
@@ -329,6 +326,8 @@ func VerifyQualityResult(cfg Config, providerAttemptID string, result *operatorv
 // that does not bind, or a result that answers another dispatch.
 func ResultFailure(err error) evalv1.JudgeFailure {
 	switch {
+	case errors.Is(err, constants.ErrJudgeResponseRepeated):
+		return evalv1.JudgeFailure_JUDGE_FAILURE_REPETITION
 	case errors.Is(err, constants.ErrJudgeResponseInvalid):
 		return evalv1.JudgeFailure_JUDGE_FAILURE_VERDICT_INVALID
 	case errors.Is(err, constants.ErrInferenceResultDigest):
@@ -410,9 +409,28 @@ func (j *Judge) exchange(ctx context.Context, result Score, dispatchReq *operato
 		return failedScore(result, ResultFailure(err), err)
 	}
 	if err := p.resolve(&result, resp.GetResult()); err != nil {
-		return failedScore(result, evalv1.JudgeFailure_JUDGE_FAILURE_VERDICT_INVALID, err)
+		return failedScore(result, verdictFailure(err), err)
 	}
 	return result
+}
+
+// verdictFailure is the failure code of a result that did not resolve into a
+// verdict: a generation stopped for repetition, or a reply outside the
+// rubric's shape.
+func verdictFailure(err error) evalv1.JudgeFailure {
+	if errors.Is(err, constants.ErrJudgeResponseRepeated) {
+		return evalv1.JudgeFailure_JUDGE_FAILURE_REPETITION
+	}
+	return evalv1.JudgeFailure_JUDGE_FAILURE_VERDICT_INVALID
+}
+
+// judgeStoppedRepeating is the error for a judge generation the Inference
+// Operator stopped for repetition. Its output is a loop, never a verdict.
+func judgeStoppedRepeating(result *operatorv1.InferenceResult, op string) error {
+	if result.GetFinishReason() != constants.InferenceFinishReasonRepetition {
+		return nil
+	}
+	return fmt.Errorf("evaluation judge: %s: generation stopped repeating: %w: %w", op, constants.ErrJudgeResponseRepeated, constants.ErrJudgeResponseInvalid)
 }
 
 // requestInvalid fails a judgment whose request could not be built; Observer
@@ -472,19 +490,11 @@ func (j *Judge) buildDispatchRequest(subject Subject, p prompt) (*operatorv1.Inf
 	if err != nil || digest != j.cfg.ModelRegistryDigest {
 		return nil, "", fmt.Errorf("evaluation judge: build request: %w", constants.ErrInferenceModelRegistryInvalid)
 	}
-	maxTokens := j.cfg.MaxTokens
-	if maxTokens <= 0 {
-		maxTokens = constants.InferenceJudgeMaxOutputTokens
-	}
-	if maxTokens > constants.InferenceMaxOutputTokens {
-		maxTokens = constants.InferenceMaxOutputTokens
-	}
 	req := &operatorv1.InferenceDispatchRequest{
 		RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
 		Role:                 models.InferenceModelRolePrimary.ToProto(),
 		Model:                j.cfg.Variant.GetServedModelTag(),
 		ModelDigest:          j.cfg.Variant.GetModelDigest(),
-		MaxTokens:            maxTokens,
 		Messages:             p.messages(),
 		ResponseFormat: &operatorv1.InferenceResponseFormat{
 			MediaType:  "application/json",
@@ -592,6 +602,9 @@ type criterionVerdict struct {
 // without closing </think> (leaving text parts empty), the verdict is read from
 // the thinking parts.
 func decodeCriterionVerdict(result *operatorv1.InferenceResult) (bool, string, error) {
+	if err := judgeStoppedRepeating(result, "decode criterion verdict"); err != nil {
+		return false, "", err
+	}
 	text := models.InferenceResultText(result)
 	thinking := models.InferenceResultThinking(result)
 
@@ -612,21 +625,21 @@ func decodeCriterionVerdict(result *operatorv1.InferenceResult) (bool, string, e
 	}
 	if strings.TrimSpace(text) == "" && strings.TrimSpace(thinking) == "" {
 		if result != nil && result.GetFinishReason() == "length" {
-			return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: empty response (generation truncated by token limit, completion_tokens=%d): %w",
+			return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: empty response (generation truncated at the loaded context window, completion_tokens=%d): %w",
 				result.GetCompletionTokens(), constants.ErrJudgeResponseInvalid)
 		}
 		return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: empty judge response: %w", constants.ErrJudgeResponseInvalid)
 	}
 	if strings.TrimSpace(text) == "" && strings.TrimSpace(thinking) != "" {
 		if result != nil && result.GetFinishReason() == "length" {
-			return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: generation truncated by token limit in thinking (completion_tokens=%d): %w",
+			return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: generation truncated at the loaded context window in thinking (completion_tokens=%d): %w",
 				result.GetCompletionTokens(), constants.ErrJudgeResponseInvalid)
 		}
 		return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: no valid verdict found in judge thinking: %w", constants.ErrJudgeResponseInvalid)
 	}
 	_, err := decodeCriterionVerdictText(text)
 	if result != nil && result.GetFinishReason() == "length" {
-		return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: generation truncated by token limit (finish_reason: length, completion_tokens=%d): %w: %w",
+		return false, "", fmt.Errorf("evaluation judge: decode criterion verdict: generation truncated at the loaded context window (finish_reason: length, completion_tokens=%d): %w: %w",
 			result.GetCompletionTokens(), constants.ErrJudgeResponseInvalid, err)
 	}
 	if errors.Is(err, io.ErrUnexpectedEOF) {
@@ -658,6 +671,9 @@ func decodeCriterionVerdictText(text string) (criterionVerdict, error) {
 // without closing </think> (leaving text parts empty), the judgment is read
 // from the thinking parts.
 func decodeJudgment(result *operatorv1.InferenceResult) (int, string, error) {
+	if err := judgeStoppedRepeating(result, "decode judgment"); err != nil {
+		return 0, "", err
+	}
 	text := models.InferenceResultText(result)
 	thinking := models.InferenceResultThinking(result)
 
@@ -678,21 +694,21 @@ func decodeJudgment(result *operatorv1.InferenceResult) (int, string, error) {
 	}
 	if strings.TrimSpace(text) == "" && strings.TrimSpace(thinking) == "" {
 		if result != nil && result.GetFinishReason() == "length" {
-			return 0, "", fmt.Errorf("evaluation judge: decode judgment: empty response (generation truncated by token limit, completion_tokens=%d): %w",
+			return 0, "", fmt.Errorf("evaluation judge: decode judgment: empty response (generation truncated at the loaded context window, completion_tokens=%d): %w",
 				result.GetCompletionTokens(), constants.ErrJudgeResponseInvalid)
 		}
 		return 0, "", fmt.Errorf("evaluation judge: decode judgment: empty judge response: %w", constants.ErrJudgeResponseInvalid)
 	}
 	if strings.TrimSpace(text) == "" && strings.TrimSpace(thinking) != "" {
 		if result != nil && result.GetFinishReason() == "length" {
-			return 0, "", fmt.Errorf("evaluation judge: decode judgment: generation truncated by token limit in thinking (completion_tokens=%d): %w",
+			return 0, "", fmt.Errorf("evaluation judge: decode judgment: generation truncated at the loaded context window in thinking (completion_tokens=%d): %w",
 				result.GetCompletionTokens(), constants.ErrJudgeResponseInvalid)
 		}
 		return 0, "", fmt.Errorf("evaluation judge: decode judgment: no valid judgment found in judge thinking: %w", constants.ErrJudgeResponseInvalid)
 	}
 	_, err := decodeJudgmentText(text)
 	if result != nil && result.GetFinishReason() == "length" {
-		return 0, "", fmt.Errorf("evaluation judge: decode judgment: generation truncated by token limit (finish_reason: length, completion_tokens=%d): %w: %w",
+		return 0, "", fmt.Errorf("evaluation judge: decode judgment: generation truncated at the loaded context window (finish_reason: length, completion_tokens=%d): %w: %w",
 			result.GetCompletionTokens(), constants.ErrJudgeResponseInvalid, err)
 	}
 	if errors.Is(err, io.ErrUnexpectedEOF) {

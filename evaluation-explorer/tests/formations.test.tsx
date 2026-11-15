@@ -1,7 +1,10 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('../src/content/framework-catalog', async (importOriginal) =>
+  (await import('./uncatalogued-probes')).withPassingProbesForUncatalogued(await importOriginal()));
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { EvaluationSummary } from '../src/contract/types';
@@ -56,7 +59,7 @@ describe('published formations', () => {
   it('does not score formation outcomes as individual-model leaderboard results', () => {
     const model = {
       ...fixtureModelSummaries[0]!, dataset_id: formationRun.dataset_id,
-      quality_state: 'exploratory_verified' as const, inventory_only: false, evaluation_coverage: 1,
+      quality_state: 'exploratory_verified' as const, inventory_only: false, evaluation_coverage: 1, tool_calling_exclusions: 0,
       parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
       pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 4 },
       security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 4 },

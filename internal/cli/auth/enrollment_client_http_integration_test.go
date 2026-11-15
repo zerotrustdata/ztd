@@ -622,6 +622,70 @@ func TestEnrollmentClient_Rotate_RejectsInvalidAnswers(t *testing.T) {
 	}
 }
 
+func TestEnrollmentClient_Renew_KeepsTheSessionOverMTLS(t *testing.T) {
+	artifacts := buildTestArtifacts(t, EnrollmentSourceRenewal)
+	gw := newMTLSGateway(t, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSONResponse(t, w, http.StatusCreated, models.CLIRotationResponse{
+			Success: true, CLISessionID: artifacts.CLISessionID, UserID: artifacts.UserID,
+			CLICert: artifacts.CLICertPEM, HubTrustBundle: artifacts.TrustBundlePEM,
+		})
+	})
+
+	result, err := gw.client.Renew(t.Context(), gw.fileSvc, "renew-csr", artifacts.CLIKey, "")
+
+	require.NoError(t, err)
+	assert.Equal(t, EnrollmentSourceRenewal, result.Source)
+	assert.Equal(t, artifacts.CLISessionID, result.CLISessionID)
+	req := gw.lastRequest(t)
+	assert.Equal(t, constants.APIPaths.AuthCLIRenew, req.Path)
+	assert.Equal(t, "ztd-cli-mtls", req.PeerCN)
+	assert.Equal(t, "cli-sess-1", req.CLISession)
+}
+
+func TestEnrollmentClient_Renew_StaleCertificateDirectsToRotation(t *testing.T) {
+	artifacts := buildTestArtifacts(t, EnrollmentSourceRenewal)
+	gw := newMTLSGateway(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusPreconditionFailed) })
+
+	_, err := gw.client.Renew(t.Context(), gw.fileSvc, "csr", artifacts.CLIKey, "")
+
+	require.ErrorIs(t, err, constants.ErrCLIRenewalStaleCertificate)
+	assert.Contains(t, err.Error(), "./ztd auth enroll user --rotate-cli")
+}
+
+func TestEnrollmentClient_Renew_MissingRouteExplainsGatewayUpgrade(t *testing.T) {
+	artifacts := buildTestArtifacts(t, EnrollmentSourceRenewal)
+	gw := newMTLSGateway(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNotFound) })
+
+	_, err := gw.client.Renew(t.Context(), gw.fileSvc, "csr", artifacts.CLIKey, "")
+
+	require.ErrorIs(t, err, constants.ErrCLIRenewalUnavailable)
+	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	assert.Contains(t, err.Error(), "rebuild and restart the Gateway")
+}
+
+func TestEnrollmentClient_Renew_OtherGatewayErrorsStayHTTPErrors(t *testing.T) {
+	artifacts := buildTestArtifacts(t, EnrollmentSourceRenewal)
+	gw := newMTLSGateway(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusConflict) })
+
+	_, err := gw.client.Renew(t.Context(), gw.fileSvc, "csr", artifacts.CLIKey, "")
+
+	var status *HTTPStatusError
+	require.ErrorAs(t, err, &status)
+	assert.Equal(t, http.StatusConflict, status.StatusCode)
+	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	assert.NotErrorIs(t, err, constants.ErrCLIRenewalStaleCertificate)
+}
+
+func TestEnrollmentClient_Rotate_PreconditionFailedIsAPlainHTTPError(t *testing.T) {
+	artifacts := buildTestArtifacts(t, EnrollmentSourceRotation)
+	gw := newMTLSGateway(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusPreconditionFailed) })
+
+	_, err := gw.client.Rotate(t.Context(), gw.fileSvc, "csr", artifacts.CLIKey, "")
+
+	require.ErrorIs(t, err, constants.ErrHTTPStatusError)
+	assert.NotErrorIs(t, err, constants.ErrCLIRenewalStaleCertificate)
+}
+
 func TestEnrollmentClient_Refresh(t *testing.T) {
 	t.Run("returns the authoritative session and operator binding", func(t *testing.T) {
 		gw := newMTLSGateway(t, func(w http.ResponseWriter, _ *http.Request) {

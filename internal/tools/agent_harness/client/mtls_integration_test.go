@@ -21,18 +21,65 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	govpkg "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/config"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
+
+func TestHarnessClient_ReloadsCertificateOnNextHandshake(t *testing.T) {
+	ca, caKey, err := generateCA()
+	require.NoError(t, err)
+	serving, servingKey, err := generateCert(ca, caKey, "server")
+	require.NoError(t, err)
+	first, firstKey, err := generateCert(ca, caKey, "before-renewal")
+	require.NoError(t, err)
+	second, secondKey, err := generateCert(ca, caKey, "after-renewal")
+	require.NoError(t, err)
+	pool := x509.NewCertPool()
+	pool.AddCert(ca)
+	seen := make(chan string, 2)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen <- r.TLS.PeerCertificates[0].Subject.CommonName
+		if got := r.Header.Get(constants.HeaderCLISessionID); got != "cli-session" {
+			t.Errorf("CLI session header: got %q", got)
+		}
+		// Each request requires a fresh handshake.
+		w.Header().Set("Connection", "close")
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	server.TLS = &tls.Config{MinVersion: tls.VersionTLS13, ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: pool,
+		Certificates: []tls.Certificate{{Certificate: [][]byte{serving.Raw}, PrivateKey: servingKey}}}
+	server.StartTLS()
+	t.Cleanup(server.Close)
+	caPath := filepath.Join(testutil.TempDir(t), "ca.pem")
+	require.NoError(t, os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw}), constants.PermFilePublic))
+	var current atomic.Pointer[tls.Certificate]
+	current.Store(&tls.Certificate{Certificate: [][]byte{first.Raw}, PrivateKey: firstKey})
+	identity := config.Auth{CABundle: caPath, GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { return current.Load(), nil }}
+	client, err := New(config.Config{Auth: identity, CLIAuth: identity, MTLSBaseURL: server.URL})
+	require.NoError(t, err)
+	t.Cleanup(client.http.CloseIdleConnections)
+	for i, want := range []string{"before-renewal", "after-renewal"} {
+		if i == 1 {
+			current.Store(&tls.Certificate{Certificate: [][]byte{second.Raw}, PrivateKey: secondKey})
+		}
+		status, _, err := client.do(t.Context(), Persona{CLISessionID: "cli-session"}, http.MethodGet, server.URL, nil)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, status)
+		require.Equal(t, want, <-seen)
+	}
+}
 
 func TestMTLSServerClient_Handshake(t *testing.T) {
 	caCert, caPriv, err := generateCA()

@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -47,13 +48,12 @@ func TestLlamaCppBackend_GenerateBindsRawResponseWithoutPersistingProviderConten
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := testutil.Context(t)
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			router := newLlamaCppFakeRouter("m")
+			router.provider = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(tc.status)
 				_, _ = w.Write([]byte(tc.body))
-			}))
-			t.Cleanup(server.Close)
-			backend, err := NewLlamaCppBackend(server.URL, testutil.TempDir(t), testutil.NewTestLogger())
-			require.NoError(t, err)
+			})
+			backend, _ := newLlamaCppTestBackend(t, router)
 			backend.maxResponseBytes = tc.limit
 			root := testutil.TempDir(t)
 			store, err := NewAttemptStore(storagetest.NewTestFileSvc(t, root))
@@ -86,7 +86,8 @@ func TestLlamaCppBackend_GenerateBindsRawResponseWithoutPersistingProviderConten
 func TestLlamaCppBackend_GeneratePublishesScrubbedProgressBeforeCompletion(t *testing.T) {
 	ctx := testutil.ContextWithTimeout(t, 5*time.Second)
 	progress := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	router := newLlamaCppFakeRouter("m")
+	router.provider = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte(llamaCppSSE(
 			`{"choices":[{"index":0,"delta":{"content":"admin@"}}]}`,
@@ -99,10 +100,8 @@ func TestLlamaCppBackend_GeneratePublishesScrubbedProgressBeforeCompletion(t *te
 			_, _ = w.Write([]byte(llamaCppSSE(`{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`, `[DONE]`)))
 		case <-r.Context().Done():
 		}
-	}))
-	t.Cleanup(server.Close)
-	backend, err := NewLlamaCppBackend(server.URL, testutil.TempDir(t), testutil.NewTestLogger())
-	require.NoError(t, err)
+	})
+	backend, _ := newLlamaCppTestBackend(t, router)
 	// Exercise the production scrubber's in-memory mode; this test owns no
 	// token persistence boundary and supplies no database substitute.
 	scrubber, err := scrubbing.NewScrubbingService(ctx, &scrubbing.Config{Enabled: true}, testutil.NewTestLogger(), nil)
@@ -289,4 +288,53 @@ func TestLlamaCppBackend_StatusAcceptsExplicitEmptyListAndKnownRouterStates(t *t
 			}
 		})
 	}
+}
+
+func TestLlamaCppBackend_GenerateStopsAGenerationThatRepeats(t *testing.T) {
+	const loopingSentence = "Wait, I should check the file again before I answer.\n"
+	disconnected := make(chan struct{})
+	router := newLlamaCppFakeRouter("m")
+	router.provider = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer close(disconnected)
+		w.Header().Set("Content-Type", "text/event-stream")
+		chunk := llamaCppSSE(`{"choices":[{"index":0,"delta":{"content":` + strconv.Quote(loopingSentence) + `}}]}`)
+		// The provider never ends the loop on its own; only the backend can.
+		for range 4 * constants.InferenceRepetitionWindowBytes / len(loopingSentence) {
+			if r.Context().Err() != nil {
+				return
+			}
+			if _, err := w.Write([]byte(chunk)); err != nil {
+				return
+			}
+			w.(http.Flusher).Flush()
+		}
+		select {
+		case <-r.Context().Done():
+		case <-time.After(5 * time.Second):
+			t.Error("the backend never stopped the repeating generation")
+		}
+	})
+	backend, _ := newLlamaCppTestBackend(t, router)
+	ctx := testutil.Context(t)
+	scrubber, err := scrubbing.NewScrubbingService(ctx, &scrubbing.Config{Enabled: true}, testutil.NewTestLogger(), nil)
+	require.NoError(t, err)
+	var progress []*operatorv1.InferenceProgressEvent
+	ctx = WithProgressReporter(ctx, func(event *operatorv1.InferenceProgressEvent) error {
+		progress = append(progress, event)
+		return nil
+	})
+	limit := int32(testLlamaCppContextWindow)
+
+	response, err := backend.Generate(ctx, models.GenerateRequest{Model: "m", Messages: textInferenceMessages("hi"), Stream: true, Scrubber: scrubber, ProviderAttemptID: "attempt-loop", ContextLimit: &limit, KeepAlive: constants.InferenceUnloadKeepAlive})
+
+	require.NoError(t, err, "a looping generation is the model's output, not a provider failure")
+	<-disconnected
+	assert.Equal(t, constants.InferenceFinishReasonRepetition, response.FinishReason)
+	assert.False(t, response.UsageReported)
+	output := progressPartsText(progress)
+	assert.GreaterOrEqual(t, len(output), constants.InferenceRepetitionMinSpanBytes)
+	assert.Less(t, len(output), constants.InferenceRepetitionWindowBytes)
+	response.ProviderAttemptID = "attempt-loop"
+	require.NoError(t, models.ReconcileInferenceProgress(progress, response.ToProtoInferenceResult()))
+	assert.Contains(t, router.recordedCalls(), "POST /models/unload", "a keep-alive 0 generation still unloads after the stop")
 }

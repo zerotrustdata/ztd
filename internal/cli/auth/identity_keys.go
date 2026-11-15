@@ -11,10 +11,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -151,11 +153,26 @@ func LoadIdentityCertificate(ctx context.Context, fileSvc fs.RuntimeFileService,
 }
 
 // LoadCLICertificate returns the enrolled CLI mTLS client certificate with its
-// private key unsealed in memory only.
+// private key unsealed in memory only. An expired certificate is refused with
+// constants.ErrCLICertificateExpired: it cannot authenticate, and the Gateway
+// would otherwise reject the handshake with a bare TLS alert.
 func LoadCLICertificate(fileSvc fs.RuntimeFileService, cfg *config.Config) (tls.Certificate, error) {
 	cert, err := LoadIdentityCertificate(context.Background(), fileSvc, cfg, cfg.CLICertFile(), cfg.CLIKeyFile())
 	if err != nil {
 		return tls.Certificate{}, fmt.Errorf("%w: %w", constants.ErrFailedToLoadClientCertificate, err)
 	}
+	if err := checkCLICertificateUnexpired(cert.Leaf); err != nil {
+		return tls.Certificate{}, err
+	}
 	return cert, nil
+}
+
+// checkCLICertificateUnexpired refuses an expired CLI leaf with
+// constants.ErrCLICertificateExpired and the recovery command.
+func checkCLICertificateUnexpired(leaf *x509.Certificate) error {
+	if leaf != nil && !time.Now().Before(leaf.NotAfter) {
+		return fmt.Errorf("%w at %s\nRecover the CLI identity with:\n./ztd auth enroll user",
+			constants.ErrCLICertificateExpired, leaf.NotAfter.UTC().Format(time.RFC3339))
+	}
+	return nil
 }

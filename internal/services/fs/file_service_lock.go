@@ -38,16 +38,32 @@ func (fs *localFS) tryLock(ctx context.Context, relPath string, mode os.FileMode
 			return nil, err
 		}
 	}
-	absPath := fs.Resolve(relPath)
-	if err := os.MkdirAll(filepath.Dir(absPath), constants.PermDirPrivate); err != nil {
+	if _, err := fs.resolveValidated(relPath); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(fs.runtimeDir, constants.PermDirPrivate); err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrDirCreateFailed, err)
 	}
-	f, err := os.OpenFile(absPath, os.O_CREATE|os.O_RDWR, mode)
+	root, err := os.OpenRoot(fs.runtimeDir)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrFileOpenFailed, err)
+	}
+	defer root.Close()
+	if err := root.MkdirAll(filepath.Dir(relPath), constants.PermDirPrivate); err != nil {
+		return nil, fmt.Errorf("%w: %w", constants.ErrDirCreateFailed, err)
+	}
+	if info, err := root.Lstat(relPath); err == nil && !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%w: lock must be a regular file: %s", constants.ErrPathValidation, relPath)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("%w: %w", constants.ErrFileOpenFailed, err)
+	}
+	// Root.OpenFile keeps a concurrent symlink swap confined to this runtime.
+	f, err := root.OpenFile(relPath, os.O_CREATE|os.O_RDWR, mode)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrFileOpenFailed, err)
 	}
 	if err := lockFile(f, exclusive); err != nil {
-		return nil, errors.Join(fmt.Errorf("lock %s: %w", absPath, err), f.Close())
+		return nil, errors.Join(fmt.Errorf("lock %s: %w", relPath, err), f.Close())
 	}
 	return f, nil
 }

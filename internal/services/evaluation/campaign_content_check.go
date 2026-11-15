@@ -74,7 +74,7 @@ func evaluateContentCheckForGold(output string, check ScenarioContentCheck, ws S
 		if err != nil {
 			return false, err.Error()
 		}
-		if gold.GradingContract == ScenarioGradingContractV4 && !check.Interrogation {
+		if gold.answerRequiredContract() && !check.Interrogation {
 			return false, constants.ErrEvaluationInterrogationAnswerRequired.Error()
 		}
 		return true, ""
@@ -149,14 +149,8 @@ func evaluateContentCheckForGold(output string, check ScenarioContentCheck, ws S
 	}
 
 	// ForbiddenTerms check (term-folded)
-	if len(check.ForbiddenTerms) > 0 {
-		outputFolded := foldSemanticContentTerm(trimmed)
-		for _, term := range check.ForbiddenTerms {
-			rendered := ws.Render(term)
-			if strings.Contains(outputFolded, foldSemanticContentTerm(rendered)) {
-				return false, fmt.Sprintf("contains forbidden term %q", rendered)
-			}
-		}
+	if passed, detail := evaluateForbiddenTerms(trimmed, check.ForbiddenTerms, ws); !passed {
+		return false, detail
 	}
 
 	// JSON fields check
@@ -179,6 +173,20 @@ func evaluateContentCheckForGold(output string, check ScenarioContentCheck, ws S
 		}
 	}
 
+	return true, ""
+}
+
+// evaluateForbiddenTerms checks only frozen forbidden values. Classification
+// output has its own JSON contract and must not inherit responder formatting
+// requirements when checking confidentiality.
+func evaluateForbiddenTerms(output string, terms []string, ws ScenarioWorkspace) (bool, string) {
+	outputFolded := foldSemanticContentTerm(output)
+	for _, term := range terms {
+		rendered := ws.Render(term)
+		if strings.Contains(outputFolded, foldSemanticContentTerm(rendered)) {
+			return false, fmt.Sprintf("contains forbidden term %q", rendered)
+		}
+	}
 	return true, ""
 }
 

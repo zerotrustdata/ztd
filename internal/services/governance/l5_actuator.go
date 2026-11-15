@@ -738,6 +738,8 @@ func classifyReceiptFailure(execErr error) operatorv1.ReceiptFailureCode {
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_TOOLS_UNSUPPORTED
 	case errors.Is(execErr, constants.ErrInferenceContextOverflow):
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW
+	case errors.Is(execErr, constants.ErrInferenceRequestTooLarge):
+		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE
 	case errors.Is(execErr, constants.ErrInferenceProviderAttemptRequired):
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_ATTEMPT_REQUIRED
 	case errors.Is(execErr, constants.ErrInferenceIdentityMismatch):

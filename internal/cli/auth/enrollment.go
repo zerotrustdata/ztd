@@ -44,6 +44,10 @@ type EnrollmentGateway interface {
 	RecoveryStatus(ctx context.Context, token, baseURL string) (models.CLIRecoveryState, error)
 	CompleteRecovery(ctx context.Context, requestID, token string, cliCSR string, cliKey *ecdsa.PrivateKey, caFingerprint, baseURL string) (EnrollmentArtifacts, error)
 	Rotate(ctx context.Context, fileSvc fs.RuntimeFileService, cliCSR string, cliKey *ecdsa.PrivateKey, caFingerprint string) (EnrollmentArtifacts, error)
+	// CLIRenewer reissues the existing CLI session's certificate. Enroll
+	// reinstates an expired certificate through it before falling back to
+	// human-approved recovery.
+	CLIRenewer
 	CheckBootstrapStatus(ctx context.Context, baseURL string) (bool, error)
 
 	// DiscoverGatewayCA fetches the live gateway root CA bundle from the
@@ -387,6 +391,19 @@ func (c *EnrollmentCoordinator) Enroll(ctx context.Context, opts EnrollmentOptio
 		return nil, err
 	}
 
+	// An expired certificate on the live gateway's CA is reinstated by proof
+	// of possession of its keystore-sealed key, keeping its CLI session, with
+	// no human approval. Commands normally do this at start
+	// (RenewCLIIdentityIfDue); this covers a failed or skipped attempt.
+	// Recovery remains for a certificate the Gateway refuses to reinstate or
+	// that expired longer than constants.CLIReinstateWindow ago.
+	if local.State == LocalStateComplete && local.CertExpired && !local.BundleStale {
+		local, err = c.reinstateExpired(ctx, local)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	result := &EnrollmentResult{}
 
 	// 1. Credential-preparation: bootstrap, recovery, rotation, or reuse.
@@ -434,7 +451,11 @@ func (c *EnrollmentCoordinator) Enroll(ctx context.Context, opts EnrollmentOptio
 				c.out("Local trust bundle does not match the live gateway root CA; using recovery flow.")
 				artifacts, err = c.handleRecovery(ctx, opts)
 			}
-		} else if local.NeedsRotation() || opts.RotateCLI {
+		} else if opts.RotateCLI {
+			// Explicit rotation replaces the CLI session. A certificate past
+			// its renewal time is not rotated here: every ztd command renews
+			// it in place before it runs (RenewCLIIdentityIfDue), keeping the
+			// session.
 			artifacts, err = c.handleRotation(ctx, opts)
 		} else {
 			// Reuse the existing identity. No enrollment request, no new
@@ -636,6 +657,31 @@ func (c *EnrollmentCoordinator) handleBootstrap(ctx context.Context, opts Enroll
 	// gateway's certless embedded operator and binds the new CLI session
 	// to it. The operator identity is never carried by a certificate.
 	return c.gateway.Bootstrap(ctx, csrPEM, cliKey, opts.CAFingerprint, "")
+}
+
+// reinstateExpired reinstates the expired local CLI certificate
+// (RenewCLIIdentityIfDue) and returns the local identity inspected afterwards,
+// which also picks up a reinstatement another ztd process committed. When the
+// certificate is still expired, because it expired longer ago than
+// constants.CLIReinstateWindow or the Gateway refused it, it reports why and
+// Enroll falls through to recovery.
+func (c *EnrollmentCoordinator) reinstateExpired(ctx context.Context, local LocalIdentity) (LocalIdentity, error) {
+	reinstated, reinstateErr := RenewCLIIdentityIfDue(ctx, c.fileSvc, c.cfg, c.gateway, c.keys, time.Now)
+	current, err := c.store.Inspect(ctx)
+	if err != nil {
+		return local, fmt.Errorf("%w: %w", constants.ErrEnrollmentFailed, err)
+	}
+	switch {
+	case reinstated:
+		c.out("Reinstated the expired CLI certificate (CLI session %s unchanged).", local.Credentials.CLISessionID)
+	case current.State == LocalStateComplete && !current.CertExpired:
+		c.out("Another ztd process reinstated the expired CLI certificate.")
+	case reinstateErr != nil:
+		c.out("Could not reinstate the expired CLI certificate: %v", reinstateErr)
+	default:
+		c.out("CLI certificate expired more than %s ago; it cannot be reinstated.", constants.CLIReinstateWindow)
+	}
+	return current, nil
 }
 
 // handleRecovery creates a CLI recovery request, opens the browser for
@@ -990,12 +1036,17 @@ func (c *EnrollmentCoordinator) runPasskeyCeremony(ctx context.Context, result *
 // generateCLICSR generates a CLI key pair and CSR via the key provider,
 // using a hostname-based common name.
 func (c *EnrollmentCoordinator) generateCLICSR(ctx context.Context) (string, *ecdsa.PrivateKey, error) {
+	return generateCLICSR(ctx, c.keys)
+}
+
+// generateCLICSR creates a fresh CLI key and CSR named for this host.
+func generateCLICSR(ctx context.Context, keys KeyProvider) (string, *ecdsa.PrivateKey, error) {
 	hostname, err := osHostname()
 	if err != nil {
 		return "", nil, fmt.Errorf("%w: %w", constants.ErrNetworkGetHostname, err)
 	}
 	commonName := fmt.Sprintf("ztd-cli-%s", hostname)
-	csrPEM, key, err := c.keys.GenerateCLIKeyAndCSR(ctx, commonName)
+	csrPEM, key, err := keys.GenerateCLIKeyAndCSR(ctx, commonName)
 	if err != nil {
 		return "", nil, fmt.Errorf("%w: %w", constants.ErrCSRGenerationFailed, err)
 	}

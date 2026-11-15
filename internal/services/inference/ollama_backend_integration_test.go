@@ -32,6 +32,103 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
+// testOllamaContextWindow is the context window newOllamaTestServer loads a
+// model with when the request states none.
+const testOllamaContextWindow = 8192
+
+// ollamaTestServer scripts the model lifecycle OllamaBackend drives before
+// each generation: the load-only /api/chat and the /api/ps read of the loaded
+// window. Every other request reaches the test's handler.
+type ollamaTestServer struct {
+	*httptest.Server
+	// loadedWindow is the context_length a load reports when the load request
+	// states no num_ctx; zero reports no window.
+	loadedWindow int64
+	// loadResponse, when set, answers load requests in place of a successful load.
+	loadResponse func(http.ResponseWriter)
+
+	mu       sync.Mutex
+	resident map[string]int64
+	loads    []ollamaModelLoadRequest
+}
+
+func newOllamaTestServer(t *testing.T, handler http.Handler) *ollamaTestServer {
+	t.Helper()
+	server := &ollamaTestServer{loadedWindow: testOllamaContextWindow, resident: map[string]int64{}}
+	server.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/api/ps"):
+			server.writeResidency(t, w)
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/api/chat"):
+			body, err := io.ReadAll(r.Body)
+			if !assert.NoError(t, err) {
+				return
+			}
+			// The load step is the only non-streaming chat the backend sends.
+			var probe struct {
+				Messages []json.RawMessage `json:"messages"`
+				Stream   bool              `json:"stream"`
+			}
+			if err := json.Unmarshal(body, &probe); err == nil && !probe.Stream && len(probe.Messages) == 0 {
+				server.load(t, w, body)
+				return
+			}
+			r.Body = io.NopCloser(strings.NewReader(string(body)))
+			handler.ServeHTTP(w, r)
+		default:
+			handler.ServeHTTP(w, r)
+		}
+	}))
+	return server
+}
+
+// setResident marks model resident with contextWindow before the backend runs.
+func (s *ollamaTestServer) setResident(model string, contextWindow int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.resident[model] = contextWindow
+}
+
+// loadRequests returns the load-only chat requests the backend sent.
+func (s *ollamaTestServer) loadRequests() []ollamaModelLoadRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]ollamaModelLoadRequest(nil), s.loads...)
+}
+
+func (s *ollamaTestServer) writeResidency(t *testing.T, w http.ResponseWriter) {
+	t.Helper()
+	s.mu.Lock()
+	listed := ollamaPsResponse{Models: []ollamaPsModel{}}
+	for name, window := range s.resident {
+		listed.Models = append(listed.Models, ollamaPsModel{Name: name, ContextLength: window})
+	}
+	s.mu.Unlock()
+	assert.NoError(t, json.NewEncoder(w).Encode(listed))
+}
+
+func (s *ollamaTestServer) load(t *testing.T, w http.ResponseWriter, body []byte) {
+	t.Helper()
+	var req ollamaModelLoadRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		t.Errorf("decode load request: %v", err)
+		return
+	}
+	s.mu.Lock()
+	s.loads = append(s.loads, req)
+	s.mu.Unlock()
+	if s.loadResponse != nil {
+		s.loadResponse(w)
+		return
+	}
+	window := s.loadedWindow
+	if req.Options.NumCtx != nil {
+		window = int64(*req.Options.NumCtx)
+	}
+	s.setResident(req.Model, window)
+	assert.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{Model: req.Model, Done: true, DoneReason: constants.OllamaDoneReasonLoad}))
+}
+
 func TestOllamaBackend_ReleaseModelsVerifiesWholeBatchAfterUnload(t *testing.T) {
 	var requests []string
 	var events []string
@@ -153,7 +250,7 @@ func TestOllamaBackend_GenerateConstructsCorrectChatRequest(t *testing.T) {
 	parallelToolCalls := true
 
 	var capturedBody ollamaChatRequest
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/api/chat", r.URL.Path)
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
@@ -194,6 +291,7 @@ func TestOllamaBackend_GenerateConstructsCorrectChatRequest(t *testing.T) {
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
+	server.setResident("gemma3:4b", int64(contextLimit))
 
 	backend, err := NewOllamaBackend(server.URL, logger)
 	require.NoError(t, err)
@@ -325,7 +423,7 @@ func TestOllamaBackend_GenerateConstructsCorrectChatRequest(t *testing.T) {
 }
 
 func TestOllamaBackend_GeneratePreservesOrderedStreamPartsAndMeasuresFirstToken(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request ollamaChatRequest
 		assert.NoError(t, json.NewDecoder(r.Body).Decode(&request))
 		assert.True(t, request.Stream)
@@ -380,7 +478,7 @@ func TestOllamaBackend_GenerateRejectsStreamWithoutOneTerminalEvent(t *testing.T
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, err := io.WriteString(w, tt.body)
 				assert.NoError(t, err)
 			}))
@@ -403,7 +501,7 @@ func TestOllamaBackend_GenerateRejectsStreamWithoutOneTerminalEvent(t *testing.T
 // The provider's message never leaves the backend log.
 func TestOllamaBackend_GenerateStreamErrorEventReturnsProviderStreamError(t *testing.T) {
 	const providerMessage = "XML syntax error on line 5: element <function> closed by </parameter>"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, err := io.WriteString(w, `{"model":"test-model","message":{"role":"assistant","content":"","thinking":"call the tool"},"done":false}`+"\n"+
 			`{"error":"`+providerMessage+`"}`+"\n")
 		assert.NoError(t, err)
@@ -424,7 +522,7 @@ func TestOllamaBackend_GenerateStreamErrorEventReturnsProviderStreamError(t *tes
 // An empty completion is the served model's answer, not a provider fault: it
 // returns an empty result so the evaluation grades it as a model failure.
 func TestOllamaBackend_GenerateEmptyCompletionReturnsEmptyResult(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, err := io.WriteString(w, `{"model":"test-model","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop"}`+"\n")
 		assert.NoError(t, err)
 	}))
@@ -468,7 +566,7 @@ func TestOllamaBackend_GenerateTerminalEventErrorNamesFailedCondition(t *testing
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, err := io.WriteString(w, tt.body)
 				assert.NoError(t, err)
 			}))
@@ -485,7 +583,7 @@ func TestOllamaBackend_GenerateTerminalEventErrorNamesFailedCondition(t *testing
 }
 
 func TestOllamaBackend_GenerateRejectsParallelToolCallsSplitAcrossEventsWhenDisabled(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		events := []string{
 			`{"model":"test-model","message":{"role":"assistant","tool_calls":[{"function":{"name":"inspect","arguments":{}}}]},"done":false}`,
 			`{"model":"test-model","message":{"role":"assistant","tool_calls":[{"function":{"name":"search","arguments":{}}}]},"done":true}`,
@@ -508,7 +606,7 @@ func TestOllamaBackend_GenerateRejectsParallelToolCallsSplitAcrossEventsWhenDisa
 }
 
 func TestOllamaBackend_GenerateTimeoutDuringStreamReturnsBackendTimeout(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		assert.True(t, ok)
 		_, err := io.WriteString(w, `{"model":"test-model","message":{"role":"assistant","content":"partial"},"done":false}`+"\n")
@@ -530,7 +628,7 @@ func TestOllamaBackend_GenerateTimeoutDuringStreamReturnsBackendTimeout(t *testi
 }
 
 func TestOllamaBackend_GenerateAcceptsToolOnlyResponse(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := ollamaChatResponse{
 			Model: "test-model",
 			Message: ollamaChatMessage{Role: "assistant", ToolCalls: []ollamaToolCall{{
@@ -571,7 +669,7 @@ func TestOllamaBackend_GenerateRejectsInvalidToolCalls(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				if tt.responseBody != nil {
 					_, err := w.Write(tt.responseBody)
 					assert.NoError(t, err)
@@ -594,7 +692,7 @@ func TestOllamaBackend_GenerateRejectsInvalidToolCalls(t *testing.T) {
 
 func TestOllamaBackend_GenerateFiltersToolsUsingAutoChoice(t *testing.T) {
 	var capturedBody ollamaChatRequest
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.NoError(t, json.NewDecoder(r.Body).Decode(&capturedBody))
 		assert.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{Model: "test-model", Message: ollamaChatMessage{Role: "assistant", Content: "ok"}, Done: true}))
 	}))
@@ -621,7 +719,7 @@ func TestOllamaBackend_GenerateFiltersToolsUsingAutoChoice(t *testing.T) {
 
 func TestOllamaBackend_GenerateEmptyAutoChoiceAllowsAllDeclaredTools(t *testing.T) {
 	var capturedBody ollamaChatRequest
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.NoError(t, json.NewDecoder(r.Body).Decode(&capturedBody))
 		assert.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{Model: "test-model", Message: ollamaChatMessage{Role: "assistant", Content: "ok"}, Done: true}))
 	}))
@@ -642,19 +740,19 @@ func TestOllamaBackend_GenerateEmptyAutoChoiceAllowsAllDeclaredTools(t *testing.
 	assert.Len(t, capturedBody.Tools, 2)
 }
 
-func TestOllamaBackend_GenerateOutputLimitIsStatedValueOrPlatformCeiling(t *testing.T) {
+func TestOllamaBackend_GenerateOutputIsBoundedByLoadedContextWindow(t *testing.T) {
 	for _, tt := range []struct {
 		name      string
 		requested int32
 		want      int32
 	}{
-		{name: "unset limits output to 16k tokens", requested: 0, want: 16_384},
-		{name: "stated value passes through", requested: 512, want: 512},
-		{name: "ceiling passes through", requested: constants.InferenceMaxOutputTokens, want: constants.InferenceMaxOutputTokens},
+		{name: "unset runs to the loaded window", requested: 0, want: testOllamaContextWindow},
+		{name: "stated value below the window passes through", requested: 512, want: 512},
+		{name: "stated value above the window is the window", requested: testOllamaContextWindow * 2, want: testOllamaContextWindow},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var captured ollamaChatRequest
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.NoError(t, json.NewDecoder(r.Body).Decode(&captured))
 				assert.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{
 					Model:   "test-model",
@@ -666,16 +764,119 @@ func TestOllamaBackend_GenerateOutputLimitIsStatedValueOrPlatformCeiling(t *test
 			backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
 			require.NoError(t, err)
 
-			_, err = backend.Generate(context.Background(), models.GenerateRequest{Model: "test-model", MaxTokens: tt.requested})
+			response, err := backend.Generate(context.Background(), models.GenerateRequest{Model: "test-model", Messages: textInferenceMessages("hi"), MaxTokens: tt.requested})
 
 			require.NoError(t, err)
 			assert.Equal(t, tt.want, captured.Options.NumPredict)
+			assert.Equal(t, int32(testOllamaContextWindow), response.ContextWindow)
+		})
+	}
+}
+
+func TestOllamaBackend_GenerateLoadsModelBeforeGenerating(t *testing.T) {
+	contextLimit := int32(4096)
+	for _, tt := range []struct {
+		name         string
+		resident     *int64
+		contextLimit *int32
+		wantLoad     bool
+		wantWindow   int32
+	}{
+		{name: "cold model is loaded with the provider's window", wantLoad: true, wantWindow: testOllamaContextWindow},
+		{name: "cold model is loaded with the stated window", contextLimit: &contextLimit, wantLoad: true, wantWindow: contextLimit},
+		{name: "resident model is not reloaded", resident: new(int64(testOllamaContextWindow)), wantWindow: testOllamaContextWindow},
+		{name: "resident model with the stated window is not reloaded", resident: new(int64(contextLimit)), contextLimit: &contextLimit, wantWindow: contextLimit},
+		{name: "resident model with another window is reloaded", resident: new(int64(testOllamaContextWindow)), contextLimit: &contextLimit, wantLoad: true, wantWindow: contextLimit},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, err := w.Write([]byte(`{"model":"test-model","message":{"role":"assistant","content":"ok"},"done":true,"load_duration":0}`))
+				assert.NoError(t, err)
+			}))
+			defer server.Close()
+			if tt.resident != nil {
+				server.setResident("test-model", *tt.resident)
+			}
+			backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
+			require.NoError(t, err)
+
+			response, err := backend.Generate(context.Background(), models.GenerateRequest{Model: "test-model", Messages: textInferenceMessages("hi"), ContextLimit: tt.contextLimit})
+
+			require.NoError(t, err)
+			loads := server.loadRequests()
+			if !tt.wantLoad {
+				assert.Empty(t, loads)
+				require.NotNil(t, response.LoadDurationNS)
+				assert.Zero(t, *response.LoadDurationNS, "a resident model reports a zero load so the attempt classifies warm")
+			} else {
+				require.Len(t, loads, 1)
+				assert.Equal(t, "test-model", loads[0].Model)
+				assert.Empty(t, loads[0].Messages, "the load step generates nothing")
+				assert.Equal(t, tt.contextLimit, loads[0].Options.NumCtx)
+			}
+			assert.Equal(t, tt.wantWindow, response.ContextWindow)
+		})
+	}
+}
+
+func TestOllamaBackend_GenerateFailsClosedWhenLoadedWindowIsUnknown(t *testing.T) {
+	chats := 0
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		chats++
+	}))
+	defer server.Close()
+	server.loadedWindow = 0
+	backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
+	require.NoError(t, err)
+
+	response, err := backend.Generate(context.Background(), models.GenerateRequest{Model: "test-model", Messages: textInferenceMessages("hi")})
+
+	require.Error(t, err)
+	assert.Nil(t, response)
+	require.ErrorIs(t, err, constants.ErrInferenceContextWindowUnavailable)
+	require.ErrorIs(t, err, constants.ErrInferenceProviderResponseInvalid)
+	assert.Zero(t, chats, "no generation runs without a known context window")
+}
+
+func TestOllamaBackend_GenerateLoadFailureIsTyped(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		status int
+		body   string
+		want   error
+	}{
+		{name: "missing model", status: http.StatusNotFound, body: `{"error":"model not found"}`, want: constants.ErrInferenceModelNotFound},
+		{name: "provider failure", status: http.StatusInternalServerError, body: `{"error":"runner failed"}`, want: constants.ErrInferenceGenerateFailed},
+		{name: "load not acknowledged", status: http.StatusOK, body: `{"model":"test-model","done":true,"done_reason":"stop"}`, want: constants.ErrInferenceProviderResponseInvalid},
+		{name: "other model loaded", status: http.StatusOK, body: `{"model":"other-model","done":true,"done_reason":"load"}`, want: constants.ErrInferenceProviderResponseInvalid},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			chats := 0
+			server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				chats++
+			}))
+			defer server.Close()
+			server.loadResponse = func(w http.ResponseWriter) {
+				w.WriteHeader(tt.status)
+				_, err := w.Write([]byte(tt.body))
+				assert.NoError(t, err)
+			}
+			backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
+			require.NoError(t, err)
+
+			response, err := backend.Generate(context.Background(), models.GenerateRequest{Model: "test-model", Messages: textInferenceMessages("hi")})
+
+			require.Error(t, err)
+			assert.Nil(t, response)
+			require.ErrorIs(t, err, tt.want)
+			assert.NotContains(t, err.Error(), "runner failed", "provider error bodies never surface")
+			assert.Zero(t, chats)
 		})
 	}
 }
 
 func TestOllamaBackend_GenerateRejectsParallelToolCallsWhenDisabled(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		assert.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{
 			Model: "test-model",
 			Message: ollamaChatMessage{Role: "assistant", ToolCalls: []ollamaToolCall{
@@ -706,7 +907,7 @@ func TestOllamaBackend_GenerateAllowsParallelToolCallsWhenEnabledOrUnspecified(t
 		{name: "unspecified"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				assert.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{
 					Model: "test-model",
 					Message: ollamaChatMessage{Role: "assistant", ToolCalls: []ollamaToolCall{
@@ -739,7 +940,7 @@ func TestOllamaBackend_GenerateHandlesAllThreeRoles(t *testing.T) {
 	modelsList := []string{"gemma3:4b", "llama3.2:3b", "qwen3:1.5b"}
 
 	for i, role := range roles {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			resp := ollamaChatResponse{
 				Model:      modelsList[i],
 				Message:    ollamaChatMessage{Role: "assistant", Content: "ok"},
@@ -766,7 +967,7 @@ func TestOllamaBackend_GenerateHandlesAllThreeRoles(t *testing.T) {
 func TestOllamaBackend_GenerateNonOKStatusReturnsErrInferenceGenerateFailed(t *testing.T) {
 	logger := testutil.NewTestLogger()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("internal server error"))
 	}))
@@ -788,7 +989,7 @@ func TestOllamaBackend_GenerateToolsUnsupportedReturnsErrInferenceToolsUnsupport
 	logger := testutil.NewTestLogger()
 	requests := make(chan ollamaChatRequest, 1)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request ollamaChatRequest
 		assert.NoError(t, json.NewDecoder(r.Body).Decode(&request))
 		requests <- request
@@ -825,7 +1026,7 @@ func TestOllamaBackend_GenerateToolsUnsupportedReturnsErrInferenceToolsUnsupport
 func TestOllamaBackend_GenerateThinkingUnsupportedReturnsErrInferenceCapabilityUnsupported(t *testing.T) {
 	logger := testutil.NewTestLogger()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"error":"\"gemma3:1b\" does not support thinking"}`))
 	}))
@@ -847,7 +1048,7 @@ func TestOllamaBackend_GenerateThinkingUnsupportedReturnsErrInferenceCapabilityU
 func TestOllamaBackend_GenerateRequestTimeoutReturnsErrInferenceBackendTimeout(t *testing.T) {
 	logger := testutil.NewTestLogger()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusRequestTimeout)
 	}))
 	defer server.Close()
@@ -868,7 +1069,7 @@ func TestOllamaBackend_GenerateContextCancelledReturnsErrInferenceBackendTimeout
 	logger := testutil.NewTestLogger()
 
 	// Server that hangs until client cancels or disconnects
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 		case <-time.After(100 * time.Millisecond):
@@ -894,7 +1095,7 @@ func TestOllamaBackend_GenerateContextCancelledReturnsErrInferenceBackendTimeout
 func TestOllamaBackend_GenerateParsesResponseWithoutDoneReason(t *testing.T) {
 	logger := testutil.NewTestLogger()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		promptTokens := int32(5)
 		completionTokens := int32(3)
 		resp := ollamaChatResponse{
@@ -939,11 +1140,12 @@ func TestOllamaBackend_GenerateDistinguishesUnavailableUsageFromReportedZero(t *
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, err := w.Write([]byte(tt.responseBody))
 				assert.NoError(t, err)
 			}))
 			defer server.Close()
+			server.setResident("test-model", testOllamaContextWindow)
 			backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
 			require.NoError(t, err)
 
@@ -1011,7 +1213,7 @@ func TestOllamaBackend_GenerateParsesCacheTokensWithoutInferringThinkingTokens(t
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, err := io.WriteString(w, tt.responseBody)
 				assert.NoError(t, err)
 			}))
@@ -1060,7 +1262,7 @@ func TestOllamaBackend_GenerateFailsTypedWhenPromptFillsContextWindow(t *testing
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, err := fmt.Fprintf(w, `{"model":"test-model","message":{"role":"assistant","content":%q},"done":true,"prompt_eval_count":8192,"eval_count":1}`, tt.content)
 				assert.NoError(t, err)
 			}))
@@ -1095,7 +1297,7 @@ func TestOllamaBackend_GenerateRejectsContradictoryOrInvalidMetadata(t *testing.
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				_, err := w.Write([]byte(tt.responseBody))
 				assert.NoError(t, err)
 			}))
@@ -1116,7 +1318,7 @@ func TestOllamaBackend_GenerateVerifiesFrozenModelDigestBeforeAndAfterProviderCa
 	modelDigest := strings.Repeat("a", 64)
 	tagsCalls := 0
 	var providerRequest []byte
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/tags":
 			tagsCalls++
@@ -1149,7 +1351,7 @@ func TestOllamaBackend_GenerateVerifiesFrozenModelDigestBeforeAndAfterProviderCa
 func TestOllamaBackend_GenerateRejectsModelDigestDriftAfterProviderCall(t *testing.T) {
 	requestedDigest := strings.Repeat("a", 64)
 	tagsCalls := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/tags":
 			tagsCalls++
@@ -1287,7 +1489,7 @@ func TestOllamaBackend_GenerateErrorDoesNotLeakProviderResponseBody(t *testing.T
 	logger := testutil.NewTestLogger()
 
 	const providerCanary = "provider-secret-canary-text"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"` + providerCanary + `"}`))
 	}))
@@ -1309,7 +1511,7 @@ func TestOllamaBackend_GenerateErrorDoesNotLeakProviderResponseBody(t *testing.T
 func TestOllamaBackend_GenerateCallerCancellationReturnsContextCanceled(t *testing.T) {
 	logger := testutil.NewTestLogger()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 		case <-time.After(100 * time.Millisecond):
@@ -1336,7 +1538,7 @@ func TestOllamaBackend_GenerateCallerCancellationReturnsContextCanceled(t *testi
 func TestOllamaBackend_GenerateMalformedResponseReturnsErrInferenceProviderResponseInvalid(t *testing.T) {
 	logger := testutil.NewTestLogger()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte("{not json"))
 	}))
@@ -1357,7 +1559,7 @@ func TestOllamaBackend_GenerateMalformedResponseReturnsErrInferenceProviderRespo
 func TestOllamaBackend_GenerateOversizedResponseReturnsErrInferenceProviderResponseInvalid(t *testing.T) {
 	logger := testutil.NewTestLogger()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(strings.Repeat("x", 4096)))
 	}))
@@ -1380,7 +1582,7 @@ func TestOllamaBackend_GenerateOversizedResponseReturnsErrInferenceProviderRespo
 func TestOllamaBackend_GenerateModelMissingReturnsErrInferenceModelNotFound(t *testing.T) {
 	logger := testutil.NewTestLogger()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(`{"error":"model 'missing:1b' not found"}`))
 	}))
@@ -1437,7 +1639,7 @@ func TestOllamaBackend_EndpointPathPrefixPreserved(t *testing.T) {
 
 func TestOllamaBackend_GenerateStreamingPublishesProgressEvents(t *testing.T) {
 	logger := testutil.NewTestLogger()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		encoder := json.NewEncoder(w)
 		assert.NoError(t, encoder.Encode(ollamaChatResponse{
@@ -1486,7 +1688,7 @@ func TestOllamaBackend_GenerateStreamingPublishesProgressEvents(t *testing.T) {
 }
 
 func TestOllamaBackend_GenerateStreamScrubsSecretsSplitAcrossDeltasAtSource(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		encoder := json.NewEncoder(w)
 		for _, content := range []string{"AKIAIOSFOD", "NN7EXAMPLE ", "mail admin@exa", "mple.com now"} {
 			_ = encoder.Encode(ollamaChatResponse{Model: "test-model", Message: ollamaChatMessage{Role: "assistant", Content: content}})
@@ -1520,7 +1722,7 @@ func TestOllamaBackend_GenerateStreamScrubsSecretsSplitAcrossDeltasAtSource(t *t
 
 func TestOllamaBackend_GenerateStreamRefusedWithoutScrubberBeforeProviderCall(t *testing.T) {
 	var providerCalls int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		providerCalls++
 		_ = json.NewEncoder(w).Encode(ollamaChatResponse{Model: "test-model", Done: true, DoneReason: "stop"})
 	}))
@@ -1546,7 +1748,7 @@ func TestOllamaBackend_GenerateDeliversProgressBeforeProviderCompletes(t *testin
 	progress := make(chan struct{})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		encoder := json.NewEncoder(w)
 		// "hello" is released only once the next line ("world") is buffered as lookahead.
 		_ = encoder.Encode(ollamaChatResponse{Model: "test-model", Message: ollamaChatMessage{Content: "hello\n"}})
@@ -1582,7 +1784,7 @@ func TestOllamaBackend_GenerateDeliversProgressBeforeProviderCompletes(t *testin
 
 func TestOllamaBackend_GenerateStreamingReporterErrorDoesNotFailGeneration(t *testing.T) {
 	logger := testutil.NewTestLogger()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		assert.NoError(t, json.NewEncoder(w).Encode(ollamaChatResponse{
 			Model:      "test-model",
@@ -1626,7 +1828,7 @@ func TestOllamaBackend_GeneratePreservesRawTailAfterParserOrReporterFailure(t *t
 				first = `{"model":"test-model","message":{"tool_calls":[{"function":{"name":"inspect","arguments":[]}}]}}`
 			}
 			raw := first + "\n" + `{"model":"test-model","message":{"content":"tail"},"done":true,"done_reason":"stop"}` + "\n"
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				_, _ = io.WriteString(w, raw)
 			}))
 			defer server.Close()
@@ -1681,7 +1883,7 @@ func TestOllamaBackend_GenerateNeverPersistsProviderBytesInAttemptFiles(t *testi
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tc.status)
 				_, _ = io.WriteString(w, tc.body)
 			}))
@@ -1710,6 +1912,71 @@ func TestOllamaBackend_GenerateNeverPersistsProviderBytesInAttemptFiles(t *testi
 				assert.Zero(t, record.GetRawResponseSizeBytes())
 			}
 			assertNoFileContains(t, root, marker)
+		})
+	}
+}
+
+// loopingSentence is the shape of a runaway generation: one sentence the
+// model emits back to back until something stops it.
+const loopingSentence = "Wait, I should check the file again before I answer.\n"
+
+func TestOllamaBackend_GenerateStopsAGenerationThatRepeats(t *testing.T) {
+	for _, thinking := range []bool{false, true} {
+		t.Run(fmt.Sprintf("thinking=%t", thinking), func(t *testing.T) {
+			disconnected := make(chan struct{})
+			server := newOllamaTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				defer close(disconnected)
+				encoder := json.NewEncoder(w)
+				message := ollamaChatMessage{Role: "assistant", Content: loopingSentence}
+				if thinking {
+					message = ollamaChatMessage{Role: "assistant", Thinking: loopingSentence}
+				}
+				// The provider never ends the loop on its own; only the backend can.
+				for range 4 * constants.InferenceRepetitionWindowBytes / len(loopingSentence) {
+					if r.Context().Err() != nil {
+						return
+					}
+					if encoder.Encode(ollamaChatResponse{Model: "test-model", Message: message}) != nil {
+						return
+					}
+					w.(http.Flusher).Flush()
+				}
+				select {
+				case <-r.Context().Done():
+				case <-time.After(5 * time.Second):
+					t.Error("the backend never stopped the repeating generation")
+				}
+			}))
+			defer server.Close()
+			ctx := testutil.Context(t)
+			store, err := NewAttemptStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
+			require.NoError(t, err)
+			require.NoError(t, store.Begin(ctx, &operatorv1.InferenceProviderAttemptRecord{ProviderAttemptId: "attempt-loop", TransactionId: "tx-loop"}))
+			var progress []*operatorv1.InferenceProgressEvent
+			ctx = WithProgressReporter(WithAttemptStore(ctx, store), func(event *operatorv1.InferenceProgressEvent) error {
+				progress = append(progress, event)
+				return nil
+			})
+			backend, err := NewOllamaBackend(server.URL, testutil.NewTestLogger())
+			require.NoError(t, err)
+
+			response, err := backend.Generate(ctx, models.GenerateRequest{Model: "test-model", Messages: textInferenceMessages("hi"), Stream: true, Scrubber: mustNewScrubbingSvc(t), ProviderAttemptID: "attempt-loop"})
+
+			require.NoError(t, err, "a looping generation is the model's output, not a provider failure")
+			<-disconnected
+			assert.Equal(t, constants.InferenceFinishReasonRepetition, response.FinishReason)
+			assert.False(t, response.UsageReported, "the provider reports no usage for a stopped generation")
+			output := progressPartsText(progress)
+			assert.GreaterOrEqual(t, len(output), constants.InferenceRepetitionMinSpanBytes)
+			assert.Less(t, len(output), constants.InferenceRepetitionWindowBytes, "the loop stops well before the provider would")
+			wantHash, err := models.ComputeInferenceOutputHash(response.Parts, response.FinishReason)
+			require.NoError(t, err)
+			assert.Equal(t, wantHash, response.OutputHash)
+			response.ProviderAttemptID = "attempt-loop"
+			require.NoError(t, models.ReconcileInferenceProgress(progress, response.ToProtoInferenceResult()), "the result is exactly the released segments")
+			record, err := store.Get(ctx, "attempt-loop")
+			require.NoError(t, err)
+			assert.NotEmpty(t, record.GetRawResponseDigest(), "the bytes that arrived stay bound to the attempt")
 		})
 	}
 }

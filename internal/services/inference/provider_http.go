@@ -57,7 +57,14 @@ func newProviderHTTP(component, endpoint string) (providerHTTP, error) {
 // JSON response into out. A non-200 status is ErrInferenceBackendUnavailable;
 // the error body is drained for connection reuse and never surfaced.
 func (p *providerHTTP) getJSON(ctx context.Context, op string, out any, apiPath ...string) error {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, p.apiURL(apiPath...), nil)
+	return p.getJSONQuery(ctx, op, out, nil, apiPath...)
+}
+
+// getJSONQuery is getJSON with URL query parameters.
+func (p *providerHTTP) getJSONQuery(ctx context.Context, op string, out any, query url.Values, apiPath ...string) error {
+	target := p.base.JoinPath(apiPath...)
+	target.RawQuery = query.Encode()
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
 		return fmt.Errorf("%s: %s: build request: %w", p.component, op, err)
 	}

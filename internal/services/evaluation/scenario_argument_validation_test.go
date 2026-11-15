@@ -48,6 +48,8 @@ func TestValidateScenarioContract_RejectsUngradableArgumentRules(t *testing.T) {
 			})
 		}},
 		{"model authored regex has no search objective", toolArgGrepPattern, func(b *ScenarioBlueprint) {
+			b.Gold.PromptHint.Arguments[0].Source = sourceModelAuthored
+			b.Gold.PromptHint.Arguments[0].Value = "a pattern for the marker the prompt names"
 			b.Gold.ContentCheck.SearchPattern = ""
 		}},
 		{"concrete value violates another constraint", toolArgGrepPattern, func(b *ScenarioBlueprint) {

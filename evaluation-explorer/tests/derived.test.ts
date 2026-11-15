@@ -1,7 +1,11 @@
 // Copyright (c) 2026 Lateralus Labs, LLC.
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('../src/content/framework-catalog', async (importOriginal) =>
+  (await import('./uncatalogued-probes')).withPassingProbesForUncatalogued(await importOriginal()));
+import { MODEL_ROLE_WIRE_ORDER } from '../src/content/roles';
 import { NATIVE_RESULT_STATUSES, NATIVE_SCENARIO_STATUSES, QUALITY_STATES, TERMINAL_STATUSES, VERIFIER_STATES } from '../src/contract/types';
 import type {
   AssignmentResult,
@@ -276,6 +280,7 @@ function rankedModel(
     latency_p50_ms: { value: latency },
     output_tokens: { value: tokens },
     security_pass_rate: { estimate: security, lower: 0, upper: 1, denominator: 4 },
+    tool_calling_exclusions: 0,
     security_resistance: role === 'lite'
       ? { unavailable_reason: 'scenario_not_applicable', refused: 0, yielded: 0, persisted: 0 }
       : { value: security, refused: 1, yielded: 0, persisted: 0 },
@@ -369,6 +374,41 @@ describe('modelRoleLeaderboardRows', () => {
       { variant_id: 'no-security', security_pass_rate: undefined },
     ].map((overrides) => ({ ...base, ...overrides }))];
     expect(modelRoleLeaderboardRows(models).map((row) => row.model.variant_id)).toEqual(['eligible']);
+  });
+
+  it('decides tool calling from the run probe, not the catalog, and requires none in Lite', () => {
+    // The catalog records a failed tool-calling probe for smollm3, but this run's verified probe
+    // on the frozen model passed: the run evidence ranks it. A clean catalog entry cannot rescue
+    // a run whose probe excluded tool tasks.
+    const catalogFail = 'impulse2000-smollm3-3b-q4-k-m';
+    const runFail = 'randomblock1-nemotron-nano-8b';
+    const models = MODEL_ROLE_WIRE_ORDER.flatMap((role) => [
+      rankedModel(catalogFail, role, { passRate: 0.5 }),
+      { ...rankedModel(runFail, role, { passRate: 1 }), tool_calling_exclusions: role === 'lite' ? 0 : 4 },
+    ]);
+    const ranked = (role: ModelRole) => modelRoleLeaderboardRows(models, role).map((row) => row.model.variant_id);
+    expect(ranked('primary')).toEqual([catalogFail]);
+    expect(ranked('assistant')).toEqual([catalogFail]);
+    expect(ranked('lite')).toEqual([runFail, catalogFail]);
+  });
+
+  it('excludes a tool-bearing role whose run excluded tool tasks or published no exclusion count', () => {
+    const excluded = rankedModel('excluded', 'primary', { passRate: 1 });
+    const models = [
+      rankedModel('eligible', 'primary', { passRate: 0.5 }),
+      { ...excluded, tool_calling_exclusions: 3 },
+      { ...rankedModel('uncounted', 'assistant'), tool_calling_exclusions: undefined },
+      { ...rankedModel('lite-uncounted', 'lite'), tool_calling_exclusions: undefined },
+    ];
+    expect(modelRoleLeaderboardRows(models).map((row) => row.model.variant_id).sort()).toEqual(['eligible', 'lite-uncounted']);
+    // One run's exclusion shows the variant cannot call tools: no other run or tool-bearing role ranks it.
+    const rows = modelRoleLeaderboardRows([
+      { ...rankedModel('pooled', 'primary'), dataset_id: 'ds-one' },
+      { ...rankedModel('pooled', 'assistant'), dataset_id: 'ds-one' },
+      { ...rankedModel('pooled', 'lite'), dataset_id: 'ds-one' },
+      { ...rankedModel('pooled', 'primary'), dataset_id: 'ds-two', tool_calling_exclusions: 1 },
+    ]);
+    expect(rows.map((row) => row.model.role)).toEqual(['lite']);
   });
 
   it('charges 10% of the score per doubling over the role smallest model', () => {
@@ -553,6 +593,24 @@ describe('modelOverallLeaderboardRows', () => {
     expect(rows[1]?.role_scores.assistant).toBeCloseTo(1);
     expect(rows[1]?.role_scores.lite).toBeCloseTo(100);
     expect(overall([...models].reverse())).toEqual(rows);
+  });
+
+  it('ranks overall only models that have every capability', () => {
+    // Catalogued probes: granite3.3 2B has no thinking support; nemotron-nano passes every probe;
+    // smollm3's catalog tool failure is overridden by its clean run. Tool calling comes from the
+    // Primary and Assistant rows, so a run-excluded model is never overall.
+    const noThinking = 'granite3-3-2b';
+    const complete = 'randomblock1-nemotron-nano-8b';
+    const catalogToolFail = 'impulse2000-smollm3-3b-q4-k-m';
+    const models = roles.flatMap((role) => [
+      rankedModel(noThinking, role, { passRate: 1 }),
+      rankedModel(complete, role, { passRate: 0.5 }),
+      rankedModel(catalogToolFail, role, { passRate: 0.4 }),
+    ]);
+    expect(modelRoleLeaderboardRows(models, 'primary').map((row) => row.model.variant_id)).toEqual([noThinking, complete, catalogToolFail]);
+    expect(overall(models).map((row) => row.model.variant_id)).toEqual([complete, catalogToolFail]);
+    expect(overall(models.map((model) => model.variant_id === complete && model.role === 'assistant'
+      ? { ...model, tool_calling_exclusions: 1 } : model)).map((row) => row.model.variant_id)).toEqual([catalogToolFail]);
   });
 
   it('pools repeated datasets within each role before combining roles', () => {

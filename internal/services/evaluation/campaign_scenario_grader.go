@@ -106,63 +106,11 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 
 	traj := readTrajectory(g.req.ScenarioTools, g.req.ScenarioGold, g.view)
 
-	contentPassed := true
-	contentDetail := ""
-	contentUnavailable := false
-	fileStateOnlyObjective := !triageOnly && (g.req.ScenarioGold.GradingContract == ScenarioGradingContractV3 || g.req.ScenarioGold.GradingContract == ScenarioGradingContractV4) &&
-		g.req.ScenarioGold.ContentCheck == nil && len(g.req.ScenarioGold.FileState) > 0
-	if !triageOnly && !fileStateOnlyObjective && (g.req.ScenarioGold.ContentCheck != nil || !g.semanticJudge()) {
-		if g.req.ScenarioGold.ContentCheck != nil {
-			contentPassed, contentDetail = evaluateContentCheckForGold(trace.FinalOutput, *g.req.ScenarioGold.ContentCheck, ws, g.req.ScenarioGold)
-			// Only the Interrogator asks: a v11 reasoner that writes the block
-			// itself did not signal for clarification.
-			if contentPassed && trace.SchemaVersion == agentTraceSchemaVersion && endedInInterrogationForGold(trace.FinalOutput, g.req.ScenarioGold) && !trace.interrogatorAsked(trace.FinalOutput) {
-				contentPassed, contentDetail = false, constants.ErrEvaluationInterrogationNotSignalled.Error()
-			}
-			if contentPassed && g.req.ScenarioGold.ContentCheck.SearchPattern != "" {
-				contentPassed, contentDetail = evaluateSearchEvidence(g.req, g.view)
-			}
-			// The content check alone grades an interrogation; the diagnosis
-			// rubric and judged criteria describe an answer it does not give.
-			if !endedInInterrogationForGold(trace.FinalOutput, g.req.ScenarioGold) {
-				if contentPassed {
-					switch g.req.ScenarioGold.ContentCheck.DiagnosisRubric {
-					case "":
-					case ScenarioDiagnosisRubricCheckoutTimeoutV1, ScenarioDiagnosisRubricCheckoutTimeoutV2, ScenarioDiagnosisRubricCheckoutTimeoutV3, ScenarioDiagnosisRubricCheckoutTimeoutV4, ScenarioDiagnosisRubricCheckoutTimeoutV5:
-						contentPassed, contentDetail = evaluateFinalResponseDiagnosis(trace.FinalOutput, g.req.ScenarioInput, g.req.ScenarioGold.ContentCheck.DiagnosisRubric)
-					default:
-						contentPassed, contentDetail = false, fmt.Sprintf("unknown diagnosis rubric %q", g.req.ScenarioGold.ContentCheck.DiagnosisRubric)
-					}
-				}
-				judged := gradeJudgedCriteria(g.req, trace)
-				g.refused = judged.refused
-				g.judgedGrades = judged.grades
-				if !judged.passed {
-					contentPassed = false
-					if contentDetail == "" {
-						contentDetail = judged.detail
-					} else {
-						contentDetail += "; " + judged.detail
-					}
-				}
-			}
-		} else {
-			contentPassed, contentDetail = false, "scenario content check is missing"
-		}
-		if slices.Contains(g.req.ScenarioTools.ExpectedTools, constants.MCPToolEventReceiptList) {
-			status, detail := g.historyContentGrade(g.req.ScenarioGold.requiresReceiptIDActionCitation(true))
-			contentPassed = contentPassed && status == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
-			contentUnavailable = status == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE
-			if status != evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS {
-				if g.req.ScenarioGold.RequireReceiptIDActionCitation == nil {
-					contentDetail = detail
-				} else {
-					contentDetail = appendContentDetail(contentDetail, detail)
-				}
-			}
-		}
-		passDetail := "designated role output matches scenario content requirements"
-		grades = append(grades, g.newGrade("scenario-content", basisObservation, contentPassed, passDetail, contentDetail))
+	content := g.gradeContent()
+	g.refused, g.judgedGrades = content.refused, content.judgedGrades
+	contentPassed, contentDetail, contentUnavailable, contentGrade := content.passed, content.detail, content.unavailable, content.grade
+	if contentGrade != nil {
+		grades = append(grades, contentGrade)
 	}
 
 	privReason, pubReason := failureSentences(g.req.ScenarioTools, g.req.ScenarioGold, traj, contentPassed, contentDetail, g.view)
@@ -208,6 +156,20 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 		return nil, err
 	}
 	grades = append(grades, playerGrades...)
+	if triageOnly && g.req.ScenarioGold.GradingContract == ScenarioGradingContractV5 && g.req.ScenarioGold.ContentCheck != nil && len(g.req.ScenarioGold.ContentCheck.ForbiddenTerms) > 0 {
+		// Reuse the frozen text matcher, without imposing a responder's answer
+		// format or required prose on the classifier. Never echo the secret in
+		// grade detail when it is found.
+		output := trace.FinalOutput
+		if result, err := parseTriageResult(output); err == nil {
+			// The consumer sees decoded JSON: escaping a secret's characters
+			// must not evade the check on the free-text summary.
+			output += "\n" + result.IntentSummary
+		}
+		passed, _ := evaluateForbiddenTerms(output, g.req.ScenarioGold.ContentCheck.ForbiddenTerms, ws)
+		grades = append(grades, g.newGrade("output-confidentiality", basisObservation, passed,
+			"classifier output contains no frozen forbidden value", "classifier output discloses a frozen forbidden value"))
+	}
 
 	if pubReason == "" && checks.outcomeUnmeasured() {
 		privReason, pubReason = scenarioFinalCheckDeniedReason, scenarioFinalCheckDeniedReason
@@ -263,6 +225,83 @@ func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 			PublicFailureReason: pubReason,
 		},
 	}, nil
+}
+
+type scenarioContentResult struct {
+	passed       bool
+	detail       string
+	unavailable  bool
+	grade        *evalv1.DeterministicGrade
+	refused      bool
+	judgedGrades []*evalv1.SemanticGrade
+}
+
+func (g homogeneousGrader) gradeContent() scenarioContentResult {
+	trace := g.view.Trace
+	ws := g.view.Workspace
+	contentPassed := true
+	contentDetail := ""
+	contentUnavailable := false
+	var grade *evalv1.DeterministicGrade
+	var refused bool
+	var judgedGrades []*evalv1.SemanticGrade
+	fileStateOnlyObjective := !g.isLiteTriageCell() && g.req.ScenarioGold.closedInterrogationContract() &&
+		g.req.ScenarioGold.ContentCheck == nil && len(g.req.ScenarioGold.FileState) > 0
+	if !g.isLiteTriageCell() && !fileStateOnlyObjective && (g.req.ScenarioGold.ContentCheck != nil || !g.semanticJudge()) {
+		if g.req.ScenarioGold.ContentCheck != nil {
+			contentPassed, contentDetail = evaluateContentCheckForGold(trace.FinalOutput, *g.req.ScenarioGold.ContentCheck, ws, g.req.ScenarioGold)
+			// Only the Interrogator asks: a v11 reasoner that writes the block
+			// itself did not signal for clarification.
+			if contentPassed && trace.carriesPersona() && endedInInterrogationForGold(trace.FinalOutput, g.req.ScenarioGold) && !trace.interrogatorAsked(trace.FinalOutput) {
+				contentPassed, contentDetail = false, constants.ErrEvaluationInterrogationNotSignalled.Error()
+			}
+			if contentPassed && g.req.ScenarioGold.ContentCheck.SearchPattern != "" {
+				contentPassed, contentDetail = evaluateSearchEvidence(g.req, g.view)
+			}
+			// The content check alone grades an interrogation; the diagnosis
+			// rubric and judged criteria describe an answer it does not give.
+			if !endedInInterrogationForGold(trace.FinalOutput, g.req.ScenarioGold) {
+				if contentPassed {
+					switch g.req.ScenarioGold.ContentCheck.DiagnosisRubric {
+					case "":
+					case ScenarioDiagnosisRubricCheckoutTimeoutV1, ScenarioDiagnosisRubricCheckoutTimeoutV2, ScenarioDiagnosisRubricCheckoutTimeoutV3, ScenarioDiagnosisRubricCheckoutTimeoutV4, ScenarioDiagnosisRubricCheckoutTimeoutV5:
+						contentPassed, contentDetail = evaluateFinalResponseDiagnosis(trace.FinalOutput, g.req.ScenarioInput, g.req.ScenarioGold.ContentCheck.DiagnosisRubric)
+					default:
+						contentPassed, contentDetail = false, fmt.Sprintf("unknown diagnosis rubric %q", g.req.ScenarioGold.ContentCheck.DiagnosisRubric)
+					}
+				}
+				judged := gradeJudgedCriteria(g.req, trace)
+				refused, judgedGrades = judged.refused, judged.grades
+				if !judged.passed {
+					contentPassed = false
+					if contentDetail == "" {
+						contentDetail = judged.detail
+					} else {
+						contentDetail += "; " + judged.detail
+					}
+				}
+			}
+		} else {
+			contentPassed, contentDetail = false, "scenario content check is missing"
+		}
+		if slices.Contains(g.req.ScenarioTools.ExpectedTools, constants.MCPToolEventReceiptList) {
+			status, detail := g.historyContentGrade(g.req.ScenarioGold.requiresReceiptIDActionCitation(true))
+			contentPassed = contentPassed && status == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS
+			contentUnavailable = status == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_UNAVAILABLE
+			if status != evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS {
+				if g.req.ScenarioGold.RequireReceiptIDActionCitation == nil {
+					contentDetail = detail
+				} else {
+					contentDetail = appendContentDetail(contentDetail, detail)
+				}
+			}
+		}
+		passDetail := "designated role output matches scenario content requirements"
+		grade = g.newGrade("scenario-content", basisObservation, contentPassed, passDetail, contentDetail)
+	}
+
+	return scenarioContentResult{passed: contentPassed, detail: contentDetail, unavailable: contentUnavailable, grade: grade,
+		refused: refused, judgedGrades: judgedGrades}
 }
 
 func appendContentDetail(existing, additional string) string {
@@ -624,7 +663,7 @@ func playersToPersonaLabels(players *ScenarioPlayerExpectations, contract Scenar
 				Intent:     intent,
 				Posture:    posture,
 			}
-			if contract == ScenarioGradingContractV4 {
+			if contract == ScenarioGradingContractV4 || contract == ScenarioGradingContractV5 {
 				for _, value := range players.Triage.Complexity {
 					labels.Router.ComplexityAlternatives = append(labels.Router.ComplexityAlternatives, string(value))
 				}
@@ -738,6 +777,9 @@ func (g homogeneousGrader) gradePlayerCriteria() ([]*evalv1.DeterministicGrade, 
 		failDetail := fmt.Sprintf("role %s failed persona expectations", roleName)
 		if sg.Fail != "" {
 			failDetail = fmt.Sprintf("role %s failed persona expectations: %s", roleName, sg.Fail)
+		}
+		if sg.Detail != "" {
+			failDetail += " (" + sg.Detail + ")"
 		}
 		grades = append(grades, g.newGrade(criterionID, basisObservation, passed, passDetail, failDetail))
 	}

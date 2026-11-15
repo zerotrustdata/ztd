@@ -16,6 +16,7 @@ const JUDGE_FAILURE_LABELS: Record<LiveJudgeFailure, string> = {
   result_digest: 'result digest mismatch',
   verdict_invalid: 'verdict invalid',
   receipt_unverified: 'receipt unverified',
+  repetition: 'stopped repeating',
 };
 
 function judgmentLabel(judgment: LiveJudgeActivity): string {

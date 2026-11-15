@@ -104,14 +104,10 @@ type LocalIdentity struct {
 	// unparseable.
 	TrustBundle *TrustBundle
 
-	// CertExpiring reports whether the CLI certificate expires within the
-	// coordinator's rotation threshold. Only meaningful when State is
-	// LocalStateComplete and CLICert is non-nil.
-	CertExpiring bool
-
 	// CertExpired reports whether the CLI certificate has already expired.
 	// An expired cert cannot be used for mTLS rotation; the coordinator
-	// routes through recovery instead.
+	// reinstates it (RenewCLIIdentityIfDue) and routes through recovery when
+	// that is refused or the reinstatement window has passed.
 	CertExpired bool
 
 	// BundleStale reports whether the local trust bundle's primary root
@@ -127,15 +123,6 @@ type LocalIdentity struct {
 	// recovery (human-approved, plain-HTTP, token-scoped), which issues a
 	// fresh cert signed by the new CA.
 	BundleStale bool
-}
-
-// NeedsRotation reports whether the coordinator should perform an mTLS CLI
-// rotation before the passkey ceremony. True when the local identity is
-// complete but the cert is expiring within the rotation threshold. An
-// already-expired cert cannot rotate (it cannot authenticate) and must use
-// recovery instead.
-func (i LocalIdentity) NeedsRotation() bool {
-	return i.State == LocalStateComplete && i.CertExpiring && !i.CertExpired
 }
 
 // NeedsRecovery reports whether the coordinator must use the human-approved
@@ -217,6 +204,13 @@ const (
 	// EnrollmentSourceRotation is the mTLS CLI rotation path
 	// (POST /api/v1/auth/cli/rotate).
 	EnrollmentSourceRotation
+	// EnrollmentSourceRenewal is the session-preserving mTLS CLI renewal
+	// path (POST /api/v1/auth/cli/renew).
+	EnrollmentSourceRenewal
+	// EnrollmentSourceReinstatement is the session-preserving reissue of an
+	// expired CLI certificate by proof of possession of its key
+	// (POST /api/v1/auth/cli/reinstate).
+	EnrollmentSourceReinstatement
 )
 
 // String returns a human-readable label for the enrollment source.
@@ -228,16 +222,32 @@ func (s EnrollmentSource) String() string {
 		return "recovery"
 	case EnrollmentSourceRotation:
 		return "rotation"
+	case EnrollmentSourceRenewal:
+		return "renewal"
+	case EnrollmentSourceReinstatement:
+		return "reinstatement"
 	default:
 		return "unknown"
 	}
 }
 
+// inheritsOperatorBinding reports whether the source reissues the certificate
+// of an existing CLI identity, which keeps the operator binding in its local
+// credentials, so the Gateway response carries none.
+func (s EnrollmentSource) inheritsOperatorBinding() bool {
+	switch s {
+	case EnrollmentSourceRotation, EnrollmentSourceRenewal, EnrollmentSourceReinstatement:
+		return true
+	default:
+		return false
+	}
+}
+
 // IsLocalCLI reports whether the source is a local human CLI enrollment
-// path (bootstrap, recovery, or rotation).
+// path (bootstrap, recovery, rotation, renewal, or reinstatement).
 func (s EnrollmentSource) IsLocalCLI() bool {
 	switch s {
-	case EnrollmentSourceBootstrap, EnrollmentSourceRecovery, EnrollmentSourceRotation:
+	case EnrollmentSourceBootstrap, EnrollmentSourceRecovery, EnrollmentSourceRotation, EnrollmentSourceRenewal, EnrollmentSourceReinstatement:
 		return true
 	default:
 		return false
@@ -253,9 +263,10 @@ type EnrollmentOptions struct {
 	// mTLS/trust-bundle errors still fail the enrollment. Per §6.5.
 	NoSystemTrust bool
 
-	// RotateCLI forces an mTLS CLI rotation even when the local identity is
-	// complete and not expiring. Idempotent at the coordinator level: at
-	// most one rotation per run.
+	// RotateCLI requests an mTLS CLI rotation of a complete local identity:
+	// a new certificate under a new CLI session. It is the only path that
+	// rotates; a certificate past its renewal time is renewed in place
+	// instead (RenewCLIIdentityIfDue). At most one rotation per run.
 	RotateCLI bool
 
 	// CAFingerprint, when non-empty, pins the expected SHA-256 fingerprint

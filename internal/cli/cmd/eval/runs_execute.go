@@ -111,6 +111,13 @@ func executeRun(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions)
 	default:
 		return 0, fmt.Errorf("evaluation: run execute: lane %s: %w", run.GetLane(), constants.ErrEvaluationTargetKindMismatch)
 	}
+	catalog, err := store.LoadScenarioCatalog(cmd.Context(), run.GetCampaignBinding().GetCampaignId())
+	if err != nil {
+		return 0, fmt.Errorf("evaluation: run execute: %w", err)
+	}
+	if err := evaluation.ValidateCampaignExecutionPersonas(catalog); err != nil {
+		return 0, fmt.Errorf("evaluation: run execute: campaign %q: %w", run.GetCampaignBinding().GetCampaignId(), err)
+	}
 	control, err := deps.runControl.process(fileSvc)
 	if err != nil {
 		return 0, err

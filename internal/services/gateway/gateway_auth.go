@@ -116,6 +116,12 @@ func NewRouteAuthRegistry(jwksEnabled bool) *RouteAuthRegistry {
 	r.addExact(constants.APIPaths.AuthCLIRecoveryStatus, RouteAuthNone)
 	r.addExact(constants.APIPaths.AuthCLIRecoveryComplete, RouteAuthNone)
 
+	// CLI reinstatement — public, proof-of-possession scoped. An expired CLI
+	// certificate cannot complete the mTLS handshake; the request carries it
+	// with a signature by its private key, which the handler verifies against
+	// the session's current certificate before reissuing for that session.
+	r.addExact(constants.APIPaths.AuthCLIReinstate, RouteAuthNone)
+
 	// Platform enrollment discovery surface — public, token-scoped.
 	// The opaque token and proof-of-possession signatures provide the
 	// authorization context; no mTLS or cookie required. The service
@@ -227,6 +233,10 @@ func NewRouteAuthRegistry(jwksEnabled bool) *RouteAuthRegistry {
 	// The fail-closed default already covers this path, but the explicit
 	// classification documents the requirement and is asserted by tests.
 	r.addExact(constants.APIPaths.AuthCLIRotate, RouteAuthMTLS)
+
+	// CLI renewal — mTLS only. Same identity derivation as rotation; the
+	// renewed certificate keeps the caller's CLI session.
+	r.addExact(constants.APIPaths.AuthCLIRenew, RouteAuthMTLS)
 
 	// CLI session refresh — mTLS only. The caller's identity (user ID) is
 	// derived from the verified CLI certificate URI SAN. The cert is the
@@ -860,7 +870,7 @@ func (s *AuthService) handleCLIAuth(w http.ResponseWriter, r *http.Request, cliS
 		wid := protocol.NewWorkloadIdentity()
 		cert := r.TLS.PeerCertificates[0]
 		if isCLISessionCertIdentityPath(r.URL.Path) {
-			return s.handleCLIRefreshAuth(w, r, cert, cliSessionID, wid, next)
+			return s.handleCLIRefreshAuth(w, r, cert, cliSessionID, next)
 		}
 
 		cliDoc, err := s.db.DocGet(r.Context(), marshaler.CollectionName(constants.CollectionCLISessions), cliSessionID)
@@ -876,7 +886,7 @@ func (s *AuthService) handleCLIAuth(w http.ResponseWriter, r *http.Request, cliS
 			// been lost (e.g., gateway volume reset). All other paths fail
 			// closed.
 			if isCLISessionCertIdentityPath(r.URL.Path) {
-				return s.handleCLIRefreshAuth(w, r, cert, cliSessionID, wid, next)
+				return s.handleCLIRefreshAuth(w, r, cert, cliSessionID, next)
 			}
 			s.logger.Warn("gateway: auth: CLI session not found", "cli_session_id", cliSessionID)
 			s.responder.Error(w, http.StatusUnauthorized, constants.ErrCLISessionInvalid.Error())
@@ -904,7 +914,7 @@ func (s *AuthService) handleCLIAuth(w http.ResponseWriter, r *http.Request, cliS
 			// the condition being recovered from (or logged out of). All
 			// other paths fail closed.
 			if isCLISessionCertIdentityPath(r.URL.Path) {
-				return s.handleCLIRefreshAuth(w, r, cert, cliSessionID, wid, next)
+				return s.handleCLIRefreshAuth(w, r, cert, cliSessionID, next)
 			}
 			s.logger.Warn("gateway: auth: CLI session expired", "cli_session_id", cliSessionID)
 			s.responder.Error(w, http.StatusUnauthorized, constants.ErrCLISessionExpired.Error())
@@ -1020,19 +1030,8 @@ func isCLISessionCertIdentityPath(path string) bool {
 //   - Only the refresh and logout endpoints are reachable through this path;
 //     all other endpoints fail closed on expired/missing sessions. The refresh
 //     handler requires the session to exist and be active.
-func (s *AuthService) handleCLIRefreshAuth(w http.ResponseWriter, r *http.Request, cert *x509.Certificate, oldCLISessionID string, wid *protocol.WorkloadIdentity, next http.Handler) bool {
-	var userID string
-	var certSessionID string
-	for _, uri := range cert.URIs {
-		uriStr := uri.String()
-		uid, userOK := wid.ExtractUserID(uriStr)
-		sid, sessionOK := wid.ExtractCLISessionID(uriStr)
-		if userOK && sessionOK && wid.MatchesCLI(uriStr, uid, sid) {
-			userID = uid
-			certSessionID = sid
-			break
-		}
-	}
+func (s *AuthService) handleCLIRefreshAuth(w http.ResponseWriter, r *http.Request, cert *x509.Certificate, oldCLISessionID string, next http.Handler) bool {
+	userID, certSessionID := CLIIdentityFromCert(cert)
 	if userID == "" || certSessionID == "" {
 		s.logger.Warn("gateway: auth: CLI refresh: cert URI SAN is invalid", "path", r.URL.Path)
 		s.responder.Error(w, http.StatusForbidden, constants.ErrMTLSIdentityMismatch.Error())

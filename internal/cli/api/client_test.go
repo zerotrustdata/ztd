@@ -169,7 +169,7 @@ func TestNewClient_Success(t *testing.T) {
 	require.True(t, ok)
 	assert.NotNil(t, transport.TLSClientConfig)
 	assert.Equal(t, uint16(tls.VersionTLS13), transport.TLSClientConfig.MinVersion)
-	assert.Len(t, transport.TLSClientConfig.Certificates, 1)
+	assertPresentsCLICertificate(t, transport.TLSClientConfig)
 	assert.NotNil(t, transport.TLSClientConfig.RootCAs)
 }
 
@@ -277,9 +277,21 @@ func TestNewClient_TLSConfig(t *testing.T) {
 	require.NotNil(t, tlsConfig)
 
 	assert.Equal(t, uint16(tls.VersionTLS13), tlsConfig.MinVersion)
-	assert.Len(t, tlsConfig.Certificates, 1)
+	assertPresentsCLICertificate(t, tlsConfig)
 	assert.NotNil(t, tlsConfig.RootCAs)
 	assert.False(t, tlsConfig.InsecureSkipVerify)
+}
+
+// assertPresentsCLICertificate checks that the client reads the CLI
+// certificate per handshake rather than snapshotting it, so a renewal reaches
+// a long-running client.
+func assertPresentsCLICertificate(t *testing.T, tlsConfig *tls.Config) {
+	t.Helper()
+	assert.Empty(t, tlsConfig.Certificates)
+	require.NotNil(t, tlsConfig.GetClientCertificate)
+	presented, err := tlsConfig.GetClientCertificate(&tls.CertificateRequestInfo{})
+	require.NoError(t, err)
+	assert.Len(t, presented.Certificate, 1)
 }
 
 func TestStatusError(t *testing.T) {

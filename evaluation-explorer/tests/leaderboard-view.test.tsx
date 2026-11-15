@@ -2,7 +2,10 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { readFileSync } from 'node:fs';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../src/content/framework-catalog', async (importOriginal) =>
+  (await import('./uncatalogued-probes')).withPassingProbesForUncatalogued(await importOriginal()));
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { allFixtureSnapshotRecords, fixtureLiveEvents } from '../src/fixtures/fixtures';
@@ -30,7 +33,7 @@ describe('LeaderboardView', () => {
     evalStore.loadFixtures(['ds-reps-one', 'ds-reps-three'].flatMap((dataset_id, index) => MODEL_ROLE_WIRE_ORDER.map((role) => ({
       ...source, variant_id: 'aggregate', display_name: 'Aggregate model', dataset_id, role,
       model_digest: index === 0 ? undefined : 'a'.repeat(64),
-      quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1,
+      quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1, tool_calling_exclusions: 0,
       parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
       pass_rate: { estimate: index === 0 ? 0.5 : 1, lower: index === 0 ? 0.5 : 1, upper: index === 0 ? 0.5 : 1, denominator: index === 0 ? 10 : 30 },
       security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: index === 0 ? 1 : 3 },
@@ -63,7 +66,7 @@ describe('LeaderboardView', () => {
       display_name: 'Qualified model',
       role: 'assistant',
       inventory_only: false,
-      evaluation_coverage: 1,
+      evaluation_coverage: 1, tool_calling_exclusions: 0,
       pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: 10 },
       latency_p50_ms: { value: 1200 },
       output_tokens: { value: 150 },
@@ -137,14 +140,14 @@ describe('LeaderboardView', () => {
     evalStore.loadFixtures(MODEL_ROLE_WIRE_ORDER.flatMap((role): ModelSummary[] => [
       {
         ...source, role, variant_id: 'no-security', display_name: 'No security evidence',
-        quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1,
+        quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1, tool_calling_exclusions: 0,
         parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
         pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 10 },
         security_resistance: { unavailable_reason: 'scenario_not_applicable', refused: 0, yielded: 0, persisted: 0 },
       },
       {
         ...source, role, variant_id: 'measured-security', display_name: 'Measured security',
-        quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1,
+        quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1, tool_calling_exclusions: 0,
         parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
         pass_rate: { estimate: 0.75, lower: 0.75, upper: 0.75, denominator: 10 },
         security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 4 },
@@ -202,7 +205,7 @@ describe('LeaderboardView', () => {
       display_name: 'Model Alpha',
       role: 'primary',
       inventory_only: false,
-      evaluation_coverage: 1,
+      evaluation_coverage: 1, tool_calling_exclusions: 0,
       pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
       latency_p50_ms: { value: 500 },
       output_tokens: { value: 100 },
@@ -321,7 +324,7 @@ describe('LeaderboardView', () => {
       {
         ...source,
         variant_id: 'balanced', display_name: 'Balanced model', served_model_tag: 'qwen:4b', role,
-        quality_state: 'exploratory_verified' as const, evaluation_coverage: 1,
+        quality_state: 'exploratory_verified' as const, evaluation_coverage: 1, tool_calling_exclusions: 0,
         pass_rate: { estimate: 0.8, lower: 0.8, upper: 0.8, denominator: role === 'lite' ? 10 : 100 },
         latency_p50_ms: { value: 100 }, output_tokens: { value: 100 },
         security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 10 },
@@ -330,7 +333,7 @@ describe('LeaderboardView', () => {
       {
         ...source,
         variant_id: 'lite-specialist', display_name: 'Lite specialist', served_model_tag: 'qwen:4b', role,
-        quality_state: 'exploratory_verified' as const, evaluation_coverage: 1,
+        quality_state: 'exploratory_verified' as const, evaluation_coverage: 1, tool_calling_exclusions: 0,
         pass_rate: { estimate: role === 'lite' ? 1 : 0.1, lower: 0, upper: 1, denominator: role === 'lite' ? 1000 : 10 },
         latency_p50_ms: { value: 100 }, output_tokens: { value: 100 },
         security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 10 },
@@ -368,7 +371,7 @@ describe('LeaderboardView', () => {
       ...source,
       quality_state: 'exploratory_verified' as const,
       inventory_only: false,
-      evaluation_coverage: 1,
+      evaluation_coverage: 1, tool_calling_exclusions: 0,
       parameter_count: 4_000_000_000,
       latency_p50_ms: { value: 1000 },
       output_tokens: { value: 100 },
@@ -403,7 +406,7 @@ describe('LeaderboardView', () => {
         release_basis: 'recorded' as const,
         quality_state: 'exploratory_verified' as const,
         inventory_only: false,
-        evaluation_coverage: 1,
+        evaluation_coverage: 1, tool_calling_exclusions: 0,
         parameter_count: 4_000_000_000,
         latency_p50_ms: { value: 1000 },
         output_tokens: { value: 100 },
@@ -464,7 +467,7 @@ describe('LeaderboardView', () => {
         release_basis: 'recorded' as const,
         quality_state: 'exploratory_verified' as const,
         inventory_only: false,
-        evaluation_coverage: 1,
+        evaluation_coverage: 1, tool_calling_exclusions: 0,
         parameter_count: 4_000_000_000,
         latency_p50_ms: { value: 1000 },
         output_tokens: { value: 100 },
@@ -567,7 +570,7 @@ describe('LeaderboardView', () => {
     evalStore.loadFixtures([
       ...MODEL_ROLE_WIRE_ORDER.map((role): ModelSummary => ({
         ...source, role, variant_id: 'overall-default', display_name: 'Overall default model',
-        quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1,
+        quality_state: 'exploratory_verified', inventory_only: false, evaluation_coverage: 1, tool_calling_exclusions: 0,
         parameter_count: 4_000_000_000, latency_p50_ms: { value: 1000 }, output_tokens: { value: 100 },
         pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 10 },
         security_pass_rate: { estimate: 1, lower: 1, upper: 1, denominator: 4 },

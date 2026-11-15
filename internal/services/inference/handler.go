@@ -362,7 +362,7 @@ func validateInferenceGenerationOptions(req *models.InferenceRequestPayload) err
 	if math.IsNaN(float64(req.Temperature)) || math.IsInf(float64(req.Temperature), 0) || req.Temperature < 0 || req.Temperature > 2 {
 		return fmt.Errorf("%w: temperature", constants.ErrInferenceGenerationOptionsInvalid)
 	}
-	if req.MaxTokens < 0 || req.MaxTokens > constants.InferenceMaxOutputTokens {
+	if req.MaxTokens < 0 {
 		return fmt.Errorf("%w: max tokens", constants.ErrInferenceGenerationOptionsInvalid)
 	}
 	if req.TopP != nil && (math.IsNaN(float64(*req.TopP)) || math.IsInf(float64(*req.TopP), 0) || *req.TopP < 0 || *req.TopP > 1) {

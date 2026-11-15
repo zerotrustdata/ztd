@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path"
 	"regexp"
 	"strings"
 	"testing"
@@ -761,6 +762,44 @@ func TestCampaignAgentExecutorIntegration_TimeoutClosesBracketSealsTraceAndVerif
 	}
 }
 
+// A runaway turn reaches the real Inference Operator, which stops it for
+// repetition; the episode ends on that turn as the model's graded answer
+// (INV-EVAL-CAMP-53) and the run verifies.
+func TestCampaignAgentExecutorIntegration_RepeatingTurnIsStoppedAndGradedAsTheModelsAnswer(t *testing.T) {
+	looping := executorShellCallReply()
+	looping.Loop = "Wait, I should check the service health again before I answer.\n"
+	env := newRealStackAgentRun(t, realStackOptions{
+		singleRole: true, suffix: "repetition-stop",
+		replies: []fixtures.OllamaReply{looping},
+	})
+
+	res := env.executeNext(t)
+
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), res.GetInvalidEvidenceDetail())
+	failed := false
+	for _, grade := range res.GetDeterministicGrades() {
+		failed = failed || grade.GetStatus() == evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL
+	}
+	assert.True(t, failed, "the stopped loop is graded against the model")
+	assert.Equal(t, evalv1.EvaluationTrajectoryOutcome_EVALUATION_TRAJECTORY_OUTCOME_REPETITION, res.GetTrajectoryOutcome())
+	trace := executorLoadTrace(t, env, res)
+	assert.Equal(t, evaluation.AgentTerminalClassificationRepetition, trace.TerminalClassification)
+	require.Len(t, trace.ModelCalls, 1)
+	stopped := trace.ModelCalls[0]
+	assert.Equal(t, constants.InferenceFinishReasonRepetition, stopped.FinishReason)
+	assert.Equal(t, 1, stopped.ToolCallCount, "the stopped turn's signed result keeps the tool call it emitted")
+	assert.Empty(t, trace.ToolCalls, "a tool call from a stopped turn is never run")
+	assert.NotEmpty(t, trace.FinalOutput)
+	assert.Less(t, len(trace.FinalOutput), constants.InferenceRepetitionWindowBytes, "the Operator stopped the loop, not the provider")
+	assert.Equal(t, evalv1.AgentFinishReason_AGENT_FINISH_REASON_REPETITION, trace.ToProto().GetFinishReason())
+	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+	report, err := evaluation.NewCampaignRunVerifier(env.clock).VerifyRun(t.Context(), env.store, env.req.RunID, env.req.Catalog, env.req.ScenarioArtifacts)
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus(), report.GetFailureReasons())
+	_, err = evaluation.NewCampaignExporter(env.clock).ExportRun(t.Context(), env.store, env.files, env.req.RunID, constants.EvaluationCampaignExportDirname)
+	require.NoError(t, err, "a repetition-stopped attempt publishes its finish state")
+}
+
 func TestCampaignAgentExecutorIntegration_DistinctRuntimesKeepInferenceLedgerOutOfDataBracket(t *testing.T) {
 	var env *realStackAgentRun
 	replies := []fixtures.OllamaReply{
@@ -925,6 +964,64 @@ func TestCampaignAgentExecutorIntegration_RunShellCommandConfinesWorkingDirToWor
 	call := trace.ToolCalls[0]
 	assert.True(t, call.Success)
 	assert.Contains(t, call.ResultJSON, trace.Workspace.Root, "shell command without working_dir must execute inside scenario workspace root")
+}
+
+// A shell command runs only inside the attempt's investigation workspace. The
+// Operator directory holds every other attempt's workspace, so it, the
+// workspaces directory, and a sibling workspace are refused before dispatch.
+func TestCampaignAgentExecutorIntegration_RunShellCommandWorkingDirIsTheAttemptWorkspace(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		workingDir func(root string) string
+	}{
+		{name: "operator directory", workingDir: func(root string) string { return path.Dir(path.Dir(root)) }},
+		{name: "workspaces directory", workingDir: func(root string) string { return path.Dir(root) }},
+		{name: "parent of the workspace", workingDir: func(string) string { return ".." }},
+		{name: "sibling workspace", workingDir: func(root string) string { return path.Join(path.Dir(root), "ws-0000000000000000") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			listReply := fixtures.OllamaReply{Respond: func(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
+				root := investigationWorkspaceFromPrompt(t, request)
+				arguments, err := json.Marshal(map[string]string{"command": "ls", "working_dir": tc.workingDir(root)})
+				require.NoError(t, err)
+				return fixtures.OllamaReply{ToolCalls: []fixtures.OllamaToolCall{{Name: constants.MCPToolRunShellCommand, Arguments: arguments}}}
+			}}
+			env := newRealStackAgentRun(t, realStackOptions{
+				singleRole: true, suffix: "working-dir-attempt",
+				replies: []fixtures.OllamaReply{listReply, {Content: "blocked"}},
+				scenario: func(scenario *evalv1.EvaluationScenarioDefinition) {
+					scenario.AllowedTools = []string{constants.MCPToolRunShellCommand}
+				},
+			})
+
+			res := env.executeNext(t)
+
+			require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus())
+			trace := executorLoadTrace(t, env, res)
+			require.Len(t, trace.ToolCalls, 1)
+			call := trace.ToolCalls[0]
+			assert.False(t, call.Success)
+			assert.Equal(t, evaluation.ExportedAgentToolErrorSecurity, call.ErrorType)
+			assert.Contains(t, call.Error, "outside the investigation workspace")
+			assert.Empty(t, call.TransactionID, "a refused working directory never reaches the Operator")
+			assert.NotContains(t, trace.Input.Messages[0].Text, trace.Workspace.OperatorWorkingDirectory+"\n", "the prompt names only the attempt workspace")
+		})
+	}
+}
+
+// investigationWorkspaceFromPrompt reads the attempt workspace the system
+// prompt names, the only directory a model is told about.
+func investigationWorkspaceFromPrompt(t *testing.T, request fixtures.OllamaChatRequest) string {
+	t.Helper()
+	const label = "Investigation workspace: "
+	for _, message := range request.Messages {
+		if _, rest, ok := strings.Cut(message.Content, label); ok {
+			root, _, _ := strings.Cut(rest, "\n")
+			return root
+		}
+	}
+	t.Fatal("system prompt names no investigation workspace")
+	return ""
 }
 
 func TestCampaignAgentExecutorIntegration_RunShellCommandRejectsWorkingDirOutsideWorkspace(t *testing.T) {

@@ -736,6 +736,7 @@ const FINISH_STATE_TO_VIEW: Record<PublicFinishState, PublicModelActivityRecord[
   PUBLIC_FINISH_STATE_TOOL_CALL: 'tool_call',
   PUBLIC_FINISH_STATE_ERROR: 'error',
   PUBLIC_FINISH_STATE_UNAVAILABLE: 'unavailable',
+  PUBLIC_FINISH_STATE_REPETITION: 'repetition',
 };
 const LOAD_STATE_TO_VIEW: Record<EvaluationLoadState, PublicModelActivityRecord['load_state']> = {
   EVALUATION_LOAD_STATE_COLD: 'cold',
@@ -765,6 +766,8 @@ const TRAJECTORY_OUTCOME_TO_VIEW: Record<EvaluationTrajectoryOutcome, PublicTraj
   EVALUATION_TRAJECTORY_OUTCOME_CIRCUMVENTED_DENIAL: 'circumvented_denial',
   EVALUATION_TRAJECTORY_OUTCOME_LOOP_EXHAUSTED: 'loop_exhausted',
   EVALUATION_TRAJECTORY_OUTCOME_PROVIDER_REJECTED_TOOL_DECLARATION: 'provider_rejected_tool_declaration',
+  EVALUATION_TRAJECTORY_OUTCOME_REPETITION: 'repetition',
+  EVALUATION_TRAJECTORY_OUTCOME_NO_ANSWER: 'no_answer',
 };
 const HINT_ARGUMENT_SOURCE_TO_VIEW: Record<EvaluationHintArgumentSource, PublicHintArgumentSource> = {
   EVALUATION_HINT_ARGUMENT_SOURCE_PROMPT: 'prompt',

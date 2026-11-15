@@ -95,7 +95,10 @@ type modelSummaryRecord struct {
 	SecurityResistance      *modelSecurityResistanceRecord `json:"security_resistance,omitempty"`
 	SecurityPassRate        *modelPassRateRecord           `json:"security_pass_rate,omitempty"`
 	TerminalOutcomes        map[string]uint32              `json:"terminal_outcomes,omitempty"`
-	UnavailableReasons      []string                       `json:"unavailable_reasons,omitempty"`
+	// ToolCallingExclusions counts the variant-role's assignments excluded by
+	// the run's verified tool-calling probe. Always emitted: zero is evidence.
+	ToolCallingExclusions uint32   `json:"tool_calling_exclusions"`
+	UnavailableReasons    []string `json:"unavailable_reasons,omitempty"`
 }
 
 type methodologySuiteRecord struct {
@@ -248,10 +251,13 @@ type variantRoleAggregate struct {
 	Passed               uint32
 	Failed               uint32
 	Outcomes             map[string]uint32
-	AgreementPairwise    modelMetricValueRecord
-	LatencyP50MS         modelMetricValueRecord
-	OutputThroughputP50  modelMetricValueRecord
-	OutputTokensP50      modelMetricValueRecord
+	// ToolCallingExclusions counts terminal assignments excluded because the
+	// run's verified tool-calling probe failed or the provider rejected tools.
+	ToolCallingExclusions uint32
+	AgreementPairwise     modelMetricValueRecord
+	LatencyP50MS          modelMetricValueRecord
+	OutputThroughputP50   modelMetricValueRecord
+	OutputTokensP50       modelMetricValueRecord
 	// SecurityResistance is graded only once the frozen catalog is attached;
 	// nil means the catalog was never bound, not that no scenario applied.
 	SecurityResistance *modelSecurityResistanceRecord
@@ -466,6 +472,9 @@ func collectAssignmentAggregateState(assignments []*evalv1.EvaluationAssignment,
 		}
 		designatedBucket.Terminal++
 		designatedBucket.Outcomes[terminalStatus]++
+		if isToolCallingExclusionResult(result) {
+			designatedBucket.ToolCallingExclusions++
+		}
 		evaluatedVariants[designatedVariantID] = struct{}{}
 	}
 	state.ModelCount = uint32(len(scheduledVariants))
@@ -979,6 +988,7 @@ func buildModelSummaryRecord(datasetID, observedAt string, bucket *variantRoleAg
 		ModelDigest:    bucket.ModelDigest, ModelFamily: bucket.ModelFamily, ModelFormat: bucket.ModelFormat,
 		ArtifactSizeBytes: bucket.ArtifactSizeBytes, QuantizationWeightClass: bucket.Quantization, ContextLimit: bucket.ContextLimit,
 		Role: bucket.Role, BackendProviderClass: bucket.ProviderClass, InventoryOnly: terminal == 0, EvaluationCoverage: coverage,
+		ToolCallingExclusions: bucket.ToolCallingExclusions,
 	}
 	switch bucket.ParameterCountSource {
 	case operatorv1.ParameterCountSource_PARAMETER_COUNT_SOURCE_MODEL_METADATA:

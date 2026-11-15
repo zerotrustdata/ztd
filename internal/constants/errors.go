@@ -607,6 +607,14 @@ var (
 
 	ErrCLIRotationFailed            = errors.New("CLI rotation failed")
 	ErrCLIRotationCSRRequired       = errors.New("cli_csr_pem is required for rotation")
+	ErrCLIRenewalStaleCertificate   = errors.New("CLI renewal: presented certificate is not the CLI session's current certificate")
+	ErrCLIRenewalUnavailable        = errors.New("the Gateway does not serve CLI renewal; rebuild and restart the Gateway")
+	ErrCLIRenewalSessionMismatch    = errors.New("CLI renewal: renewed certificate names a different CLI session")
+	ErrCLICertificateExpired        = errors.New("CLI certificate expired")
+	ErrCLIReinstateProofInvalid     = errors.New("CLI reinstatement: proof-of-possession signature by the expired certificate's key is invalid")
+	ErrCLIReinstateWindowElapsed    = errors.New("CLI reinstatement: the certificate expired longer ago than the reinstatement window")
+	ErrCLIReinstateCertInvalid      = errors.New("CLI reinstatement: certificate is not a CLI certificate this Gateway issued for the session")
+	ErrCLIReinstateUnavailable      = errors.New("the Gateway does not serve CLI reinstatement; rebuild and restart the Gateway")
 	ErrCLISessionNotFound           = errors.New("CLI session not found")
 	ErrLogoutScopeInvalid           = errors.New("invalid logout scope; use all, web, or cli")
 	ErrCLISessionAlreadyDeactivated = errors.New("CLI session already deactivated")
@@ -1437,6 +1445,7 @@ var (
 	ErrInferenceCapabilityUnsupported     = errors.New("inference: requested capability unsupported")
 	ErrInferenceToolsUnsupported          = errors.New("inference: tools unsupported")
 	ErrInferenceContextOverflow           = errors.New("inference: context window exceeded")
+	ErrInferenceContextWindowUnavailable  = errors.New("inference: provider reports no context window for the loaded model")
 	ErrInferenceProviderAttemptRequired   = errors.New("inference: provider attempt ID required")
 	ErrInferenceProviderAttemptIDInvalid  = errors.New("inference: provider attempt ID invalid")
 	ErrInferenceIdentityMismatch          = errors.New("inference: request and result identity mismatch")
@@ -1527,7 +1536,6 @@ var (
 	ErrEvaluationRefusalCriterionRequired    = errors.New("evaluation: policy_decision evidence requires a refusal criterion that names a judged content criterion")
 	ErrEvaluationContentJudgmentMissing      = errors.New("evaluation: trace does not carry exactly one judge verdict per judged content criterion")
 	ErrEvaluationContentJudgmentMismatch     = errors.New("evaluation: recorded judge verdict does not match its re-rendered prompt, frozen judge, or signed inference result")
-	ErrEvaluationContentJudgeFailed          = errors.New("evaluation: pinned judge could not decide a judged content criterion")
 	ErrEvaluationInterrogationAnswerRequired = errors.New("evaluation: interrogation does not satisfy the required answer objective")
 	ErrEvaluationInterrogationMissing        = errors.New("evaluation: answer is not an interrogation block")
 	ErrEvaluationInterrogationNotWhole       = errors.New("evaluation: interrogation block is not the entire response")
@@ -1622,6 +1630,9 @@ var (
 
 	// Secondary judge errors
 	ErrJudgeResponseInvalid = errors.New("evaluation judge response invalid")
+	// ErrJudgeResponseRepeated is a judge generation the Inference Operator
+	// stopped because its output degenerated into a loop.
+	ErrJudgeResponseRepeated = errors.New("evaluation judge response stopped repeating")
 
 	// Event registry errors (constgen validation)
 	ErrEventRequestWireValue     = errors.New("non-governed request event wire value must end in .requested")

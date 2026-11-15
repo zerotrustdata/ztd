@@ -9,12 +9,35 @@ package certutil
 
 import (
 	"crypto/ecdsa"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
+
+// RenewalTime is when a workload leaf is due for renewal: two thirds of the
+// way through its validity window. Operator and CLI leaves both renew from
+// this point, which leaves the final third for retries before expiry.
+func RenewalTime(leaf *x509.Certificate) time.Time {
+	return leaf.NotBefore.Add(leaf.NotAfter.Sub(leaf.NotBefore) * 2 / 3)
+}
+
+// CLIReinstateProofDigest is the SHA-256 digest an expired CLI certificate's
+// key signs (ECDSA over the digest) to reinstate its CLI session
+// (POST /api/v1/auth/cli/reinstate). The hashed message is domain separated
+// and binds the session and the exact replacement CSR, so a captured proof
+// cannot obtain a certificate for any other key or session. ECDSA signs a
+// digest, not a message: signing the message itself would truncate it to the
+// curve size and drop the CSR binding.
+func CLIReinstateProofDigest(cliSessionID, csrPEM string) []byte {
+	csrDigest := sha256.Sum256([]byte(csrPEM))
+	digest := sha256.Sum256([]byte(constants.CLIReinstateProofDomain + "\n" + cliSessionID + "\n" + hex.EncodeToString(csrDigest[:])))
+	return digest[:]
+}
 
 // ParseCertFromPEM decodes PEM-encoded certificate data and returns the parsed
 // x509 certificate. It validates that the PEM block is of type "CERTIFICATE".

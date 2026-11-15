@@ -21,6 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/certs"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/pkg/certutil"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	"github.com/zerotrustdata/ztd/internal/uuid"
@@ -76,7 +77,7 @@ func (r *OperatorCertRenewer) Run(ctx context.Context) {
 			r.logger.Error("operator renewal: no current certificate", "error", err)
 			return
 		}
-		renewAt := leaf.NotBefore.Add(leaf.NotAfter.Sub(leaf.NotBefore) * 2 / 3)
+		renewAt := certutil.RenewalTime(leaf)
 		if !sleepUntil(ctx, renewAt) {
 			return
 		}

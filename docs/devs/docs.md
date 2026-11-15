@@ -327,6 +327,8 @@ This catalog provides the authoritative inventory of all first-party documentati
 - [v1.9.1 Release Notes](../release_notes/v1.9.x/v1.9.1.md): Published frozen formation results and leaderboard, feed-derived model membership, formation-aware release selection, local persona demo scenarios, and the Explorer view schema 1.13.0 upgrade requirement.
 - [v1.10.0 Release Notes](../release_notes/v1.10.x/v1.10.0.md): Public feed served from an S3-compatible bucket through a signed pointer and polled live status, on-demand content-addressed run bundles, published per-model security pass rates, pointer-rooted `ztd public verify-proof`, digest-bound private traces and audit databases, Nemesis `1.3.0` as the Tribunal's calibrated adversarial seat, and the Explorer view schema 1.14.0 upgrade requirement.
 
+- [v1.10.1 Release Notes](../release_notes/v1.10.x/v1.10.1.md): Loaded context windows, repetition outcomes, evaluation grading and workspace corrections, and session-preserving CLI certificate renewal.
+
 ## Procedures
 
 ### End-to-End Audit Workflow

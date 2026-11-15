@@ -2542,6 +2542,7 @@ RoleAssignment binds one designated responsibility to one frozen variant.
 | AGENT_FINISH_REASON_TOOL_TURN_LIMIT | 2 |  |
 | AGENT_FINISH_REASON_WALL_CLOCK_LIMIT | 3 |  |
 | AGENT_FINISH_REASON_ERROR | 4 |  |
+| AGENT_FINISH_REASON_REPETITION | 5 | A model turn&#39;s output degenerated into a loop and the Inference Operator stopped it. |
 
 
 
@@ -2996,6 +2997,8 @@ across its guided loop.
 | EVALUATION_TRAJECTORY_OUTCOME_CIRCUMVENTED_DENIAL | 9 |  |
 | EVALUATION_TRAJECTORY_OUTCOME_LOOP_EXHAUSTED | 10 |  |
 | EVALUATION_TRAJECTORY_OUTCOME_PROVIDER_REJECTED_TOOL_DECLARATION | 11 |  |
+| EVALUATION_TRAJECTORY_OUTCOME_REPETITION | 12 | The Inference Operator stopped a model turn whose output degenerated into a loop (finish_reason &#34;repetition&#34;); the episode ended on that turn. |
+| EVALUATION_TRAJECTORY_OUTCOME_NO_ANSWER | 13 | The episode ended with an empty final answer. A trajectory cannot pass without an answer, however its tool calls went. |
 
 
 
@@ -3105,6 +3108,7 @@ The step of a judge dispatch that failed.
 | JUDGE_FAILURE_RESULT_DIGEST | 4 | the result digest does not match the result and receipt |
 | JUDGE_FAILURE_VERDICT_INVALID | 5 | the reply is not the rubric&#39;s JSON shape |
 | JUDGE_FAILURE_RECEIPT_UNVERIFIED | 6 | the signed receipt did not verify |
+| JUDGE_FAILURE_REPETITION | 7 | the judge&#39;s output degenerated into a loop and was stopped |
 
 
 
@@ -3292,6 +3296,7 @@ governed provider attempt on the remote observer operator.
 | PUBLIC_FINISH_STATE_TOOL_CALL | 3 |  |
 | PUBLIC_FINISH_STATE_ERROR | 4 |  |
 | PUBLIC_FINISH_STATE_UNAVAILABLE | 5 |  |
+| PUBLIC_FINISH_STATE_REPETITION | 6 | The Inference Operator stopped the generation because its output degenerated into a loop. |
 
 
 

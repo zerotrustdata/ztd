@@ -81,6 +81,9 @@ type ClientAuthContext struct {
 	// Certificate is the CLI mTLS identity with its sealed key unsealed in
 	// memory only. It is never serialized.
 	Certificate *tls.Certificate `json:"-"`
+	// GetClientCertificate follows renewals for clients that outlive this
+	// context's signing snapshot.
+	GetClientCertificate func(*tls.CertificateRequestInfo) (*tls.Certificate, error) `json:"-"`
 }
 
 func LoadClientAuthContext(fileSvc fs.RuntimeFileService, cfg *config.Config) (*ClientAuthContext, error) {
@@ -115,18 +118,23 @@ func LoadClientAuthContext(fileSvc fs.RuntimeFileService, cfg *config.Config) (*
 			return nil, fmt.Errorf("%w: incomplete local CLI identity\nEnroll with:\n./ztd auth enroll user", constants.ErrNotAuthenticated)
 		}
 	}
-	cert, err := LoadCLICertificate(fileSvc, cfg)
+	source, err := NewCLICertificateSource(fileSvc, cfg)
+	if err != nil {
+		return nil, err
+	}
+	cert, err := source.GetClientCertificate(&tls.CertificateRequestInfo{})
 	if err != nil {
 		return nil, err
 	}
 	return &ClientAuthContext{
-		OperatorSessionID: creds.OperatorSessionID,
-		CLISessionID:      creds.CLISessionID,
-		UserID:            creds.UserID,
-		OperatorID:        creds.OperatorID,
-		ClientCert:        cfg.CLICertFile(),
-		ClientKey:         cfg.CLIKeyFile(),
-		Certificate:       &cert,
+		OperatorSessionID:    creds.OperatorSessionID,
+		CLISessionID:         creds.CLISessionID,
+		UserID:               creds.UserID,
+		OperatorID:           creds.OperatorID,
+		ClientCert:           cfg.CLICertFile(),
+		ClientKey:            cfg.CLIKeyFile(),
+		Certificate:          cert,
+		GetClientCertificate: source.GetClientCertificate,
 	}, nil
 }
 
