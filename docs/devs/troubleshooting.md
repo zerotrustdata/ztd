@@ -63,7 +63,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | ID | Rule |
 | :--- | :--- |
 | INV-TROUBLE-ENV-01 | CLI commands MUST be run from the checkout root. Running from a subdirectory resolves a different `.ztd/` runtime tree. |
-| INV-TROUBLE-ENV-02 | The Go toolchain MUST satisfy the `go` directive in `go.mod` (Go 1.27.3). |
+| INV-TROUBLE-ENV-02 | The Go toolchain MUST satisfy the `go` directive in `go.mod` (Go 1.27.4). |
 | INV-TROUBLE-ENV-03 | A newly built binary MUST be produced with `make build`, which compiles `cmd/ztd` and places the runnable executable at `./ztd`. |
 | INV-TROUBLE-ENV-04 | The root command loads `.env` from the working directory (`config.LoadEnvFile`) after its pre-run gates pass, so a refused command never sees it. When commands fail with an `.env` error, fix the file rather than the command: on Linux and macOS it MUST be a regular file owned by the user or root with mode `0600` or `0400` (`ErrEnvFileInvalid`, fix with `chmod 600 .env`), and every line MUST be `KEY=VALUE` (`ErrEnvFileMalformed`) naming a `secret` or `user_endpoint` key from `protocol/constants/env_vars.json` (`ErrEnvFileUnknownKey`). Platform configuration MUST go in command flags, never `.env`. |
 
@@ -105,7 +105,7 @@ Managed startup failures include the latest bounded child diagnostic from the cu
 
 | Claim | Path | Verify |
 | :--- | :--- | :--- |
-| Go version requirement | `go.mod` | `go 1.27.3` |
+| Go version requirement | `go.mod` | `go 1.27.4` |
 | Platform build target | `Makefile`, `cmd/ztd` | `make build` |
 | Gateway launch profile | `internal/cli/serve/launch_profile.go` | `.ztd/pids/operator-launch-profile.json` |
 | Vault key path | `internal/constants/paths.go` | `SecretsDirname`/`SecretsFileVaultKey` (`secrets/vault_key`) |

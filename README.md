@@ -191,7 +191,7 @@ pwsh scripts/windows-setup.ps1 --build-only
 make quickstart
 ```
 
-*Source builds need Go 1.27.3, Git, and GNU Make. `make build` (not `make build-go`) rebuilds the frontends and needs Node.js 22.22.2+, 24.15+, or 26+.*
+*Source builds need Go 1.27.4, Git, and GNU Make. `make build` (not `make build-go`) rebuilds the frontends and needs Node.js 22.22.2+, 24.15+, or 26+.*
 
 ---
 

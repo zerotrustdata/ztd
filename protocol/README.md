@@ -6,7 +6,7 @@ The protocol directory contains the shared wire contracts, external constant reg
 
 ### Go
 
-The Go protocol packages are part of the root module `github.com/zerotrustdata/ztd`, declared in the repository's `go.mod` with `go 1.27.3`. Import `github.com/zerotrustdata/ztd/protocol` for workload identity helpers or a generated package under `github.com/zerotrustdata/ztd/protocol/proto/ztd/.../v1` for protobuf messages and services.
+The Go protocol packages are part of the root module `github.com/zerotrustdata/ztd`, declared in the repository's `go.mod` with `go 1.27.4`. Import `github.com/zerotrustdata/ztd/protocol` for workload identity helpers or a generated package under `github.com/zerotrustdata/ztd/protocol/proto/ztd/.../v1` for protobuf messages and services.
 
 ### TypeScript
 
