@@ -117,7 +117,7 @@ func BuildAssignmentResultProjection(assignment *evalv1.EvaluationAssignment, re
 		ReleaseBasis:      release.publicBasis(),
 		SourceRevision:    release.SourceRevision,
 	}
-	if scored := scoredAgentInference(result.GetModelInferences()); scored != nil && scored.GetToolsDeclaredReported() {
+	if scored := scoredAgentInference(scoredInferenceRecords(result.GetModelInferences())); scored != nil && scored.GetToolsDeclaredReported() {
 		projection.ToolsDeclared = append([]string(nil), scored.GetToolsDeclared()...)
 	}
 	if homogeneous, ok := assignment.GetTarget().(*evalv1.EvaluationAssignment_Homogeneous); ok && homogeneous.Homogeneous != nil {
@@ -256,7 +256,7 @@ func assignmentLifecycleObservedAt(assignment *evalv1.EvaluationAssignment) time
 
 func collectUnavailableMetricReasons(result *evalv1.EvaluationAssignmentResult) []string {
 	reasons := make([]string, 0)
-	for _, inference := range result.GetModelInferences() {
+	for _, inference := range scoredInferenceRecords(result.GetModelInferences()) {
 		if inference.GetUsageAvailability() == evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_UNAVAILABLE {
 			reasons = append(reasons, "model_usage_unavailable")
 			break

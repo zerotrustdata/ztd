@@ -150,6 +150,7 @@ func TestCampaignEvaluationSummaryPublishesThroughSignedMirrorReconstruction(t *
 		DeterministicGrades:      []*evalv1.DeterministicGrade{{Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, Basis: evalv1.GradeBasis_GRADE_BASIS_OBSERVATION}},
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
 			InferenceRecordId:       "inference-1",
+			Classification:          evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
 			UsageAvailability:       evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_REPORTED,
 			CompletionTokens:        10,
 			GenerationDurationNanos: 1_000_000_000,
@@ -172,7 +173,10 @@ func TestCampaignEvaluationSummaryPublishesThroughSignedMirrorReconstruction(t *
 		RunId:               assignmentWithoutMetrics.GetRunId(),
 		LifecycleStatus:     evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
 		DeterministicGrades: []*evalv1.DeterministicGrade{{Status: evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, Basis: evalv1.GradeBasis_GRADE_BASIS_OBSERVATION}},
-		ModelInferences:     []*evalv1.ModelInferenceRecord{{InferenceRecordId: "inference-2"}},
+		ModelInferences: []*evalv1.ModelInferenceRecord{{
+			InferenceRecordId: "inference-2",
+			Classification:    evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
+		}},
 	}
 	aggregate, err := evaluation.CollectRunAggregateState(
 		[]*evalv1.EvaluationAssignment{assignment, assignmentWithoutMetrics},

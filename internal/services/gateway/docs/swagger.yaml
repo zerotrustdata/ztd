@@ -902,6 +902,7 @@ definitions:
     - 1
     - 2
     - 3
+    - 4
     format: int32
     type: integer
     x-enum-varnames:
@@ -909,6 +910,7 @@ definitions:
     - EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN
     - EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_POST_TURN
     - EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_GRADER
+    - EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_RETRIED
   evalv1.ModelCampaignRole:
     enum:
     - 0
@@ -2856,6 +2858,7 @@ definitions:
     - 48
     - 49
     - 50
+    - 51
     format: int32
     type: integer
     x-enum-varnames:
@@ -2910,6 +2913,7 @@ definitions:
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED
     - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE
+    - InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TRANSIENT
   operatorv1.InferenceDispatchRequest:
     properties:
       acting_app_id:
@@ -3449,6 +3453,7 @@ definitions:
     - 25
     - 26
     - 27
+    - 28
     format: int32
     type: integer
     x-enum-varnames:
@@ -3480,6 +3485,7 @@ definitions:
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR
     - ReceiptFailureCode_RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE
+    - ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT
   operatorv1.ReceiptPersistenceAttestation:
     properties:
       audit_record_id:

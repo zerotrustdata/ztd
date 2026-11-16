@@ -2777,6 +2777,7 @@ in model_inferences.
 | EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN | 1 |  |
 | EVALUATION_CALL_CLASSIFICATION_POST_TURN | 2 |  |
 | EVALUATION_CALL_CLASSIFICATION_GRADER | 3 |  |
+| EVALUATION_CALL_CLASSIFICATION_RETRIED | 4 | A scored-chain attempt the provider asked to retry later and a later attempt of the same call superseded. It stays evidence; metrics skip it. |
 
 
 

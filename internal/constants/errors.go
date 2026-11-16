@@ -1399,7 +1399,12 @@ var (
 	ErrInferenceHostedNotAllowed         = errors.New("hosted inference requires explicit opt-in")
 	ErrConsensusDecisionBindingInvalid   = errors.New("invalid decision consensus binding")
 
-	ErrInferenceBackendUnavailable        = errors.New("inference: backend unavailable")
+	ErrInferenceBackendUnavailable = errors.New("inference: backend unavailable")
+	// ErrInferenceBackendTransient is a provider that asked to be retried later:
+	// a rate limit, an overload, or a transient server failure. Unlike
+	// ErrInferenceBackendUnavailable (authentication, permission, billing,
+	// unreachable), a new attempt can succeed.
+	ErrInferenceBackendTransient          = errors.New("inference: backend asked to retry later")
 	ErrInferenceModelNotFound             = errors.New("inference: model not found in backend store")
 	ErrInferenceGenerateFailed            = errors.New("inference: generation failed")
 	ErrInferenceModelReleaseFailed        = errors.New("inference: model release failed")

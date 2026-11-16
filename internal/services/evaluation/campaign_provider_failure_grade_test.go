@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/inference"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -29,6 +30,8 @@ func providerFailureGradeRequest() AssignmentExecutionRequest {
 func TestProviderFailureClass_OnlyForClassifiedProviderErrors(t *testing.T) {
 	assert.Equal(t, "capability_unsupported", string(ProviderFailureClass(fmt.Errorf("turn 1: %w", constants.ErrInferenceToolsUnsupported))))
 	assert.Equal(t, "backend_timeout", string(ProviderFailureClass(constants.ErrInferenceBackendTimeout)))
+	assert.Equal(t, "backend_transient", string(ProviderFailureClass(constants.ErrInferenceBackendTransient)))
+	assert.Equal(t, "Provider asked to retry later (backend_transient); no final response was produced.", providerFailureReason(inference.AttemptFailureBackendTransient))
 	assert.Empty(t, ProviderFailureClass(constants.ErrHTTPStatusError))
 }
 

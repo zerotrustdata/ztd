@@ -3599,6 +3599,7 @@ the error text.
 | INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR | 48 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED | 49 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE | 50 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TRANSIENT | 51 |  |
 
 
 
@@ -3812,6 +3813,7 @@ string-matching the result_summary. It is bound into the receipt signature.
 | RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED | 25 |  |
 | RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR | 26 | The provider accepted the request, then ended its response stream with an error event instead of a done event, such as when its own tool-call parser rejected the model&#39;s output. The provider&#39;s message is never signed. |
 | RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE | 27 | The request exceeded the Inference Operator&#39;s request size bound, so it was rejected before the provider was called. |
+| RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT | 28 | The provider asked to be retried later (a rate limit, an overload, or a transient server failure) before returning a result. A new provider attempt can succeed; authentication, permission and billing failures are BACKEND_UNAVAILABLE instead. |
 
 
  

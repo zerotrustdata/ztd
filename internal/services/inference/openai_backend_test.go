@@ -642,13 +642,26 @@ func TestOpenAIBackend_StreamFailuresFailClosed(t *testing.T) {
 		stream string
 		want   error
 	}{
-		"error event": {
+		"transient error event": {
 			"event: error\r\ndata: {\"type\":\"error\",\"code\":\"server_error\",\"message\":\"internal\",\"sequence_number\":0}\r\n\r\n",
+			constants.ErrInferenceBackendTransient,
+		},
+		"rate-limited error event": {
+			"event: error\r\ndata: {\"type\":\"error\",\"code\":\"rate_limit_exceeded\",\"message\":\"slow down\",\"sequence_number\":0}\r\n\r\n",
+			constants.ErrInferenceBackendTransient,
+		},
+		"error event": {
+			"event: error\r\ndata: {\"type\":\"error\",\"code\":\"invalid_prompt\",\"message\":\"bad\",\"sequence_number\":0}\r\n\r\n",
 			constants.ErrInferenceProviderStreamError,
 		},
 		"response failed event": {
 			fmt.Sprintf("event: response.created\r\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"r1\",\"status\":\"in_progress\",\"model\":%q}}\r\n\r\n"+
 				"event: response.failed\r\ndata: {\"type\":\"response.failed\",\"sequence_number\":1,\"response\":{\"id\":\"r1\",\"status\":\"failed\",\"model\":%q,\"error\":{\"code\":\"server_error\",\"message\":\"failed\"}}}\r\n\r\n", openaiTestModel, openaiTestModel),
+			constants.ErrInferenceBackendTransient,
+		},
+		"response failed event without a transient code": {
+			fmt.Sprintf("event: response.created\r\ndata: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"r1\",\"status\":\"in_progress\",\"model\":%q}}\r\n\r\n"+
+				"event: response.failed\r\ndata: {\"type\":\"response.failed\",\"sequence_number\":1,\"response\":{\"id\":\"r1\",\"status\":\"failed\",\"model\":%q,\"error\":{\"code\":\"invalid_prompt\",\"message\":\"failed\"}}}\r\n\r\n", openaiTestModel, openaiTestModel),
 			constants.ErrInferenceProviderStreamError,
 		},
 		"missing terminal event": {
@@ -784,9 +797,13 @@ func TestOpenAIBackend_StatusErrorsAreTyped(t *testing.T) {
 		want   error
 	}{
 		"not found":                     {http.StatusNotFound, `{"error":{"code":"model_not_found","message":"no such model"}}`, constants.ErrInferenceModelNotFound},
-		"rate limit":                    {http.StatusTooManyRequests, `{"error":{"type":"rate_limit_error","code":"rate_limit_exceeded"}}`, constants.ErrInferenceBackendUnavailable},
+		"rate limit":                    {http.StatusTooManyRequests, `{"error":{"type":"rate_limit_error","code":"rate_limit_exceeded"}}`, constants.ErrInferenceBackendTransient},
+		"insufficient quota":            {http.StatusTooManyRequests, `{"error":{"type":"insufficient_quota","code":"insufficient_quota"}}`, constants.ErrInferenceBackendUnavailable},
 		"unauthorized":                  {http.StatusUnauthorized, `{"error":{"type":"invalid_request_error","code":"invalid_api_key"}}`, constants.ErrInferenceBackendUnavailable},
-		"server error":                  {http.StatusInternalServerError, `{"error":{"type":"server_error"}}`, constants.ErrInferenceBackendUnavailable},
+		"payment required":              {http.StatusPaymentRequired, `{}`, constants.ErrInferenceBackendUnavailable},
+		"server error":                  {http.StatusInternalServerError, `{"error":{"type":"server_error"}}`, constants.ErrInferenceBackendTransient},
+		"service unavailable":           {http.StatusServiceUnavailable, `{}`, constants.ErrInferenceBackendTransient},
+		"not implemented":               {http.StatusNotImplemented, `{}`, constants.ErrInferenceBackendUnavailable},
 		"timeout":                       {http.StatusGatewayTimeout, `{"error":{"code":"timeout"}}`, constants.ErrInferenceBackendTimeout},
 		"payload too large":             {http.StatusRequestEntityTooLarge, `{}`, constants.ErrInferenceContextOverflow},
 		"context length exceeded":       {http.StatusBadRequest, `{"error":{"code":"context_length_exceeded","message":"too long"}}`, constants.ErrInferenceContextOverflow},
@@ -805,6 +822,12 @@ func TestOpenAIBackend_StatusErrorsAreTyped(t *testing.T) {
 		fake := &openaiFake{metaCode: http.StatusNotFound}
 		_, err := newFakeOpenAIBackend(t, fake).Generate(testutil.Context(t), openaiRequest(openaiTestModel))
 		require.ErrorIs(t, err, constants.ErrInferenceModelNotFound)
+		assert.Zero(t, fake.posts())
+	})
+	t.Run("rate-limited metadata read is transient", func(t *testing.T) {
+		fake := &openaiFake{metaCode: http.StatusTooManyRequests, metaError: `{"error":{"type":"rate_limit_error","code":"rate_limit_exceeded"}}`}
+		_, err := newFakeOpenAIBackend(t, fake).Generate(testutil.Context(t), openaiRequest(openaiTestModel))
+		require.ErrorIs(t, err, constants.ErrInferenceBackendTransient)
 		assert.Zero(t, fake.posts())
 	})
 }

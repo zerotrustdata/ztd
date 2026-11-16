@@ -176,6 +176,9 @@ func (s *openaiStreamState) consume(event openaiStreamEvent) ([]*operatorv1.Infe
 			s.hasSeq = true
 			s.lastSeq = *event.SequenceNumber
 		}
+		if openaiErrorTransient(openaiAPIError{Code: event.Code}) || (event.Error != nil && openaiErrorTransient(*event.Error)) {
+			return nil, constants.ErrInferenceBackendTransient
+		}
 		return nil, constants.ErrInferenceProviderStreamError
 	}
 	if event.SequenceNumber == nil {
@@ -278,6 +281,9 @@ func (s *openaiStreamState) consume(event openaiStreamEvent) ([]*operatorv1.Infe
 		r := event.Response
 		if r == nil || r.ID != s.result.responseID || (r.Model != "" && r.Model != s.result.servedModel) {
 			return nil, invalid
+		}
+		if r.Error != nil && openaiErrorTransient(*r.Error) {
+			return nil, constants.ErrInferenceBackendTransient
 		}
 		return nil, constants.ErrInferenceProviderStreamError
 
@@ -532,6 +538,16 @@ func (b *OpenAIBackend) decodeStream(
 // error.code / error.param / error.type (and bounded message hints on 400).
 // Provider messages and bodies can echo prompts or keys and are never logged,
 // returned, or signed (INV-STOR-LOG-01).
+// openaiErrorTransient reports whether a typed OpenAI error asks to be retried
+// later. insufficient_quota is billing: it arrives as a rate-limit error but a
+// new attempt cannot succeed.
+func openaiErrorTransient(apiErr openaiAPIError) bool {
+	if apiErr.Code == "insufficient_quota" {
+		return false
+	}
+	return apiErr.Code == "rate_limit_exceeded" || apiErr.Code == "server_error" || apiErr.Type == "rate_limit_error" || apiErr.Type == "server_error"
+}
+
 func (b *OpenAIBackend) statusError(status int, body []byte, model, attemptID string) error {
 	var envelope struct {
 		Error openaiAPIError `json:"error"`
@@ -555,8 +571,11 @@ func (b *OpenAIBackend) statusError(status int, body []byte, model, attemptID st
 		kind = constants.ErrInferenceContextOverflow
 	case status >= http.StatusMultipleChoices && status < http.StatusBadRequest:
 		kind = constants.ErrInferenceBackendUnavailable
-	case status == http.StatusUnauthorized || status == http.StatusPaymentRequired || status == http.StatusForbidden || status == http.StatusTooManyRequests || status >= http.StatusInternalServerError ||
-		apiErr.Code == "rate_limit_exceeded" || apiErr.Code == "insufficient_quota" || apiErr.Type == "rate_limit_error" || apiErr.Type == "server_error":
+	case status == http.StatusUnauthorized || status == http.StatusPaymentRequired || status == http.StatusForbidden || apiErr.Code == "insufficient_quota":
+		kind = constants.ErrInferenceBackendUnavailable
+	case hostedStatusTransient(status) || openaiErrorTransient(apiErr):
+		kind = constants.ErrInferenceBackendTransient
+	case status >= http.StatusInternalServerError:
 		kind = constants.ErrInferenceBackendUnavailable
 	case status == http.StatusBadRequest:
 		switch {

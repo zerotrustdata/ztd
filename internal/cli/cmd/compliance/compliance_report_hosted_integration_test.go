@@ -99,6 +99,7 @@ func TestBuildCampaignReportSource_HostedInferenceRequiresOnlySealedHostedWindow
 		InferenceRecordId: "inf-hosted-1",
 		ProviderAttemptId: hostedAttemptID,
 		ModelVariant:      hostedVariant,
+		ResultDigest:      hostedInferenceResult.GetResultDigest(),
 	}
 	result := &evalv1.EvaluationAssignmentResult{
 		SchemaVersion:   evaluation.CampaignSchemaVersion,
@@ -128,6 +129,39 @@ func TestBuildCampaignReportSource_HostedInferenceRequiresOnlySealedHostedWindow
 	require.NoError(t, err)
 	assert.Equal(t, admission.GetAdmissionId(), source.AdmissionID)
 	assert.NotEmpty(t, artifacts)
+
+	saveInferences := func(records ...*evalv1.ModelInferenceRecord) {
+		t.Helper()
+		result.ModelInferences = records
+		result.ResultDigest = ""
+		result.ResultDigest, err = evaluation.ComputeAssignmentResultDigest(result)
+		require.NoError(t, err)
+		require.NoError(t, store.SaveAssignmentResult(ctx, result))
+	}
+
+	// A hosted attempt that returned no result (a throttled call) carries no
+	// signed attestation, so the report requires no window for it.
+	failedHostedRecord := &evalv1.ModelInferenceRecord{
+		InferenceRecordId: "inf-hosted-throttled",
+		ProviderAttemptId: "attempt-hosted-throttled",
+		ModelVariant:      hostedVariant,
+	}
+	saveInferences(failedHostedRecord, hostedRecord)
+	_, _, err = buildCampaignReportSource(ctx, fileSvc, admission, now.Add(time.Minute))
+	require.NoError(t, err)
+
+	// A hosted attempt with a result and no sealed window fails closed.
+	unsealedHostedRecord := &evalv1.ModelInferenceRecord{
+		InferenceRecordId: "inf-hosted-unsealed",
+		ProviderAttemptId: "attempt-hosted-unsealed",
+		ModelVariant:      hostedVariant,
+		ResultDigest:      models.SHA256Hex([]byte("unsealed-hosted-result")),
+	}
+	saveInferences(failedHostedRecord, hostedRecord, unsealedHostedRecord)
+	_, _, err = buildCampaignReportSource(ctx, fileSvc, admission, now.Add(time.Minute))
+	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrEvalRunVerificationFailed)
+	saveInferences(failedHostedRecord, hostedRecord)
 
 	// Adding a local inference without sealed provider-observation records must
 	// fail closed during report source construction.

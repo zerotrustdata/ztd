@@ -426,6 +426,7 @@ func classifyInferenceDispatchError(err error) (int, error) {
 		{constants.ErrInferenceCompletionNoReceipt, http.StatusBadGateway},
 		{constants.ErrInferenceCompletionNoResult, http.StatusBadGateway},
 		{constants.ErrInferenceBackendUnavailable, http.StatusBadGateway},
+		{constants.ErrInferenceBackendTransient, http.StatusBadGateway},
 		{constants.ErrInferenceBackendNotRegistered, http.StatusBadGateway},
 		{constants.ErrInferenceBackendTimeout, http.StatusBadGateway},
 		{constants.ErrInferenceGenerateFailed, http.StatusBadGateway},

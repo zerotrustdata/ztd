@@ -30,9 +30,11 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// agentTraceSchemaVersion is the version every new trace is sealed with. v12
-// records a content judgment the pinned judge failed to decide, with its typed
-// failure, so the trace persists when grading fails; v11
+// agentTraceSchemaVersion is the version every new trace is sealed with. v13
+// records retried provider attempts: a call that retries an attempt the
+// provider asked to retry later carries retry_of, the attempt it supersedes;
+// v12 records a content judgment the pinned judge failed to decide, with its
+// typed failure, so the trace persists when grading fails; v11
 // records the frozen persona (ID, version, digest) the designated role ran
 // under; v10 records each pinned-judge verdict on a judged content criterion with its
 // dispatched prompt and signed inference result; v9
@@ -45,7 +47,8 @@ import (
 // remain valid evidence; a v3 trace's model input was not captured and is
 // never reconstructed.
 const (
-	agentTraceSchemaVersion    = "agent-trace.v12"
+	agentTraceSchemaVersion    = "agent-trace.v13"
+	agentTraceSchemaVersionV12 = "agent-trace.v12"
 	agentTraceSchemaVersionV11 = "agent-trace.v11"
 	agentTraceSchemaVersionV10 = "agent-trace.v10"
 	agentTraceSchemaVersionV9  = "agent-trace.v9"
@@ -134,7 +137,13 @@ type AgentModelCall struct {
 	GenerationDurationNanos uint64              `json:"generation_duration_nanos,omitempty"`
 	FinishReason            string              `json:"finish_reason,omitempty"`
 	LoadState               string              `json:"load_state,omitempty"`
-	RetryCount              uint32              `json:"retry_count"`
+	// RetryCount is the zero-based retry ordinal of this provider attempt. A
+	// completed attempt's signed result echoes it.
+	RetryCount uint32 `json:"retry_count"`
+	// RetryOf is the provider attempt this call retries (v13): an earlier
+	// attempt of the same call whose signed FAILED receipt says the provider
+	// asked to retry later. It is set exactly when RetryCount is above zero.
+	RetryOf string `json:"retry_of,omitempty"`
 	// Thinking is the reasoning text the provider returned as thinking parts,
 	// in order. It is never sent back to the model.
 	Thinking      string `json:"thinking,omitempty"`
@@ -181,6 +190,40 @@ func (c AgentModelCall) Completed() bool {
 // inference a tool call dispatched.
 func (c AgentModelCall) IsTurn() bool {
 	return c.Purpose == agentModelCallPurposeTurn
+}
+
+// supersededAttempts returns the provider attempts a later call retried. A
+// superseded attempt stays evidence (its receipt, ledger claim, inference
+// record, and observation windows), but it is not part of the conversation,
+// the step count, or any metric: the retry that superseded it is the call.
+// verifyRetryChains proves every retry_of link before a trace is trusted.
+func (t *AgentTrace) supersededAttempts() map[string]bool {
+	superseded := make(map[string]bool)
+	if t == nil {
+		return superseded
+	}
+	for _, call := range t.ModelCalls {
+		if call.RetryOf != "" {
+			superseded[call.RetryOf] = true
+		}
+	}
+	return superseded
+}
+
+// scoredModelCalls returns the model calls no later attempt superseded, in
+// trace order.
+func (t *AgentTrace) scoredModelCalls() []AgentModelCall {
+	if t == nil {
+		return nil
+	}
+	superseded := t.supersededAttempts()
+	calls := make([]AgentModelCall, 0, len(t.ModelCalls))
+	for _, call := range t.ModelCalls {
+		if !superseded[call.ProviderAttemptID] {
+			calls = append(calls, call)
+		}
+	}
+	return calls
 }
 
 // AgentToolCall is one tool call the model made and what it returned. An
@@ -409,7 +452,7 @@ func (t *AgentTrace) Conversation() ([]AgentTraceContextMessage, error) {
 	assistantRole := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT.String()
 	toolRole := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_TOOL.String()
 	userRole := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String()
-	for _, call := range t.ModelCalls {
+	for _, call := range t.scoredModelCalls() {
 		if !call.IsTurn() {
 			continue
 		}
@@ -596,7 +639,19 @@ func (t *AgentTrace) carriesContentJudgments() bool {
 // persona the designated role ran under and the Interrogator's exact input
 // (v11 and later).
 func (t *AgentTrace) carriesPersona() bool {
-	return t != nil && (t.SchemaVersion == agentTraceSchemaVersion || t.SchemaVersion == agentTraceSchemaVersionV11)
+	return t != nil && (t.carriesFailedJudgments() || t.SchemaVersion == agentTraceSchemaVersionV11)
+}
+
+// carriesFailedJudgments reports whether the trace's schema records a content
+// judgment the pinned judge failed to decide (v12 and later).
+func (t *AgentTrace) carriesFailedJudgments() bool {
+	return t != nil && (t.carriesRetries() || t.SchemaVersion == agentTraceSchemaVersionV12)
+}
+
+// carriesRetries reports whether the trace's schema records retried provider
+// attempts (v13 and later).
+func (t *AgentTrace) carriesRetries() bool {
+	return t != nil && t.SchemaVersion == agentTraceSchemaVersion
 }
 
 // SharedRuntime reports whether both roles executed on one runtime.
@@ -881,7 +936,7 @@ func validateAgentTraceRules(trace *AgentTrace) error {
 		return fmt.Errorf("evaluation: validate agent trace: evidence_digest: %w", constants.ErrMissingRequiredField)
 	}
 	switch trace.SchemaVersion {
-	case agentTraceSchemaVersion, agentTraceSchemaVersionV11, agentTraceSchemaVersionV10, agentTraceSchemaVersionV9, agentTraceSchemaVersionV8, agentTraceSchemaVersionV7, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
+	case agentTraceSchemaVersion, agentTraceSchemaVersionV12, agentTraceSchemaVersionV11, agentTraceSchemaVersionV10, agentTraceSchemaVersionV9, agentTraceSchemaVersionV8, agentTraceSchemaVersionV7, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
 		if trace.Input == nil || len(trace.Input.Messages) == 0 {
 			return fmt.Errorf("evaluation: validate agent trace: input: %w", constants.ErrMissingRequiredField)
 		}
@@ -906,12 +961,15 @@ func validateAgentTraceRules(trace *AgentTrace) error {
 		if (call.Purpose == agentModelCallPurposeInterrogation) != (len(call.Input) > 0) || (!trace.carriesPersona() && len(call.Input) > 0) {
 			return fmt.Errorf("evaluation: validate agent trace: model call %q input: %w", call.ProviderAttemptID, constants.ErrEvidenceArtifactMalformed)
 		}
+		if !trace.carriesRetries() && (call.RetryOf != "" || call.RetryCount != 0) {
+			return fmt.Errorf("evaluation: validate agent trace: historical trace carries a retried model call %q: %w", call.ProviderAttemptID, constants.ErrEvidenceArtifactMalformed)
+		}
 	}
 	if !trace.carriesContentJudgments() && len(trace.ContentJudgments) > 0 {
 		return fmt.Errorf("evaluation: validate agent trace: historical trace carries content judgments: %w", constants.ErrEvidenceArtifactMalformed)
 	}
 	for _, judgment := range trace.ContentJudgments {
-		if judgment.Failure != "" && trace.SchemaVersion != agentTraceSchemaVersion {
+		if judgment.Failure != "" && !trace.carriesFailedJudgments() {
 			return fmt.Errorf("evaluation: validate agent trace: historical trace carries a failed content judgment: %w", constants.ErrEvidenceArtifactMalformed)
 		}
 	}

@@ -73,6 +73,7 @@ func TestCampaignProviderObservationReader_BuildPublicBenchmarkObservations(t *t
 	result := &evalv1.EvaluationAssignmentResult{
 		RunId: "run-1",
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
+			Classification:          evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
 			InferenceRecordId:       "inference-1",
 			ProviderAttemptId:       "attempt-1",
 			LoadDurationNanos:       2_000_000,
@@ -162,6 +163,7 @@ func TestBuildPublicBenchmarkObservations_AllUnavailableGPUMetrics(t *testing.T)
 	benchmark, err := reader.BuildPublicBenchmarkObservations(ctx, &evalv1.EvaluationAssignmentResult{
 		RunId: "run-unavail",
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
+			Classification:    evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
 			InferenceRecordId: "inference-1",
 			ProviderAttemptId: "attempt-unavail",
 		}},
@@ -216,6 +218,7 @@ func TestCampaignProviderObservationReader_VerifyAssignmentProviderObservations_
 	result := &evalv1.EvaluationAssignmentResult{
 		RunId: "run-missing",
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
+			Classification:    evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
 			InferenceRecordId: "inference-1",
 			ProviderAttemptId: "attempt-missing",
 		}},
@@ -255,6 +258,7 @@ func TestCampaignProviderObservationReader_VerifyAssignmentProviderObservations_
 	result := &evalv1.EvaluationAssignmentResult{
 		RunId: "run-missing",
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
+			Classification:    evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
 			InferenceRecordId: "inference-1",
 			ProviderAttemptId: "attempt-missing",
 		}},
@@ -323,7 +327,7 @@ func TestCampaignRunVerifier_WithReaders(t *testing.T) {
 
 func TestBuildPublicBenchmarkObservations_UnconfiguredObserverKeepsResultTelemetry(t *testing.T) {
 	t.Parallel()
-	result := &evalv1.EvaluationAssignmentResult{ModelInferences: []*evalv1.ModelInferenceRecord{{LoadDurationNanos: 1_000_000, GenerationDurationNanos: 2_000_000, TotalDurationNanos: 3_000_000}}}
+	result := &evalv1.EvaluationAssignmentResult{ModelInferences: []*evalv1.ModelInferenceRecord{{Classification: evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN, LoadDurationNanos: 1_000_000, GenerationDurationNanos: 2_000_000, TotalDurationNanos: 3_000_000}}}
 	benchmark, err := (*CampaignProviderObservationReader)(nil).BuildPublicBenchmarkObservations(context.Background(), result)
 	require.NoError(t, err)
 	require.NotNil(t, benchmark.Timing)
@@ -341,6 +345,7 @@ func TestBuildPublicBenchmarkObservations_HostedOnlyCellAddsNoSourceNotCaptured(
 	result := &evalv1.EvaluationAssignmentResult{
 		RunId: "run-hosted",
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
+			Classification:            evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
 			InferenceRecordId:         "inference-hosted",
 			ProviderAttemptId:         "attempt-hosted",
 			ModelVariant:              &evalv1.ModelVariant{ProviderClass: constants.InferenceProviderGemini, ServedModelTag: "gemini-3.6-flash"},

@@ -22,6 +22,23 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
+// statusProviderOverloaded is the non-standard status a hosted provider
+// returns when it is overloaded (Anthropic overloaded_error).
+const statusProviderOverloaded = 529
+
+// hostedStatusTransient reports whether a hosted provider status asks to be
+// retried later: a rate limit (429), a transient server failure (500, 502,
+// 503), or an overload (529). Authentication, permission and billing statuses
+// are never transient, because a new attempt cannot succeed.
+func hostedStatusTransient(status int) bool {
+	switch status {
+	case http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, statusProviderOverloaded:
+		return true
+	default:
+		return false
+	}
+}
+
 // hostedResponse is one captured hosted provider response: its exact bytes and
 // the elapsed time from the request start to the arrival of its last bytes.
 type hostedResponse struct {

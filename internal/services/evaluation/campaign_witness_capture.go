@@ -115,14 +115,15 @@ func (c *CampaignWitnessCapture) CaptureAssignmentEvidence(ctx context.Context, 
 }
 
 // WaitForRunModelProvenanceEvidence waits until every scored attempt of one run's
-// persisted assignment results holds a sealed model provenance window, driven by
-// the Gateway's attestation-recorded events. The run executor calls it once, at
-// run completion. The caller owns the deadline.
+// persisted assignment results that ModelProvenanceRequired names holds a
+// sealed model provenance window, driven by the Gateway's attestation-recorded
+// events. The run executor calls it once, at run completion. The caller owns
+// the deadline.
 func (c *CampaignWitnessCapture) WaitForRunModelProvenanceEvidence(ctx context.Context, runID string) error {
 	if c == nil || runID == "" {
 		return fmt.Errorf("evaluation: wait for run model provenance evidence: %w", constants.ErrMissingRequiredField)
 	}
-	attempts, err := c.runScoredAttempts(ctx, runID, scoredModelInferences)
+	attempts, err := c.runScoredAttempts(ctx, runID, provenanceModelInferences)
 	if err != nil {
 		return fmt.Errorf("evaluation: wait for run model provenance evidence: %w", err)
 	}
@@ -300,14 +301,12 @@ func (c *CampaignWitnessCapture) captureProviderEvidence(ctx context.Context, ru
 }
 
 // captureAssignmentModelProvenance seals the attestation window for every scored
-// inference of one result that the run does not yet hold.
+// inference of one result that ModelProvenanceRequired names and the run does
+// not yet hold.
 func (c *CampaignWitnessCapture) captureAssignmentModelProvenance(ctx context.Context, result *evalv1.EvaluationAssignmentResult) error {
 	runID := result.GetRunId()
-	for _, inferenceRecord := range scoredModelInferences(result) {
+	for _, inferenceRecord := range provenanceModelInferences(result) {
 		attemptID := inferenceRecord.GetProviderAttemptId()
-		if attemptID == "" {
-			continue
-		}
 		_, err := c.store.LoadModelProvenanceWindow(ctx, runID, attemptID)
 		if err == nil {
 			continue

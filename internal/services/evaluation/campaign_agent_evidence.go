@@ -23,6 +23,8 @@ import (
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
+	inferencedispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -72,6 +74,9 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 			return agentEvidenceError(agentEvidenceStageModelCall, "model call "+call.ProviderAttemptID+" observation", err)
 		}
 		observationClaims = append(observationClaims, observed...)
+	}
+	if err := verifyRetryChains(trace); err != nil {
+		return agentEvidenceError(agentEvidenceStageModelCall, "retry chain", err)
 	}
 	if trace.CarriesModelIdentity() {
 		if err := verifyV7EpisodeOutputs(trace); err != nil {
@@ -161,6 +166,59 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 			return agentEvidenceError(agentEvidenceStageLedger, "ledger bracket", fmt.Errorf("scenario observations do not bracket agent activity: %w", constants.ErrConformanceLedgerGap))
 		}
 		phase = next
+	}
+	return nil
+}
+
+// verifyRetryChains proves every retried model call against the attempt it
+// names in retry_of. The retried attempt must come earlier in the trace, be
+// the same call (purpose, loop turn, tool call, persona) one retry ordinal
+// lower, not have completed, and carry a receipt the Inference runtime signed
+// as a FAILED execution whose provider asked to retry later
+// (RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT). No attempt is retried twice, and
+// no call retries past the transient retry policy's bound. Receipts are
+// verified by verifyModelCallEvidence before this runs.
+func verifyRetryChains(trace *AgentTrace) error {
+	fail := func(call AgentModelCall, reason string) error {
+		return fmt.Errorf("model call %q %s: %w", call.ProviderAttemptID, reason, constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	index := make(map[string]int, len(trace.ModelCalls))
+	retried := make(map[string]bool)
+	for i, call := range trace.ModelCalls {
+		if (call.RetryOf == "") != (call.RetryCount == 0) {
+			return fail(call, "retry ordinal and retried attempt disagree")
+		}
+		if call.RetryCount > inferencedispatch.MaxTransientRetries() {
+			return fail(call, "retries past the transient retry bound")
+		}
+		if call.RetryOf != "" {
+			j, ok := index[call.RetryOf]
+			if !ok {
+				return fail(call, "retries no earlier attempt")
+			}
+			previous := trace.ModelCalls[j]
+			if retried[call.RetryOf] {
+				return fail(call, "retries an attempt another call already retried")
+			}
+			retried[call.RetryOf] = true
+			if previous.Purpose != call.Purpose || previous.LoopTurn != call.LoopTurn || previous.ToolCallID != call.ToolCallID || previous.Persona != call.Persona {
+				return fail(call, "retries a different call")
+			}
+			if previous.ModelVariantID != call.ModelVariantID || previous.ModelRole != call.ModelRole ||
+				previous.ServedModelTag != call.ServedModelTag || previous.ModelDigest != call.ModelDigest {
+				return fail(call, "retries on a different model")
+			}
+			if !slices.Equal(previous.ToolsDeclared, call.ToolsDeclared) || !slices.Equal(previous.Input, call.Input) {
+				return fail(call, "retries with a different request")
+			}
+			if previous.RetryCount+1 != call.RetryCount {
+				return fail(call, "does not follow its retried attempt's ordinal")
+			}
+			if previous.Completed() || previous.Receipt == nil || !governance.IsTransientFailureReceipt(previous.Receipt.EventReceipt) {
+				return fail(call, "retries an attempt the provider did not ask to retry")
+			}
+		}
+		index[call.ProviderAttemptID] = i
 	}
 	return nil
 }

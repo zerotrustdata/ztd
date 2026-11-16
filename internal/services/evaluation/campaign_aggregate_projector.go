@@ -585,7 +585,7 @@ func collectPerformanceMetrics(assignments []*evalv1.EvaluationAssignment, resul
 		if result == nil || !assignmentLifecycleIsTerminal(result.GetLifecycleStatus()) {
 			continue
 		}
-		calls := result.GetModelInferences()
+		calls := scoredInferenceRecords(result.GetModelInferences())
 		if len(calls) == 0 {
 			continue
 		}

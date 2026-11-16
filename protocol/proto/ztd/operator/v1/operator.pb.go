@@ -418,6 +418,9 @@ const (
 	ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR ReceiptFailureCode = 26
 	// The request exceeded the Inference Operator's request size bound, so it was rejected before the provider was called.
 	ReceiptFailureCode_RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE ReceiptFailureCode = 27
+	// The provider asked to be retried later (a rate limit, an overload, or a transient server failure) before returning a result.
+	// A new provider attempt can succeed; authentication, permission and billing failures are BACKEND_UNAVAILABLE instead.
+	ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT ReceiptFailureCode = 28
 )
 
 // Enum value maps for ReceiptFailureCode.
@@ -451,6 +454,7 @@ var (
 		25: "RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED",
 		26: "RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR",
 		27: "RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE",
+		28: "RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT",
 	}
 	ReceiptFailureCode_value = map[string]int32{
 		"RECEIPT_FAILURE_CODE_UNSPECIFIED":                0,
@@ -481,6 +485,7 @@ var (
 		"RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED":         25,
 		"RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR":      26,
 		"RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE":          27,
+		"RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT":          28,
 	}
 )
 
@@ -1219,6 +1224,7 @@ const (
 	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR      InferenceDispatchFailureCode = 48
 	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED         InferenceDispatchFailureCode = 49
 	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE          InferenceDispatchFailureCode = 50
+	InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TRANSIENT          InferenceDispatchFailureCode = 51
 )
 
 // Enum value maps for InferenceDispatchFailureCode.
@@ -1275,6 +1281,7 @@ var (
 		48: "INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR",
 		49: "INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED",
 		50: "INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE",
+		51: "INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TRANSIENT",
 	}
 	InferenceDispatchFailureCode_value = map[string]int32{
 		"INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED":                0,
@@ -1328,6 +1335,7 @@ var (
 		"INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR":      48,
 		"INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED":         49,
 		"INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE":          50,
+		"INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TRANSIENT":          51,
 	}
 )
 
@@ -16060,7 +16068,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"$DETERMINISTIC_STAGE_OUTCOME_VERIFIED\x10\x01\x12,\n" +
 	"(DETERMINISTIC_STAGE_OUTCOME_NOT_REQUIRED\x10\x02\x12)\n" +
 	"%DETERMINISTIC_STAGE_OUTCOME_COMPLETED\x10\x03\x12&\n" +
-	"\"DETERMINISTIC_STAGE_OUTCOME_FAILED\x10\x04*\xa3\n" +
+	"\"DETERMINISTIC_STAGE_OUTCOME_FAILED\x10\x04*\xcf\n" +
 	"\n" +
 	"\x12ReceiptFailureCode\x12$\n" +
 	" RECEIPT_FAILURE_CODE_UNSPECIFIED\x10\x00\x12,\n" +
@@ -16091,7 +16099,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	")RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED\x10\x18\x12+\n" +
 	"'RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED\x10\x19\x12.\n" +
 	"*RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR\x10\x1a\x12*\n" +
-	"&RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE\x10\x1b*\xb2\n" +
+	"&RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE\x10\x1b\x12*\n" +
+	"&RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT\x10\x1c*\xb2\n" +
 	"\n" +
 	"\x17GovernanceRejectionCode\x12)\n" +
 	"%GOVERNANCE_REJECTION_CODE_UNSPECIFIED\x10\x00\x12*\n" +
@@ -16180,7 +16189,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"-INFERENCE_PROVIDER_ATTEMPT_STATUS_UNSPECIFIED\x10\x00\x121\n" +
 	"-INFERENCE_PROVIDER_ATTEMPT_STATUS_IN_PROGRESS\x10\x01\x12/\n" +
 	"+INFERENCE_PROVIDER_ATTEMPT_STATUS_COMPLETED\x10\x02\x12,\n" +
-	"(INFERENCE_PROVIDER_ATTEMPT_STATUS_FAILED\x10\x03*\xc5\x16\n" +
+	"(INFERENCE_PROVIDER_ATTEMPT_STATUS_FAILED\x10\x03*\xfc\x16\n" +
 	"\x1cInferenceDispatchFailureCode\x12/\n" +
 	"+INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED\x10\x00\x12,\n" +
 	"(INFERENCE_DISPATCH_FAILURE_CODE_INTERNAL\x10\x01\x123\n" +
@@ -16233,7 +16242,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"2INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED\x10/\x129\n" +
 	"5INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR\x100\x126\n" +
 	"2INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED\x101\x125\n" +
-	"1INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE\x1022\xb8\x03\n" +
+	"1INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE\x102\x125\n" +
+	"1INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TRANSIENT\x1032\xb8\x03\n" +
 	"\x0fOperatorService\x12S\n" +
 	"\x0eExecuteCommand\x12!.ztd.operator.v1.CommandRequested\x1a\x1e.ztd.operator.v1.CommandResult\x12X\n" +
 	"\rCancelCommand\x12'.ztd.operator.v1.CommandCancelRequested\x1a\x1e.ztd.operator.v1.CommandResult\x12N\n" +

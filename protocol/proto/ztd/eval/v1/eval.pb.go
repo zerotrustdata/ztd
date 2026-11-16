@@ -561,6 +561,9 @@ const (
 	EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN EvaluationCallClassification = 1
 	EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_POST_TURN    EvaluationCallClassification = 2
 	EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_GRADER       EvaluationCallClassification = 3
+	// A scored-chain attempt the provider asked to retry later and a later
+	// attempt of the same call superseded. It stays evidence; metrics skip it.
+	EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_RETRIED EvaluationCallClassification = 4
 )
 
 // Enum value maps for EvaluationCallClassification.
@@ -570,12 +573,14 @@ var (
 		1: "EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN",
 		2: "EVALUATION_CALL_CLASSIFICATION_POST_TURN",
 		3: "EVALUATION_CALL_CLASSIFICATION_GRADER",
+		4: "EVALUATION_CALL_CLASSIFICATION_RETRIED",
 	}
 	EvaluationCallClassification_value = map[string]int32{
 		"EVALUATION_CALL_CLASSIFICATION_UNSPECIFIED":  0,
 		"EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN": 1,
 		"EVALUATION_CALL_CLASSIFICATION_POST_TURN":    2,
 		"EVALUATION_CALL_CLASSIFICATION_GRADER":       3,
+		"EVALUATION_CALL_CLASSIFICATION_RETRIED":      4,
 	}
 )
 
@@ -15079,12 +15084,13 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x1bEvaluationUsageAvailability\x12-\n" +
 	")EVALUATION_USAGE_AVAILABILITY_UNSPECIFIED\x10\x00\x12*\n" +
 	"&EVALUATION_USAGE_AVAILABILITY_REPORTED\x10\x01\x12-\n" +
-	")EVALUATION_USAGE_AVAILABILITY_UNAVAILABLE\x10\x02*\xd8\x01\n" +
+	")EVALUATION_USAGE_AVAILABILITY_UNAVAILABLE\x10\x02*\x84\x02\n" +
 	"\x1cEvaluationCallClassification\x12.\n" +
 	"*EVALUATION_CALL_CLASSIFICATION_UNSPECIFIED\x10\x00\x12/\n" +
 	"+EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN\x10\x01\x12,\n" +
 	"(EVALUATION_CALL_CLASSIFICATION_POST_TURN\x10\x02\x12)\n" +
-	"%EVALUATION_CALL_CLASSIFICATION_GRADER\x10\x03*\xe0\x01\n" +
+	"%EVALUATION_CALL_CLASSIFICATION_GRADER\x10\x03\x12*\n" +
+	"&EVALUATION_CALL_CLASSIFICATION_RETRIED\x10\x04*\xe0\x01\n" +
 	"\x1fEvaluationPolicyDecisionOutcome\x122\n" +
 	".EVALUATION_POLICY_DECISION_OUTCOME_UNSPECIFIED\x10\x00\x12,\n" +
 	"(EVALUATION_POLICY_DECISION_OUTCOME_ALLOW\x10\x01\x12+\n" +

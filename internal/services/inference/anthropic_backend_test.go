@@ -806,8 +806,12 @@ func TestAnthropicBackend_StreamFailuresFailClosed(t *testing.T) {
 		stream string
 		want   error
 	}{
-		"an error event": {
+		"an overloaded error event": {
 			"event: error\r\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"overloaded\"}}\r\n\r\n",
+			constants.ErrInferenceBackendTransient,
+		},
+		"an error event": {
+			"event: error\r\ndata: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"bad\"}}\r\n\r\n",
 			constants.ErrInferenceProviderStreamError,
 		},
 		"missing message_stop": {
@@ -957,9 +961,11 @@ func TestAnthropicBackend_StatusErrorsAreTyped(t *testing.T) {
 		"authentication_error":  {http.StatusUnauthorized, `{"type":"error","error":{"type":"authentication_error","message":"bad key"}}`, constants.ErrInferenceBackendUnavailable},
 		"billing_error":         {http.StatusPaymentRequired, `{"type":"error","error":{"type":"billing_error","message":"billing"}}`, constants.ErrInferenceBackendUnavailable},
 		"permission_error":      {http.StatusForbidden, `{"type":"error","error":{"type":"permission_error","message":"forbidden"}}`, constants.ErrInferenceBackendUnavailable},
-		"rate_limit_error":      {http.StatusTooManyRequests, `{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}`, constants.ErrInferenceBackendUnavailable},
-		"api_error":             {http.StatusInternalServerError, `{"type":"error","error":{"type":"api_error","message":"oops"}}`, constants.ErrInferenceBackendUnavailable},
-		"overloaded_error":      {529, `{"type":"error","error":{"type":"overloaded_error","message":"busy"}}`, constants.ErrInferenceBackendUnavailable},
+		"rate_limit_error":      {http.StatusTooManyRequests, `{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}`, constants.ErrInferenceBackendTransient},
+		"api_error":             {http.StatusInternalServerError, `{"type":"error","error":{"type":"api_error","message":"oops"}}`, constants.ErrInferenceBackendTransient},
+		"overloaded_error":      {529, `{"type":"error","error":{"type":"overloaded_error","message":"busy"}}`, constants.ErrInferenceBackendTransient},
+		"untyped 503":           {http.StatusServiceUnavailable, ``, constants.ErrInferenceBackendTransient},
+		"untyped 401":           {http.StatusUnauthorized, ``, constants.ErrInferenceBackendUnavailable},
 		"conflict_error":        {http.StatusConflict, `{"type":"error","error":{"type":"conflict_error","message":"conflict"}}`, constants.ErrInferenceGenerateFailed},
 		"other invalid_request": {http.StatusBadRequest, `{"type":"error","error":{"type":"invalid_request_error","message":"bad"}}`, constants.ErrInferenceGenerateFailed},
 	} {
@@ -973,6 +979,17 @@ func TestAnthropicBackend_StatusErrorsAreTyped(t *testing.T) {
 		_, err := newFakeAnthropicBackend(t, fake).Generate(testutil.Context(t), anthropicRequest(anthropicTestModel))
 		require.ErrorIs(t, err, constants.ErrInferenceModelNotFound)
 		assert.Zero(t, fake.posts())
+	})
+	t.Run("an overloaded metadata read is transient", func(t *testing.T) {
+		fake := &anthropicFake{metaCode: 529}
+		_, err := newFakeAnthropicBackend(t, fake).Generate(testutil.Context(t), anthropicRequest(anthropicTestModel))
+		require.ErrorIs(t, err, constants.ErrInferenceBackendTransient)
+		assert.Zero(t, fake.posts())
+	})
+	t.Run("an unauthorized metadata read is unavailable", func(t *testing.T) {
+		fake := &anthropicFake{metaCode: http.StatusUnauthorized}
+		_, err := newFakeAnthropicBackend(t, fake).Generate(testutil.Context(t), anthropicRequest(anthropicTestModel))
+		require.ErrorIs(t, err, constants.ErrInferenceBackendUnavailable)
 	})
 }
 
@@ -1004,9 +1021,9 @@ func TestAnthropicBackend_HostedCaptureRecordsExactStreamAndExcludesErrors(t *te
 		store := &hostedRawResponseRecorder{}
 		fake := &anthropicFake{status: http.StatusTooManyRequests, errorBody: `{"type":"error","error":{"type":"rate_limit_error","message":"secret"}}`}
 		_, err := newFakeAnthropicBackend(t, fake).Generate(WithAttemptStore(testutil.Context(t), store), anthropicRequest(anthropicTestModel))
-		require.ErrorIs(t, err, constants.ErrInferenceBackendUnavailable)
+		require.ErrorIs(t, err, constants.ErrInferenceBackendTransient)
 		assert.Zero(t, store.calls)
-		assert.Equal(t, 1, fake.posts())
+		assert.Equal(t, 1, fake.posts(), "a transient failure is never retried in the client")
 	})
 }
 

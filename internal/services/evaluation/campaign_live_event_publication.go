@@ -343,7 +343,7 @@ func modelInferenceMetricDelta(record *evalv1.ModelInferenceRecord) PublicMetric
 
 func reportedModelInferences(result *evalv1.EvaluationAssignmentResult) []*evalv1.ModelInferenceRecord {
 	records := make([]*evalv1.ModelInferenceRecord, 0, len(result.GetModelInferences()))
-	for _, record := range result.GetModelInferences() {
+	for _, record := range scoredInferenceRecords(result.GetModelInferences()) {
 		if record == nil {
 			continue
 		}

@@ -87,11 +87,11 @@ func (v *CampaignAssignmentVerifier) Verify(ctx context.Context, req CampaignAss
 	}
 	failures = append(failures, v.verifyHomogeneousAssignment(req)...)
 	failures = append(failures, verifyAssignmentJudge(req, req.Result)...)
-	if req.ProviderObservationReader != nil && len(scoredModelInferences(req.Result)) > 0 {
+	if req.ProviderObservationReader != nil && len(evidenceModelInferences(req.Result)) > 0 {
 		observationFailures, _ := req.ProviderObservationReader.VerifyAssignmentProviderObservations(ctx, req.Result, req.ProviderObservationPolicy)
 		failures = append(failures, observationFailures...)
 	}
-	if req.ModelProvenanceReader != nil && len(scoredModelInferences(req.Result)) > 0 {
+	if req.ModelProvenanceReader != nil && len(evidenceModelInferences(req.Result)) > 0 {
 		provenanceFailures, _ := req.ModelProvenanceReader.VerifyAssignmentModelProvenance(ctx, req.Result, req.ModelProvenancePolicy)
 		failures = append(failures, provenanceFailures...)
 	}

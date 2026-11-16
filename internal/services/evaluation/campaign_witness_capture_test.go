@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -59,6 +60,7 @@ func (r *silentProviderRemote) WatchRecorded(ctx context.Context, connected func
 type tracedAttempt struct {
 	id            string
 	providerClass string
+	resultDigest  string
 	receipts      []*operatorv1.EventReceipt
 }
 
@@ -85,7 +87,7 @@ func saveRunAttemptTraces(t *testing.T, store *Store, runID string, attempts ...
 	}
 	calls := make([]AgentModelCall, 0, len(attempts))
 	for _, attempt := range attempts {
-		record := &evalv1.ModelInferenceRecord{ProviderAttemptId: attempt.id}
+		record := &evalv1.ModelInferenceRecord{ProviderAttemptId: attempt.id, ResultDigest: attempt.resultDigest}
 		if attempt.providerClass != "" {
 			record.ModelVariant = &evalv1.ModelVariant{ProviderClass: attempt.providerClass}
 		}
@@ -225,6 +227,7 @@ func TestWaitForRunEvidence_HostedAttemptSkippedForObservationButIncludedForProv
 		saveRunAttemptTraces(t, store, "run-hosted", tracedAttempt{
 			id:            "attempt-hosted",
 			providerClass: constants.InferenceProviderGemini,
+			resultDigest:  strings.Repeat("c", 64),
 		})
 		provenanceRemote, providerRemote := &silentProvenanceRemote{}, &silentProviderRemote{}
 		capture, err := NewCampaignWitnessCapture(store, providerRemote, provenanceRemote)
@@ -240,6 +243,20 @@ func TestWaitForRunEvidence_HostedAttemptSkippedForObservationButIncludedForProv
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		require.ErrorContains(t, err, "attempt-hosted")
 		assert.Equal(t, 1, provenanceRemote.watches)
+	})
+
+	t.Run("hosted attempt with no result has no provenance window to wait for", func(t *testing.T) {
+		store := NewStore(newCampaignRuntimeFileService(t))
+		saveRunAttemptTraces(t, store, "run-hosted-failed", tracedAttempt{
+			id:            "attempt-hosted-failed",
+			providerClass: constants.InferenceProviderGemini,
+		})
+		provenanceRemote, providerRemote := &silentProvenanceRemote{}, &silentProviderRemote{}
+		capture, err := NewCampaignWitnessCapture(store, providerRemote, provenanceRemote)
+		require.NoError(t, err)
+
+		require.NoError(t, capture.WaitForRunModelProvenanceEvidence(t.Context(), "run-hosted-failed"))
+		assert.Equal(t, 0, provenanceRemote.watches)
 	})
 
 	t.Run("mixed local and hosted run waits only for local observation", func(t *testing.T) {

@@ -319,9 +319,10 @@ func investigationCommand(call AgentToolCall) (string, bool) {
 }
 
 func computeStepsToDiagnosis(trace *AgentTrace) float64 {
-	// Tribunal calls are part of their tool call, not steps of their own.
+	// Tribunal calls are part of their tool call, not steps of their own, and
+	// a superseded attempt is part of the call that retried it.
 	steps := len(trace.ToolCalls)
-	for _, call := range trace.ModelCalls {
+	for _, call := range trace.scoredModelCalls() {
 		if call.IsTurn() {
 			steps++
 		}

@@ -1093,6 +1093,8 @@ func inferenceReceiptFailureError(receipt *operatorv1.EventReceipt) error {
 		return constants.ErrInferenceModelRefInvalid
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE:
 		return constants.ErrInferenceBackendUnavailable
+	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT:
+		return constants.ErrInferenceBackendTransient
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT:
 		return constants.ErrInferenceBackendTimeout
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATE_FAILED:

@@ -146,6 +146,16 @@ func IsGovernanceRejectionReceipt(receipt *operatorv1.EventReceipt) bool {
 		receipt.GetFailureCode() == operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED
 }
 
+// IsTransientFailureReceipt reports whether receipt is a signed FAILED
+// execution whose provider asked to retry later
+// (RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT). It is the only evidence a retry of
+// an inference attempt may rest on.
+func IsTransientFailureReceipt(receipt *operatorv1.EventReceipt) bool {
+	return receipt != nil &&
+		receipt.GetStatus() == operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED &&
+		receipt.GetFailureCode() == operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT
+}
+
 // RejectionResponse returns the typed client body for err when it carries a
 // signed rejection receipt, and nil otherwise. error renders only the
 // governance sentinel, never the wrapped chain; an unmapped error renders the

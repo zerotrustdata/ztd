@@ -129,6 +129,8 @@ An agent-executor assignment binds its complete sealed `AgentTrace` by SHA-256 t
 
 `agent-trace.v12` keeps the v11 evidence and lets the last `content_judgments` item be a criterion the pinned judge failed to decide. That item carries the `JudgeFailure` enum name in `failure`, `met` false and an empty `rationale`, and carries `inference_result` and `receipt` only for `JUDGE_FAILURE_VERDICT_INVALID` and `JUDGE_FAILURE_REPETITION`. The Go campaign verifier re-derives that failure from the signed result. The Explorer does not read traces, so this revision does not change the view schema.
 
+`agent-trace.v13` keeps the v12 evidence and adds `retry_of` on a model call that retries an attempt whose signed receipt failed with `RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT`; `retry_count` is that attempt's retry ordinal. The Go campaign verifier checks each retry chain. Superseded attempts are classified `EVALUATION_CALL_CLASSIFICATION_RETRIED` and are left out of published model activity and metrics. The Explorer does not read traces, so this revision does not change the view schema.
+
 A model call can also carry an optional `observation_receipts` array, the signed receipts of the observation commands (provider-boundary and model-provenance BEGIN and FINALIZE) that the Gateway dispatched and waited for around that inference. When the observer is the Data runtime itself, the offline verifier claims those commitments inside the sentinel bracket. It skips receipts that another runtime signed and rejects any receipt whose action is not an observation.
 
 ### Scenario fixture artifacts

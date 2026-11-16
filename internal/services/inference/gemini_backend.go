@@ -251,7 +251,11 @@ func (b *GeminiBackend) readModel(ctx context.Context, model string) (geminiMode
 		if resp.StatusCode == http.StatusNotFound {
 			return geminiModel{}, fmt.Errorf("%s: read model: %w: model %q", geminiComponent, constants.ErrInferenceModelNotFound, model)
 		}
-		return geminiModel{}, fmt.Errorf("%s: read model: %w: status %d", geminiComponent, constants.ErrInferenceBackendUnavailable, resp.StatusCode)
+		kind := constants.ErrInferenceBackendUnavailable
+		if hostedStatusTransient(resp.StatusCode) {
+			kind = constants.ErrInferenceBackendTransient
+		}
+		return geminiModel{}, fmt.Errorf("%s: read model: %w: status %d", geminiComponent, kind, resp.StatusCode)
 	}
 	var metadata geminiModel
 	if err := b.decodeResponse("read model", resp.Body, &metadata); err != nil {
@@ -521,7 +525,9 @@ func (b *GeminiBackend) statusError(status int, body []byte, req models.Generate
 		return fmt.Errorf("%s: generate: %w", geminiComponent, constants.ErrInferenceToolsUnsupported)
 	case status == http.StatusBadRequest && strings.Contains(message, "thinking") && (strings.Contains(message, "not supported") || strings.Contains(message, "only works")):
 		return fmt.Errorf("%s: generate: %w", geminiComponent, constants.ErrInferenceCapabilityUnsupported)
-	case status == http.StatusUnauthorized, status == http.StatusForbidden, status == http.StatusTooManyRequests, status >= http.StatusInternalServerError, status >= http.StatusMultipleChoices && status < http.StatusBadRequest:
+	case hostedStatusTransient(status):
+		return fmt.Errorf("%s: generate: %w: status %d", geminiComponent, constants.ErrInferenceBackendTransient, status)
+	case status == http.StatusUnauthorized, status == http.StatusForbidden, status >= http.StatusInternalServerError, status >= http.StatusMultipleChoices && status < http.StatusBadRequest:
 		return fmt.Errorf("%s: generate: %w: status %d", geminiComponent, constants.ErrInferenceBackendUnavailable, status)
 	default:
 		return fmt.Errorf("%s: generate: %w: status %d", geminiComponent, constants.ErrInferenceGenerateFailed, status)
@@ -834,6 +840,9 @@ func (b *GeminiBackend) decodeStream(
 				"provider_attempt_id", providerAttemptID,
 				"provider_code", event.Error.Code,
 			)
+			if hostedStatusTransient(event.Error.Code) {
+				return fail("%w", constants.ErrInferenceBackendTransient)
+			}
 			return fail("%w", constants.ErrInferenceProviderStreamError)
 		}
 		if event.PromptFeedback != nil && event.PromptFeedback.BlockReason != "" {

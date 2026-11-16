@@ -123,6 +123,22 @@ func TestValidateInferenceProbeResponse_RejectsMismatchedBindings(t *testing.T) 
 			want: constants.ErrIdentityBindingFailed,
 		},
 		{
+			name: "retry ordinal mismatch",
+			resp: &operatorv1.InferenceDispatchResponse{
+				Result: &operatorv1.InferenceResult{
+					ProviderAttemptId: "attempt-1",
+					RequestedModel:    "probe-model",
+					ResultDigest:      "digest-1",
+					RetryCount:        1,
+					Parts: []*operatorv1.InferenceResponsePart{{
+						Part: &operatorv1.InferenceResponsePart_Text{Text: "ok"},
+					}},
+				},
+				Receipt: &operatorv1.EventReceipt{ResultSummary: "digest-1"},
+			},
+			want: constants.ErrIdentityBindingFailed,
+		},
+		{
 			name: "digest mismatch",
 			resp: &operatorv1.InferenceDispatchResponse{
 				Result: &operatorv1.InferenceResult{

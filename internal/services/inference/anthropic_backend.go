@@ -120,7 +120,11 @@ func (b *AnthropicBackend) readModel(ctx context.Context, model string) (anthrop
 		case http.StatusRequestTimeout, http.StatusGatewayTimeout:
 			return anthropicModel{}, fmt.Errorf("%s: read model: %w: status %d", anthropicComponent, constants.ErrInferenceBackendTimeout, resp.StatusCode)
 		default:
-			return anthropicModel{}, fmt.Errorf("%s: read model: %w: status %d", anthropicComponent, constants.ErrInferenceBackendUnavailable, resp.StatusCode)
+			kind := constants.ErrInferenceBackendUnavailable
+			if hostedStatusTransient(resp.StatusCode) {
+				kind = constants.ErrInferenceBackendTransient
+			}
+			return anthropicModel{}, fmt.Errorf("%s: read model: %w: status %d", anthropicComponent, kind, resp.StatusCode)
 		}
 	}
 	var metadata anthropicModel

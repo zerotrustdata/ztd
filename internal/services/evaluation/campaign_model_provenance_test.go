@@ -149,6 +149,63 @@ func TestCampaignModelProvenanceReader_VerifyAssignmentModelProvenance_StrictSki
 	assert.Empty(t, unavailable)
 }
 
+// A hosted attempt that returned no result carries no signed attestation, so
+// strict provenance expects no window for it; a hosted attempt with a result
+// and every local attempt still need one.
+func TestModelProvenanceRequired(t *testing.T) {
+	t.Parallel()
+	hosted := &evalv1.ModelVariant{ProviderClass: constants.InferenceProviderGemini}
+	local := &evalv1.ModelVariant{ProviderClass: constants.InferenceProviderOllama}
+	digest := strings.Repeat("c", 64)
+	tests := []struct {
+		name   string
+		record *evalv1.ModelInferenceRecord
+		want   bool
+	}{
+		{"governance rejected", &evalv1.ModelInferenceRecord{ModelVariant: local, ResultDigest: digest}, false},
+		{"local completed", &evalv1.ModelInferenceRecord{ProviderAttemptId: "a", ModelVariant: local, ResultDigest: digest}, true},
+		{"local failed", &evalv1.ModelInferenceRecord{ProviderAttemptId: "a", ModelVariant: local}, true},
+		{"hosted completed", &evalv1.ModelInferenceRecord{ProviderAttemptId: "a", ModelVariant: hosted, ResultDigest: digest}, true},
+		{"hosted failed", &evalv1.ModelInferenceRecord{ProviderAttemptId: "a", ModelVariant: hosted}, false},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, ModelProvenanceRequired(tt.record), tt.name)
+	}
+}
+
+func TestCampaignModelProvenanceReader_VerifyAssignmentModelProvenance_StrictHostedFailedAttempt(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := NewStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
+	reader, err := NewCampaignModelProvenanceReader(store)
+	require.NoError(t, err)
+	hosted := &evalv1.ModelVariant{ProviderClass: constants.InferenceProviderGemini, ModelDigest: strings.Repeat("a", 64)}
+	failed := &evalv1.EvaluationAssignmentResult{
+		RunId: "run-1",
+		ModelInferences: []*evalv1.ModelInferenceRecord{{
+			InferenceRecordId: "inf-throttled",
+			ProviderAttemptId: "attempt-throttled",
+			ModelVariant:      hosted,
+		}},
+	}
+	failures, unavailable := reader.VerifyAssignmentModelProvenance(ctx, failed, ModelProvenancePolicyStrict)
+	assert.Empty(t, failures)
+	assert.Empty(t, unavailable)
+
+	completed := &evalv1.EvaluationAssignmentResult{
+		RunId: "run-1",
+		ModelInferences: []*evalv1.ModelInferenceRecord{{
+			InferenceRecordId: "inf-completed",
+			ProviderAttemptId: "attempt-completed",
+			ModelVariant:      hosted,
+			ResultDigest:      strings.Repeat("c", 64),
+		}},
+	}
+	failures, _ = reader.VerifyAssignmentModelProvenance(ctx, completed, ModelProvenancePolicyStrict)
+	require.Len(t, failures, 1)
+	assert.Contains(t, failures[0], "inf-completed")
+}
+
 func TestCampaignModelProvenanceReader_VerifyAssignmentModelProvenance_StrictDigestMatch(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

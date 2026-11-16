@@ -48,6 +48,7 @@ type AttemptFailureClass string
 
 const (
 	AttemptFailureBackendUnavailable AttemptFailureClass = "backend_unavailable"
+	AttemptFailureBackendTransient   AttemptFailureClass = "backend_transient"
 	AttemptFailureBackendTimeout     AttemptFailureClass = "backend_timeout"
 	AttemptFailureModelNotFound      AttemptFailureClass = "model_not_found"
 	AttemptFailureCapabilityRejected AttemptFailureClass = "capability_unsupported"
@@ -65,6 +66,8 @@ func ClassifyAttemptFailure(err error) AttemptFailureClass {
 	switch {
 	case errors.Is(err, constants.ErrInferenceBackendTimeout):
 		return AttemptFailureBackendTimeout
+	case errors.Is(err, constants.ErrInferenceBackendTransient):
+		return AttemptFailureBackendTransient
 	case errors.Is(err, constants.ErrInferenceBackendUnavailable):
 		return AttemptFailureBackendUnavailable
 	case errors.Is(err, constants.ErrInferenceModelNotFound):
@@ -89,7 +92,7 @@ func ClassifyAttemptFailure(err error) AttemptFailureClass {
 // AttemptFailureClasses returns every class ClassifyAttemptFailure can return.
 func AttemptFailureClasses() []AttemptFailureClass {
 	return []AttemptFailureClass{
-		AttemptFailureBackendUnavailable, AttemptFailureBackendTimeout, AttemptFailureModelNotFound,
+		AttemptFailureBackendUnavailable, AttemptFailureBackendTransient, AttemptFailureBackendTimeout, AttemptFailureModelNotFound,
 		AttemptFailureCapabilityRejected, AttemptFailureContextOverflow, AttemptFailureResponseInvalid,
 		AttemptFailureStreamError, AttemptFailureGenerateFailed, AttemptFailureCanceled, AttemptFailureInternal,
 	}

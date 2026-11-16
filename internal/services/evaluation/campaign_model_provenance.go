@@ -97,7 +97,8 @@ func (s *Store) LoadModelProvenanceWindow(ctx context.Context, runID, providerAt
 }
 
 // VerifyAssignmentModelProvenance independently checks model provenance
-// attestation coverage for every scored inference in one assignment result.
+// attestation coverage for every scored inference in one assignment result
+// that ModelProvenanceRequired names.
 func (r *CampaignModelProvenanceReader) VerifyAssignmentModelProvenance(
 	ctx context.Context,
 	result *evalv1.EvaluationAssignmentResult,
@@ -108,11 +109,8 @@ func (r *CampaignModelProvenanceReader) VerifyAssignmentModelProvenance(
 	}
 	failures := make([]string, 0)
 	unavailable := make([]string, 0)
-	for _, inferenceRecord := range scoredModelInferences(result) {
+	for _, inferenceRecord := range provenanceModelInferences(result) {
 		attemptID := inferenceRecord.GetProviderAttemptId()
-		if attemptID == "" {
-			continue
-		}
 		expectedDigest := inferenceRecord.GetModelVariant().GetModelDigest()
 		window, err := r.store.LoadModelProvenanceWindow(ctx, result.GetRunId(), attemptID)
 		if err != nil {

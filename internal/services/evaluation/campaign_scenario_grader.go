@@ -367,6 +367,8 @@ func providerFailureReason(class inference.AttemptFailureClass) string {
 		reason = "Provider request timed out (backend_timeout)"
 	case inference.AttemptFailureBackendUnavailable:
 		reason = "Provider could not be reached (backend_unavailable)"
+	case inference.AttemptFailureBackendTransient:
+		reason = "Provider asked to retry later (backend_transient)"
 	case inference.AttemptFailureModelNotFound:
 		reason = "Provider could not find the requested model (model_not_found)"
 	case inference.AttemptFailureResponseInvalid:

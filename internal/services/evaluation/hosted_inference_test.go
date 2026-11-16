@@ -143,7 +143,7 @@ func TestObservableModelInferences_ExcludesHostedInferences(t *testing.T) {
 	hosted := &evalv1.ModelInferenceRecord{ProviderAttemptId: "hosted", ModelVariant: &evalv1.ModelVariant{ProviderClass: constants.InferenceProviderGemini}}
 	result := &evalv1.EvaluationAssignmentResult{ModelInferences: []*evalv1.ModelInferenceRecord{local, nil, hosted}}
 
-	assert.Equal(t, []*evalv1.ModelInferenceRecord{local, hosted}, scoredModelInferences(result), "every scored inference still needs provenance")
+	assert.Equal(t, []*evalv1.ModelInferenceRecord{local, hosted}, evidenceModelInferences(result), "every scored inference still needs provenance")
 	assert.Equal(t, []*evalv1.ModelInferenceRecord{local}, observableModelInferences(result), "only a local inference has a host to observe")
 	assert.Empty(t, observableModelInferences(nil))
 	assert.True(t, ProviderObservable(local))

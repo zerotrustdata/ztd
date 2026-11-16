@@ -717,6 +717,8 @@ func classifyReceiptFailure(execErr error) operatorv1.ReceiptFailureCode {
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_ROLE_INVALID
 	case errors.Is(execErr, constants.ErrInferenceModelRefInvalid):
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID
+	case errors.Is(execErr, constants.ErrInferenceBackendTransient):
+		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT
 	case errors.Is(execErr, constants.ErrInferenceBackendUnavailable),
 		errors.Is(execErr, constants.ErrInferenceBackendNotRegistered):
 		return operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE

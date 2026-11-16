@@ -162,6 +162,9 @@ func writeRunTrace(out io.Writer, view runTraceView, full bool) {
 			continue
 		}
 		_, _ = fmt.Fprintf(out, "Turn %d  %s  prompt=%d completion=%d finish=%s tool_calls=%d\n", call.LoopTurn, call.ProviderAttemptID, call.PromptTokens, call.CompletionTokens, call.FinishReason, call.ToolCallCount)
+		if call.RetryOf != "" {
+			_, _ = fmt.Fprintf(out, "  Retry %d of %s\n", call.RetryCount, call.RetryOf)
+		}
 		if call.Error != "" {
 			_, _ = fmt.Fprintf(out, "  Error: %s\n", call.Error)
 		}

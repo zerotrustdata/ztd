@@ -454,16 +454,17 @@ func TestGeminiBackend_StreamFailuresFailClosed(t *testing.T) {
 		stream string
 		want   error
 	}{
-		"an error event":         {`data: {"error":{"code":500,"message":"internal","status":"INTERNAL"}}` + "\n\n", constants.ErrInferenceProviderStreamError},
-		"a blocked prompt":       {`data: {"promptFeedback":{"blockReason":"SAFETY"},"modelVersion":"gemini-3.6-flash"}` + "\n\n", constants.ErrInferenceGenerateFailed},
-		"no finish reason":       {`data: {"candidates":[{"content":{"parts":[{"text":"hi"}]},"index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
-		"no model version":       {`data: {"candidates":[{"content":{"parts":[{"text":"hi"}]},"finishReason":"STOP","index":0}]}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
-		"two candidates":         {`data: {"candidates":[{"index":0},{"index":1}],"modelVersion":"gemini-3.6-flash"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
-		"a changed served model": {`data: {"candidates":[{"content":{"parts":[{"text":"a"}]},"index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n" + `data: {"candidates":[{"content":{"parts":[{"text":"b"}]},"finishReason":"STOP","index":0}],"modelVersion":"gemini-x"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
-		"parts after the finish": {`data: {"candidates":[{"content":{"parts":[{"text":"a"}]},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n" + `data: {"candidates":[{"content":{"parts":[{"text":"b"}]},"index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
-		"a contradictory finish": {geminiTextStream("STOP") + `data: {"candidates":[{"finishReason":"SAFETY","index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
-		"an inline data part":    {`data: {"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"AA=="}}]},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
-		"malformed JSON":         {"data: {not json\n\n", constants.ErrInferenceProviderResponseInvalid},
+		"a transient error event": {`data: {"error":{"code":503,"message":"overloaded","status":"UNAVAILABLE"}}` + "\n\n", constants.ErrInferenceBackendTransient},
+		"an error event":          {`data: {"error":{"code":400,"message":"bad","status":"INVALID_ARGUMENT"}}` + "\n\n", constants.ErrInferenceProviderStreamError},
+		"a blocked prompt":        {`data: {"promptFeedback":{"blockReason":"SAFETY"},"modelVersion":"gemini-3.6-flash"}` + "\n\n", constants.ErrInferenceGenerateFailed},
+		"no finish reason":        {`data: {"candidates":[{"content":{"parts":[{"text":"hi"}]},"index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
+		"no model version":        {`data: {"candidates":[{"content":{"parts":[{"text":"hi"}]},"finishReason":"STOP","index":0}]}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
+		"two candidates":          {`data: {"candidates":[{"index":0},{"index":1}],"modelVersion":"gemini-3.6-flash"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
+		"a changed served model":  {`data: {"candidates":[{"content":{"parts":[{"text":"a"}]},"index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n" + `data: {"candidates":[{"content":{"parts":[{"text":"b"}]},"finishReason":"STOP","index":0}],"modelVersion":"gemini-x"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
+		"parts after the finish":  {`data: {"candidates":[{"content":{"parts":[{"text":"a"}]},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n" + `data: {"candidates":[{"content":{"parts":[{"text":"b"}]},"index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
+		"a contradictory finish":  {geminiTextStream("STOP") + `data: {"candidates":[{"finishReason":"SAFETY","index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
+		"an inline data part":     {`data: {"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"AA=="}}]},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
+		"malformed JSON":          {"data: {not json\n\n", constants.ErrInferenceProviderResponseInvalid},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := newFakeGeminiBackend(t, &geminiFake{stream: tc.stream}).Generate(testutil.Context(t), geminiRequest(geminiTestModel))
@@ -493,7 +494,7 @@ func TestGeminiBackend_ProviderErrorsDoNotLogContent(t *testing.T) {
 		},
 		"stream error": {
 			&geminiFake{stream: `data: {"error":{"code":500,"message":"` + sensitive + `","status":"` + sensitive + `"}}` + "\n\n"},
-			constants.ErrInferenceProviderStreamError,
+			constants.ErrInferenceBackendTransient,
 		},
 		"blocked prompt": {
 			&geminiFake{stream: `data: {"promptFeedback":{"blockReason":"` + sensitive + `"}}` + "\n\n"},
@@ -547,8 +548,12 @@ func TestGeminiBackend_StatusErrorsAreTyped(t *testing.T) {
 		want   error
 	}{
 		"unknown model":          {http.StatusNotFound, `{"error":{"code":404,"status":"NOT_FOUND"}}`, constants.ErrInferenceModelNotFound},
-		"rate limit":             {http.StatusTooManyRequests, `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}`, constants.ErrInferenceBackendUnavailable},
+		"rate limit":             {http.StatusTooManyRequests, `{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}`, constants.ErrInferenceBackendTransient},
+		"overloaded":             {http.StatusServiceUnavailable, `{"error":{"code":503,"status":"UNAVAILABLE"}}`, constants.ErrInferenceBackendTransient},
+		"internal error":         {http.StatusInternalServerError, `{"error":{"code":500,"status":"INTERNAL"}}`, constants.ErrInferenceBackendTransient},
 		"rejected key":           {http.StatusForbidden, `{"error":{"code":403,"status":"PERMISSION_DENIED"}}`, constants.ErrInferenceBackendUnavailable},
+		"unauthenticated":        {http.StatusUnauthorized, `{"error":{"code":401,"status":"UNAUTHENTICATED"}}`, constants.ErrInferenceBackendUnavailable},
+		"not implemented":        {http.StatusNotImplemented, `{"error":{"code":501}}`, constants.ErrInferenceBackendUnavailable},
 		"provider deadline":      {http.StatusGatewayTimeout, `{"error":{"code":504}}`, constants.ErrInferenceBackendTimeout},
 		"prompt over the window": {http.StatusBadRequest, `{"error":{"code":400,"message":"The input token count (2000000) exceeds the maximum number of tokens allowed (1048576).","status":"INVALID_ARGUMENT"}}`, constants.ErrInferenceContextOverflow},
 		"other bad request":      {http.StatusBadRequest, `{"error":{"code":400,"message":"bad","status":"INVALID_ARGUMENT"}}`, constants.ErrInferenceGenerateFailed},
@@ -563,6 +568,17 @@ func TestGeminiBackend_StatusErrorsAreTyped(t *testing.T) {
 		_, err := newFakeGeminiBackend(t, fake).Generate(testutil.Context(t), geminiRequest(geminiTestModel))
 		require.ErrorIs(t, err, constants.ErrInferenceModelNotFound)
 		assert.Zero(t, fake.posts())
+	})
+	t.Run("a rate-limited metadata read is transient", func(t *testing.T) {
+		fake := &geminiFake{metaCode: http.StatusTooManyRequests}
+		_, err := newFakeGeminiBackend(t, fake).Generate(testutil.Context(t), geminiRequest(geminiTestModel))
+		require.ErrorIs(t, err, constants.ErrInferenceBackendTransient)
+		assert.Zero(t, fake.posts())
+	})
+	t.Run("a forbidden metadata read is unavailable", func(t *testing.T) {
+		fake := &geminiFake{metaCode: http.StatusForbidden}
+		_, err := newFakeGeminiBackend(t, fake).Generate(testutil.Context(t), geminiRequest(geminiTestModel))
+		require.ErrorIs(t, err, constants.ErrInferenceBackendUnavailable)
 	})
 }
 

@@ -178,6 +178,9 @@ func (s *anthropicStreamState) consume(event anthropicStreamEvent) ([]*operatorv
 		return nil, invalid
 	}
 	if event.Type == "error" {
+		if event.Error != nil && anthropicErrorTransient(event.Error.Type) {
+			return nil, constants.ErrInferenceBackendTransient
+		}
 		return nil, constants.ErrInferenceProviderStreamError
 	}
 	if event.Type == "ping" {
@@ -447,6 +450,18 @@ func (b *AnthropicBackend) decodeStream(ctx context.Context, body io.Reader, arr
 // Provider messages can echo prompts or keys. Classification uses the typed
 // error first, then bounded message hints for invalid_request_error only.
 // Neither the message nor the raw body is logged, returned, or signed.
+// anthropicErrorTransient reports whether a typed Anthropic error asks to be
+// retried later. Authentication, billing and permission errors cannot succeed
+// on a new attempt.
+func anthropicErrorTransient(errorType string) bool {
+	switch errorType {
+	case "rate_limit_error", "api_error", "overloaded_error":
+		return true
+	default:
+		return false
+	}
+}
+
 func (b *AnthropicBackend) statusError(status int, body []byte, attemptID string) error {
 	var envelope struct {
 		Error anthropicAPIError `json:"error"`
@@ -456,6 +471,9 @@ func (b *AnthropicBackend) statusError(status int, body []byte, attemptID string
 		"status", status,
 		"provider_attempt_id", attemptID,
 	)
+	if anthropicErrorTransient(envelope.Error.Type) {
+		return fmt.Errorf("%s: provider status %d: %w", anthropicComponent, status, constants.ErrInferenceBackendTransient)
+	}
 	kind := constants.ErrInferenceGenerateFailed
 	switch envelope.Error.Type {
 	case "not_found_error":
@@ -464,7 +482,7 @@ func (b *AnthropicBackend) statusError(status int, body []byte, attemptID string
 		kind = constants.ErrInferenceBackendTimeout
 	case "request_too_large":
 		kind = constants.ErrInferenceContextOverflow
-	case "authentication_error", "billing_error", "permission_error", "rate_limit_error", "api_error", "overloaded_error":
+	case "authentication_error", "billing_error", "permission_error":
 		kind = constants.ErrInferenceBackendUnavailable
 	case "invalid_request_error":
 		message := strings.ToLower(envelope.Error.Message)
@@ -484,7 +502,9 @@ func (b *AnthropicBackend) statusError(status int, body []byte, attemptID string
 			kind = constants.ErrInferenceBackendTimeout
 		case status == http.StatusRequestEntityTooLarge:
 			kind = constants.ErrInferenceContextOverflow
-		case (status >= http.StatusMultipleChoices && status < http.StatusBadRequest) || status == http.StatusUnauthorized || status == http.StatusPaymentRequired || status == http.StatusForbidden || status == http.StatusTooManyRequests || status >= http.StatusInternalServerError:
+		case hostedStatusTransient(status):
+			kind = constants.ErrInferenceBackendTransient
+		case (status >= http.StatusMultipleChoices && status < http.StatusBadRequest) || status == http.StatusUnauthorized || status == http.StatusPaymentRequired || status == http.StatusForbidden || status >= http.StatusInternalServerError:
 			kind = constants.ErrInferenceBackendUnavailable
 		}
 	}

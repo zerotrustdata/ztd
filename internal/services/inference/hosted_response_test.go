@@ -46,7 +46,8 @@ func TestGeminiBackend_HostedCaptureRecordsExactStreamEvenOnDecodeFailure(t *tes
 	}{
 		{"complete stream", geminiToolCallStream(geminiTestModel), nil},
 		{"malformed event with trailing bytes", "data: not-json\r\n\r\n" + geminiToolCallStream(geminiTestModel), constants.ErrInferenceProviderResponseInvalid},
-		{"provider stream error with trailing bytes", "data: {\"error\":{\"code\":500}}\r\n\r\n" + geminiToolCallStream(geminiTestModel), constants.ErrInferenceProviderStreamError},
+		{"provider stream error with trailing bytes", "data: {\"error\":{\"code\":400}}\r\n\r\n" + geminiToolCallStream(geminiTestModel), constants.ErrInferenceProviderStreamError},
+		{"transient stream error with trailing bytes", "data: {\"error\":{\"code\":503}}\r\n\r\n" + geminiToolCallStream(geminiTestModel), constants.ErrInferenceBackendTransient},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := &hostedRawResponseRecorder{}
@@ -74,7 +75,7 @@ func TestGeminiBackend_HostedCaptureExcludesHTTPErrorBodies(t *testing.T) {
 	fake := &geminiFake{status: http.StatusTooManyRequests, errorBody: `{"error":{"message":"prompt-or-key-must-not-escape"}}`}
 	backend := newFakeGeminiBackend(t, fake)
 	_, err := backend.Generate(WithAttemptStore(testutil.Context(t), store), geminiRequest(geminiTestModel))
-	require.ErrorIs(t, err, constants.ErrInferenceBackendUnavailable)
+	require.ErrorIs(t, err, constants.ErrInferenceBackendTransient)
 	assert.NotContains(t, err.Error(), "prompt-or-key-must-not-escape")
 	assert.Zero(t, store.calls)
 	assert.Equal(t, 1, fake.posts())
