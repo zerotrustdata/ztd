@@ -1,8 +1,8 @@
 {
   "campaign_id": "eval-genesis-homogeneous",
-  "model_registry_digest": "4332650e98f47c10182643aec2a2d9c64587c690f99cb3c81814fe39e35ffb4a",
-  "model_count": 106,
-  "homogeneous_cell_count": 9010,
+  "model_registry_digest": "3dc5bcccbb1d8f41a7f0565b4cd5755ae4ecedc921f28e825514e4e43f7e5a76",
+  "model_count": 98,
+  "homogeneous_cell_count": 9212,
   "variants": [
     {
       "variantId": "impulse2000-smollm3-3b-q4-k-m",
@@ -30,16 +30,6 @@
       "modelFamily": "llama",
       "parameterCount": "8000000000",
       "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "sparkllm-spark-x2-6-4b",
-      "providerClass": "ollama",
-      "servedModelTag": "SparkLLM/Spark-X2.6-4B",
-      "modelDigest": "3df9a31aa87b5671ac7a9854a7aa6cbf96692cf2827cc2fe7c2b766fea0e640a",
-      "modelFamily": "spark2_5",
-      "parameterCount": "4450000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 1048576
     },
     {
       "variantId": "deepseek-r1-1-5b",
@@ -1022,26 +1012,6 @@
       "contextLimit": 32768
     },
     {
-      "variantId": "lfm2-5-1-2b",
-      "providerClass": "ollama",
-      "servedModelTag": "lfm2.5:1.2b",
-      "modelDigest": "5791ac70d52d5f309995be96f6fcfa78f5f3e9b17c9fc3806f030eb9dfc3b5bb",
-      "modelFamily": "lfm2",
-      "parameterCount": "1200000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 32768
-    },
-    {
-      "variantId": "lfm2-5-2-6b",
-      "providerClass": "ollama",
-      "servedModelTag": "lfm2.5:2.6b",
-      "modelDigest": "ae5290e304c110c17b801d2e332e79f7f203a99cd6d5fc635c2a605b94d1623c",
-      "modelFamily": "lfm2",
-      "parameterCount": "2600000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 32768
-    },
-    {
       "variantId": "lfm2-5-8b",
       "providerClass": "ollama",
       "servedModelTag": "lfm2.5:8b",
@@ -1050,16 +1020,6 @@
       "parameterCount": "8500000000",
       "quantization": "Q4_K_M",
       "contextLimit": 128000
-    },
-    {
-      "variantId": "lfm2-5-8b-a1b",
-      "providerClass": "ollama",
-      "servedModelTag": "lfm2.5:8b-a1b",
-      "modelDigest": "9cf756159fc2f3b9074b7c897adadab7d58a8a478dcfa4e99f07a4a980998f80",
-      "modelFamily": "lfm2moe",
-      "parameterCount": "8300000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 131072
     },
     {
       "variantId": "llama3-1-8b",
@@ -1078,16 +1038,6 @@
       "modelFamily": "llama",
       "parameterCount": "8000000000",
       "quantization": "Q4_K_M"
-    },
-    {
-      "variantId": "llama3-2",
-      "providerClass": "ollama",
-      "servedModelTag": "llama3.2",
-      "modelDigest": "a80c4f17acd5526543b593ef39c89e248b1d9bf5b1ce55bb468bb7aa27df5316",
-      "modelFamily": "llama",
-      "parameterCount": "3200000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 131072
     },
     {
       "variantId": "llama3-2-1b",
@@ -1127,20 +1077,10 @@
       "contextLimit": 32768
     },
     {
-      "variantId": "minicpm5-2b",
-      "providerClass": "ollama",
-      "servedModelTag": "minicpm5:2b",
-      "modelDigest": "dddf0b90a4322325fcddc056ccaaa72073ea262387d4e6d3e434d33b91ee4736",
-      "modelFamily": "minicpm",
-      "parameterCount": "2500000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 131072
-    },
-    {
       "variantId": "ministral-3-14b",
       "providerClass": "ollama",
       "servedModelTag": "ministral-3:14b",
-      "modelDigest": "9017218b31a4ab2e784fac090b7c97e46c044aba3f7f1470efb68e2a58996919",
+      "modelDigest": "4760c35aeb9d9e9c6174c2492562c0b999e80a222804fd96b1915ab72bbcdcf7",
       "modelFamily": "mistral3",
       "parameterCount": "13900000000",
       "quantization": "Q4_K_M",
@@ -1224,7 +1164,7 @@
       "variantId": "olmo-3-7b",
       "providerClass": "ollama",
       "servedModelTag": "olmo-3:7b",
-      "modelDigest": "0b1574046d328df12ae932970a2ca7508fa544865582f3ef0824e4d5884974a9",
+      "modelDigest": "b8d4c92ac9c103f858f4f09a418b62de8ca1abf1b20b4020006346535634dd35",
       "modelFamily": "olmo3",
       "parameterCount": "7300000000",
       "quantization": "Q4_K_M",
@@ -1249,16 +1189,6 @@
       "parameterCount": "7300000000",
       "quantization": "Q4_K_M",
       "contextLimit": 65536
-    },
-    {
-      "variantId": "openbmb-minicpm5-2b",
-      "providerClass": "ollama",
-      "servedModelTag": "openbmb/minicpm5:2b",
-      "modelDigest": "d31762ae1593ae98ab6196f89cc98a22b9babb691bf8e95362ebc68ae53446d6",
-      "modelFamily": "minicpm",
-      "parameterCount": "2500000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 131072
     },
     {
       "variantId": "ornith-1-5-9b",
@@ -1823,16 +1753,6 @@
       "quantization": "F16"
     },
     {
-      "variantId": "spark-x2-6-4b",
-      "providerClass": "ollama",
-      "servedModelTag": "spark-x2.6:4b",
-      "modelDigest": "3df9a31aa87b5671ac7a9854a7aa6cbf96692cf2827cc2fe7c2b766fea0e640a",
-      "modelFamily": "spark2_5",
-      "parameterCount": "4450000000",
-      "quantization": "Q4_K_M",
-      "contextLimit": 1048576
-    },
-    {
       "variantId": "tinyllama-1-1b",
       "providerClass": "ollama",
       "servedModelTag": "tinyllama:1.1b",
@@ -1854,10 +1774,6 @@
     {
       "model": "Randomblock1/nemotron-nano:8b",
       "digest": "470fceb39b4300f47cc3b35d6e0a31321757fbcc4afdb4177484ca745bf92f37"
-    },
-    {
-      "model": "SparkLLM/Spark-X2.6-4B",
-      "digest": "3df9a31aa87b5671ac7a9854a7aa6cbf96692cf2827cc2fe7c2b766fea0e640a"
     },
     {
       "model": "deepseek-r1:1.5b",
@@ -2048,20 +1964,8 @@
       "digest": "95bd9d45385f33bfe96d8b3651c8569e152f21f5bdb7c19894ffde650e9cf140"
     },
     {
-      "model": "lfm2.5:1.2b",
-      "digest": "5791ac70d52d5f309995be96f6fcfa78f5f3e9b17c9fc3806f030eb9dfc3b5bb"
-    },
-    {
-      "model": "lfm2.5:2.6b",
-      "digest": "ae5290e304c110c17b801d2e332e79f7f203a99cd6d5fc635c2a605b94d1623c"
-    },
-    {
       "model": "lfm2.5:8b",
       "digest": "9cf756159fc2f3b9128c6a3f544ec90c5e9b8afdbb4179a57b8aea9de589cfb2"
-    },
-    {
-      "model": "lfm2.5:8b-a1b",
-      "digest": "9cf756159fc2f3b9074b7c897adadab7d58a8a478dcfa4e99f07a4a980998f80"
     },
     {
       "model": "llama3.1:8b",
@@ -2070,10 +1974,6 @@
     {
       "model": "llama3.1:8b-instruct-q4_K_M",
       "digest": "46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e"
-    },
-    {
-      "model": "llama3.2",
-      "digest": "a80c4f17acd5526543b593ef39c89e248b1d9bf5b1ce55bb468bb7aa27df5316"
     },
     {
       "model": "llama3.2:1b",
@@ -2092,12 +1992,8 @@
       "digest": "537211882a70230a6357420509469391976686c620d9d220c422ab0dc7297c83"
     },
     {
-      "model": "minicpm5:2b",
-      "digest": "dddf0b90a4322325fcddc056ccaaa72073ea262387d4e6d3e434d33b91ee4736"
-    },
-    {
       "model": "ministral-3:14b",
-      "digest": "9017218b31a4ab2e784fac090b7c97e46c044aba3f7f1470efb68e2a58996919"
+      "digest": "4760c35aeb9d9e9c6174c2492562c0b999e80a222804fd96b1915ab72bbcdcf7"
     },
     {
       "model": "ministral-3:3b",
@@ -2121,7 +2017,7 @@
     },
     {
       "model": "olmo-3:7b",
-      "digest": "0b1574046d328df12ae932970a2ca7508fa544865582f3ef0824e4d5884974a9"
+      "digest": "b8d4c92ac9c103f858f4f09a418b62de8ca1abf1b20b4020006346535634dd35"
     },
     {
       "model": "olmo-3:7b-instruct",
@@ -2130,10 +2026,6 @@
     {
       "model": "olmo-3:7b-think",
       "digest": "b8d4c92ac9c103f858f4f09a418b62de8ca1abf1b20b4020006346535634dd35"
-    },
-    {
-      "model": "openbmb/minicpm5:2b",
-      "digest": "d31762ae1593ae98ab6196f89cc98a22b9babb691bf8e95362ebc68ae53446d6"
     },
     {
       "model": "ornith-1.5:9b",
@@ -2258,10 +2150,6 @@
     {
       "model": "smollm2:360m",
       "digest": "297281b699fc51376006233ca400cd664c4f7b80ed88a47ef084f1e4b089803b"
-    },
-    {
-      "model": "spark-x2.6:4b",
-      "digest": "3df9a31aa87b5671ac7a9854a7aa6cbf96692cf2827cc2fe7c2b766fea0e640a"
     },
     {
       "model": "tinyllama:1.1b",
