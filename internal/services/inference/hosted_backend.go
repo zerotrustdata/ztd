@@ -68,7 +68,24 @@ func NewHostedBackend(class string, logger *slog.Logger) (HostedBackend, error) 
 	switch class {
 	case constants.InferenceProviderGemini:
 		return NewGeminiBackend(origin, key, logger)
+	case constants.InferenceProviderAnthropic:
+		return NewAnthropicBackend(origin, key, logger)
 	default:
 		return nil, fmt.Errorf("inference: hosted provider %q: %w", class, constants.ErrInferenceHostedProviderNoClient)
 	}
+}
+
+// validateHostedModelID admits a bounded bare model ID before it enters an API path.
+func validateHostedModelID(model string) error {
+	if model == "" || len(model) > 128 {
+		return constants.ErrInferenceModelRefInvalid
+	}
+	for i, character := range model {
+		alphanumeric := (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9')
+		if alphanumeric || (i > 0 && strings.ContainsRune("._-", character)) {
+			continue
+		}
+		return constants.ErrInferenceModelRefInvalid
+	}
+	return nil
 }

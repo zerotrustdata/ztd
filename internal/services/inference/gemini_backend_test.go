@@ -616,7 +616,7 @@ func TestNewHostedBackend_RequiresKeyAndClient(t *testing.T) {
 		assert.Equal(t, constants.InferenceProviderGemini, backend.ProviderClass())
 		assert.Equal(t, geminiOrigin(t), backend.(*GeminiBackend).origin)
 	})
-	for _, class := range []string{constants.InferenceProviderAnthropic, constants.InferenceProviderOpenAI} {
+	for _, class := range []string{constants.InferenceProviderOpenAI} {
 		t.Run(class+" has no client in this build", func(t *testing.T) {
 			keyEnv, _ := constants.HostedInferenceProviderAPIKeyEnv(class)
 			t.Setenv(string(keyEnv), "k")

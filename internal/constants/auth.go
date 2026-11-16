@@ -86,6 +86,8 @@ const (
 	HeaderDeploymentID                  = "X-ZTD-Deployment-ID"
 	HeaderExecutionID                   = "X-ZTD-Execution-ID"
 	HeaderGoogAPIKey                    = "x-goog-api-key"
+	HeaderAnthropicAPIKey               = "x-api-key"
+	HeaderAnthropicVersion              = "anthropic-version"
 	HeaderInvestigationID               = "X-ZTD-Investigation-ID"
 	HeaderLastEventID                   = "Last-Event-ID"
 	HeaderOperatorID                    = "X-ZTD-Operator-ID"

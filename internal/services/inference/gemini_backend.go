@@ -37,8 +37,6 @@ const (
 	geminiGenerateMethod  = "generateContent"
 	// geminiMaxStopSequences is the provider's limit on stopSequences.
 	geminiMaxStopSequences = 5
-	// geminiMaxModelIDBytes bounds a model ID before it enters a URL path.
-	geminiMaxModelIDBytes = 128
 	// geminiModelListPageSize and geminiMaxModelListPages bound one inventory read.
 	geminiModelListPageSize = 1000
 	geminiMaxModelListPages = 32
@@ -235,21 +233,6 @@ type geminiStreamResult struct {
 	usage        *geminiUsage
 }
 
-// validateGeminiModelID admits a bare Gemini model ID such as gemini-3.6-flash.
-func validateGeminiModelID(model string) error {
-	if model == "" || len(model) > geminiMaxModelIDBytes {
-		return constants.ErrInferenceModelRefInvalid
-	}
-	for i, character := range model {
-		alphanumeric := (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9')
-		if alphanumeric || (i > 0 && strings.ContainsRune("._-", character)) {
-			continue
-		}
-		return constants.ErrInferenceModelRefInvalid
-	}
-	return nil
-}
-
 // readModel reads one model's metadata with models.get. An unknown model is
 // ErrInferenceModelNotFound; the metadata must name the model and report a
 // version and an input token limit.
@@ -338,7 +321,7 @@ func (b *GeminiBackend) ListProviderModelInventory(ctx context.Context) ([]Provi
 	}
 	entries := make([]ProviderModelInventoryEntry, 0, len(listed))
 	for _, model := range listed {
-		if !model.generates() || model.Version == "" || validateGeminiModelID(model.id()) != nil {
+		if !model.generates() || model.Version == "" || validateHostedModelID(model.id()) != nil {
 			continue
 		}
 		digest, err := b.identityDigest(model)
@@ -371,7 +354,7 @@ func (b *GeminiBackend) Generate(ctx context.Context, req models.GenerateRequest
 	if req.ProviderClass != constants.InferenceProviderGemini {
 		return nil, fmt.Errorf("%s: generate: provider class %q: %w", geminiComponent, req.ProviderClass, constants.ErrInferenceHostedNotAllowed)
 	}
-	if err := validateGeminiModelID(req.Model); err != nil {
+	if err := validateHostedModelID(req.Model); err != nil {
 		return nil, fmt.Errorf("%s: generate: %w", geminiComponent, err)
 	}
 	if req.ContextLimit != nil {
