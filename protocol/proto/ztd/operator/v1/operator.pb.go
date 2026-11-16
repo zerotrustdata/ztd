@@ -11331,6 +11331,68 @@ func (x *InferenceToolResult) GetResultJson() string {
 	return ""
 }
 
+// InferenceProviderReasoning is one reasoning item a hosted provider returned
+// in opaque form: an Anthropic thinking or redacted_thinking block, or an
+// OpenAI encrypted reasoning item. The provider binds it to the conversation
+// that produced it, so a later turn of that conversation returns it to the same
+// provider class verbatim, in its original position. It carries no readable
+// text: the client requests none and refuses an item that holds any, so the
+// scrubber, which never reads it, has nothing to scrub. The result digest
+// covers it.
+type InferenceProviderReasoning struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Hosted provider class that issued the item (anthropic, openai).
+	ProviderClass string `protobuf:"bytes,1,opt,name=provider_class,json=providerClass,proto3" json:"provider_class,omitempty"`
+	// The provider's item as canonical JSON, returned to it unchanged.
+	ItemJson      string `protobuf:"bytes,2,opt,name=item_json,json=itemJson,proto3" json:"item_json,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InferenceProviderReasoning) Reset() {
+	*x = InferenceProviderReasoning{}
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[124]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InferenceProviderReasoning) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InferenceProviderReasoning) ProtoMessage() {}
+
+func (x *InferenceProviderReasoning) ProtoReflect() protoreflect.Message {
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[124]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InferenceProviderReasoning.ProtoReflect.Descriptor instead.
+func (*InferenceProviderReasoning) Descriptor() ([]byte, []int) {
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{124}
+}
+
+func (x *InferenceProviderReasoning) GetProviderClass() string {
+	if x != nil {
+		return x.ProviderClass
+	}
+	return ""
+}
+
+func (x *InferenceProviderReasoning) GetItemJson() string {
+	if x != nil {
+		return x.ItemJson
+	}
+	return ""
+}
+
 // InferenceMessagePart carries exactly one typed part of a conversation turn.
 type InferenceMessagePart struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -11339,6 +11401,7 @@ type InferenceMessagePart struct {
 	//	*InferenceMessagePart_Text
 	//	*InferenceMessagePart_ToolCall
 	//	*InferenceMessagePart_ToolResult
+	//	*InferenceMessagePart_ProviderReasoning
 	Part          isInferenceMessagePart_Part `protobuf_oneof:"part"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -11346,7 +11409,7 @@ type InferenceMessagePart struct {
 
 func (x *InferenceMessagePart) Reset() {
 	*x = InferenceMessagePart{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[124]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11358,7 +11421,7 @@ func (x *InferenceMessagePart) String() string {
 func (*InferenceMessagePart) ProtoMessage() {}
 
 func (x *InferenceMessagePart) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[124]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11371,7 +11434,7 @@ func (x *InferenceMessagePart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceMessagePart.ProtoReflect.Descriptor instead.
 func (*InferenceMessagePart) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{124}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *InferenceMessagePart) GetPart() isInferenceMessagePart_Part {
@@ -11408,6 +11471,15 @@ func (x *InferenceMessagePart) GetToolResult() *InferenceToolResult {
 	return nil
 }
 
+func (x *InferenceMessagePart) GetProviderReasoning() *InferenceProviderReasoning {
+	if x != nil {
+		if x, ok := x.Part.(*InferenceMessagePart_ProviderReasoning); ok {
+			return x.ProviderReasoning
+		}
+	}
+	return nil
+}
+
 type isInferenceMessagePart_Part interface {
 	isInferenceMessagePart_Part()
 }
@@ -11424,11 +11496,18 @@ type InferenceMessagePart_ToolResult struct {
 	ToolResult *InferenceToolResult `protobuf:"bytes,3,opt,name=tool_result,json=toolResult,proto3,oneof"`
 }
 
+type InferenceMessagePart_ProviderReasoning struct {
+	// Only in an assistant turn of a request to the issuing provider class.
+	ProviderReasoning *InferenceProviderReasoning `protobuf:"bytes,4,opt,name=provider_reasoning,json=providerReasoning,proto3,oneof"`
+}
+
 func (*InferenceMessagePart_Text) isInferenceMessagePart_Part() {}
 
 func (*InferenceMessagePart_ToolCall) isInferenceMessagePart_Part() {}
 
 func (*InferenceMessagePart_ToolResult) isInferenceMessagePart_Part() {}
+
+func (*InferenceMessagePart_ProviderReasoning) isInferenceMessagePart_Part() {}
 
 // InferenceMessage preserves one ordered conversation turn without prompt flattening.
 type InferenceMessage struct {
@@ -11441,7 +11520,7 @@ type InferenceMessage struct {
 
 func (x *InferenceMessage) Reset() {
 	*x = InferenceMessage{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[125]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11453,7 +11532,7 @@ func (x *InferenceMessage) String() string {
 func (*InferenceMessage) ProtoMessage() {}
 
 func (x *InferenceMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[125]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11466,7 +11545,7 @@ func (x *InferenceMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceMessage.ProtoReflect.Descriptor instead.
 func (*InferenceMessage) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{125}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *InferenceMessage) GetRole() InferenceMessageRole {
@@ -11495,7 +11574,7 @@ type InferenceToolDeclaration struct {
 
 func (x *InferenceToolDeclaration) Reset() {
 	*x = InferenceToolDeclaration{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[126]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11507,7 +11586,7 @@ func (x *InferenceToolDeclaration) String() string {
 func (*InferenceToolDeclaration) ProtoMessage() {}
 
 func (x *InferenceToolDeclaration) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[126]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11520,7 +11599,7 @@ func (x *InferenceToolDeclaration) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceToolDeclaration.ProtoReflect.Descriptor instead.
 func (*InferenceToolDeclaration) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{126}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *InferenceToolDeclaration) GetName() string {
@@ -11554,7 +11633,7 @@ type InferenceResponseFormat struct {
 
 func (x *InferenceResponseFormat) Reset() {
 	*x = InferenceResponseFormat{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[127]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11566,7 +11645,7 @@ func (x *InferenceResponseFormat) String() string {
 func (*InferenceResponseFormat) ProtoMessage() {}
 
 func (x *InferenceResponseFormat) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[127]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11579,7 +11658,7 @@ func (x *InferenceResponseFormat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceResponseFormat.ProtoReflect.Descriptor instead.
 func (*InferenceResponseFormat) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{127}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{128}
 }
 
 func (x *InferenceResponseFormat) GetMediaType() string {
@@ -11606,7 +11685,7 @@ type InferenceToolChoice struct {
 
 func (x *InferenceToolChoice) Reset() {
 	*x = InferenceToolChoice{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[128]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11618,7 +11697,7 @@ func (x *InferenceToolChoice) String() string {
 func (*InferenceToolChoice) ProtoMessage() {}
 
 func (x *InferenceToolChoice) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[128]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11631,7 +11710,7 @@ func (x *InferenceToolChoice) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceToolChoice.ProtoReflect.Descriptor instead.
 func (*InferenceToolChoice) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{128}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *InferenceToolChoice) GetMode() InferenceToolChoiceMode {
@@ -11662,7 +11741,7 @@ type InferenceThinkingControl struct {
 
 func (x *InferenceThinkingControl) Reset() {
 	*x = InferenceThinkingControl{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[129]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11674,7 +11753,7 @@ func (x *InferenceThinkingControl) String() string {
 func (*InferenceThinkingControl) ProtoMessage() {}
 
 func (x *InferenceThinkingControl) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[129]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11687,7 +11766,7 @@ func (x *InferenceThinkingControl) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceThinkingControl.ProtoReflect.Descriptor instead.
 func (*InferenceThinkingControl) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{129}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{130}
 }
 
 func (x *InferenceThinkingControl) GetMode() isInferenceThinkingControl_Mode {
@@ -11746,6 +11825,7 @@ type InferenceResponsePart struct {
 	//	*InferenceResponsePart_Text
 	//	*InferenceResponsePart_ToolCall
 	//	*InferenceResponsePart_Thinking
+	//	*InferenceResponsePart_ProviderReasoning
 	Part          isInferenceResponsePart_Part `protobuf_oneof:"part"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -11753,7 +11833,7 @@ type InferenceResponsePart struct {
 
 func (x *InferenceResponsePart) Reset() {
 	*x = InferenceResponsePart{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[130]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[131]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11765,7 +11845,7 @@ func (x *InferenceResponsePart) String() string {
 func (*InferenceResponsePart) ProtoMessage() {}
 
 func (x *InferenceResponsePart) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[130]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[131]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11778,7 +11858,7 @@ func (x *InferenceResponsePart) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceResponsePart.ProtoReflect.Descriptor instead.
 func (*InferenceResponsePart) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{130}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{131}
 }
 
 func (x *InferenceResponsePart) GetPart() isInferenceResponsePart_Part {
@@ -11815,6 +11895,15 @@ func (x *InferenceResponsePart) GetThinking() string {
 	return ""
 }
 
+func (x *InferenceResponsePart) GetProviderReasoning() *InferenceProviderReasoning {
+	if x != nil {
+		if x, ok := x.Part.(*InferenceResponsePart_ProviderReasoning); ok {
+			return x.ProviderReasoning
+		}
+	}
+	return nil
+}
+
 type isInferenceResponsePart_Part interface {
 	isInferenceResponsePart_Part()
 }
@@ -11831,11 +11920,17 @@ type InferenceResponsePart_Thinking struct {
 	Thinking string `protobuf:"bytes,3,opt,name=thinking,proto3,oneof"`
 }
 
+type InferenceResponsePart_ProviderReasoning struct {
+	ProviderReasoning *InferenceProviderReasoning `protobuf:"bytes,4,opt,name=provider_reasoning,json=providerReasoning,proto3,oneof"`
+}
+
 func (*InferenceResponsePart_Text) isInferenceResponsePart_Part() {}
 
 func (*InferenceResponsePart_ToolCall) isInferenceResponsePart_Part() {}
 
 func (*InferenceResponsePart_Thinking) isInferenceResponsePart_Part() {}
+
+func (*InferenceResponsePart_ProviderReasoning) isInferenceResponsePart_Part() {}
 
 type InferenceModelVariant struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -11847,7 +11942,7 @@ type InferenceModelVariant struct {
 
 func (x *InferenceModelVariant) Reset() {
 	*x = InferenceModelVariant{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[131]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[132]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11859,7 +11954,7 @@ func (x *InferenceModelVariant) String() string {
 func (*InferenceModelVariant) ProtoMessage() {}
 
 func (x *InferenceModelVariant) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[131]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[132]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11872,7 +11967,7 @@ func (x *InferenceModelVariant) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceModelVariant.ProtoReflect.Descriptor instead.
 func (*InferenceModelVariant) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{131}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{132}
 }
 
 func (x *InferenceModelVariant) GetModel() string {
@@ -11903,7 +11998,7 @@ type InferenceDecisionRequest struct {
 
 func (x *InferenceDecisionRequest) Reset() {
 	*x = InferenceDecisionRequest{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[132]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[133]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11915,7 +12010,7 @@ func (x *InferenceDecisionRequest) String() string {
 func (*InferenceDecisionRequest) ProtoMessage() {}
 
 func (x *InferenceDecisionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[132]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[133]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11928,7 +12023,7 @@ func (x *InferenceDecisionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDecisionRequest.ProtoReflect.Descriptor instead.
 func (*InferenceDecisionRequest) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{132}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{133}
 }
 
 func (x *InferenceDecisionRequest) GetState() string {
@@ -11968,7 +12063,7 @@ type InferenceDecisionQuestion struct {
 
 func (x *InferenceDecisionQuestion) Reset() {
 	*x = InferenceDecisionQuestion{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[133]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[134]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -11980,7 +12075,7 @@ func (x *InferenceDecisionQuestion) String() string {
 func (*InferenceDecisionQuestion) ProtoMessage() {}
 
 func (x *InferenceDecisionQuestion) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[133]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[134]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -11993,7 +12088,7 @@ func (x *InferenceDecisionQuestion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDecisionQuestion.ProtoReflect.Descriptor instead.
 func (*InferenceDecisionQuestion) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{133}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{134}
 }
 
 func (x *InferenceDecisionQuestion) GetName() string {
@@ -12076,7 +12171,7 @@ type InferenceNoulQuestion struct {
 
 func (x *InferenceNoulQuestion) Reset() {
 	*x = InferenceNoulQuestion{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[134]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[135]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12088,7 +12183,7 @@ func (x *InferenceNoulQuestion) String() string {
 func (*InferenceNoulQuestion) ProtoMessage() {}
 
 func (x *InferenceNoulQuestion) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[134]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[135]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12101,7 +12196,7 @@ func (x *InferenceNoulQuestion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceNoulQuestion.ProtoReflect.Descriptor instead.
 func (*InferenceNoulQuestion) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{134}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{135}
 }
 
 func (x *InferenceNoulQuestion) GetTrueLabel() string {
@@ -12128,7 +12223,7 @@ type InferenceDecisionCriterion struct {
 
 func (x *InferenceDecisionCriterion) Reset() {
 	*x = InferenceDecisionCriterion{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[135]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[136]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12140,7 +12235,7 @@ func (x *InferenceDecisionCriterion) String() string {
 func (*InferenceDecisionCriterion) ProtoMessage() {}
 
 func (x *InferenceDecisionCriterion) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[135]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[136]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12153,7 +12248,7 @@ func (x *InferenceDecisionCriterion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDecisionCriterion.ProtoReflect.Descriptor instead.
 func (*InferenceDecisionCriterion) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{135}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{136}
 }
 
 func (x *InferenceDecisionCriterion) GetLabel() string {
@@ -12179,7 +12274,7 @@ type InferenceChoiceQuestion struct {
 
 func (x *InferenceChoiceQuestion) Reset() {
 	*x = InferenceChoiceQuestion{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[136]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[137]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12191,7 +12286,7 @@ func (x *InferenceChoiceQuestion) String() string {
 func (*InferenceChoiceQuestion) ProtoMessage() {}
 
 func (x *InferenceChoiceQuestion) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[136]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[137]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12204,7 +12299,7 @@ func (x *InferenceChoiceQuestion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceChoiceQuestion.ProtoReflect.Descriptor instead.
 func (*InferenceChoiceQuestion) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{136}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{137}
 }
 
 func (x *InferenceChoiceQuestion) GetCriteria() []*InferenceDecisionCriterion {
@@ -12223,7 +12318,7 @@ type InferenceScoreQuestion struct {
 
 func (x *InferenceScoreQuestion) Reset() {
 	*x = InferenceScoreQuestion{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[137]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[138]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12235,7 +12330,7 @@ func (x *InferenceScoreQuestion) String() string {
 func (*InferenceScoreQuestion) ProtoMessage() {}
 
 func (x *InferenceScoreQuestion) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[137]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[138]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12248,7 +12343,7 @@ func (x *InferenceScoreQuestion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceScoreQuestion.ProtoReflect.Descriptor instead.
 func (*InferenceScoreQuestion) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{137}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{138}
 }
 
 func (x *InferenceScoreQuestion) GetCriteria() []string {
@@ -12267,7 +12362,7 @@ type InferenceDecisionResult struct {
 
 func (x *InferenceDecisionResult) Reset() {
 	*x = InferenceDecisionResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[138]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[139]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12279,7 +12374,7 @@ func (x *InferenceDecisionResult) String() string {
 func (*InferenceDecisionResult) ProtoMessage() {}
 
 func (x *InferenceDecisionResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[138]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[139]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12292,7 +12387,7 @@ func (x *InferenceDecisionResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDecisionResult.ProtoReflect.Descriptor instead.
 func (*InferenceDecisionResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{138}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{139}
 }
 
 func (x *InferenceDecisionResult) GetAnswers() []*InferenceDecisionAnswer {
@@ -12317,7 +12412,7 @@ type InferenceDecisionAnswer struct {
 
 func (x *InferenceDecisionAnswer) Reset() {
 	*x = InferenceDecisionAnswer{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[139]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[140]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12329,7 +12424,7 @@ func (x *InferenceDecisionAnswer) String() string {
 func (*InferenceDecisionAnswer) ProtoMessage() {}
 
 func (x *InferenceDecisionAnswer) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[139]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[140]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12342,7 +12437,7 @@ func (x *InferenceDecisionAnswer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDecisionAnswer.ProtoReflect.Descriptor instead.
 func (*InferenceDecisionAnswer) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{139}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{140}
 }
 
 func (x *InferenceDecisionAnswer) GetName() string {
@@ -12418,7 +12513,7 @@ type InferenceDecisionProbability struct {
 
 func (x *InferenceDecisionProbability) Reset() {
 	*x = InferenceDecisionProbability{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[140]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[141]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12430,7 +12525,7 @@ func (x *InferenceDecisionProbability) String() string {
 func (*InferenceDecisionProbability) ProtoMessage() {}
 
 func (x *InferenceDecisionProbability) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[140]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[141]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12443,7 +12538,7 @@ func (x *InferenceDecisionProbability) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDecisionProbability.ProtoReflect.Descriptor instead.
 func (*InferenceDecisionProbability) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{140}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{141}
 }
 
 func (x *InferenceDecisionProbability) GetLabel() string {
@@ -12471,7 +12566,7 @@ type InferenceChoiceAnswer struct {
 
 func (x *InferenceChoiceAnswer) Reset() {
 	*x = InferenceChoiceAnswer{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[141]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[142]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12483,7 +12578,7 @@ func (x *InferenceChoiceAnswer) String() string {
 func (*InferenceChoiceAnswer) ProtoMessage() {}
 
 func (x *InferenceChoiceAnswer) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[141]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[142]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12496,7 +12591,7 @@ func (x *InferenceChoiceAnswer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceChoiceAnswer.ProtoReflect.Descriptor instead.
 func (*InferenceChoiceAnswer) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{141}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{142}
 }
 
 func (x *InferenceChoiceAnswer) GetSelection() string {
@@ -12531,7 +12626,7 @@ type InferenceScoreAnswer struct {
 
 func (x *InferenceScoreAnswer) Reset() {
 	*x = InferenceScoreAnswer{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[142]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[143]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12543,7 +12638,7 @@ func (x *InferenceScoreAnswer) String() string {
 func (*InferenceScoreAnswer) ProtoMessage() {}
 
 func (x *InferenceScoreAnswer) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[142]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[143]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12556,7 +12651,7 @@ func (x *InferenceScoreAnswer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceScoreAnswer.ProtoReflect.Descriptor instead.
 func (*InferenceScoreAnswer) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{142}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{143}
 }
 
 func (x *InferenceScoreAnswer) GetScore() float64 {
@@ -12641,7 +12736,7 @@ type InferenceRequested struct {
 
 func (x *InferenceRequested) Reset() {
 	*x = InferenceRequested{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[143]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[144]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12653,7 +12748,7 @@ func (x *InferenceRequested) String() string {
 func (*InferenceRequested) ProtoMessage() {}
 
 func (x *InferenceRequested) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[143]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[144]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12666,7 +12761,7 @@ func (x *InferenceRequested) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceRequested.ProtoReflect.Descriptor instead.
 func (*InferenceRequested) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{143}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{144}
 }
 
 func (x *InferenceRequested) GetRole() ModelRole {
@@ -12906,7 +13001,7 @@ type InferenceProviderAttemptRecord struct {
 
 func (x *InferenceProviderAttemptRecord) Reset() {
 	*x = InferenceProviderAttemptRecord{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[144]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[145]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12918,7 +13013,7 @@ func (x *InferenceProviderAttemptRecord) String() string {
 func (*InferenceProviderAttemptRecord) ProtoMessage() {}
 
 func (x *InferenceProviderAttemptRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[144]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[145]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12931,7 +13026,7 @@ func (x *InferenceProviderAttemptRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceProviderAttemptRecord.ProtoReflect.Descriptor instead.
 func (*InferenceProviderAttemptRecord) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{144}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{145}
 }
 
 func (x *InferenceProviderAttemptRecord) GetProviderAttemptId() string {
@@ -13071,7 +13166,7 @@ type InferenceResult struct {
 
 func (x *InferenceResult) Reset() {
 	*x = InferenceResult{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[145]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[146]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13083,7 +13178,7 @@ func (x *InferenceResult) String() string {
 func (*InferenceResult) ProtoMessage() {}
 
 func (x *InferenceResult) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[145]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[146]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13096,7 +13191,7 @@ func (x *InferenceResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceResult.ProtoReflect.Descriptor instead.
 func (*InferenceResult) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{145}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{146}
 }
 
 func (x *InferenceResult) GetPromptTokens() int32 {
@@ -13360,7 +13455,7 @@ type InferenceProgressEvent struct {
 
 func (x *InferenceProgressEvent) Reset() {
 	*x = InferenceProgressEvent{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[146]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[147]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13372,7 +13467,7 @@ func (x *InferenceProgressEvent) String() string {
 func (*InferenceProgressEvent) ProtoMessage() {}
 
 func (x *InferenceProgressEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[146]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[147]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13385,7 +13480,7 @@ func (x *InferenceProgressEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceProgressEvent.ProtoReflect.Descriptor instead.
 func (*InferenceProgressEvent) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{146}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{147}
 }
 
 func (x *InferenceProgressEvent) GetProviderAttemptId() string {
@@ -13443,7 +13538,7 @@ type InferenceCompletion struct {
 
 func (x *InferenceCompletion) Reset() {
 	*x = InferenceCompletion{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[147]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[148]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13455,7 +13550,7 @@ func (x *InferenceCompletion) String() string {
 func (*InferenceCompletion) ProtoMessage() {}
 
 func (x *InferenceCompletion) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[147]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[148]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13468,7 +13563,7 @@ func (x *InferenceCompletion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceCompletion.ProtoReflect.Descriptor instead.
 func (*InferenceCompletion) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{147}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{148}
 }
 
 func (x *InferenceCompletion) GetReceipt() *EventReceipt {
@@ -13557,7 +13652,7 @@ type InferenceDispatchRequest struct {
 
 func (x *InferenceDispatchRequest) Reset() {
 	*x = InferenceDispatchRequest{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[148]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[149]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13569,7 +13664,7 @@ func (x *InferenceDispatchRequest) String() string {
 func (*InferenceDispatchRequest) ProtoMessage() {}
 
 func (x *InferenceDispatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[148]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[149]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13582,7 +13677,7 @@ func (x *InferenceDispatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDispatchRequest.ProtoReflect.Descriptor instead.
 func (*InferenceDispatchRequest) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{148}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{149}
 }
 
 func (x *InferenceDispatchRequest) GetRole() ModelRole {
@@ -13867,7 +13962,7 @@ type InferenceDispatchFailure struct {
 
 func (x *InferenceDispatchFailure) Reset() {
 	*x = InferenceDispatchFailure{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[149]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[150]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13879,7 +13974,7 @@ func (x *InferenceDispatchFailure) String() string {
 func (*InferenceDispatchFailure) ProtoMessage() {}
 
 func (x *InferenceDispatchFailure) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[149]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[150]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13892,7 +13987,7 @@ func (x *InferenceDispatchFailure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDispatchFailure.ProtoReflect.Descriptor instead.
 func (*InferenceDispatchFailure) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{149}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{150}
 }
 
 func (x *InferenceDispatchFailure) GetError() string {
@@ -13937,7 +14032,7 @@ type InferenceDispatchStreamFailure struct {
 
 func (x *InferenceDispatchStreamFailure) Reset() {
 	*x = InferenceDispatchStreamFailure{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[150]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[151]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -13949,7 +14044,7 @@ func (x *InferenceDispatchStreamFailure) String() string {
 func (*InferenceDispatchStreamFailure) ProtoMessage() {}
 
 func (x *InferenceDispatchStreamFailure) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[150]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[151]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -13962,7 +14057,7 @@ func (x *InferenceDispatchStreamFailure) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDispatchStreamFailure.ProtoReflect.Descriptor instead.
 func (*InferenceDispatchStreamFailure) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{150}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{151}
 }
 
 func (x *InferenceDispatchStreamFailure) GetReason() string {
@@ -13999,7 +14094,7 @@ type InferenceDispatchStreamFrame struct {
 
 func (x *InferenceDispatchStreamFrame) Reset() {
 	*x = InferenceDispatchStreamFrame{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[151]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[152]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14011,7 +14106,7 @@ func (x *InferenceDispatchStreamFrame) String() string {
 func (*InferenceDispatchStreamFrame) ProtoMessage() {}
 
 func (x *InferenceDispatchStreamFrame) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[151]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[152]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14024,7 +14119,7 @@ func (x *InferenceDispatchStreamFrame) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDispatchStreamFrame.ProtoReflect.Descriptor instead.
 func (*InferenceDispatchStreamFrame) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{151}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{152}
 }
 
 func (x *InferenceDispatchStreamFrame) GetFrame() isInferenceDispatchStreamFrame_Frame {
@@ -14108,7 +14203,7 @@ type InferenceDispatchResponse struct {
 
 func (x *InferenceDispatchResponse) Reset() {
 	*x = InferenceDispatchResponse{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[152]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[153]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14120,7 +14215,7 @@ func (x *InferenceDispatchResponse) String() string {
 func (*InferenceDispatchResponse) ProtoMessage() {}
 
 func (x *InferenceDispatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[152]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[153]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14133,7 +14228,7 @@ func (x *InferenceDispatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceDispatchResponse.ProtoReflect.Descriptor instead.
 func (*InferenceDispatchResponse) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{152}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{153}
 }
 
 func (x *InferenceDispatchResponse) GetTransactionId() string {
@@ -14196,7 +14291,7 @@ type InferenceHostedEgressAttestation struct {
 
 func (x *InferenceHostedEgressAttestation) Reset() {
 	*x = InferenceHostedEgressAttestation{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[153]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[154]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14208,7 +14303,7 @@ func (x *InferenceHostedEgressAttestation) String() string {
 func (*InferenceHostedEgressAttestation) ProtoMessage() {}
 
 func (x *InferenceHostedEgressAttestation) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[153]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[154]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14221,7 +14316,7 @@ func (x *InferenceHostedEgressAttestation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InferenceHostedEgressAttestation.ProtoReflect.Descriptor instead.
 func (*InferenceHostedEgressAttestation) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{153}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{154}
 }
 
 func (x *InferenceHostedEgressAttestation) GetProviderOrigin() string {
@@ -14323,7 +14418,7 @@ type AuditChainCheckpointPayload struct {
 
 func (x *AuditChainCheckpointPayload) Reset() {
 	*x = AuditChainCheckpointPayload{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[154]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[155]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14335,7 +14430,7 @@ func (x *AuditChainCheckpointPayload) String() string {
 func (*AuditChainCheckpointPayload) ProtoMessage() {}
 
 func (x *AuditChainCheckpointPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[154]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[155]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14348,7 +14443,7 @@ func (x *AuditChainCheckpointPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditChainCheckpointPayload.ProtoReflect.Descriptor instead.
 func (*AuditChainCheckpointPayload) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{154}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{155}
 }
 
 func (x *AuditChainCheckpointPayload) GetPrunedThroughSeq() int64 {
@@ -14404,7 +14499,7 @@ type AuditChainCheckpoint struct {
 
 func (x *AuditChainCheckpoint) Reset() {
 	*x = AuditChainCheckpoint{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[155]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[156]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14416,7 +14511,7 @@ func (x *AuditChainCheckpoint) String() string {
 func (*AuditChainCheckpoint) ProtoMessage() {}
 
 func (x *AuditChainCheckpoint) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[155]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[156]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14429,7 +14524,7 @@ func (x *AuditChainCheckpoint) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditChainCheckpoint.ProtoReflect.Descriptor instead.
 func (*AuditChainCheckpoint) Descriptor() ([]byte, []int) {
-	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{155}
+	return file_ztd_operator_v1_operator_proto_rawDescGZIP(), []int{156}
 }
 
 func (x *AuditChainCheckpoint) GetPrunedThroughSeq() int64 {
@@ -14498,7 +14593,7 @@ type PasskeyRegisterChallengeResult_RelyingParty struct {
 
 func (x *PasskeyRegisterChallengeResult_RelyingParty) Reset() {
 	*x = PasskeyRegisterChallengeResult_RelyingParty{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[157]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[158]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14510,7 +14605,7 @@ func (x *PasskeyRegisterChallengeResult_RelyingParty) String() string {
 func (*PasskeyRegisterChallengeResult_RelyingParty) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult_RelyingParty) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[157]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[158]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14551,7 +14646,7 @@ type PasskeyRegisterChallengeResult_UserInfo struct {
 
 func (x *PasskeyRegisterChallengeResult_UserInfo) Reset() {
 	*x = PasskeyRegisterChallengeResult_UserInfo{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[158]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[159]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14563,7 +14658,7 @@ func (x *PasskeyRegisterChallengeResult_UserInfo) String() string {
 func (*PasskeyRegisterChallengeResult_UserInfo) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult_UserInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[158]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[159]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14610,7 +14705,7 @@ type PasskeyRegisterChallengeResult_PublicKeyCredentialParameters struct {
 
 func (x *PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) Reset() {
 	*x = PasskeyRegisterChallengeResult_PublicKeyCredentialParameters{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[159]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[160]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14622,7 +14717,7 @@ func (x *PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) String() 
 func (*PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult_PublicKeyCredentialParameters) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[159]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[160]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -14662,7 +14757,7 @@ type PasskeyRegisterChallengeResult_AuthenticatorSelection struct {
 
 func (x *PasskeyRegisterChallengeResult_AuthenticatorSelection) Reset() {
 	*x = PasskeyRegisterChallengeResult_AuthenticatorSelection{}
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[160]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[161]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -14674,7 +14769,7 @@ func (x *PasskeyRegisterChallengeResult_AuthenticatorSelection) String() string 
 func (*PasskeyRegisterChallengeResult_AuthenticatorSelection) ProtoMessage() {}
 
 func (x *PasskeyRegisterChallengeResult_AuthenticatorSelection) ProtoReflect() protoreflect.Message {
-	mi := &file_ztd_operator_v1_operator_proto_msgTypes[160]
+	mi := &file_ztd_operator_v1_operator_proto_msgTypes[161]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -15626,12 +15721,16 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1f\n" +
 	"\vresult_json\x18\x03 \x01(\tR\n" +
-	"resultJson\"\xc0\x01\n" +
+	"resultJson\"`\n" +
+	"\x1aInferenceProviderReasoning\x12%\n" +
+	"\x0eprovider_class\x18\x01 \x01(\tR\rproviderClass\x12\x1b\n" +
+	"\titem_json\x18\x02 \x01(\tR\bitemJson\"\x9e\x02\n" +
 	"\x14InferenceMessagePart\x12\x14\n" +
 	"\x04text\x18\x01 \x01(\tH\x00R\x04text\x12A\n" +
 	"\ttool_call\x18\x02 \x01(\v2\".ztd.operator.v1.InferenceToolCallH\x00R\btoolCall\x12G\n" +
 	"\vtool_result\x18\x03 \x01(\v2$.ztd.operator.v1.InferenceToolResultH\x00R\n" +
-	"toolResultB\x06\n" +
+	"toolResult\x12\\\n" +
+	"\x12provider_reasoning\x18\x04 \x01(\v2+.ztd.operator.v1.InferenceProviderReasoningH\x00R\x11providerReasoningB\x06\n" +
 	"\x04part\"\x8a\x01\n" +
 	"\x10InferenceMessage\x129\n" +
 	"\x04role\x18\x01 \x01(\x0e2%.ztd.operator.v1.InferenceMessageRoleR\x04role\x12;\n" +
@@ -15653,11 +15752,12 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\aenabled\x18\x01 \x01(\bH\x00R\aenabled\x12\x16\n" +
 	"\x05level\x18\x02 \x01(\tH\x00R\x05level\x12)\n" +
 	"\x10include_thoughts\x18\x03 \x01(\bR\x0fincludeThoughtsB\x06\n" +
-	"\x04mode\"\x96\x01\n" +
+	"\x04mode\"\xf4\x01\n" +
 	"\x15InferenceResponsePart\x12\x14\n" +
 	"\x04text\x18\x01 \x01(\tH\x00R\x04text\x12A\n" +
 	"\ttool_call\x18\x02 \x01(\v2\".ztd.operator.v1.InferenceToolCallH\x00R\btoolCall\x12\x1c\n" +
-	"\bthinking\x18\x03 \x01(\tH\x00R\bthinkingB\x06\n" +
+	"\bthinking\x18\x03 \x01(\tH\x00R\bthinking\x12\\\n" +
+	"\x12provider_reasoning\x18\x04 \x01(\v2+.ztd.operator.v1.InferenceProviderReasoningH\x00R\x11providerReasoningB\x06\n" +
 	"\x04part\"E\n" +
 	"\x15InferenceModelVariant\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\x12\x16\n" +
@@ -16154,7 +16254,7 @@ func file_ztd_operator_v1_operator_proto_rawDescGZIP() []byte {
 }
 
 var file_ztd_operator_v1_operator_proto_enumTypes = make([]protoimpl.EnumInfo, 18)
-var file_ztd_operator_v1_operator_proto_msgTypes = make([]protoimpl.MessageInfo, 161)
+var file_ztd_operator_v1_operator_proto_msgTypes = make([]protoimpl.MessageInfo, 162)
 var file_ztd_operator_v1_operator_proto_goTypes = []any{
 	(ExecutionStatus)(0),                                                 // 0: ztd.operator.v1.ExecutionStatus
 	(L3Status)(0),                                                        // 1: ztd.operator.v1.L3Status
@@ -16298,62 +16398,63 @@ var file_ztd_operator_v1_operator_proto_goTypes = []any{
 	(*RevokePasskeyCredentialResult)(nil),                                // 139: ztd.operator.v1.RevokePasskeyCredentialResult
 	(*InferenceToolCall)(nil),                                            // 140: ztd.operator.v1.InferenceToolCall
 	(*InferenceToolResult)(nil),                                          // 141: ztd.operator.v1.InferenceToolResult
-	(*InferenceMessagePart)(nil),                                         // 142: ztd.operator.v1.InferenceMessagePart
-	(*InferenceMessage)(nil),                                             // 143: ztd.operator.v1.InferenceMessage
-	(*InferenceToolDeclaration)(nil),                                     // 144: ztd.operator.v1.InferenceToolDeclaration
-	(*InferenceResponseFormat)(nil),                                      // 145: ztd.operator.v1.InferenceResponseFormat
-	(*InferenceToolChoice)(nil),                                          // 146: ztd.operator.v1.InferenceToolChoice
-	(*InferenceThinkingControl)(nil),                                     // 147: ztd.operator.v1.InferenceThinkingControl
-	(*InferenceResponsePart)(nil),                                        // 148: ztd.operator.v1.InferenceResponsePart
-	(*InferenceModelVariant)(nil),                                        // 149: ztd.operator.v1.InferenceModelVariant
-	(*InferenceDecisionRequest)(nil),                                     // 150: ztd.operator.v1.InferenceDecisionRequest
-	(*InferenceDecisionQuestion)(nil),                                    // 151: ztd.operator.v1.InferenceDecisionQuestion
-	(*InferenceNoulQuestion)(nil),                                        // 152: ztd.operator.v1.InferenceNoulQuestion
-	(*InferenceDecisionCriterion)(nil),                                   // 153: ztd.operator.v1.InferenceDecisionCriterion
-	(*InferenceChoiceQuestion)(nil),                                      // 154: ztd.operator.v1.InferenceChoiceQuestion
-	(*InferenceScoreQuestion)(nil),                                       // 155: ztd.operator.v1.InferenceScoreQuestion
-	(*InferenceDecisionResult)(nil),                                      // 156: ztd.operator.v1.InferenceDecisionResult
-	(*InferenceDecisionAnswer)(nil),                                      // 157: ztd.operator.v1.InferenceDecisionAnswer
-	(*InferenceDecisionProbability)(nil),                                 // 158: ztd.operator.v1.InferenceDecisionProbability
-	(*InferenceChoiceAnswer)(nil),                                        // 159: ztd.operator.v1.InferenceChoiceAnswer
-	(*InferenceScoreAnswer)(nil),                                         // 160: ztd.operator.v1.InferenceScoreAnswer
-	(*InferenceRequested)(nil),                                           // 161: ztd.operator.v1.InferenceRequested
-	(*InferenceProviderAttemptRecord)(nil),                               // 162: ztd.operator.v1.InferenceProviderAttemptRecord
-	(*InferenceResult)(nil),                                              // 163: ztd.operator.v1.InferenceResult
-	(*InferenceProgressEvent)(nil),                                       // 164: ztd.operator.v1.InferenceProgressEvent
-	(*InferenceCompletion)(nil),                                          // 165: ztd.operator.v1.InferenceCompletion
-	(*InferenceDispatchRequest)(nil),                                     // 166: ztd.operator.v1.InferenceDispatchRequest
-	(*InferenceDispatchFailure)(nil),                                     // 167: ztd.operator.v1.InferenceDispatchFailure
-	(*InferenceDispatchStreamFailure)(nil),                               // 168: ztd.operator.v1.InferenceDispatchStreamFailure
-	(*InferenceDispatchStreamFrame)(nil),                                 // 169: ztd.operator.v1.InferenceDispatchStreamFrame
-	(*InferenceDispatchResponse)(nil),                                    // 170: ztd.operator.v1.InferenceDispatchResponse
-	(*InferenceHostedEgressAttestation)(nil),                             // 171: ztd.operator.v1.InferenceHostedEgressAttestation
-	(*AuditChainCheckpointPayload)(nil),                                  // 172: ztd.operator.v1.AuditChainCheckpointPayload
-	(*AuditChainCheckpoint)(nil),                                         // 173: ztd.operator.v1.AuditChainCheckpoint
-	nil,                                                                  // 174: ztd.operator.v1.CommandRequested.EnvironmentEntry
-	(*PasskeyRegisterChallengeResult_RelyingParty)(nil),                  // 175: ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
-	(*PasskeyRegisterChallengeResult_UserInfo)(nil),                      // 176: ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
-	(*PasskeyRegisterChallengeResult_PublicKeyCredentialParameters)(nil), // 177: ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
-	(*PasskeyRegisterChallengeResult_AuthenticatorSelection)(nil),        // 178: ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
-	(*structpb.Struct)(nil),                                              // 179: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),                                        // 180: google.protobuf.Timestamp
-	(*v1.GovernanceEnvelope)(nil),                                        // 181: ztd.common.v1.GovernanceEnvelope
+	(*InferenceProviderReasoning)(nil),                                   // 142: ztd.operator.v1.InferenceProviderReasoning
+	(*InferenceMessagePart)(nil),                                         // 143: ztd.operator.v1.InferenceMessagePart
+	(*InferenceMessage)(nil),                                             // 144: ztd.operator.v1.InferenceMessage
+	(*InferenceToolDeclaration)(nil),                                     // 145: ztd.operator.v1.InferenceToolDeclaration
+	(*InferenceResponseFormat)(nil),                                      // 146: ztd.operator.v1.InferenceResponseFormat
+	(*InferenceToolChoice)(nil),                                          // 147: ztd.operator.v1.InferenceToolChoice
+	(*InferenceThinkingControl)(nil),                                     // 148: ztd.operator.v1.InferenceThinkingControl
+	(*InferenceResponsePart)(nil),                                        // 149: ztd.operator.v1.InferenceResponsePart
+	(*InferenceModelVariant)(nil),                                        // 150: ztd.operator.v1.InferenceModelVariant
+	(*InferenceDecisionRequest)(nil),                                     // 151: ztd.operator.v1.InferenceDecisionRequest
+	(*InferenceDecisionQuestion)(nil),                                    // 152: ztd.operator.v1.InferenceDecisionQuestion
+	(*InferenceNoulQuestion)(nil),                                        // 153: ztd.operator.v1.InferenceNoulQuestion
+	(*InferenceDecisionCriterion)(nil),                                   // 154: ztd.operator.v1.InferenceDecisionCriterion
+	(*InferenceChoiceQuestion)(nil),                                      // 155: ztd.operator.v1.InferenceChoiceQuestion
+	(*InferenceScoreQuestion)(nil),                                       // 156: ztd.operator.v1.InferenceScoreQuestion
+	(*InferenceDecisionResult)(nil),                                      // 157: ztd.operator.v1.InferenceDecisionResult
+	(*InferenceDecisionAnswer)(nil),                                      // 158: ztd.operator.v1.InferenceDecisionAnswer
+	(*InferenceDecisionProbability)(nil),                                 // 159: ztd.operator.v1.InferenceDecisionProbability
+	(*InferenceChoiceAnswer)(nil),                                        // 160: ztd.operator.v1.InferenceChoiceAnswer
+	(*InferenceScoreAnswer)(nil),                                         // 161: ztd.operator.v1.InferenceScoreAnswer
+	(*InferenceRequested)(nil),                                           // 162: ztd.operator.v1.InferenceRequested
+	(*InferenceProviderAttemptRecord)(nil),                               // 163: ztd.operator.v1.InferenceProviderAttemptRecord
+	(*InferenceResult)(nil),                                              // 164: ztd.operator.v1.InferenceResult
+	(*InferenceProgressEvent)(nil),                                       // 165: ztd.operator.v1.InferenceProgressEvent
+	(*InferenceCompletion)(nil),                                          // 166: ztd.operator.v1.InferenceCompletion
+	(*InferenceDispatchRequest)(nil),                                     // 167: ztd.operator.v1.InferenceDispatchRequest
+	(*InferenceDispatchFailure)(nil),                                     // 168: ztd.operator.v1.InferenceDispatchFailure
+	(*InferenceDispatchStreamFailure)(nil),                               // 169: ztd.operator.v1.InferenceDispatchStreamFailure
+	(*InferenceDispatchStreamFrame)(nil),                                 // 170: ztd.operator.v1.InferenceDispatchStreamFrame
+	(*InferenceDispatchResponse)(nil),                                    // 171: ztd.operator.v1.InferenceDispatchResponse
+	(*InferenceHostedEgressAttestation)(nil),                             // 172: ztd.operator.v1.InferenceHostedEgressAttestation
+	(*AuditChainCheckpointPayload)(nil),                                  // 173: ztd.operator.v1.AuditChainCheckpointPayload
+	(*AuditChainCheckpoint)(nil),                                         // 174: ztd.operator.v1.AuditChainCheckpoint
+	nil,                                                                  // 175: ztd.operator.v1.CommandRequested.EnvironmentEntry
+	(*PasskeyRegisterChallengeResult_RelyingParty)(nil),                  // 176: ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
+	(*PasskeyRegisterChallengeResult_UserInfo)(nil),                      // 177: ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
+	(*PasskeyRegisterChallengeResult_PublicKeyCredentialParameters)(nil), // 178: ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
+	(*PasskeyRegisterChallengeResult_AuthenticatorSelection)(nil),        // 179: ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
+	(*structpb.Struct)(nil),                                              // 180: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),                                        // 181: google.protobuf.Timestamp
+	(*v1.GovernanceEnvelope)(nil),                                        // 182: ztd.common.v1.GovernanceEnvelope
 }
 var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
-	174, // 0: ztd.operator.v1.CommandRequested.environment:type_name -> ztd.operator.v1.CommandRequested.EnvironmentEntry
+	175, // 0: ztd.operator.v1.CommandRequested.environment:type_name -> ztd.operator.v1.CommandRequested.EnvironmentEntry
 	0,   // 1: ztd.operator.v1.EvaluationWorkspaceSeedResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	179, // 2: ztd.operator.v1.DocumentUpdateRequested.updates:type_name -> google.protobuf.Struct
+	180, // 2: ztd.operator.v1.DocumentUpdateRequested.updates:type_name -> google.protobuf.Struct
 	46,  // 3: ztd.operator.v1.DeviceLinkResult.link:type_name -> ztd.operator.v1.DeviceLink
 	46,  // 4: ztd.operator.v1.ListDeviceLinksResult.links:type_name -> ztd.operator.v1.DeviceLink
 	62,  // 5: ztd.operator.v1.ListOperatorSlotsResult.operators:type_name -> ztd.operator.v1.OperatorDocument
-	180, // 6: ztd.operator.v1.OperatorDocument.created_at:type_name -> google.protobuf.Timestamp
-	180, // 7: ztd.operator.v1.OperatorDocument.updated_at:type_name -> google.protobuf.Timestamp
-	180, // 8: ztd.operator.v1.OperatorDocument.started_at:type_name -> google.protobuf.Timestamp
-	180, // 9: ztd.operator.v1.OperatorDocument.claimed_at:type_name -> google.protobuf.Timestamp
-	180, // 10: ztd.operator.v1.OperatorDocument.last_heartbeat_at:type_name -> google.protobuf.Timestamp
+	181, // 6: ztd.operator.v1.OperatorDocument.created_at:type_name -> google.protobuf.Timestamp
+	181, // 7: ztd.operator.v1.OperatorDocument.updated_at:type_name -> google.protobuf.Timestamp
+	181, // 8: ztd.operator.v1.OperatorDocument.started_at:type_name -> google.protobuf.Timestamp
+	181, // 9: ztd.operator.v1.OperatorDocument.claimed_at:type_name -> google.protobuf.Timestamp
+	181, // 10: ztd.operator.v1.OperatorDocument.last_heartbeat_at:type_name -> google.protobuf.Timestamp
 	112, // 11: ztd.operator.v1.OperatorDocument.latest_heartbeat_snapshot:type_name -> ztd.operator.v1.HeartbeatResult
 	61,  // 12: ztd.operator.v1.OperatorDocument.runtime_config:type_name -> ztd.operator.v1.OperatorRuntimeConfig
-	180, // 13: ztd.operator.v1.OperatorDocument.stale_at:type_name -> google.protobuf.Timestamp
+	181, // 13: ztd.operator.v1.OperatorDocument.stale_at:type_name -> google.protobuf.Timestamp
 	4,   // 14: ztd.operator.v1.DeterministicStageEvidence.kind:type_name -> ztd.operator.v1.DeterministicStageKind
 	5,   // 15: ztd.operator.v1.DeterministicStageEvidence.outcome:type_name -> ztd.operator.v1.DeterministicStageOutcome
 	0,   // 16: ztd.operator.v1.EventReceipt.status:type_name -> ztd.operator.v1.ExecutionStatus
@@ -16363,20 +16464,20 @@ var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
 	72,  // 20: ztd.operator.v1.EventReceipt.final_persistence_attestation:type_name -> ztd.operator.v1.ReceiptPersistenceAttestation
 	6,   // 21: ztd.operator.v1.EventReceipt.failure_code:type_name -> ztd.operator.v1.ReceiptFailureCode
 	7,   // 22: ztd.operator.v1.EventReceipt.rejection_code:type_name -> ztd.operator.v1.GovernanceRejectionCode
-	163, // 23: ztd.operator.v1.ConsensusVoteInference.result:type_name -> ztd.operator.v1.InferenceResult
+	164, // 23: ztd.operator.v1.ConsensusVoteInference.result:type_name -> ztd.operator.v1.InferenceResult
 	73,  // 24: ztd.operator.v1.ConsensusVoteInference.receipt:type_name -> ztd.operator.v1.EventReceipt
-	167, // 25: ztd.operator.v1.ConsensusVoteInference.failure:type_name -> ztd.operator.v1.InferenceDispatchFailure
+	168, // 25: ztd.operator.v1.ConsensusVoteInference.failure:type_name -> ztd.operator.v1.InferenceDispatchFailure
 	73,  // 26: ztd.operator.v1.ConsensusVoteInference.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
-	181, // 27: ztd.operator.v1.GovernanceDeliberationResult.envelope:type_name -> ztd.common.v1.GovernanceEnvelope
+	182, // 27: ztd.operator.v1.GovernanceDeliberationResult.envelope:type_name -> ztd.common.v1.GovernanceEnvelope
 	74,  // 28: ztd.operator.v1.GovernanceDeliberationResult.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
 	73,  // 29: ztd.operator.v1.GovernanceRejection.receipt:type_name -> ztd.operator.v1.EventReceipt
 	74,  // 30: ztd.operator.v1.GovernanceRejection.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
 	8,   // 31: ztd.operator.v1.IngressRefusal.code:type_name -> ztd.operator.v1.IngressRefusalCode
 	74,  // 32: ztd.operator.v1.IngressRefusal.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
-	163, // 33: ztd.operator.v1.GovernedDispatchResult.inference_result:type_name -> ztd.operator.v1.InferenceResult
+	164, // 33: ztd.operator.v1.GovernedDispatchResult.inference_result:type_name -> ztd.operator.v1.InferenceResult
 	73,  // 34: ztd.operator.v1.GovernedDispatchResult.receipt:type_name -> ztd.operator.v1.EventReceipt
 	74,  // 35: ztd.operator.v1.GovernedDispatchResult.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
-	181, // 36: ztd.operator.v1.GovernedDispatchResult.request_envelope:type_name -> ztd.common.v1.GovernanceEnvelope
+	182, // 36: ztd.operator.v1.GovernedDispatchResult.request_envelope:type_name -> ztd.common.v1.GovernanceEnvelope
 	0,   // 37: ztd.operator.v1.CommandResult.status:type_name -> ztd.operator.v1.ExecutionStatus
 	0,   // 38: ztd.operator.v1.FsListResult.status:type_name -> ztd.operator.v1.ExecutionStatus
 	81,  // 39: ztd.operator.v1.FsListResult.entries:type_name -> ztd.operator.v1.FsEntry
@@ -16413,82 +16514,84 @@ var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
 	123, // 70: ztd.operator.v1.HeartbeatResult.environment:type_name -> ztd.operator.v1.EnvironmentDetails
 	124, // 71: ztd.operator.v1.HeartbeatResult.fingerprint_details:type_name -> ztd.operator.v1.FingerprintDetails
 	114, // 72: ztd.operator.v1.NetworkInfo.connectivity_status:type_name -> ztd.operator.v1.NetworkInterface
-	175, // 73: ztd.operator.v1.PasskeyRegisterChallengeResult.rp:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
-	176, // 74: ztd.operator.v1.PasskeyRegisterChallengeResult.user:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
-	177, // 75: ztd.operator.v1.PasskeyRegisterChallengeResult.pub_key_cred_params:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
-	178, // 76: ztd.operator.v1.PasskeyRegisterChallengeResult.authenticator_selection:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
+	176, // 73: ztd.operator.v1.PasskeyRegisterChallengeResult.rp:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
+	177, // 74: ztd.operator.v1.PasskeyRegisterChallengeResult.user:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
+	178, // 75: ztd.operator.v1.PasskeyRegisterChallengeResult.pub_key_cred_params:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
+	179, // 76: ztd.operator.v1.PasskeyRegisterChallengeResult.authenticator_selection:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
 	128, // 77: ztd.operator.v1.PasskeyRegisterVerifyRequested.attestation_response:type_name -> ztd.operator.v1.AttestationResponse
 	125, // 78: ztd.operator.v1.PasskeyRegisterVerifyResult.credential:type_name -> ztd.operator.v1.PasskeyCredential
 	133, // 79: ztd.operator.v1.PasskeyAuthVerifyRequested.assertion_response:type_name -> ztd.operator.v1.AssertionResponse
 	125, // 80: ztd.operator.v1.ListPasskeyCredentialsResult.credentials:type_name -> ztd.operator.v1.PasskeyCredential
 	140, // 81: ztd.operator.v1.InferenceMessagePart.tool_call:type_name -> ztd.operator.v1.InferenceToolCall
 	141, // 82: ztd.operator.v1.InferenceMessagePart.tool_result:type_name -> ztd.operator.v1.InferenceToolResult
-	11,  // 83: ztd.operator.v1.InferenceMessage.role:type_name -> ztd.operator.v1.InferenceMessageRole
-	142, // 84: ztd.operator.v1.InferenceMessage.parts:type_name -> ztd.operator.v1.InferenceMessagePart
-	12,  // 85: ztd.operator.v1.InferenceToolChoice.mode:type_name -> ztd.operator.v1.InferenceToolChoiceMode
-	140, // 86: ztd.operator.v1.InferenceResponsePart.tool_call:type_name -> ztd.operator.v1.InferenceToolCall
-	151, // 87: ztd.operator.v1.InferenceDecisionRequest.questions:type_name -> ztd.operator.v1.InferenceDecisionQuestion
-	152, // 88: ztd.operator.v1.InferenceDecisionQuestion.noul:type_name -> ztd.operator.v1.InferenceNoulQuestion
-	154, // 89: ztd.operator.v1.InferenceDecisionQuestion.choice:type_name -> ztd.operator.v1.InferenceChoiceQuestion
-	155, // 90: ztd.operator.v1.InferenceDecisionQuestion.score:type_name -> ztd.operator.v1.InferenceScoreQuestion
-	153, // 91: ztd.operator.v1.InferenceChoiceQuestion.criteria:type_name -> ztd.operator.v1.InferenceDecisionCriterion
-	157, // 92: ztd.operator.v1.InferenceDecisionResult.answers:type_name -> ztd.operator.v1.InferenceDecisionAnswer
-	159, // 93: ztd.operator.v1.InferenceDecisionAnswer.choice:type_name -> ztd.operator.v1.InferenceChoiceAnswer
-	160, // 94: ztd.operator.v1.InferenceDecisionAnswer.score:type_name -> ztd.operator.v1.InferenceScoreAnswer
-	158, // 95: ztd.operator.v1.InferenceChoiceAnswer.probabilities:type_name -> ztd.operator.v1.InferenceDecisionProbability
-	158, // 96: ztd.operator.v1.InferenceScoreAnswer.probabilities:type_name -> ztd.operator.v1.InferenceDecisionProbability
-	10,  // 97: ztd.operator.v1.InferenceRequested.role:type_name -> ztd.operator.v1.ModelRole
-	143, // 98: ztd.operator.v1.InferenceRequested.messages:type_name -> ztd.operator.v1.InferenceMessage
-	144, // 99: ztd.operator.v1.InferenceRequested.tools:type_name -> ztd.operator.v1.InferenceToolDeclaration
-	145, // 100: ztd.operator.v1.InferenceRequested.response_format:type_name -> ztd.operator.v1.InferenceResponseFormat
-	146, // 101: ztd.operator.v1.InferenceRequested.tool_choice:type_name -> ztd.operator.v1.InferenceToolChoice
-	147, // 102: ztd.operator.v1.InferenceRequested.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
-	149, // 103: ztd.operator.v1.InferenceRequested.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
-	150, // 104: ztd.operator.v1.InferenceRequested.decision:type_name -> ztd.operator.v1.InferenceDecisionRequest
-	15,  // 105: ztd.operator.v1.InferenceProviderAttemptRecord.retry_classification:type_name -> ztd.operator.v1.InferenceRetryClassification
-	16,  // 106: ztd.operator.v1.InferenceProviderAttemptRecord.status:type_name -> ztd.operator.v1.InferenceProviderAttemptStatus
-	148, // 107: ztd.operator.v1.InferenceResult.parts:type_name -> ztd.operator.v1.InferenceResponsePart
-	13,  // 108: ztd.operator.v1.InferenceResult.timing_source:type_name -> ztd.operator.v1.InferenceTimingSource
-	14,  // 109: ztd.operator.v1.InferenceResult.load_state:type_name -> ztd.operator.v1.InferenceLoadState
-	15,  // 110: ztd.operator.v1.InferenceResult.retry_classification:type_name -> ztd.operator.v1.InferenceRetryClassification
-	156, // 111: ztd.operator.v1.InferenceResult.decision:type_name -> ztd.operator.v1.InferenceDecisionResult
-	171, // 112: ztd.operator.v1.InferenceResult.hosted_egress:type_name -> ztd.operator.v1.InferenceHostedEgressAttestation
-	148, // 113: ztd.operator.v1.InferenceProgressEvent.parts:type_name -> ztd.operator.v1.InferenceResponsePart
-	73,  // 114: ztd.operator.v1.InferenceCompletion.receipt:type_name -> ztd.operator.v1.EventReceipt
-	163, // 115: ztd.operator.v1.InferenceCompletion.result:type_name -> ztd.operator.v1.InferenceResult
-	10,  // 116: ztd.operator.v1.InferenceDispatchRequest.role:type_name -> ztd.operator.v1.ModelRole
-	143, // 117: ztd.operator.v1.InferenceDispatchRequest.messages:type_name -> ztd.operator.v1.InferenceMessage
-	144, // 118: ztd.operator.v1.InferenceDispatchRequest.tools:type_name -> ztd.operator.v1.InferenceToolDeclaration
-	145, // 119: ztd.operator.v1.InferenceDispatchRequest.response_format:type_name -> ztd.operator.v1.InferenceResponseFormat
-	146, // 120: ztd.operator.v1.InferenceDispatchRequest.tool_choice:type_name -> ztd.operator.v1.InferenceToolChoice
-	147, // 121: ztd.operator.v1.InferenceDispatchRequest.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
-	149, // 122: ztd.operator.v1.InferenceDispatchRequest.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
-	150, // 123: ztd.operator.v1.InferenceDispatchRequest.decision:type_name -> ztd.operator.v1.InferenceDecisionRequest
-	17,  // 124: ztd.operator.v1.InferenceDispatchFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
-	73,  // 125: ztd.operator.v1.InferenceDispatchFailure.receipt:type_name -> ztd.operator.v1.EventReceipt
-	73,  // 126: ztd.operator.v1.InferenceDispatchFailure.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
-	17,  // 127: ztd.operator.v1.InferenceDispatchStreamFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
-	164, // 128: ztd.operator.v1.InferenceDispatchStreamFrame.progress:type_name -> ztd.operator.v1.InferenceProgressEvent
-	170, // 129: ztd.operator.v1.InferenceDispatchStreamFrame.completion:type_name -> ztd.operator.v1.InferenceDispatchResponse
-	168, // 130: ztd.operator.v1.InferenceDispatchStreamFrame.failure:type_name -> ztd.operator.v1.InferenceDispatchStreamFailure
-	163, // 131: ztd.operator.v1.InferenceDispatchResponse.result:type_name -> ztd.operator.v1.InferenceResult
-	73,  // 132: ztd.operator.v1.InferenceDispatchResponse.receipt:type_name -> ztd.operator.v1.EventReceipt
-	73,  // 133: ztd.operator.v1.InferenceDispatchResponse.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
-	19,  // 134: ztd.operator.v1.OperatorService.ExecuteCommand:input_type -> ztd.operator.v1.CommandRequested
-	20,  // 135: ztd.operator.v1.OperatorService.CancelCommand:input_type -> ztd.operator.v1.CommandCancelRequested
-	21,  // 136: ztd.operator.v1.OperatorService.EditFile:input_type -> ztd.operator.v1.FileEditRequested
-	24,  // 137: ztd.operator.v1.OperatorService.ListFileSystem:input_type -> ztd.operator.v1.FsListRequested
-	25,  // 138: ztd.operator.v1.OperatorService.ReadFileSystem:input_type -> ztd.operator.v1.FsReadRequested
-	80,  // 139: ztd.operator.v1.OperatorService.ExecuteCommand:output_type -> ztd.operator.v1.CommandResult
-	80,  // 140: ztd.operator.v1.OperatorService.CancelCommand:output_type -> ztd.operator.v1.CommandResult
-	80,  // 141: ztd.operator.v1.OperatorService.EditFile:output_type -> ztd.operator.v1.CommandResult
-	80,  // 142: ztd.operator.v1.OperatorService.ListFileSystem:output_type -> ztd.operator.v1.CommandResult
-	80,  // 143: ztd.operator.v1.OperatorService.ReadFileSystem:output_type -> ztd.operator.v1.CommandResult
-	139, // [139:144] is the sub-list for method output_type
-	134, // [134:139] is the sub-list for method input_type
-	134, // [134:134] is the sub-list for extension type_name
-	134, // [134:134] is the sub-list for extension extendee
-	0,   // [0:134] is the sub-list for field type_name
+	142, // 83: ztd.operator.v1.InferenceMessagePart.provider_reasoning:type_name -> ztd.operator.v1.InferenceProviderReasoning
+	11,  // 84: ztd.operator.v1.InferenceMessage.role:type_name -> ztd.operator.v1.InferenceMessageRole
+	143, // 85: ztd.operator.v1.InferenceMessage.parts:type_name -> ztd.operator.v1.InferenceMessagePart
+	12,  // 86: ztd.operator.v1.InferenceToolChoice.mode:type_name -> ztd.operator.v1.InferenceToolChoiceMode
+	140, // 87: ztd.operator.v1.InferenceResponsePart.tool_call:type_name -> ztd.operator.v1.InferenceToolCall
+	142, // 88: ztd.operator.v1.InferenceResponsePart.provider_reasoning:type_name -> ztd.operator.v1.InferenceProviderReasoning
+	152, // 89: ztd.operator.v1.InferenceDecisionRequest.questions:type_name -> ztd.operator.v1.InferenceDecisionQuestion
+	153, // 90: ztd.operator.v1.InferenceDecisionQuestion.noul:type_name -> ztd.operator.v1.InferenceNoulQuestion
+	155, // 91: ztd.operator.v1.InferenceDecisionQuestion.choice:type_name -> ztd.operator.v1.InferenceChoiceQuestion
+	156, // 92: ztd.operator.v1.InferenceDecisionQuestion.score:type_name -> ztd.operator.v1.InferenceScoreQuestion
+	154, // 93: ztd.operator.v1.InferenceChoiceQuestion.criteria:type_name -> ztd.operator.v1.InferenceDecisionCriterion
+	158, // 94: ztd.operator.v1.InferenceDecisionResult.answers:type_name -> ztd.operator.v1.InferenceDecisionAnswer
+	160, // 95: ztd.operator.v1.InferenceDecisionAnswer.choice:type_name -> ztd.operator.v1.InferenceChoiceAnswer
+	161, // 96: ztd.operator.v1.InferenceDecisionAnswer.score:type_name -> ztd.operator.v1.InferenceScoreAnswer
+	159, // 97: ztd.operator.v1.InferenceChoiceAnswer.probabilities:type_name -> ztd.operator.v1.InferenceDecisionProbability
+	159, // 98: ztd.operator.v1.InferenceScoreAnswer.probabilities:type_name -> ztd.operator.v1.InferenceDecisionProbability
+	10,  // 99: ztd.operator.v1.InferenceRequested.role:type_name -> ztd.operator.v1.ModelRole
+	144, // 100: ztd.operator.v1.InferenceRequested.messages:type_name -> ztd.operator.v1.InferenceMessage
+	145, // 101: ztd.operator.v1.InferenceRequested.tools:type_name -> ztd.operator.v1.InferenceToolDeclaration
+	146, // 102: ztd.operator.v1.InferenceRequested.response_format:type_name -> ztd.operator.v1.InferenceResponseFormat
+	147, // 103: ztd.operator.v1.InferenceRequested.tool_choice:type_name -> ztd.operator.v1.InferenceToolChoice
+	148, // 104: ztd.operator.v1.InferenceRequested.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
+	150, // 105: ztd.operator.v1.InferenceRequested.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
+	151, // 106: ztd.operator.v1.InferenceRequested.decision:type_name -> ztd.operator.v1.InferenceDecisionRequest
+	15,  // 107: ztd.operator.v1.InferenceProviderAttemptRecord.retry_classification:type_name -> ztd.operator.v1.InferenceRetryClassification
+	16,  // 108: ztd.operator.v1.InferenceProviderAttemptRecord.status:type_name -> ztd.operator.v1.InferenceProviderAttemptStatus
+	149, // 109: ztd.operator.v1.InferenceResult.parts:type_name -> ztd.operator.v1.InferenceResponsePart
+	13,  // 110: ztd.operator.v1.InferenceResult.timing_source:type_name -> ztd.operator.v1.InferenceTimingSource
+	14,  // 111: ztd.operator.v1.InferenceResult.load_state:type_name -> ztd.operator.v1.InferenceLoadState
+	15,  // 112: ztd.operator.v1.InferenceResult.retry_classification:type_name -> ztd.operator.v1.InferenceRetryClassification
+	157, // 113: ztd.operator.v1.InferenceResult.decision:type_name -> ztd.operator.v1.InferenceDecisionResult
+	172, // 114: ztd.operator.v1.InferenceResult.hosted_egress:type_name -> ztd.operator.v1.InferenceHostedEgressAttestation
+	149, // 115: ztd.operator.v1.InferenceProgressEvent.parts:type_name -> ztd.operator.v1.InferenceResponsePart
+	73,  // 116: ztd.operator.v1.InferenceCompletion.receipt:type_name -> ztd.operator.v1.EventReceipt
+	164, // 117: ztd.operator.v1.InferenceCompletion.result:type_name -> ztd.operator.v1.InferenceResult
+	10,  // 118: ztd.operator.v1.InferenceDispatchRequest.role:type_name -> ztd.operator.v1.ModelRole
+	144, // 119: ztd.operator.v1.InferenceDispatchRequest.messages:type_name -> ztd.operator.v1.InferenceMessage
+	145, // 120: ztd.operator.v1.InferenceDispatchRequest.tools:type_name -> ztd.operator.v1.InferenceToolDeclaration
+	146, // 121: ztd.operator.v1.InferenceDispatchRequest.response_format:type_name -> ztd.operator.v1.InferenceResponseFormat
+	147, // 122: ztd.operator.v1.InferenceDispatchRequest.tool_choice:type_name -> ztd.operator.v1.InferenceToolChoice
+	148, // 123: ztd.operator.v1.InferenceDispatchRequest.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
+	150, // 124: ztd.operator.v1.InferenceDispatchRequest.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
+	151, // 125: ztd.operator.v1.InferenceDispatchRequest.decision:type_name -> ztd.operator.v1.InferenceDecisionRequest
+	17,  // 126: ztd.operator.v1.InferenceDispatchFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
+	73,  // 127: ztd.operator.v1.InferenceDispatchFailure.receipt:type_name -> ztd.operator.v1.EventReceipt
+	73,  // 128: ztd.operator.v1.InferenceDispatchFailure.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
+	17,  // 129: ztd.operator.v1.InferenceDispatchStreamFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
+	165, // 130: ztd.operator.v1.InferenceDispatchStreamFrame.progress:type_name -> ztd.operator.v1.InferenceProgressEvent
+	171, // 131: ztd.operator.v1.InferenceDispatchStreamFrame.completion:type_name -> ztd.operator.v1.InferenceDispatchResponse
+	169, // 132: ztd.operator.v1.InferenceDispatchStreamFrame.failure:type_name -> ztd.operator.v1.InferenceDispatchStreamFailure
+	164, // 133: ztd.operator.v1.InferenceDispatchResponse.result:type_name -> ztd.operator.v1.InferenceResult
+	73,  // 134: ztd.operator.v1.InferenceDispatchResponse.receipt:type_name -> ztd.operator.v1.EventReceipt
+	73,  // 135: ztd.operator.v1.InferenceDispatchResponse.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
+	19,  // 136: ztd.operator.v1.OperatorService.ExecuteCommand:input_type -> ztd.operator.v1.CommandRequested
+	20,  // 137: ztd.operator.v1.OperatorService.CancelCommand:input_type -> ztd.operator.v1.CommandCancelRequested
+	21,  // 138: ztd.operator.v1.OperatorService.EditFile:input_type -> ztd.operator.v1.FileEditRequested
+	24,  // 139: ztd.operator.v1.OperatorService.ListFileSystem:input_type -> ztd.operator.v1.FsListRequested
+	25,  // 140: ztd.operator.v1.OperatorService.ReadFileSystem:input_type -> ztd.operator.v1.FsReadRequested
+	80,  // 141: ztd.operator.v1.OperatorService.ExecuteCommand:output_type -> ztd.operator.v1.CommandResult
+	80,  // 142: ztd.operator.v1.OperatorService.CancelCommand:output_type -> ztd.operator.v1.CommandResult
+	80,  // 143: ztd.operator.v1.OperatorService.EditFile:output_type -> ztd.operator.v1.CommandResult
+	80,  // 144: ztd.operator.v1.OperatorService.ListFileSystem:output_type -> ztd.operator.v1.CommandResult
+	80,  // 145: ztd.operator.v1.OperatorService.ReadFileSystem:output_type -> ztd.operator.v1.CommandResult
+	141, // [141:146] is the sub-list for method output_type
+	136, // [136:141] is the sub-list for method input_type
+	136, // [136:136] is the sub-list for extension type_name
+	136, // [136:136] is the sub-list for extension extendee
+	0,   // [0:136] is the sub-list for field type_name
 }
 
 func init() { file_ztd_operator_v1_operator_proto_init() }
@@ -16496,35 +16599,37 @@ func file_ztd_operator_v1_operator_proto_init() {
 	if File_ztd_operator_v1_operator_proto != nil {
 		return
 	}
-	file_ztd_operator_v1_operator_proto_msgTypes[124].OneofWrappers = []any{
+	file_ztd_operator_v1_operator_proto_msgTypes[125].OneofWrappers = []any{
 		(*InferenceMessagePart_Text)(nil),
 		(*InferenceMessagePart_ToolCall)(nil),
 		(*InferenceMessagePart_ToolResult)(nil),
+		(*InferenceMessagePart_ProviderReasoning)(nil),
 	}
-	file_ztd_operator_v1_operator_proto_msgTypes[129].OneofWrappers = []any{
+	file_ztd_operator_v1_operator_proto_msgTypes[130].OneofWrappers = []any{
 		(*InferenceThinkingControl_Enabled)(nil),
 		(*InferenceThinkingControl_Level)(nil),
 	}
-	file_ztd_operator_v1_operator_proto_msgTypes[130].OneofWrappers = []any{
+	file_ztd_operator_v1_operator_proto_msgTypes[131].OneofWrappers = []any{
 		(*InferenceResponsePart_Text)(nil),
 		(*InferenceResponsePart_ToolCall)(nil),
 		(*InferenceResponsePart_Thinking)(nil),
+		(*InferenceResponsePart_ProviderReasoning)(nil),
 	}
-	file_ztd_operator_v1_operator_proto_msgTypes[133].OneofWrappers = []any{
+	file_ztd_operator_v1_operator_proto_msgTypes[134].OneofWrappers = []any{
 		(*InferenceDecisionQuestion_Noul)(nil),
 		(*InferenceDecisionQuestion_Choice)(nil),
 		(*InferenceDecisionQuestion_Score)(nil),
 	}
-	file_ztd_operator_v1_operator_proto_msgTypes[139].OneofWrappers = []any{
+	file_ztd_operator_v1_operator_proto_msgTypes[140].OneofWrappers = []any{
 		(*InferenceDecisionAnswer_Noul)(nil),
 		(*InferenceDecisionAnswer_Choice)(nil),
 		(*InferenceDecisionAnswer_Score)(nil),
 	}
-	file_ztd_operator_v1_operator_proto_msgTypes[143].OneofWrappers = []any{}
-	file_ztd_operator_v1_operator_proto_msgTypes[145].OneofWrappers = []any{}
+	file_ztd_operator_v1_operator_proto_msgTypes[144].OneofWrappers = []any{}
 	file_ztd_operator_v1_operator_proto_msgTypes[146].OneofWrappers = []any{}
-	file_ztd_operator_v1_operator_proto_msgTypes[148].OneofWrappers = []any{}
-	file_ztd_operator_v1_operator_proto_msgTypes[151].OneofWrappers = []any{
+	file_ztd_operator_v1_operator_proto_msgTypes[147].OneofWrappers = []any{}
+	file_ztd_operator_v1_operator_proto_msgTypes[149].OneofWrappers = []any{}
+	file_ztd_operator_v1_operator_proto_msgTypes[152].OneofWrappers = []any{
 		(*InferenceDispatchStreamFrame_Progress)(nil),
 		(*InferenceDispatchStreamFrame_Completion)(nil),
 		(*InferenceDispatchStreamFrame_Failure)(nil),
@@ -16535,7 +16640,7 @@ func file_ztd_operator_v1_operator_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_ztd_operator_v1_operator_proto_rawDesc), len(file_ztd_operator_v1_operator_proto_rawDesc)),
 			NumEnums:      18,
-			NumMessages:   161,
+			NumMessages:   162,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

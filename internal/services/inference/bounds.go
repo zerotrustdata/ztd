@@ -28,6 +28,10 @@ const (
 	maxInferenceToolsCount            = 64
 	maxInferenceGovernedPayloadBytes  = 4 << 20
 	maxInferenceResponsePartTextBytes = 256 << 10
+	// maxInferenceProviderReasoningBytes bounds one opaque provider reasoning
+	// item. Every item of a conversation returns on each later turn, so the
+	// sum is further bounded by maxInferenceGovernedPayloadBytes.
+	maxInferenceProviderReasoningBytes = 256 << 10
 )
 
 func validateKeepAlive(value string) error {
@@ -74,6 +78,10 @@ func validateInferenceRequestBounds(req *operatorv1.InferenceRequested) error {
 			case *operatorv1.InferenceMessagePart_ToolResult:
 				if len(value.ToolResult.GetResultJson()) > maxInferenceToolJSONBytes {
 					return fmt.Errorf("%w: message %d tool result %d", constants.ErrInferenceRequestTooLarge, messageIndex, partIndex)
+				}
+			case *operatorv1.InferenceMessagePart_ProviderReasoning:
+				if len(value.ProviderReasoning.GetItemJson()) > maxInferenceProviderReasoningBytes {
+					return fmt.Errorf("%w: message %d provider reasoning %d", constants.ErrInferenceRequestTooLarge, messageIndex, partIndex)
 				}
 			}
 		}

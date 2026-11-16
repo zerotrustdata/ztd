@@ -718,10 +718,7 @@ func (r *agentRun) loop(ctx context.Context) error {
 			r.trace.TerminalClassification = classifyTerminalState(r.trace)
 			return nil
 		}
-		assistant := &operatorv1.InferenceMessage{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT}
-		if text != "" {
-			assistant.Parts = append(assistant.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_Text{Text: text}})
-		}
+		executedArgs := make([]string, 0, len(toolCalls))
 		results := make([]*operatorv1.InferenceMessage, 0, len(toolCalls))
 		for _, toolCall := range toolCalls {
 			if err := ctx.Err(); err != nil {
@@ -753,10 +750,7 @@ func (r *agentRun) loop(ctx context.Context) error {
 				r.trace.TerminalClassification = AgentTerminalClassificationHarnessFailure
 				return nil
 			}
-			assistant.Parts = append(assistant.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
-				CallId: toolCall.GetCallId(), Name: toolCall.GetName(), ArgumentsJson: executed.ArgumentsJSON,
-				ProviderSignature: toolCall.GetProviderSignature(),
-			}}})
+			executedArgs = append(executedArgs, executed.ArgumentsJSON)
 			results = append(results, &operatorv1.InferenceMessage{
 				Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_TOOL,
 				Parts: []*operatorv1.InferenceMessagePart{{Part: &operatorv1.InferenceMessagePart_ToolResult{ToolResult: &operatorv1.InferenceToolResult{
@@ -764,7 +758,7 @@ func (r *agentRun) loop(ctx context.Context) error {
 				}}}},
 			})
 		}
-		messages = append(messages, assistant)
+		messages = append(messages, agentAssistantMessage(result, text, toolCalls, executedArgs))
 		messages = append(messages, results...)
 		if len(messages) > agentMaxMessages {
 			break
@@ -773,6 +767,45 @@ func (r *agentRun) loop(ctx context.Context) error {
 	r.trace.ToolTurnLimitReached = true
 	r.trace.TerminalClassification = AgentTerminalClassificationBudgetExhaustion
 	return nil
+}
+
+// agentAssistantMessage builds the live continuation after every tool call has
+// executed. Opaque reasoning binds the provider's ordered assistant turn, so its
+// text boundaries and reasoning items survive unchanged. Calls always carry the
+// arguments actually executed. The signed result itself is never mutated.
+func agentAssistantMessage(result *operatorv1.InferenceResult, text string, toolCalls []*operatorv1.InferenceToolCall, executedArgs []string) *operatorv1.InferenceMessage {
+	assistant := &operatorv1.InferenceMessage{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT}
+	callIndex := 0
+	appendCall := func(call *operatorv1.InferenceToolCall) {
+		cloned := proto.Clone(call).(*operatorv1.InferenceToolCall)
+		cloned.ArgumentsJson = executedArgs[callIndex]
+		callIndex++
+		assistant.Parts = append(assistant.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_ToolCall{ToolCall: cloned}})
+	}
+	if slices.ContainsFunc(result.GetParts(), func(part *operatorv1.InferenceResponsePart) bool {
+		return part.GetProviderReasoning() != nil
+	}) {
+		for _, part := range result.GetParts() {
+			switch value := part.GetPart().(type) {
+			case *operatorv1.InferenceResponsePart_Text:
+				assistant.Parts = append(assistant.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_Text{Text: value.Text}})
+			case *operatorv1.InferenceResponsePart_ProviderReasoning:
+				assistant.Parts = append(assistant.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_ProviderReasoning{
+					ProviderReasoning: proto.Clone(value.ProviderReasoning).(*operatorv1.InferenceProviderReasoning),
+				}})
+			case *operatorv1.InferenceResponsePart_ToolCall:
+				appendCall(value.ToolCall)
+			}
+		}
+		return assistant
+	}
+	if text != "" {
+		assistant.Parts = append(assistant.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_Text{Text: text}})
+	}
+	for _, call := range toolCalls {
+		appendCall(call)
+	}
+	return assistant
 }
 
 // agentCallContext lets an admitted call return its signed outcome after the

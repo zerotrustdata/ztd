@@ -355,7 +355,8 @@ type AgentTraceHeldContext struct {
 
 // AgentTraceContextMessage is one message of a held conversation. Role is the
 // InferenceMessageRole enum name. An assistant message carries its Text and
-// any ToolCalls; a tool message carries exactly one ToolResult.
+// any ToolCalls; a tool message carries exactly one ToolResult. Opaque provider
+// reasoning is excluded because held context can change the persona or prompt.
 type AgentTraceContextMessage struct {
 	Role       string                       `json:"role"`
 	Text       string                       `json:"text,omitempty"`
@@ -390,10 +391,10 @@ func (t *AgentTrace) clarificationAt(loopTurn int) (AgentClarificationTurn, bool
 	return AgentClarificationTurn{}, false
 }
 
-// Conversation rebuilds the complete conversation this trace's model saw and
-// produced: its held context, its input, and per completed turn the assistant
-// message and its tool results, ending with the final answer. A v3 trace
-// recorded no input and cannot be rebuilt.
+// Conversation rebuilds the conversation for held context: its previous held
+// context, input, and per completed turn the assistant message and tool results,
+// ending with the final answer. It omits opaque provider reasoning, which binds
+// the original live conversation. A v3 trace recorded no input and cannot be rebuilt.
 func (t *AgentTrace) Conversation() ([]AgentTraceContextMessage, error) {
 	if t == nil || t.Input == nil || len(t.Input.Messages) == 0 {
 		return nil, fmt.Errorf("evaluation: agent trace conversation: input: %w", constants.ErrMissingRequiredField)

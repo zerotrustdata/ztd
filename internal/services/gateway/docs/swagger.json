@@ -6888,7 +6888,7 @@
             "type": "object",
             "properties": {
                 "part": {
-                    "description": "Types that are valid to be assigned to Part:\n\n\t*InferenceMessagePart_Text\n\t*InferenceMessagePart_ToolCall\n\t*InferenceMessagePart_ToolResult"
+                    "description": "Types that are valid to be assigned to Part:\n\n\t*InferenceMessagePart_Text\n\t*InferenceMessagePart_ToolCall\n\t*InferenceMessagePart_ToolResult\n\t*InferenceMessagePart_ProviderReasoning"
                 }
             }
         },
@@ -6936,7 +6936,7 @@
             "type": "object",
             "properties": {
                 "part": {
-                    "description": "Types that are valid to be assigned to Part:\n\n\t*InferenceResponsePart_Text\n\t*InferenceResponsePart_ToolCall\n\t*InferenceResponsePart_Thinking"
+                    "description": "Types that are valid to be assigned to Part:\n\n\t*InferenceResponsePart_Text\n\t*InferenceResponsePart_ToolCall\n\t*InferenceResponsePart_Thinking\n\t*InferenceResponsePart_ProviderReasoning"
                 }
             }
         },

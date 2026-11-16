@@ -303,6 +303,8 @@ The executing Inference Operator unloads the complete set, then verifies the fin
 
 ### Hosted Provider Models
 
+When an inference result carries opaque `provider_reasoning` parts, the live agent executor replays the assistant turn in provider order: text parts keep their exact bytes and boundaries, reasoning items remain unchanged, and tool calls carry the arguments actually executed. Results without opaque reasoning retain the text-then-tool-calls continuation shape. The complete signed `InferenceResult` retains reasoning in the sealed trace. `AgentTrace.Conversation()` excludes opaque reasoning from held context because a later repetition can use a different persona or prompt; an Interrogator's clarification also carries only its own text. The Operator's request validation and scrubbing rules are described in [Operator Architecture](operator.md#capabilities-model-and-enforcement-boundaries).
+
 A hosted model is probed, registered, and frozen through the Inference Operator like a local one. Its registry digest is its hosted model identity digest (`INV-EVAL-CAMP-56`). Gemini is the hosted class with a client. Start the Inference Operator with `--inference-hosted-providers gemini` and `GEMINI_API_KEY` in the environment or `.env`.
 
 ```bash

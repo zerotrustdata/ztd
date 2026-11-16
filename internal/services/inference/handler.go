@@ -95,7 +95,8 @@ func (h *InferenceExecutionHandler) ExecuteVerifiedTransaction(ctx context.Conte
 
 // scrubResponseParts returns a scrubbed copy of the provider response parts. Every content-bearing
 // string (text, thinking, tool-call name and arguments) passes through ScrubText exactly once. Call
-// IDs are provider identifiers, not content, and are kept. The caller's parts are never mutated.
+// IDs, provider signatures, and opaque provider reasoning items are provider state, not content, and
+// are kept. The caller's parts are never mutated.
 // It fails closed with constants.ErrEgressScrubberUnavailable when the response carries content and
 // the scrubber is nil or disabled; raw output is never returned.
 func scrubResponseParts(ctx context.Context, parts []*operatorv1.InferenceResponsePart, s *scrubbing.ScrubbingService) ([]*operatorv1.InferenceResponsePart, error) {
@@ -118,6 +119,10 @@ func scrubResponseParts(ctx context.Context, parts []*operatorv1.InferenceRespon
 			if v.ToolCall != nil {
 				fields = append(fields, &v.ToolCall.Name, &v.ToolCall.ArgumentsJson)
 			}
+		case *operatorv1.InferenceResponsePart_ProviderReasoning:
+			// Opaque and readable-text-free (the client refuses an item holding
+			// readable text); the provider rejects an altered item, so it is
+			// passed through unscrubbed.
 		}
 		out = append(out, clone)
 	}
@@ -384,7 +389,7 @@ func (h *InferenceExecutionHandler) normalizeInferenceInput(ctx context.Context,
 	} else if inferenceMessagesHaveContent(req.Messages) {
 		return fmt.Errorf("inference input: %w", constants.ErrEgressScrubberUnavailable)
 	}
-	if err := normalizeInferenceMessages(req.Messages, scrubText); err != nil {
+	if err := normalizeInferenceMessages(req.Messages, req.ProviderClass, scrubText); err != nil {
 		return err
 	}
 	return validateInferenceToolDefinitions(req.Tools)
@@ -508,8 +513,9 @@ func inferenceMessagesHaveContent(messages []*operatorv1.InferenceMessage) bool 
 }
 
 // normalizeInferenceMessages validates each typed message and applies scrubText to every content leaf.
-// Callers must pass an enabled scrubber's ScrubText whenever the input carries content.
-func normalizeInferenceMessages(messages []*operatorv1.InferenceMessage, scrubText func(string) string) error {
+// Callers must pass an enabled scrubber's ScrubText whenever the input carries content. providerClass
+// is the request's provider class; only its own opaque reasoning items may return to it.
+func normalizeInferenceMessages(messages []*operatorv1.InferenceMessage, providerClass string, scrubText func(string) string) error {
 	for messageIndex, message := range messages {
 		if message == nil || !validInferenceMessageRole(message.GetRole()) || len(message.GetParts()) == 0 {
 			return fmt.Errorf("%w: message %d", constants.ErrInferenceMessageInvalid, messageIndex)
@@ -518,7 +524,7 @@ func normalizeInferenceMessages(messages []*operatorv1.InferenceMessage, scrubTe
 			if part == nil || part.GetPart() == nil {
 				return fmt.Errorf("%w: message %d part %d", constants.ErrInferenceMessageInvalid, messageIndex, partIndex)
 			}
-			if err := normalizeInferenceMessagePart(message, part, messageIndex, partIndex, scrubText); err != nil {
+			if err := normalizeInferenceMessagePart(message, part, messageIndex, partIndex, providerClass, scrubText); err != nil {
 				return err
 			}
 		}
@@ -526,7 +532,7 @@ func normalizeInferenceMessages(messages []*operatorv1.InferenceMessage, scrubTe
 	return nil
 }
 
-func normalizeInferenceMessagePart(message *operatorv1.InferenceMessage, part *operatorv1.InferenceMessagePart, messageIndex, partIndex int, scrubText func(string) string) error {
+func normalizeInferenceMessagePart(message *operatorv1.InferenceMessage, part *operatorv1.InferenceMessagePart, messageIndex, partIndex int, providerClass string, scrubText func(string) string) error {
 	switch value := part.GetPart().(type) {
 	case *operatorv1.InferenceMessagePart_Text:
 		if message.GetRole() == operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_TOOL {
@@ -551,6 +557,19 @@ func normalizeInferenceMessagePart(message *operatorv1.InferenceMessage, part *o
 			return fmt.Errorf("message %d tool result: %w", messageIndex, err)
 		}
 		value.ToolResult.ResultJson = normalized
+	case *operatorv1.InferenceMessagePart_ProviderReasoning:
+		// An opaque reasoning item returns only to the hosted class that issued
+		// it, in an assistant turn, exactly as issued: it is never scrubbed,
+		// because the provider rejects an altered item, and it carries no
+		// readable text to scrub.
+		reasoning := value.ProviderReasoning
+		if message.GetRole() != operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT || reasoning == nil ||
+			!constants.IsHostedInferenceProvider(providerClass) || reasoning.GetProviderClass() != providerClass {
+			return fmt.Errorf("%w: message %d provider reasoning", constants.ErrInferenceMessageInvalid, messageIndex)
+		}
+		if _, err := normalizeCanonicalJSON(reasoning.GetItemJson(), true, nil); err != nil {
+			return fmt.Errorf("message %d provider reasoning: %w", messageIndex, err)
+		}
 	default:
 		return fmt.Errorf("%w: message %d part %d", constants.ErrInferenceMessageInvalid, messageIndex, partIndex)
 	}

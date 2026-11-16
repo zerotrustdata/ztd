@@ -428,49 +428,28 @@ func (b *GeminiBackend) Generate(ctx context.Context, req models.GenerateRequest
 	}
 	defer resp.Body.Close()
 
-	capture := newProviderResponseCapture(b.maxResponseBytes, requestStartedAt)
-	go capture.receive(resp.Body)
 	var result geminiStreamResult
 	var parts []*operatorv1.InferenceResponsePart
 	var timeToFirstToken *int64
-	var decodeErr error
-	if resp.StatusCode == http.StatusOK {
+	responseBody, err := b.consumeHostedResponse(ctx, resp, req.ProviderAttemptID, requestStartedAt, stopGeneration, func(capture *providerResponseCapture) (bool, error) {
+		var decodeErr error
 		allowParallelToolCalls := req.ParallelToolCalls == nil || *req.ParallelToolCalls
 		result, parts, timeToFirstToken, decodeErr = b.decodeStream(ctx, capture, capture.arrivalTime, allowParallelToolCalls, req.ProviderAttemptID, stream)
-	}
-	stoppedRepeating := decodeErr == nil && result.finishReason == constants.InferenceFinishReasonRepetition
-	if stoppedRepeating {
-		stopGeneration()
-	}
-	responseBody, readErr := capture.result()
-	if stoppedRepeating && ctx.Err() == nil {
-		readErr = nil
-	}
-	// Only a 200 stream is bound to the attempt record, and only by digest and
-	// size. A non-200 body can echo prompt material and is never recorded.
-	if store := attemptStoreFromContext(ctx); store != nil && resp.StatusCode == http.StatusOK {
-		if err := store.RecordRawResponse(context.WithoutCancel(ctx), req.ProviderAttemptID, responseBody); err != nil {
-			return nil, errors.Join(readErr, fmt.Errorf("%s: record raw response digest: %w", geminiComponent, err))
-		}
-	}
-	if readErr != nil {
-		return nil, transportError(ctx, geminiComponent, "generate", readErr)
-	}
-	if int64(len(responseBody)) > b.maxResponseBytes {
-		return nil, fmt.Errorf("%s: generate: %w: response exceeds %d bytes", geminiComponent, constants.ErrInferenceProviderResponseInvalid, b.maxResponseBytes)
+		return decodeErr == nil && result.finishReason == constants.InferenceFinishReasonRepetition, decodeErr
+	})
+	if err != nil {
+		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, b.statusError(resp.StatusCode, responseBody, req)
 	}
-	if decodeErr != nil {
-		return nil, decodeErr
-	}
 
-	// The provider answers under a model name of its choosing. A campaign pins
-	// the requested model by digest, so a different served model fails closed;
-	// otherwise the served name is recorded in the attestation.
-	if req.ModelDigest != "" && result.servedModel != req.Model {
-		return nil, fmt.Errorf("%s: generate: provider served %q for %q: %w", geminiComponent, result.servedModel, req.Model, constants.ErrInferenceModelDigestMismatch)
+	attestation, servedModelDigest, err := hostedEgressAttestation(geminiComponent, b.origin, req, hostedResponseEvidence{
+		servedModel: result.servedModel, providerModelVersion: metadata.Version, identityDigest: identityDigest,
+		responseID: result.responseID, normalizedRequestHash: normalizedRequestHash, rawResponse: responseBody,
+	})
+	if err != nil {
+		return nil, err
 	}
 	usage, err := geminiUsageCounts(result.usage)
 	if err != nil {
@@ -484,25 +463,8 @@ func (b *GeminiBackend) Generate(ctx context.Context, req models.GenerateRequest
 	if timeToFirstToken != nil {
 		timingSource = operatorv1.InferenceTimingSource_INFERENCE_TIMING_SOURCE_PROVIDER
 	}
-	servedModelDigest := ""
-	if req.ModelDigest != "" {
-		servedModelDigest = identityDigest
-	}
 	return &models.GenerateResponse{
-		HostedEgress: &operatorv1.InferenceHostedEgressAttestation{
-			ProviderOrigin:        b.origin,
-			ModelVersion:          result.servedModel,
-			Provenance:            constants.HostedModelProvenance,
-			NormalizedRequestHash: normalizedRequestHash,
-			ExplicitConsent:       true,
-			ProviderClass:         constants.InferenceProviderGemini,
-			RequestedModel:        req.Model,
-			ProviderModelVersion:  metadata.Version,
-			ModelIdentityDigest:   identityDigest,
-			ProviderResponseId:    result.responseID,
-			RawResponseDigest:     models.SHA256Hex(responseBody),
-			RawResponseSizeBytes:  uint64(len(responseBody)),
-		},
+		HostedEgress:          attestation,
 		Parts:                 parts,
 		PromptTokens:          usage.prompt,
 		CompletionTokens:      usage.completion,
@@ -974,41 +936,4 @@ func (b *GeminiBackend) decodeStream(
 		parts = append(parts, tail...)
 	}
 	return result, parts, timeToFirstToken, nil
-}
-
-// nextSSEData returns the data of the next server-sent event and the bytes
-// consumed reading it. Multiple data lines join with a newline; comments and
-// other fields are skipped. It returns io.EOF once no event remains.
-func nextSSEData(reader *bufio.Reader) ([]byte, int64, error) {
-	var data []byte
-	var consumed int64
-	have := false
-	for {
-		line, err := reader.ReadBytes('\n')
-		consumed += int64(len(line))
-		trimmed := bytes.TrimRight(line, "\r\n")
-		switch {
-		case len(line) == 0:
-		case len(trimmed) == 0:
-			if have {
-				return data, consumed, nil
-			}
-		case trimmed[0] == ':':
-		default:
-			field, value, _ := bytes.Cut(trimmed, []byte(":"))
-			if string(field) == "data" {
-				if have {
-					data = append(data, '\n')
-				}
-				data = append(data, bytes.TrimPrefix(value, []byte(" "))...)
-				have = true
-			}
-		}
-		if err != nil {
-			if errors.Is(err, io.EOF) && have {
-				return data, consumed, nil
-			}
-			return nil, consumed, err
-		}
-	}
 }

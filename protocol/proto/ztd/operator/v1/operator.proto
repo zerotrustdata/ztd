@@ -1582,12 +1582,29 @@ message InferenceToolResult {
   string result_json = 3;
 }
 
+// InferenceProviderReasoning is one reasoning item a hosted provider returned
+// in opaque form: an Anthropic thinking or redacted_thinking block, or an
+// OpenAI encrypted reasoning item. The provider binds it to the conversation
+// that produced it, so a later turn of that conversation returns it to the same
+// provider class verbatim, in its original position. It carries no readable
+// text: the client requests none and refuses an item that holds any, so the
+// scrubber, which never reads it, has nothing to scrub. The result digest
+// covers it.
+message InferenceProviderReasoning {
+  // Hosted provider class that issued the item (anthropic, openai).
+  string provider_class = 1;
+  // The provider's item as canonical JSON, returned to it unchanged.
+  string item_json = 2;
+}
+
 // InferenceMessagePart carries exactly one typed part of a conversation turn.
 message InferenceMessagePart {
   oneof part {
     string text = 1;
     InferenceToolCall tool_call = 2;
     InferenceToolResult tool_result = 3;
+    // Only in an assistant turn of a request to the issuing provider class.
+    InferenceProviderReasoning provider_reasoning = 4;
   }
 }
 
@@ -1635,6 +1652,7 @@ message InferenceResponsePart {
     string text = 1;
     InferenceToolCall tool_call = 2;
     string thinking = 3;
+    InferenceProviderReasoning provider_reasoning = 4;
   }
 }
 

@@ -87,6 +87,7 @@
     - [InferenceNoulQuestion](#ztd-operator-v1-InferenceNoulQuestion)
     - [InferenceProgressEvent](#ztd-operator-v1-InferenceProgressEvent)
     - [InferenceProviderAttemptRecord](#ztd-operator-v1-InferenceProviderAttemptRecord)
+    - [InferenceProviderReasoning](#ztd-operator-v1-InferenceProviderReasoning)
     - [InferenceRequested](#ztd-operator-v1-InferenceRequested)
     - [InferenceResponseFormat](#ztd-operator-v1-InferenceResponseFormat)
     - [InferenceResponsePart](#ztd-operator-v1-InferenceResponsePart)
@@ -1842,6 +1843,7 @@ InferenceMessagePart carries exactly one typed part of a conversation turn.
 | text | [string](#string) |  |  |
 | tool_call | [InferenceToolCall](#ztd-operator-v1-InferenceToolCall) |  |  |
 | tool_result | [InferenceToolResult](#ztd-operator-v1-InferenceToolResult) |  |  |
+| provider_reasoning | [InferenceProviderReasoning](#ztd-operator-v1-InferenceProviderReasoning) |  | Only in an assistant turn of a request to the issuing provider class. |
 
 
 
@@ -1928,6 +1930,29 @@ finalized only after terminal receipt/result evidence is available.
 
 
 
+<a name="ztd-operator-v1-InferenceProviderReasoning"></a>
+
+### InferenceProviderReasoning
+InferenceProviderReasoning is one reasoning item a hosted provider returned
+in opaque form: an Anthropic thinking or redacted_thinking block, or an
+OpenAI encrypted reasoning item. The provider binds it to the conversation
+that produced it, so a later turn of that conversation returns it to the same
+provider class verbatim, in its original position. It carries no readable
+text: the client requests none and refuses an item that holds any, so the
+scrubber, which never reads it, has nothing to scrub. The result digest
+covers it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| provider_class | [string](#string) |  | Hosted provider class that issued the item (anthropic, openai). |
+| item_json | [string](#string) |  | The provider&#39;s item as canonical JSON, returned to it unchanged. |
+
+
+
+
+
+
 <a name="ztd-operator-v1-InferenceRequested"></a>
 
 ### InferenceRequested
@@ -1999,6 +2024,7 @@ InferenceResponsePart carries exactly one typed model response part.
 | text | [string](#string) |  |  |
 | tool_call | [InferenceToolCall](#ztd-operator-v1-InferenceToolCall) |  |  |
 | thinking | [string](#string) |  |  |
+| provider_reasoning | [InferenceProviderReasoning](#ztd-operator-v1-InferenceProviderReasoning) |  |  |
 
 
 
