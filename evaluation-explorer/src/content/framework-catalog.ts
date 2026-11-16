@@ -7,6 +7,7 @@
 
 import type { EvaluationSummary, ModelSummary } from "../contract/types";
 import { evaluationPassRate } from '../utils/run-metrics';
+import { isHostedProviderClass } from './provider';
 
 export type ModelCapabilityKey =
   | "completion"
@@ -881,6 +882,11 @@ const FAMILY_LABELS: Record<string, { family: string; provider: string }> = {
   minicpm: { family: "MiniCPM", provider: "OpenBMB" },
   olmo3: { family: "OLMo 3", provider: "Ai2" },
   spark2_5: { family: "Spark X2.6", provider: "SparkLLM" },
+  gemini: { family: "Gemini", provider: "Google" },
+  claude: { family: "Claude", provider: "Anthropic" },
+  anthropic: { family: "Claude", provider: "Anthropic" },
+  gpt: { family: "GPT", provider: "OpenAI" },
+  openai: { family: "OpenAI", provider: "OpenAI" },
 };
 
 export function formatParameterCount(params?: number): string | undefined {
@@ -950,6 +956,8 @@ export interface ResolvedModelProfile {
   family: string;
   family_key: string;
   provider: string;
+  backend_provider_class?: string;
+  is_hosted: boolean;
   parameter_count?: number;
   parameter_label?: string;
   model_digest?: string;
@@ -1032,6 +1040,8 @@ export function resolveModelProfile(
     family: familyInfo.family,
     family_key: familyKey,
     provider: familyInfo.provider,
+    backend_provider_class: model.backend_provider_class,
+    is_hosted: isHostedProviderClass(model.backend_provider_class),
     parameter_count: parameterCount,
     parameter_label: parameterLabel,
     model_digest: model.model_digest,
@@ -1067,6 +1077,9 @@ function inferFamilyKey(variantId: string, displayName: string): string {
   if (lower.includes("olmo")) return "olmo3";
   if (lower.includes("spark")) return "spark2_5";
   if (lower.includes("lfm")) return "lfm2";
+  if (lower.includes("gemini")) return "gemini";
+  if (lower.includes("claude")) return "claude";
+  if (lower.includes("gpt") || /^o[134](?:\b|-)/.test(lower)) return "gpt";
   return "general";
 }
 

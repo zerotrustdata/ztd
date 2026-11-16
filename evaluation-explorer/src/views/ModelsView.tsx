@@ -42,6 +42,7 @@ import {
 } from '../utils/feed-state';
 import { datasetLabel, modelSummaryGroups, roleLabel } from './derived';
 import { formationGroups } from './formations';
+import { formatProviderClassLabel } from '../content/provider';
 
 interface ModelFilters {
   search: string;
@@ -133,6 +134,16 @@ function ModelSpecificationBadges({ profile }: { profile: ResolvedModelProfile }
   return (
     <div className="model-specs-cell" aria-label="Model specifications">
       <span className="spec-pill spec-family">{profile.family}</span>
+      {profile.backend_provider_class ? (
+        <span
+          className="spec-pill spec-provider"
+          data-provider-class={profile.backend_provider_class}
+          data-hosted={profile.is_hosted ? 'true' : 'false'}
+          title={profile.is_hosted ? 'Hosted inference provider class (weights stay with the vendor)' : 'Local inference provider class'}
+        >
+          {formatProviderClassLabel(profile.backend_provider_class)}
+        </span>
+      ) : null}
       {profile.parameter_label ? (
         <span className="spec-pill spec-params" title={`Provider-reported total parameters: ${profile.parameter_count?.toLocaleString('en-US')}`}>
           {profile.parameter_label} total
@@ -262,7 +273,7 @@ export function ModelsView() {
       .filter((m) => {
         const profile = profilesByKey.get(`${m.dataset_id}:${m.variant_id}:${m.role}`) ?? resolveModelProfile(m);
         if (q) {
-          const hay = `${m.display_name} ${m.variant_id} ${profile.served_model_tag ?? ''} ${profile.family} ${profile.provider}`.toLowerCase();
+          const hay = `${m.display_name} ${m.variant_id} ${profile.served_model_tag ?? ''} ${profile.family} ${profile.provider} ${profile.backend_provider_class ?? ''} ${profile.is_hosted ? 'hosted' : ''}`.toLowerCase();
           if (!hay.includes(q)) return false;
         }
         if (filters.role !== 'all' && m.role !== filters.role) return false;

@@ -3,8 +3,8 @@ doc_id: agents
 title: AI Agents and the ztd Governance Boundary
 audience: maintainers and coding agents
 status: current
-version: v1.7.0
-last_updated: 2026-10-30
+version: v1.10.1
+last_updated: 2026-11-16
 owners:
   - internal/cli/agent/
   - internal/cli/cmd/mcp/
@@ -20,6 +20,8 @@ related:
   - network.md
   - sse.md
   - events.md
+  - evals.md
+  - model-provenance.md
 when_to_read: Integrating external coding agents or agentic applications with ztd, understanding governance boundary separation, choosing MCP, A2A, or governed HTTP integration paths, and auditing agent execution.
 do_not_use_for:
   - Gateway architecture and HTTP routing (see gateway.md)
@@ -44,6 +46,7 @@ Defines how AI agents and agentic applications interface with the ztd zero-trust
 - [Procedures](#procedures)
   - [Selecting an Integration Path](#selecting-an-integration-path)
   - [Launching Agents with Governed MCP](#launching-agents-with-governed-mcp)
+  - [Hosted Inference Provider Workflow](#hosted-inference-provider-workflow)
   - [Querying Agent Audit Trails](#querying-agent-audit-trails)
   - [Trust Boundaries and Model Memory Limits](#trust-boundaries-and-model-memory-limits)
   - [Agent Integration Matrix](#agent-integration-matrix)
@@ -78,9 +81,10 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | Surface | Path | Verify |
 | :--- | :--- | :--- |
 | Agent integration registry | `internal/cli/agent/registry.go`, `config.go`, `verify.go` | `ztd mcp agent list`, unit tests in `internal/cli/agent/` |
-| Agent verification harness | `ztd mcp agent verify <agent>`, `internal/cli/agent/verify.go` | CI verification of lockdown without launching binaries |
+| Agent verification harness | `ztd mcp agent verify <agent>`, `internal/cli/agent/verify.go`, `internal/cli/cmd/mcp/agent_hosted.go` | CI verification of lockdown without launching binaries; hosted provider and eval registry status |
 | Agent launcher and stdio bridge | `internal/cli/cmd/mcp/mcp.go` | `ztd mcp agent run --help`, `internal/cli/cmd/mcp/mcp_agent_proxy_test.go` |
-| MCP client configuration templates | `internal/services/mcp/config.go`, `ztd mcp agent show <agent>` | Stdio template inspection (no key paths) |
+| MCP client configuration templates | `internal/services/mcp/config.go`, `ztd mcp agent show <agent>` | Stdio template inspection (no key paths); hosted provider and eval registry status |
+| Agent-to-provider mapping | `internal/constants/inference.go` (`AgentHostedInferenceProvider`) | `./ztd test unit --pkg ./internal/constants/` |
 | Claude Code plugin | `claude-plugin/`, `.claude-plugin/marketplace.json` | `make claude-plugin-test` |
 | MCP native tool registry | `internal/services/mcp/native_tool_registry.go` | Native tools registered explicitly in `RegisterNativeTools` |
 | Tool lockdown configurations | `internal/cli/agent/config.go` (`Integration.WriteConfig`) | Per-agent tool disabling: Claude/Codex (flags), Goose (extensions), Gemini (settings), Devin (server list) |
@@ -129,6 +133,45 @@ ztd mcp agent show claude
 # Govern external third-party MCP servers via Gateway downstream egress:
 ztd gw start --mcp-downstream-cmd npx --mcp-downstream-args '-y,@modelcontextprotocol/server-filesystem,.ztd/tmp'
 ztd gw start --mcp-downstream-url http://localhost:3000/mcp
+```
+
+### Hosted Inference Provider Workflow
+
+`ztd mcp agent run` and hosted inference providers serve complementary roles across the governance boundary:
+
+- **Agent model calls stay outside ztd**: Under `ztd mcp agent run <agent>`, the agent CLI sends its own model requests directly to its vendor using credentials from the process environment or `.env`. Only the agent's MCP tool calls traverse the Gateway (`L1`–`L5`, signed receipts).
+- **Hosted inference runs inside ztd**: Enabling `--inference-hosted-providers` on `ztd gw start` or `ztd operator start` brings vendor models inside the governance boundary on the Inference Operator for evaluation rollouts, judges, and Tribunal deliberation. Every hosted call carries a signed result digest and egress attestation, and digest-pinned hosted calls record a `HOSTED_PROVIDER_REPORTED` provenance window ([Evaluation Architecture](evals.md), [Model Provenance](model-provenance.md)).
+- **Shared key variables, decoupled code paths**: Each vendor uses one standard API key variable (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) in the environment or `.env` (`constants.HostedInferenceProviderAPIKeyEnv` in `internal/constants/inference.go`). The agent launcher and hosted inference clients share no code path into the Gateway, keystore, or vault.
+
+`constants.AgentHostedInferenceProvider` (`internal/constants/inference.go`) maps each vendor-backed agent to its hosted provider class:
+
+| Agent | Hosted Provider Class | API Key Env Var |
+| :--- | :--- | :--- |
+| `claude` | `anthropic` | `ANTHROPIC_API_KEY` |
+| `codex` | `openai` | `OPENAI_API_KEY` |
+| `gemini` | `gemini` | `GEMINI_API_KEY` |
+
+`devin` and `goose` have no single matching hosted provider class.
+
+For agents with a matching class, `ztd mcp agent verify <agent>` and `ztd mcp agent show <agent>` (and their `--json` outputs) report whether an active, non-decision-only Gateway Inference Operator serves that hosted provider class and which models of that class are present in the frozen eval registry (`.ztd/eval/model-inventory.json`). When the CLI is not enrolled or the Gateway is unreachable, both commands report Gateway status as unavailable and still complete lockdown verification or stdio template output without error.
+
+Run an agent alongside governed evaluation of the same vendor's models using this sequence (confirm command flags with `./ztd <command> --help`):
+
+```bash
+# 1. Start the Gateway with the matching hosted provider class enabled:
+ztd gw start --posture doctrine --capabilities inference,data --inference-hosted-providers gemini
+
+# 2. Verify tool lockdown, Gateway Inference Operator hosted support, and eval registry models:
+ztd mcp agent verify gemini
+ztd mcp agent show gemini
+
+# 3. Launch the governed agent session:
+ztd mcp agent run gemini
+
+# 4. Probe and register a hosted model in the eval registry alongside local models:
+ztd eval gates probe gemini-3.6-flash --provider gemini
+ztd eval models add gemini-3.6-flash --provider gemini
+ztd eval models list
 ```
 
 ### Querying Agent Audit Trails

@@ -10,6 +10,7 @@ package inference
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -142,7 +143,10 @@ func anthropicThinking(control *operatorv1.InferenceThinkingControl, capabilitie
 			return nil, fmt.Errorf("thinking control: %w", constants.ErrInferenceCapabilityUnsupported)
 		}
 		if !mode.Enabled {
-			if !capabilities.Supported || capabilities.Types.Disabled.Supported {
+			if !capabilities.Supported {
+				return nil, nil
+			}
+			if capabilities.Types.Disabled.Supported {
 				return &anthropicThinkingConfig{Type: "disabled"}, nil
 			}
 			// between_tools does not disable thinking and cannot omit its
@@ -156,12 +160,15 @@ func anthropicThinking(control *operatorv1.InferenceThinkingControl, capabilitie
 	if capabilities.Types.Adaptive.Supported {
 		return &anthropicThinkingConfig{Type: "adaptive", Display: "omitted"}, nil
 	}
-	if capabilities.Supported && !capabilities.Types.Disabled.Supported {
-		return nil, fmt.Errorf("thinking mode: %w", constants.ErrInferenceCapabilityUnsupported)
+	if !capabilities.Supported {
+		return nil, nil
 	}
-	// Older models default to no thinking; explicitly keep it disabled. Manual
-	// extended thinking would require inventing a budget absent from the intent.
-	return &anthropicThinkingConfig{Type: "disabled"}, nil
+	if capabilities.Types.Disabled.Supported {
+		// Older thinking models default to no thinking; explicitly keep it disabled.
+		// Manual extended thinking would require inventing a budget absent from the intent.
+		return &anthropicThinkingConfig{Type: "disabled"}, nil
+	}
+	return nil, fmt.Errorf("thinking mode: %w", constants.ErrInferenceCapabilityUnsupported)
 }
 
 func inferenceMessagesToAnthropic(messages []*operatorv1.InferenceMessage) ([]anthropicBlock, []anthropicMessage, error) {
@@ -313,6 +320,10 @@ func decodeAnthropicReasoning(raw []byte, complete bool) (anthropicReasoningBloc
 	decoder := json.NewDecoder(strings.NewReader(string(raw)))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&block); err != nil || len(raw) > maxInferenceProviderReasoningBytes {
+		return anthropicReasoningBlock{}, constants.ErrInferenceProviderResponseInvalid
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
 		return anthropicReasoningBlock{}, constants.ErrInferenceProviderResponseInvalid
 	}
 	valid := false

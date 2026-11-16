@@ -70,6 +70,8 @@ func NewHostedBackend(class string, logger *slog.Logger) (HostedBackend, error) 
 		return NewGeminiBackend(origin, key, logger)
 	case constants.InferenceProviderAnthropic:
 		return NewAnthropicBackend(origin, key, logger)
+	case constants.InferenceProviderOpenAI:
+		return NewOpenAIBackend(origin, key, logger)
 	default:
 		return nil, fmt.Errorf("inference: hosted provider %q: %w", class, constants.ErrInferenceHostedProviderNoClient)
 	}

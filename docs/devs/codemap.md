@@ -3,8 +3,8 @@ doc_id: codemap
 title: ztd Code Map
 audience: maintainers and coding agents
 status: current
-version: v1.10.0
-last_updated: 2026-11-11
+version: v1.10.1
+last_updated: 2026-11-16
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
@@ -208,7 +208,7 @@ Live group inventory: `./ztd --help`. Group placement: `INV-CLI-01`. Name except
 | `login`, `logout` | `authcmd` | `internal/cli/cmd/auth/` | | Top-level sign-in (`login` defaults to headless `login cli`; `login web` uses browser) and sign-out (`logout`, `logout web`, `logout cli`); shares `auth` package and enrollment runner. |
 | `auth` | `authcmd` | `internal/cli/cmd/auth/` | | User and platform enrollment, sessions, and approvals. |
 | `consensus` | `consensuscmd` | `internal/cli/cmd/consensus/` | | Gateway L2 consensus: `status` (bound provider, quorum, signer readiness, posture), `enroll app` (governed application binding), `enroll tribunal --model <tag>` (Gateway-hosted Tribunal panel pinned to one frozen model tag), and `unbind`. |
-| `mcp` | `mcp` | `internal/cli/cmd/mcp/` | | MCP stdio serving and agent integration. |
+| `mcp` | `mcp` | `internal/cli/cmd/mcp/` | | MCP stdio serving, agent integration, and hosted provider readiness checks (`agent_hosted.go`). |
 | `operator` | `operatorcmd` | `internal/cli/cmd/operator/` | `operators` | Operator `list`, `show`, `bind`, governed `run` and `stop`, foreground `start`, `recover`, `reset-identity`, `terminate`, binary copy (`cp`, `scp`), streams, `gateway-preflight`, and fleet `deploy`. Local and SSH deploy live in `operator_deploy.go`. Procedure: [Connect Many Operators](../guides/connect_operator_to_gateway.md#connect-many-operators). |
 | `autochthon` | `autochthoncmd` | `internal/cli/cmd/autochthon/` | | Gateway-less foreground runtime: host sampling and local prior under `.ztd/autochthon/`, and read-only `status` reporting. Not an Operator mode; refuses Gateway-facing flags. |
 | `vault` | `vaultcmd` | `internal/cli/cmd/vault/` | | Local vault init, unlock, rekey, status, and reset. |
@@ -356,7 +356,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/gateway/` | Gateway HTTP and control plane, including child packages in HTTP boundary table. |
 | `internal/services/gateway/embedded/` | In-process Operator substrate (`INV-MODE-02`). |
 | `internal/services/governance/` | L1, L2, L3, L4, L5, governance interfaces, state-root providers, signer stores, and public-key export. |
-| `internal/services/inference/` | Inference dispatch (`internal/services/inference/dispatch/`), provider backends, and attempt storage. `hosted_backend.go` owns `HostedBackend` and `NewHostedBackends`; `gemini_backend.go` is the Gemini client. `dispatch/dispatch.go` owns hosted routing and `recordHostedProvenance`. |
+| `internal/services/inference/` | Inference dispatch (`internal/services/inference/dispatch/`), provider backends, and attempt storage. `hosted_backend.go` owns `HostedBackend`, `NewHostedBackends`, and `NewHostedBackend`; `hosted_response.go` owns shared SSE framing, bounded capture, reroute checks, and egress attestation assembly (`provider_http.go` provides raw HTTP transport without redirects); `gemini_backend.go`, `anthropic_backend.go` (`anthropic_messages.go`, `anthropic_stream.go`), and `openai_backend.go` (`openai_responses.go`, `openai_stream.go`) implement the hosted clients. `dispatch/dispatch.go` owns hosted routing and `recordHostedProvenance`. |
 | `internal/services/inference/provider_observer/` | Provider-boundary GPU and RAM sampling. |
 | `internal/services/inference/model_provenance/` | Storage-side model weight attestation. `hosted.go` derives the hosted attestation window (`HOSTED_PROVIDER_REPORTED`) from the Inference Operator's signed hosted egress attestation. |
 | `internal/services/keystore/` | Encrypted key storage for Gateway secrets and PKI. |

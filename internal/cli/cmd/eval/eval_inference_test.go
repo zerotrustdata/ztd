@@ -15,6 +15,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"io"
 	"log/slog"
 	"math/big"
 	"net/url"
@@ -229,4 +230,53 @@ func TestResolveInferenceProbeAppCredentials_NilParameters(t *testing.T) {
 	_, err := resolveInferenceProbeAppCredentials(nil, nil)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, constants.ErrInternal)
+}
+
+func TestValidateProbeProviderClass(t *testing.T) {
+	tests := []struct {
+		name          string
+		providerClass string
+		wantErr       error
+	}{
+		{name: "empty uses local operator provider", providerClass: ""},
+		{name: "gemini hosted", providerClass: constants.InferenceProviderGemini},
+		{name: "anthropic hosted", providerClass: constants.InferenceProviderAnthropic},
+		{name: "openai hosted", providerClass: constants.InferenceProviderOpenAI},
+		{name: "ollama rejected as explicit provider", providerClass: constants.InferenceProviderOllama, wantErr: constants.ErrInferenceHostedProviderInvalid},
+		{name: "llamacpp rejected as explicit provider", providerClass: constants.InferenceProviderLlamaCpp, wantErr: constants.ErrInferenceHostedProviderInvalid},
+		{name: "unknown provider rejected", providerClass: "unknown-vendor", wantErr: constants.ErrInferenceHostedProviderInvalid},
+		{name: "non-canonical casing rejected", providerClass: "GEMINI", wantErr: constants.ErrInferenceHostedProviderInvalid},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateProbeProviderClass(tc.providerClass)
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestGatesCommands_RejectInvalidProviderFlag(t *testing.T) {
+	for _, provider := range []string{constants.InferenceProviderOllama, "unknown"} {
+		t.Run("probe/"+provider, func(t *testing.T) {
+			cmd := gatesProbeEvalCmd(nativeEvalDeps{})
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			cmd.SetArgs([]string{"qwen3:4b", "--provider", provider})
+			err := cmd.ExecuteContext(context.Background())
+			require.ErrorIs(t, err, constants.ErrInferenceHostedProviderInvalid)
+		})
+		t.Run("inference/"+provider, func(t *testing.T) {
+			cmd := gatesInferenceEvalCmd(nativeEvalDeps{})
+			cmd.SetOut(io.Discard)
+			cmd.SetErr(io.Discard)
+			cmd.SetArgs([]string{"--model", "qwen3:4b", "--provider", provider})
+			err := cmd.ExecuteContext(context.Background())
+			require.ErrorIs(t, err, constants.ErrInferenceHostedProviderInvalid)
+		})
+	}
 }

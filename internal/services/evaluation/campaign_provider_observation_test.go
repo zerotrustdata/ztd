@@ -330,3 +330,61 @@ func TestBuildPublicBenchmarkObservations_UnconfiguredObserverKeepsResultTelemet
 	assert.InDelta(t, 1.0, *benchmark.Timing.ModelLoadMS.Value, 0)
 	assert.Contains(t, benchmark.UnavailableReasons, "source_not_captured")
 }
+
+func TestBuildPublicBenchmarkObservations_HostedOnlyCellAddsNoSourceNotCaptured(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := NewStore(storagetest.NewTestFileSvc(t, testutil.TempDir(t)))
+	reader, err := NewCampaignProviderObservationReader(store)
+	require.NoError(t, err)
+
+	result := &evalv1.EvaluationAssignmentResult{
+		RunId: "run-hosted",
+		ModelInferences: []*evalv1.ModelInferenceRecord{{
+			InferenceRecordId:         "inference-hosted",
+			ProviderAttemptId:         "attempt-hosted",
+			ModelVariant:              &evalv1.ModelVariant{ProviderClass: constants.InferenceProviderGemini, ServedModelTag: "gemini-3.6-flash"},
+			UsageAvailability:         evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_REPORTED,
+			RequestStartedAtUnixNanos: 1_000_000_000,
+			FirstTokenAtUnixNanos:     1_005_000_000,
+			GenerationDurationNanos:   40_000_000,
+			TotalDurationNanos:        52_000_000,
+		}},
+		DeterministicGrades: []*evalv1.DeterministicGrade{{
+			CriterionId: "tool-selection",
+			Status:      evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS,
+			Score:       1,
+		}},
+	}
+	scenario := &PublicScenarioContext{
+		ScenarioID: "scenario-hosted",
+		ToolScoreDimensions: []*evalv1.PublicToolScoreDimensionRequirement{{
+			Dimension: evalv1.PublicToolScoreDimension_PUBLIC_TOOL_SCORE_DIMENSION_TOOL_SELECTION,
+			Required:  true,
+		}},
+	}
+
+	benchmark, err := reader.BuildPublicBenchmarkObservationsForScenario(ctx, result, scenario)
+	require.NoError(t, err)
+	assert.Empty(t, benchmark.UnavailableReasons)
+	assert.Nil(t, benchmark.GPU)
+	require.NotNil(t, benchmark.Timing)
+	assert.InDelta(t, 5.0, *benchmark.Timing.TimeToFirstTokenMS.Value, 0)
+	assert.InDelta(t, 40.0, *benchmark.Timing.GenerationMS.Value, 0)
+	require.NotNil(t, benchmark.ToolScorecard["tool_selection"])
+	require.NotNil(t, benchmark.ToolScorecard["tool_selection"].Value)
+	assert.InDelta(t, 1.0, *benchmark.ToolScorecard["tool_selection"].Value, 0)
+	assert.Empty(t, benchmark.ToolScorecard["tool_selection"].UnavailableReason)
+
+	unscoped, err := reader.BuildPublicBenchmarkObservations(ctx, result)
+	require.NoError(t, err)
+	assert.Empty(t, unscoped.UnavailableReasons)
+	assert.Nil(t, unscoped.GPU)
+
+	nilReaderBenchmark, err := (*CampaignProviderObservationReader)(nil).BuildPublicBenchmarkObservations(ctx, result)
+	require.NoError(t, err)
+	assert.Empty(t, nilReaderBenchmark.UnavailableReasons)
+	assert.Nil(t, nilReaderBenchmark.GPU)
+	require.NotNil(t, nilReaderBenchmark.Timing)
+	assert.InDelta(t, 40.0, *nilReaderBenchmark.Timing.GenerationMS.Value, 0)
+}

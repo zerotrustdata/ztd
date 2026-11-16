@@ -45,6 +45,7 @@ type nativeEvalDeps struct {
 	campaignPublicationFactory campaignVerificationPublicationFactory
 	agentExecutorFactory       campaignAgentExecutorFactory
 	appEnroller                evalAppEnroller
+	modelMaintenance           func(*cobra.Command, nativeEvalDeps) (governedModelMaintenanceEnv, error)
 	runControl                 runControlDeps
 	conformance                conformanceDeps
 	now                        func() time.Time

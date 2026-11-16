@@ -11,19 +11,24 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
 const (
@@ -413,4 +418,152 @@ func TestPullCatalogVariantsParsesParameterCounts(t *testing.T) {
 	assert.Equal(t, uint64(9_000_000_000), variants[0].GetParameterCount())
 	assert.Equal(t, "fam", variants[0].GetModelFamily())
 	assert.Zero(t, variants[1].GetParameterCount())
+}
+
+type stubInventoryDispatcher struct {
+	entries []*operatorv1.ProviderModelInventoryEntry
+}
+
+func (d *stubInventoryDispatcher) DispatchOllamaModelCommand(_ context.Context, request evaluation.OllamaModelCommandDispatchRequest) (*evaluation.OllamaModelCommandDispatchResult, error) {
+	if request.ActionType != constants.ActionTypeOllamaModelInventory {
+		return nil, fmt.Errorf("unexpected action %s: %w", request.ActionType, constants.ErrEvaluationDispatchFailed)
+	}
+	return &evaluation.OllamaModelCommandDispatchResult{
+		Status:  200,
+		Success: true,
+		InventoryResult: &operatorv1.OllamaModelInventoryResult{
+			ExecutionId: request.ExecutionID,
+			Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+			Entries:     d.entries,
+		},
+	}, nil
+}
+
+func testDepsWithInventory(root string, entries []*operatorv1.ProviderModelInventoryEntry) nativeEvalDeps {
+	deps := testDeps(root)
+	minted := 0
+	deps.modelMaintenance = func(*cobra.Command, nativeEvalDeps) (governedModelMaintenanceEnv, error) {
+		return governedModelMaintenanceEnv{
+			Maintenance: evaluation.OllamaModelMaintenanceContext{
+				TargetOperatorSessionID: "inference-session",
+				CaseID:                  "eval-models-maintenance",
+				NewID: func(prefix string) string {
+					minted++
+					return fmt.Sprintf("%s-%d", prefix, minted)
+				},
+			},
+			ModelDispatcher: &stubInventoryDispatcher{entries: entries},
+		}, nil
+	}
+	return deps
+}
+
+func runModelsJSONWithDeps(t *testing.T, deps nativeEvalDeps, root string, args ...string) (string, error) {
+	t.Helper()
+	command := evalCmdWithConfig(deps)
+	rootCmd := cmdtest.GlobalJSONRoot(t, command)
+	var out bytes.Buffer
+	rootCmd.SetOut(&out)
+	rootCmd.SetErr(&out)
+	rootCmd.SetArgs(append(append([]string{"eval", "models"}, args...), "--project-root", root))
+	err := rootCmd.Execute()
+	return out.String(), err
+}
+
+func hostedGeminiVariantFixture(tag, id, digest string) *evalv1.ModelVariant {
+	return &evalv1.ModelVariant{
+		VariantId:      id,
+		ProviderClass:  constants.InferenceProviderGemini,
+		ServedModelTag: tag,
+		ModelDigest:    digest,
+		ModelFormat:    constants.HostedModelFormat,
+	}
+}
+
+func TestModelsDiff_HostedFiltering(t *testing.T) {
+	root := testutil.TempDir(t)
+	writeTestCatalogInventory(t, root, []*evalv1.ModelVariant{
+		variantFixture("qwen3:4b", "qwen3-4b", "qwen3", 4_000_000_000, digestOne),
+		hostedGeminiVariantFixture("gemini-2.5-flash", "gemini-2-5-flash", digestTwo),
+	})
+	writeTestModelInventory(t, root, []*evalv1.ModelVariant{
+		variantFixture("qwen3:4b", "qwen3-4b", "qwen3", 4_000_000_000, digestOne),
+		hostedGeminiVariantFixture("gemini-3.6-flash", "gemini-3-6-flash", digestThree),
+	})
+
+	entries := []*operatorv1.ProviderModelInventoryEntry{
+		{ServedModelTag: "qwen3:4b", ModelDigest: digestOne, ProviderClass: constants.InferenceProviderOllama},
+		{ServedModelTag: "local-only:1b", ModelDigest: digestDrift, ProviderClass: constants.InferenceProviderOllama},
+		{ServedModelTag: "gemini-2.5-flash", ModelDigest: digestTwo, ProviderClass: constants.InferenceProviderGemini, Format: constants.HostedModelFormat},
+		{ServedModelTag: "gemini-3.6-flash", ModelDigest: digestDrift, ProviderClass: constants.InferenceProviderGemini, Format: constants.HostedModelFormat},
+		{ServedModelTag: "gemini-unlisted", ModelDigest: digestDrift, ProviderClass: constants.InferenceProviderGemini, Format: constants.HostedModelFormat},
+	}
+
+	out, err := runModelsJSONWithDeps(t, testDepsWithInventory(root, entries), root, "diff")
+	require.NoError(t, err)
+
+	var payload modelDiffJSON
+	require.NoError(t, json.Unmarshal([]byte(out), &payload))
+	assert.Equal(t, 1, payload.InSync)
+
+	statusByTag := make(map[string]string, len(payload.Rows))
+	for _, row := range payload.Rows {
+		statusByTag[row.ServedModelTag] = row.Status
+	}
+	assert.Equal(t, map[string]string{
+		"qwen3:4b":         "in-sync",
+		"local-only:1b":    "only-in-provider",
+		"gemini-2.5-flash": "missing-from-registry",
+		"gemini-3.6-flash": "digest-drift",
+	}, statusByTag)
+	assert.NotContains(t, statusByTag, "gemini-unlisted", "unreferenced hosted catalog models must be filtered out")
+}
+
+func TestModelsFreeze_PassesRegistryHostedVariants(t *testing.T) {
+	liveHostedDigest := models.SHA256Hex([]byte("gemini-3.6-flash-live"))
+	staleHostedDigest := models.SHA256Hex([]byte("gemini-3.6-flash-stale"))
+	entries := []*operatorv1.ProviderModelInventoryEntry{
+		{ServedModelTag: "qwen3:4b", ModelDigest: digestOne, ProviderClass: constants.InferenceProviderOllama},
+		{ServedModelTag: "gemini-3.6-flash", ModelDigest: liveHostedDigest, ProviderClass: constants.InferenceProviderGemini, Format: constants.HostedModelFormat},
+		{ServedModelTag: "gemini-2.5-flash", ModelDigest: digestTwo, ProviderClass: constants.InferenceProviderGemini, Format: constants.HostedModelFormat},
+	}
+
+	t.Run("keeps registry hosted variants at live digest without bulk-freezing hosted catalog", func(t *testing.T) {
+		root := testutil.TempDir(t)
+		writeTestModelInventory(t, root, []*evalv1.ModelVariant{
+			hostedGeminiVariantFixture("gemini-3.6-flash", "gemini-3-6-flash", staleHostedDigest),
+		})
+
+		out, err := runModelsJSONWithDeps(t, testDepsWithInventory(root, entries), root, "freeze")
+		require.NoError(t, err)
+
+		var payload struct {
+			ModelCount int               `json:"model_count"`
+			Variants   []json.RawMessage `json:"variants"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(out), &payload))
+		assert.Equal(t, 2, payload.ModelCount)
+
+		digestsByTag := make(map[string]string, len(payload.Variants))
+		for _, raw := range payload.Variants {
+			variant := &evalv1.ModelVariant{}
+			require.NoError(t, protojson.Unmarshal(raw, variant))
+			digestsByTag[variant.GetServedModelTag()] = variant.GetModelDigest()
+		}
+		assert.Equal(t, map[string]string{
+			"qwen3:4b":         digestOne,
+			"gemini-3.6-flash": liveHostedDigest,
+		}, digestsByTag)
+		assert.NotContains(t, digestsByTag, "gemini-2.5-flash")
+	})
+
+	t.Run("fails when registry hosted variant is missing from live provider inventory", func(t *testing.T) {
+		root := testutil.TempDir(t)
+		writeTestModelInventory(t, root, []*evalv1.ModelVariant{
+			hostedGeminiVariantFixture("gemini-1.5-pro", "gemini-1-5-pro", staleHostedDigest),
+		})
+
+		_, err := runModelsJSONWithDeps(t, testDepsWithInventory(root, entries), root, "freeze")
+		require.ErrorIs(t, err, constants.ErrInferenceModelNotFound)
+	})
 }

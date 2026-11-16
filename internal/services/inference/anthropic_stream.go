@@ -59,8 +59,11 @@ func (u *anthropicUsage) merge(next *anthropicUsage) error {
 			*pair.old = pair.next
 		}
 	}
-	if next.OutputTokensDetails != nil {
-		if u.OutputTokensDetails != nil && u.OutputTokensDetails.ThinkingTokens != nil && next.OutputTokensDetails.ThinkingTokens != nil && *next.OutputTokensDetails.ThinkingTokens < *u.OutputTokensDetails.ThinkingTokens {
+	if next.OutputTokensDetails != nil && next.OutputTokensDetails.ThinkingTokens != nil {
+		if *next.OutputTokensDetails.ThinkingTokens < 0 || *next.OutputTokensDetails.ThinkingTokens > math.MaxInt32 {
+			return constants.ErrInferenceProviderResponseInvalid
+		}
+		if u.OutputTokensDetails != nil && u.OutputTokensDetails.ThinkingTokens != nil && *next.OutputTokensDetails.ThinkingTokens < *u.OutputTokensDetails.ThinkingTokens {
 			return constants.ErrInferenceProviderResponseInvalid
 		}
 		u.OutputTokensDetails = next.OutputTokensDetails
@@ -139,13 +142,21 @@ type anthropicBlockDelta struct {
 	PartialJSON *string `json:"partial_json"`
 }
 
+type anthropicStopDetails struct {
+	Type        string `json:"type"`
+	Category    string `json:"category"`
+	Explanation string `json:"explanation"`
+}
+
 type anthropicMessageDelta struct {
-	StopReason string `json:"stop_reason"`
-	Model      string `json:"model"`
+	StopReason  string                `json:"stop_reason"`
+	StopDetails *anthropicStopDetails `json:"stop_details"`
+	Model       string                `json:"model"`
 }
 
 type anthropicStreamResult struct {
 	servedModel, responseID, finishReason string
+	stopReason, stopCategory              string
 	usage                                 anthropicUsage
 }
 
@@ -218,6 +229,10 @@ func (s *anthropicStreamState) consume(event anthropicStreamEvent) ([]*operatorv
 				return nil, invalid
 			}
 			s.result.finishReason = anthropicFinishReason(delta.StopReason)
+			s.result.stopReason = delta.StopReason
+			if delta.StopDetails != nil {
+				s.result.stopCategory = delta.StopDetails.Category
+			}
 		}
 		s.finishing = true
 		return nil, s.result.usage.merge(event.Usage)
@@ -380,6 +395,11 @@ func (b *AnthropicBackend) decodeStream(ctx context.Context, body io.Reader, arr
 		}
 		eventParts, err := state.consume(event)
 		if err != nil {
+			if errors.Is(err, constants.ErrInferenceProviderStreamError) {
+				b.logger.Warn("Anthropic ended the response stream with an error",
+					slog.String("provider_attempt_id", attemptID),
+				)
+			}
 			return fail(err)
 		}
 		if len(eventParts) > 0 && ttft == nil {
@@ -404,6 +424,16 @@ func (b *AnthropicBackend) decodeStream(ctx context.Context, body io.Reader, arr
 	if !state.stopped && state.result.finishReason != constants.InferenceFinishReasonRepetition {
 		return fail(constants.ErrInferenceProviderResponseInvalid)
 	}
+	if state.result.finishReason == "error" {
+		attrs := []any{
+			slog.String("provider_attempt_id", attemptID),
+			slog.String("stop_reason", state.result.stopReason),
+		}
+		if state.result.stopCategory != "" {
+			attrs = append(attrs, slog.String("stop_category", state.result.stopCategory))
+		}
+		b.logger.Warn("Anthropic generation ended without normal stop", attrs...)
+	}
 	if stream != nil {
 		tail := stream.finish(ctx)
 		if err := stream.publish(tail, state.result.servedModel, ttft); err != nil {
@@ -417,12 +447,15 @@ func (b *AnthropicBackend) decodeStream(ctx context.Context, body io.Reader, arr
 // Provider messages can echo prompts or keys. Classification uses the typed
 // error first, then bounded message hints for invalid_request_error only.
 // Neither the message nor the raw body is logged, returned, or signed.
-func (b *AnthropicBackend) statusError(status int, body []byte) error {
+func (b *AnthropicBackend) statusError(status int, body []byte, attemptID string) error {
 	var envelope struct {
 		Error anthropicAPIError `json:"error"`
 	}
 	_ = json.Unmarshal(body, &envelope)
-	b.logger.Warn("Anthropic request failed", "status", status)
+	b.logger.Warn("Anthropic generation failed",
+		"status", status,
+		"provider_attempt_id", attemptID,
+	)
 	kind := constants.ErrInferenceGenerateFailed
 	switch envelope.Error.Type {
 	case "not_found_error":
@@ -451,7 +484,7 @@ func (b *AnthropicBackend) statusError(status int, body []byte) error {
 			kind = constants.ErrInferenceBackendTimeout
 		case status == http.StatusRequestEntityTooLarge:
 			kind = constants.ErrInferenceContextOverflow
-		case status == http.StatusUnauthorized || status == http.StatusPaymentRequired || status == http.StatusForbidden || status == http.StatusTooManyRequests || status >= http.StatusInternalServerError:
+		case (status >= http.StatusMultipleChoices && status < http.StatusBadRequest) || status == http.StatusUnauthorized || status == http.StatusPaymentRequired || status == http.StatusForbidden || status == http.StatusTooManyRequests || status >= http.StatusInternalServerError:
 			kind = constants.ErrInferenceBackendUnavailable
 		}
 	}

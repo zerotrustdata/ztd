@@ -18,6 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -170,4 +172,68 @@ func TestRunsRejectNegativeAssignmentTimeoutBeforeLoadingRuntime(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
 	_, err = executeRun(cmd, nativeEvalDeps{}, runExecuteOptions{AssignmentTimeout: -time.Second})
 	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
+}
+
+func TestPreflightRunProviderObservation(t *testing.T) {
+	hostedCandidate := &evalv1.ModelVariant{VariantId: "gemini-3-6-flash", ServedModelTag: "gemini-3.6-flash", ProviderClass: constants.InferenceProviderGemini}
+	hostedJudge := &evalv1.ModelVariant{VariantId: "gemini-2-5-flash", ServedModelTag: "gemini-2.5-flash", ProviderClass: constants.InferenceProviderGemini}
+	localCandidate := &evalv1.ModelVariant{VariantId: "qwen3-4b", ServedModelTag: "qwen3:4b", ProviderClass: constants.InferenceProviderOllama}
+	localJudge := &evalv1.ModelVariant{VariantId: "gemma4-e4b", ServedModelTag: "gemma4:e4b", ProviderClass: constants.InferenceProviderOllama}
+
+	tests := []struct {
+		name            string
+		spec            *evalv1.EvaluationCampaignSpec
+		expectPreflight bool
+	}{
+		{
+			name: "hosted-only spec with hosted judge skips observer preflight",
+			spec: &evalv1.EvaluationCampaignSpec{
+				ModelRegistry: []*evalv1.ModelVariant{hostedCandidate},
+				JudgeVariant:  hostedJudge,
+			},
+			expectPreflight: false,
+		},
+		{
+			name: "hosted-only spec without judge skips observer preflight",
+			spec: &evalv1.EvaluationCampaignSpec{
+				ModelRegistry: []*evalv1.ModelVariant{hostedCandidate},
+			},
+			expectPreflight: false,
+		},
+		{
+			name: "hosted candidate with local judge keeps observer preflight",
+			spec: &evalv1.EvaluationCampaignSpec{
+				ModelRegistry: []*evalv1.ModelVariant{hostedCandidate},
+				JudgeVariant:  localJudge,
+			},
+			expectPreflight: true,
+		},
+		{
+			name: "local candidate with hosted judge keeps observer preflight",
+			spec: &evalv1.EvaluationCampaignSpec{
+				ModelRegistry: []*evalv1.ModelVariant{localCandidate},
+				JudgeVariant:  hostedJudge,
+			},
+			expectPreflight: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+			gwremote.WithConfiguredGatewayHealthCheck(t, false)
+
+			called := false
+			err := preflightRunProviderObservation(tc.spec, func() error {
+				called = true
+				return gwremote.PreflightProviderObservationDelivery(fileSvc, cfg)
+			})
+			assert.Equal(t, tc.expectPreflight, called)
+			if tc.expectPreflight {
+				require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
 }

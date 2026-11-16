@@ -616,14 +616,6 @@ func TestNewHostedBackend_RequiresKeyAndClient(t *testing.T) {
 		assert.Equal(t, constants.InferenceProviderGemini, backend.ProviderClass())
 		assert.Equal(t, geminiOrigin(t), backend.(*GeminiBackend).origin)
 	})
-	for _, class := range []string{constants.InferenceProviderOpenAI} {
-		t.Run(class+" has no client in this build", func(t *testing.T) {
-			keyEnv, _ := constants.HostedInferenceProviderAPIKeyEnv(class)
-			t.Setenv(string(keyEnv), "k")
-			_, err := NewHostedBackend(class, testutil.NewTestLogger())
-			require.ErrorIs(t, err, constants.ErrInferenceHostedProviderNoClient)
-		})
-	}
 	t.Run("a local class is not hosted", func(t *testing.T) {
 		_, err := NewHostedBackend(constants.InferenceProviderOllama, testutil.NewTestLogger())
 		require.ErrorIs(t, err, constants.ErrInferenceHostedProviderInvalid)

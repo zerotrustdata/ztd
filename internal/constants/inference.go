@@ -137,6 +137,22 @@ func HostedInferenceProviderAPIKeyEnv(class string) (EnvVarKey, bool) {
 	}
 }
 
+// agentHostedInferenceProviders maps an external coding agent binary to the
+// hosted inference provider class serving that vendor's models. Agents without
+// a matching hosted provider class (such as devin or goose) are absent.
+var agentHostedInferenceProviders = map[AgentBinary]string{
+	AgentBinaryClaude: InferenceProviderAnthropic,
+	AgentBinaryCodex:  InferenceProviderOpenAI,
+	AgentBinaryGemini: InferenceProviderGemini,
+}
+
+// AgentHostedInferenceProvider returns the hosted inference provider class
+// matching agent, or false when the agent has no matching hosted provider class.
+func AgentHostedInferenceProvider(agent AgentBinary) (string, bool) {
+	class, ok := agentHostedInferenceProviders[agent]
+	return class, ok
+}
+
 // HostedModelFormat is the provider inventory format of a hosted model: the
 // vendor serves it, so it has no local weight format.
 const HostedModelFormat = "hosted"

@@ -4,6 +4,8 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { AssignmentResult } from '../contract/types';
+import { formatProviderClassLabel, resolveVariantProviderClass } from '../content/provider';
+import { useStoreState } from '../state/store';
 import { AssignmentInsight } from './AssignmentInsight';
 import { DataTable, type DataTableColumn } from './DataTable';
 import { NON_VERDICT_NOTE } from './evidence';
@@ -52,6 +54,7 @@ function numericColumn(id: string, header: string, value: (row: AssignmentRow) =
 }
 
 export function AssignmentTable({ assignments, runId }: { assignments: AssignmentResult[]; runId: string }) {
+  const models = useStoreState((state) => state.models);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [role, setRole] = useState('all');
@@ -124,7 +127,27 @@ export function AssignmentTable({ assignments, runId }: { assignments: Assignmen
     numericColumn('retries', 'Retries', (row) => row.assignment.resource_summary?.retries?.value),
     numericColumn('guidedRetries', 'Guided retries', (row) => row.assignment.guided_retry_count),
     numericColumn('rep', 'Repetition', (row) => row.assignment.repetition),
-    { id: 'model', header: 'Model', accessorFn: (row) => row.assignment.variant_id, cell: ({ row }) => <span className="assignment-model" title={row.original.assignment.variant_id}>{row.original.assignment.variant_id}</span> },
+    {
+      id: 'model',
+      header: 'Model',
+      accessorFn: (row) => row.assignment.variant_id,
+      cell: ({ row }) => {
+        const providerClass = resolveVariantProviderClass(
+          models,
+          row.original.assignment.dataset_id,
+          row.original.assignment.variant_id,
+          row.original.assignment.role,
+        );
+        return (
+          <span className="assignment-model" title={row.original.assignment.variant_id}>
+            {row.original.assignment.variant_id}
+            {providerClass ? (
+              <small className="assignment-model-provider"> · {formatProviderClassLabel(providerClass)}</small>
+            ) : null}
+          </span>
+        );
+      },
+    },
     {
       id: 'verification', header: 'Verification', accessorFn: (row) => row.assignment.verification_disposition, sortUndefined: 'last',
       cell: ({ row }) => row.original.assignment.verification_disposition?.replace(/_/g, ' ') ?? missing(),
@@ -136,7 +159,7 @@ export function AssignmentTable({ assignments, runId }: { assignments: Assignmen
       id: 'assignment', header: 'Assignment', accessorFn: (row) => row.assignment.assignment_id,
       cell: ({ row }) => <Link className="assignment-short-id" to={assignmentHref(row.original.assignment)} title={row.original.assignment.assignment_id} aria-label={row.original.assignment.assignment_id}>{abbreviateAssignmentId(row.original.assignment.assignment_id)}</Link>,
     },
-  ], [criteria, openId]);
+  ], [criteria, models, openId]);
   const visibility = Object.fromEntries(columns.map((column) => [column.id!,
     visibilityOverrides[column.id!] ?? (VIEW_COLUMNS[view].includes(column.id!) || (view === 'grading' && column.id!.startsWith('criterion:'))),
   ]));

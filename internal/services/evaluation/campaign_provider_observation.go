@@ -324,7 +324,12 @@ func (r *CampaignProviderObservationReader) buildPublicBenchmarkObservations(ctx
 		}
 	}
 	if r == nil {
-		observations.UnavailableReasons = appendUniqueStrings(observations.UnavailableReasons, "source_not_captured")
+		if len(observableModelInferences(result)) > 0 {
+			observations.UnavailableReasons = appendUniqueStrings(observations.UnavailableReasons, "source_not_captured")
+		}
+		if len(observations.UnavailableReasons) == 0 {
+			observations.UnavailableReasons = nil
+		}
 		return observations, nil
 	}
 	gpu := &gpuAggregate{}

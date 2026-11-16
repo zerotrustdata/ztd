@@ -27,6 +27,7 @@ import {
 import { DeterministicGrades } from './DeterministicGrades';
 import { JudgeActivity } from './JudgeActivity';
 import { EmptyState, ReconcilePlaceholder, StreamStatusIndicator } from './shared';
+import { formatProviderClassLabel, resolveVariantProviderClass } from '../content/provider';
 import { SCENARIO_TASK_BY_ID } from '../content/scenario-task';
 import {
   MODEL_ROLES,
@@ -650,6 +651,9 @@ export function LiveEventStream({
                   : `/evaluations/${event.dataset_id}/${event.run_id}`;
                 const task = parts.task !== '—' ? parts.task : displayLabel(event.kind)!;
                 const role = event.role ?? assignment?.role ?? designatedRoles.get(`${event.dataset_id}:${event.run_id}:${event.assignment_id}`);
+                const providerClass = event.variant_id
+                  ? resolveVariantProviderClass(models, event.dataset_id, event.variant_id, role)
+                  : undefined;
                 const modelHref = event.variant_id
                   ? `/models/${event.dataset_id}/${event.variant_id}${role ? `?role=${role}` : ''}` : undefined;
                 return (
@@ -679,7 +683,10 @@ export function LiveEventStream({
                         <span>Platform</span>
                       )}
                       {event.assignment_id || event.role || isVote ? (
-                        <span className="stream-secondary stream-role">{streamEventRoleLabel(event, assignment, designatedRoles)}</span>
+                        <span className="stream-secondary stream-role">
+                          {streamEventRoleLabel(event, assignment, designatedRoles)}
+                          {providerClass ? ` · ${formatProviderClassLabel(providerClass)}` : ''}
+                        </span>
                       ) : null}
                     </td>
                     {showTribunal ? (
@@ -694,7 +701,12 @@ export function LiveEventStream({
                         : null}
                     </td> : null}
                     {showJudge ? <td className="stream-judge-cell">
-                      {rowJudgments ? <JudgeActivity judgments={rowJudgments} /> : null}
+                      {rowJudgments ? (
+                        <JudgeActivity
+                          judgments={rowJudgments}
+                          resolveProviderClass={(variantId) => resolveVariantProviderClass(models, event.dataset_id, variantId)}
+                        />
+                      ) : null}
                     </td> : null}
                     {ASSIGNMENT_METRIC_COLUMNS.map(({ key, label, format }) => {
                       const displayed = event.assignment_id

@@ -113,8 +113,15 @@ func (b *AnthropicBackend) readModel(ctx context.Context, model string) (anthrop
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
-		return anthropicModel{}, b.statusError(resp.StatusCode, body)
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrorBodyBytes))
+		switch resp.StatusCode {
+		case http.StatusNotFound:
+			return anthropicModel{}, fmt.Errorf("%s: read model: %w: model %q", anthropicComponent, constants.ErrInferenceModelNotFound, model)
+		case http.StatusRequestTimeout, http.StatusGatewayTimeout:
+			return anthropicModel{}, fmt.Errorf("%s: read model: %w: status %d", anthropicComponent, constants.ErrInferenceBackendTimeout, resp.StatusCode)
+		default:
+			return anthropicModel{}, fmt.Errorf("%s: read model: %w: status %d", anthropicComponent, constants.ErrInferenceBackendUnavailable, resp.StatusCode)
+		}
 	}
 	var metadata anthropicModel
 	if err := b.decodeResponse("read model", resp.Body, &metadata); err != nil {
@@ -281,7 +288,7 @@ func (b *AnthropicBackend) Generate(ctx context.Context, req models.GenerateRequ
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, b.statusError(resp.StatusCode, raw)
+		return nil, b.statusError(resp.StatusCode, raw, req.ProviderAttemptID)
 	}
 	attestation, servedDigest, err := hostedEgressAttestation(anthropicComponent, b.origin, req, hostedResponseEvidence{
 		servedModel: result.servedModel, providerModelVersion: metadata.CreatedAt, identityDigest: digest,

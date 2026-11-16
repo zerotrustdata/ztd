@@ -590,6 +590,34 @@ func TestVerifyV7EpisodeOutputs_BindsToolArgumentsThroughTypedRequest(t *testing
 	})
 }
 
+func TestVerifyV7EpisodeOutputs_RequiresMatchingProviderSignature(t *testing.T) {
+	tests := []struct {
+		name          string
+		dispatchedSig string
+		recordedSig   string
+		wantErr       bool
+	}{
+		{name: "matching provider signature", dispatchedSig: "sig-dispatched", recordedSig: "sig-dispatched"},
+		{name: "differing provider signature", dispatchedSig: "sig-dispatched", recordedSig: "sig-forged", wantErr: true},
+		{name: "dropped provider signature", dispatchedSig: "sig-dispatched", recordedSig: "", wantErr: true},
+		{name: "injected provider signature", dispatchedSig: "", recordedSig: "sig-injected", wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			trace := shellEpisodeTrace(t, `{"command":"echo"}`, `{"command":"echo"}`)
+			trace.ModelCalls[0].InferenceResult.GetParts()[0].GetToolCall().ProviderSignature = test.dispatchedSig
+			trace.ToolCalls[0].ProviderSignature = test.recordedSig
+
+			err := verifyV7EpisodeOutputs(trace)
+			if !test.wantErr {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, constants.ErrEvaluationEvidenceTraceMismatch)
+		})
+	}
+}
+
 func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsConsensusVotes(t *testing.T) {
 	for _, test := range []struct {
 		name    string

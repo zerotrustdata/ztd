@@ -32,6 +32,9 @@ type governedModelMaintenanceEnv struct {
 // resolveGovernedModelMaintenance targets provider maintenance at the inference
 // operator.
 func resolveGovernedModelMaintenance(cmd *cobra.Command, deps nativeEvalDeps) (governedModelMaintenanceEnv, error) {
+	if deps.modelMaintenance != nil {
+		return deps.modelMaintenance(cmd, deps)
+	}
 	gatewayDeps := deps.gatewayDeps()
 	cfg, fileSvc, authContext, err := gatewayEvalEnvironment(cmd, gatewayDeps)
 	if err != nil {

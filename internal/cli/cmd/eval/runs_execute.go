@@ -356,10 +356,10 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		JudgeVariant:        spec.GetJudgeVariant(),
 	}
 	// A run whose models are all hosted has no provider host to observe.
-	if evaluation.DispatchesLocalModels(spec.GetModelRegistry(), spec.GetJudgeVariant()) {
-		if err := gwremote.PreflightProviderObservationDelivery(fileSvc, cfg); err != nil {
-			return executed, fmt.Errorf("evaluation: run execute: %w", err)
-		}
+	if err := preflightRunProviderObservation(spec, func() error {
+		return gwremote.PreflightProviderObservationDelivery(fileSvc, cfg)
+	}); err != nil {
+		return executed, fmt.Errorf("evaluation: run execute: %w", err)
 	}
 	witness, err := gwremote.NewCampaignWitnessCapture(fileSvc, store, cfg)
 	if err != nil {
@@ -458,6 +458,16 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	}
 	finished = true
 	return executed, errors.Join(publicationErrs...)
+}
+
+// preflightRunProviderObservation runs the provider-observation preflight when
+// the campaign dispatches any local model (candidate or judge), and skips it
+// for a hosted-only campaign.
+func preflightRunProviderObservation(spec *evalv1.EvaluationCampaignSpec, preflight func() error) error {
+	if !evaluation.DispatchesLocalModels(spec.GetModelRegistry(), spec.GetJudgeVariant()) {
+		return nil
+	}
+	return preflight()
 }
 
 func finalizeRunExecution(

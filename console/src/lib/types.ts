@@ -32,6 +32,10 @@ export type OperatorType = 'embedded' | 'remote';
 
 export type OperatorCapability = 'data' | 'inference' | 'provenance' | 'observer';
 
+export interface OperatorRuntimeConfig {
+  inference_hosted_providers?: string[];
+}
+
 export interface Operator {
   id: string;
   user_id: string;
@@ -39,6 +43,7 @@ export interface Operator {
   status: OperatorStatus;
   operator_type?: OperatorType;
   operator_capabilities?: OperatorCapability[];
+  runtime_config?: OperatorRuntimeConfig;
   operator_session_id?: string;
   bound_web_session_id?: string;
   current_hostname?: string;

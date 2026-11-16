@@ -4,6 +4,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatParameterCount } from '../content/framework-catalog';
+import { formatProviderClassLabel } from '../content/provider';
 import { MODEL_ROLE_WIRE_ORDER, roleScopeFor } from '../content/roles';
 import {
   formatLatency,
@@ -441,6 +442,11 @@ export function RoleLeadersPanel({
                           <div className="model-identity-sub" title="All qualified run assignments contribute; repetitions add observations, not total-time penalties. Frozen versions remain available in run details.">
                             {new Set(row.sources.map((source) => source.dataset_id)).size} runs · {formatNumber(row.sources.reduce((sum, source) => sum + (source.pass_rate?.denominator ?? 0), 0))} judged assignments
                           </div>
+                          {row.model.backend_provider_class ? (
+                            <div className="model-identity-sub">
+                              <span className="model-provider-tag">{formatProviderClassLabel(row.model.backend_provider_class)}</span>
+                            </div>
+                          ) : null}
                           {row.model.model_digest ? <div className="model-identity-sub"><code title={`Frozen model digest: ${row.model.model_digest}`}>{row.model.model_digest.slice(0, 12)}</code></div> : null}
                         </td>
                         {category !== 'all' ? (

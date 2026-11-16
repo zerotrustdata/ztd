@@ -3,8 +3,8 @@ doc_id: model-provenance
 title: Model Provenance Architecture
 audience: engineering, campaign operators, and coding agents
 status: current
-version: v1.7.1
-last_updated: 2026-11-01
+version: v1.10.1
+last_updated: 2026-11-16
 owners:
   - internal/services/inference/model_provenance/
   - protocol/proto/ztd/eval/v1/eval.proto
@@ -68,7 +68,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-PROV-ATTEST-03 | A missing manifest or blob, invalid digest reference, content hash mismatch, or size mismatch fails attestation. A manifest digest that differs from the expected digest produces a window with `digest_match` false, and FINALIZE then fails with a digest mismatch, so no completion window is published. The Operator's signed FAILED receipt returns with the attempt's observation receipts. |
 | INV-PROV-ATTEST-04 | The Ollama attestation window records `MODEL_MANIFEST_VERIFICATION_STATUS_UNSIGNED`. The llama.cpp window records `MODEL_MANIFEST_VERIFICATION_STATUS_UNAVAILABLE` and no manifest digest, because a models directory has no manifest. The model provenance code contains no Sigstore, Cosign, or SPIFFE/SPIRE attestation. |
 | INV-PROV-ATTEST-05 | A multi-runner tag stores a wrapper manifest whose layers include one `application/vnd.docker.distribution.manifest.v2+json` manifest per runner, and the served digest can name a runner manifest rather than the wrapper. When the expected digest is not the wrapper's own, the attestor attests the referenced runner manifest blob whose digest equals it: the blob's hash is verified and only its config and layers are attested. A digest the wrapper does not reference is a mismatch. |
-| INV-PROV-ATTEST-08 | The hosted model identity digest is the SHA-256 of `ztd.hosted-model-identity.v1\n` followed by canonical JSON `{provider_class, provider_origin, model, provider_model_version}` (`models.ComputeHostedModelIdentityDigest`, `internal/models/hosted_model_identity.go`). `provider_model_version` is the provider-reported model version (for Gemini, the `version` field of `GET /v1beta/models/{model}`), re-read by the client before every call. `provider_origin` is the fixed constant origin for the class (`constants.HostedInferenceProviderOrigin`), never configuration. With a pinned digest, the call fails with `ErrInferenceModelDigestMismatch` when the recomputed digest differs (the provider re-versioned the model) or when the served `modelVersion` differs from the requested model (the provider rerouted it). |
+| INV-PROV-ATTEST-08 | The hosted model identity digest is the SHA-256 of `ztd.hosted-model-identity.v1\n` followed by canonical JSON `{provider_class, provider_origin, model, provider_model_version}` (`models.ComputeHostedModelIdentityDigest`, `internal/models/hosted_model_identity.go`). `provider_model_version` is the provider-reported metadata value re-read before every call: for `gemini`, `version` from `GET /v1beta/models/{model}` (`GeminiBackend`); for `anthropic`, RFC 3339 `created_at` from `GET /v1/models/{model}` (`AnthropicBackend`); and for `openai`, decimal Unix-seconds `created` from `GET /v1/models/{model}` (`OpenAIBackend`). `AnthropicBackend` and `OpenAIBackend` require the metadata `id` returned by `GET /v1/models/{model}` to equal the requested model (`ErrInferenceModelDigestMismatch` otherwise), and `GeminiBackend` requires `models/{model}` to match (`ErrInferenceProviderResponseInvalid` otherwise), so pinned aliases fail closed. `provider_origin` is the fixed constant origin for the class (`constants.HostedInferenceProviderOrigin`), never configuration. With a pinned digest, every hosted client fails closed with `ErrInferenceModelDigestMismatch` when the recomputed identity digest differs (the provider re-versioned or updated the model) or when the response's served model differs from the requested model (`hostedEgressAttestation` in `internal/services/inference/hosted_response.go`, and `models.ValidateHostedEgress`). |
 | INV-PROV-ATTEST-09 | The Inference Operator signs an `InferenceHostedEgressAttestation` inside `InferenceResult`, covered by `result_digest`. It records provider origin and class, requested model, served `model_version`, `provider_model_version`, `model_identity_digest`, `provider_response_id`, `raw_response_digest`, `raw_response_size_bytes`, `normalized_request_hash`, `explicit_consent`, and the provenance label. `models.ValidateHostedEgress` checks it on the Inference Operator before signing, in Gateway dispatch, and in the dispatch service. A local result that carries an attestation, or a hosted result without one, fails with `ErrInferenceIdentityMismatch`. |
 
 ### Evidence persistence and verification (`INV-PROV-PERSIST`)
@@ -173,7 +173,7 @@ The Gateway persists attestation windows as canonical protojson files under `.zt
 A hosted attempt has no model storage root, so no Provenance Operator reads its weights. Its evidence is the provider's reported identity, bound to the signed result. Hosted classes are `gemini`, `anthropic`, and `openai` (`operator.md`, `INV-OP-CAP-05`).
 
 ```text
-1. Inference Operator (hosted client) re-reads the model metadata (Gemini: GET /v1beta/models/{model}) -> provider_model_version
+1. Inference Operator (hosted client) re-reads model metadata (Gemini: GET /v1beta/models/{model} -> version; Anthropic: GET /v1/models/{model} -> created_at; OpenAI: GET /v1/models/{model} -> created) -> provider_model_version
 2. Inference Operator computes model_identity_digest; pinned digest mismatch -> ErrInferenceModelDigestMismatch
 3. Inference Operator signs InferenceHostedEgressAttestation in InferenceResult (covered by result_digest)
 4. Gateway dispatch and dispatch service run models.ValidateHostedEgress

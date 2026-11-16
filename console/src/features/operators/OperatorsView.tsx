@@ -24,6 +24,22 @@ const CAPABILITIES: Record<OperatorCapability, { label: string; tone: string; hi
   },
 };
 
+const HOSTED_PROVIDERS: Record<string, string> = {
+  gemini: 'Gemini',
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+};
+
+function hostedProviderLabel(provider: string): string {
+  return HOSTED_PROVIDERS[provider] ?? provider;
+}
+
+export function operatorHostedProviders(op: Operator): string[] {
+  const raw = op.runtime_config?.inference_hosted_providers;
+  if (!raw || raw.length === 0) return [];
+  return Array.from(new Set(raw.map((p) => p.trim()).filter(Boolean)));
+}
+
 function CapabilityPill({ capability }: { capability?: OperatorCapability }) {
   const info = capability ? CAPABILITIES[capability] : undefined;
   if (!info) return <span className="muted">{capability || '—'}</span>;
@@ -149,6 +165,7 @@ export function OperatorsView() {
                   const isBound = !!webSessionId && op.bound_web_session_id === webSessionId;
                   const elsewhere = !!op.bound_web_session_id && !isBound;
                   const busy = pending === op.id || pending === 'all';
+                  const hostedProviders = operatorHostedProviders(op);
                   return (
                     <tr key={op.id} className={isBound ? 'bound-row' : undefined}>
                       <td>
@@ -163,6 +180,25 @@ export function OperatorsView() {
                         {op.operator_capabilities?.map((capability) => (
                           <CapabilityPill key={capability} capability={capability} />
                         ))}
+                        {hostedProviders.length > 0 && (
+                          <div
+                            className="row"
+                            style={{ marginTop: op.operator_capabilities?.length ? 6 : 0, gap: 4 }}
+                            aria-label="Hosted inference providers"
+                          >
+                            <span className="hint">Hosted:</span>
+                            {hostedProviders.map((provider) => (
+                              <span
+                                key={provider}
+                                className="pill"
+                                style={{ textTransform: 'none' }}
+                                title={`Hosted inference provider: ${hostedProviderLabel(provider)}`}
+                              >
+                                {hostedProviderLabel(provider)}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td className="text-2">{relativeTime(op.last_heartbeat_at) || '—'}</td>
                       <td>

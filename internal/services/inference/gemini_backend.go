@@ -79,7 +79,7 @@ func NewGeminiBackend(origin, key string, logger *slog.Logger) (*GeminiBackend, 
 		return nil, fmt.Errorf("%s: %w", geminiComponent, constants.ErrInferenceHostedProviderKeyMissing)
 	}
 	headers := http.Header{}
-	headers.Set(constants.HeaderGoogAPIKey, key)
+	headers.Set(constants.HeaderGoogAPIKey, strings.TrimSpace(key))
 	provider, err := newHostedProviderHTTP(geminiComponent, origin, headers)
 	if err != nil {
 		return nil, err
@@ -522,7 +522,7 @@ func (b *GeminiBackend) statusError(status int, body []byte, req models.Generate
 		return fmt.Errorf("%s: generate: %w", geminiComponent, constants.ErrInferenceToolsUnsupported)
 	case status == http.StatusBadRequest && strings.Contains(message, "thinking") && (strings.Contains(message, "not supported") || strings.Contains(message, "only works")):
 		return fmt.Errorf("%s: generate: %w", geminiComponent, constants.ErrInferenceCapabilityUnsupported)
-	case status == http.StatusUnauthorized, status == http.StatusForbidden, status == http.StatusTooManyRequests, status >= http.StatusInternalServerError:
+	case status == http.StatusUnauthorized, status == http.StatusForbidden, status == http.StatusTooManyRequests, status >= http.StatusInternalServerError, status >= http.StatusMultipleChoices && status < http.StatusBadRequest:
 		return fmt.Errorf("%s: generate: %w: status %d", geminiComponent, constants.ErrInferenceBackendUnavailable, status)
 	default:
 		return fmt.Errorf("%s: generate: %w: status %d", geminiComponent, constants.ErrInferenceGenerateFailed, status)

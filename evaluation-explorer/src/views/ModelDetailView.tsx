@@ -19,6 +19,7 @@ import {
   resolveModelProfile,
   type CapabilityProbeStatus,
 } from '../content/framework-catalog';
+import { formatProviderClassLabel } from '../content/provider';
 import { isCapabilityQualificationScenario } from '../content/scenario-task';
 import {
   DetailRow,
@@ -191,6 +192,11 @@ export function ModelDetailView() {
           <>
             {profile.served_model_tag ? <code>{profile.served_model_tag}</code> : null}
             <span>{profile.provider}</span>
+            {model.backend_provider_class ? (
+              <span className="model-provider-class" data-testid="model-provider-class" title="Inference provider class">
+                {formatProviderClassLabel(model.backend_provider_class)}
+              </span>
+            ) : null}
             {profile.parameter_label ? <span>{profile.parameter_label} total parameters</span> : null}
             {profile.quantization ? <span>{profile.quantization}</span> : null}
             {profile.context_label ? <span>{profile.context_label} context</span> : null}
@@ -263,7 +269,7 @@ export function ModelDetailView() {
                 </DetailRow>
                 <DetailRow label="Role">{roleLabel(model.role)}</DetailRow>
                 <DetailRow label="Backend / provider">
-                  {model.backend_provider_class ?? <UnavailableValue />}
+                  {model.backend_provider_class ? formatProviderClassLabel(model.backend_provider_class) : <UnavailableValue />}
                 </DetailRow>
                 <DetailRow label="Inventory only">{model.inventory_only ? 'Yes' : 'No'}</DetailRow>
                 <DetailRow label="Evaluation coverage">{formatPercent(model.evaluation_coverage)}</DetailRow>
