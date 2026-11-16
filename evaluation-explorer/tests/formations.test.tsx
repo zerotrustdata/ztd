@@ -10,7 +10,7 @@ import { MemoryRouter } from 'react-router-dom';
 import type { EvaluationSummary } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
 import { formationRun } from './formation-fixture';
-import { formationGroups, formationLeaderboardRows } from '../src/views/formations';
+import { formationGroups, formationLeaderboardRows, hostedFormationRows } from '../src/views/formations';
 import { isEvaluationSummary } from '../src/contract/validators';
 import { LeaderboardView } from '../src/views/LeaderboardView';
 import { EvaluationsView } from '../src/views/EvaluationsView';
@@ -151,5 +151,46 @@ describe('published formations', () => {
     </Routes></MemoryRouter>);
     expect(screen.getByRole('link', { name: 'current-project-formation' })).toHaveAttribute('href', '/evaluations/ds-formation/run-formation');
     expect(screen.queryByText('formation-01')).not.toBeInTheDocument();
+  });
+});
+
+describe('formations with a hosted member', () => {
+  const hostedRun = withSummary(
+    { stack_id: 'hosted-primary-formation', stack_digest: 'd'.repeat(64), parameter_count: undefined, artifact_size_bytes: undefined,
+      model_role_mapping: { primary: 'gemini-3-6-flash', assistant: 'current-assistant', lite: 'current-lite' } },
+    { dataset_id: 'ds-hosted-formation', run_id: 'run-hosted-formation' },
+  );
+  const hostedMember = (datasetId: string, variantId: string) => datasetId === 'ds-hosted-formation' && variantId === 'gemini-3-6-flash';
+
+  it('lists a hosted-member formation unranked and leaves ranked formations unchanged', () => {
+    const ranked = formationLeaderboardRows([formationRun]);
+    expect(formationLeaderboardRows([formationRun, hostedRun])).toEqual(ranked);
+    const hosted = hostedFormationRows([formationRun, hostedRun], hostedMember);
+    expect(hosted.map((row) => [row.summary.stack_id, row.hosted_variants])).toEqual([['hosted-primary-formation', ['gemini-3-6-flash']]]);
+    expect(hosted[0]).not.toHaveProperty('rank');
+    expect(hosted[0]).not.toHaveProperty('score');
+  });
+
+  it('gives a formation without a size and without a hosted member no row', () => {
+    expect(hostedFormationRows([hostedRun], () => false)).toHaveLength(0);
+    expect(hostedFormationRows([withSummary({ latency_p50_ms: { unavailable_reason: 'source_unavailable' }, parameter_count: undefined },
+      { dataset_id: 'ds-hosted-formation' })], hostedMember)).toHaveLength(0);
+  });
+
+  it('renders the hosted-member formation beside the ranked one on the leaderboard', () => {
+    const geminiMember = {
+      ...fixtureModelSummaries[0]!, dataset_id: 'ds-hosted-formation', variant_id: 'gemini-3-6-flash', role: 'primary' as const,
+      display_name: 'Gemini 3.6 Flash', backend_provider_class: 'gemini', model_format: 'hosted', parameter_count: undefined,
+    };
+    evalStore.loadFixtures([formationRun, hostedRun, geminiMember], []);
+    render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Formations 2' }));
+    expect(screen.getByText(/1 hosted unranked/)).toBeInTheDocument();
+    const row = screen.getByRole('link', { name: 'hosted-primary-formation' }).closest('tr')!;
+    expect(within(row).getByLabelText('Not ranked')).toBeInTheDocument();
+    expect(row).toHaveTextContent('Not ranked');
+    expect(row).toHaveTextContent('Undisclosed');
+    const rankedRow = screen.getByRole('link', { name: 'current-project-formation' }).closest('tr')!;
+    expect(rankedRow).toHaveTextContent('56.3');
   });
 });

@@ -414,7 +414,7 @@ func (b *GeminiBackend) Generate(ctx context.Context, req models.GenerateRequest
 	var result geminiStreamResult
 	var parts []*operatorv1.InferenceResponsePart
 	var timeToFirstToken *int64
-	responseBody, err := b.consumeHostedResponse(ctx, resp, req.ProviderAttemptID, requestStartedAt, stopGeneration, func(capture *providerResponseCapture) (bool, error) {
+	response, err := b.consumeHostedResponse(ctx, resp, req.ProviderAttemptID, requestStartedAt, stopGeneration, func(capture *providerResponseCapture) (bool, error) {
 		var decodeErr error
 		allowParallelToolCalls := req.ParallelToolCalls == nil || *req.ParallelToolCalls
 		result, parts, timeToFirstToken, decodeErr = b.decodeStream(ctx, capture, capture.arrivalTime, allowParallelToolCalls, req.ProviderAttemptID, stream)
@@ -424,12 +424,12 @@ func (b *GeminiBackend) Generate(ctx context.Context, req models.GenerateRequest
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, b.statusError(resp.StatusCode, responseBody, req)
+		return nil, b.statusError(resp.StatusCode, response.body, req)
 	}
 
 	attestation, servedModelDigest, err := hostedEgressAttestation(geminiComponent, b.origin, req, hostedResponseEvidence{
 		servedModel: result.servedModel, providerModelVersion: metadata.Version, identityDigest: identityDigest,
-		responseID: result.responseID, normalizedRequestHash: normalizedRequestHash, rawResponse: responseBody,
+		responseID: result.responseID, normalizedRequestHash: normalizedRequestHash, rawResponse: response.body,
 	})
 	if err != nil {
 		return nil, err
@@ -442,10 +442,7 @@ func (b *GeminiBackend) Generate(ctx context.Context, req models.GenerateRequest
 	if err != nil {
 		return nil, fmt.Errorf("%s: generate: %w", geminiComponent, err)
 	}
-	timingSource := operatorv1.InferenceTimingSource_INFERENCE_TIMING_SOURCE_UNSPECIFIED
-	if timeToFirstToken != nil {
-		timingSource = operatorv1.InferenceTimingSource_INFERENCE_TIMING_SOURCE_PROVIDER
-	}
+	timing := newHostedTiming(timeToFirstToken, response.completeNS)
 	return &models.GenerateResponse{
 		HostedEgress:          attestation,
 		Parts:                 parts,
@@ -455,8 +452,10 @@ func (b *GeminiBackend) Generate(ctx context.Context, req models.GenerateRequest
 		UsageReported:         usage.reported,
 		ThinkingTokens:        usage.thinking,
 		CacheTokens:           usage.cached,
-		TimeToFirstTokenNS:    timeToFirstToken,
-		TimingSource:          timingSource,
+		GenerationDurationNS:  timing.generation,
+		TotalDurationNS:       timing.total,
+		TimeToFirstTokenNS:    timing.firstToken,
+		TimingSource:          timing.source,
 		FinishReason:          result.finishReason,
 		ContextWindow:         int32(metadata.InputTokenLimit),
 		Model:                 req.Model,

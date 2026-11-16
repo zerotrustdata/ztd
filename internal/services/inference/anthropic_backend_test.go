@@ -788,8 +788,7 @@ func TestAnthropicBackend_DecodesStopReasonsUsageAndRefusal(t *testing.T) {
 			assert.Equal(t, int32(3), *resp.ThinkingTokens)
 			require.NotNil(t, resp.CacheTokens)
 			assert.Equal(t, int32(1), *resp.CacheTokens)
-			require.NotNil(t, resp.TimeToFirstTokenNS)
-			assert.Equal(t, operatorv1.InferenceTimingSource_INFERENCE_TIMING_SOURCE_PROVIDER, resp.TimingSource)
+			assertHostedTiming(t, resp)
 			assert.Equal(t, operatorv1.InferenceLoadState_INFERENCE_LOAD_STATE_UNAVAILABLE, models.ClassifyLoadState(resp.LoadDurationNS))
 			if reason == "refusal" {
 				assert.Contains(t, sink.String(), "stop_category=cyber")

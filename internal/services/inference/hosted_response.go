@@ -22,11 +22,41 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
+// hostedResponse is one captured hosted provider response: its exact bytes and
+// the elapsed time from the request start to the arrival of its last bytes.
+type hostedResponse struct {
+	body       []byte
+	completeNS *int64
+}
+
+// hostedTiming is the Operator-observed timing of one hosted generation. A
+// hosted provider reports no internal timing, so the Inference Operator
+// measures it at its egress boundary. Completion tokens include reasoning the
+// provider may never stream, so the generation span starts when the request is
+// sent, before generation begins, and ends at the last response byte; it
+// includes prompt processing and network transfer. Starting it at the first
+// visible part would leave hidden reasoning outside the span and overstate
+// throughput. The total duration is the same span.
+type hostedTiming struct {
+	firstToken *int64
+	generation *int64
+	total      *int64
+	source     operatorv1.InferenceTimingSource
+}
+
+func newHostedTiming(firstToken, complete *int64) hostedTiming {
+	timing := hostedTiming{firstToken: firstToken, generation: complete, total: complete}
+	if firstToken != nil || complete != nil {
+		timing.source = operatorv1.InferenceTimingSource_INFERENCE_TIMING_SOURCE_PROVIDER
+	}
+	return timing
+}
+
 // consumeHostedResponse captures exactly one HTTP response independently of its
 // decoder. decode runs only for a 200 response and reports whether repetition
 // stopped generation. Joining capture keeps the raw tail even on decode failure.
 // The caller owns the response body and classifies non-200 provider errors.
-func (p *providerHTTP) consumeHostedResponse(ctx context.Context, resp *http.Response, providerAttemptID string, startedAt time.Time, stopGeneration context.CancelFunc, decode func(*providerResponseCapture) (bool, error)) ([]byte, error) {
+func (p *providerHTTP) consumeHostedResponse(ctx context.Context, resp *http.Response, providerAttemptID string, startedAt time.Time, stopGeneration context.CancelFunc, decode func(*providerResponseCapture) (bool, error)) (hostedResponse, error) {
 	capture := newProviderResponseCapture(p.maxResponseBytes, startedAt)
 	go capture.receive(resp.Body)
 	var stoppedRepeating bool
@@ -45,19 +75,19 @@ func (p *providerHTTP) consumeHostedResponse(ctx context.Context, resp *http.Res
 	// size. An error body can echo prompt material and is never recorded.
 	if store := attemptStoreFromContext(ctx); store != nil && resp.StatusCode == http.StatusOK {
 		if err := store.RecordRawResponse(context.WithoutCancel(ctx), providerAttemptID, responseBody); err != nil {
-			return nil, errors.Join(readErr, fmt.Errorf("%s: record raw response digest: %w", p.component, err))
+			return hostedResponse{}, errors.Join(readErr, fmt.Errorf("%s: record raw response digest: %w", p.component, err))
 		}
 	}
 	if readErr != nil {
-		return nil, transportError(ctx, p.component, "generate", readErr)
+		return hostedResponse{}, transportError(ctx, p.component, "generate", readErr)
 	}
 	if int64(len(responseBody)) > p.maxResponseBytes {
-		return nil, fmt.Errorf("%s: generate: %w: response exceeds %d bytes", p.component, constants.ErrInferenceProviderResponseInvalid, p.maxResponseBytes)
+		return hostedResponse{}, fmt.Errorf("%s: generate: %w: response exceeds %d bytes", p.component, constants.ErrInferenceProviderResponseInvalid, p.maxResponseBytes)
 	}
 	if decodeErr != nil {
-		return nil, decodeErr
+		return hostedResponse{}, decodeErr
 	}
-	return responseBody, nil
+	return hostedResponse{body: responseBody, completeNS: capture.finalArrival()}, nil
 }
 
 // hostedResponseEvidence holds the provider facts needed to bind one generation

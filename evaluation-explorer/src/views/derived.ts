@@ -18,6 +18,7 @@
 //     reported separately, not silently dropped.
 
 import { MODEL_CAPABILITY_KEYS, resolveModelProfile, type ModelCapabilityKey } from '../content/framework-catalog';
+import { isHostedProviderClass } from '../content/provider';
 import { CURRENT_PLATFORM_RELEASE, newestAdmittedRelease, toReleaseSeries } from '../content/release';
 import { MODEL_ROLE_WIRE_ORDER, MODEL_ROLES } from '../content/roles';
 import { SCENARIO_CATEGORY_COPY, TRAJECTORY_POLICY_META } from '../content/scenario-task';
@@ -1462,6 +1463,15 @@ export interface ModelRoleLeaderboardRow extends ModelLeaderboardRow {
   score: number;
 }
 
+/** A hosted variant with complete leaderboard evidence. Hosted providers do not disclose
+ *  parameter counts, so the size factor and therefore the score cannot be computed: the row
+ *  shows its measurements beside ranked models without a rank, score, or parameter count. */
+export interface HostedLeaderboardRow extends Omit<ModelLeaderboardRow, 'rank' | 'score' | 'parameter_count'> {
+  rank?: undefined;
+  score?: undefined;
+  parameter_count?: undefined;
+}
+
 export interface ModelOverallLeaderboardRow extends ModelLeaderboardRow {
   /** Equal-weight mean of the Primary, Assistant, and Lite scores. */
   score: number;
@@ -1512,22 +1522,40 @@ function passesCatalogCapabilities(model: ModelSummary, keys: readonly ModelCapa
   return keys.every((key) => key === 'tool_calling' || capabilities[key].status === 'pass');
 }
 
-/** Whether the Leaderboard can rank a model: full coverage, verified scored evidence, the role's
- *  required capabilities, a parameter count, latency and token observations, and security
+/** Whether a model has the evidence a Leaderboard row needs: full coverage, verified scored
+ *  evidence, the role's required capabilities, latency and token observations, and security
  *  evidence or an allowed N/A. A tool-bearing role requires the run's own published proof that
- *  its tool-calling probe excluded no assignment; a record without that count is unranked. */
-function isLeaderboardQualified(model: ModelSummary): boolean {
+ *  its tool-calling probe excluded no assignment; a record without that count has no row. */
+function hasLeaderboardEvidence(model: ModelSummary): boolean {
   if (model.inventory_only || !model.pass_rate || model.pass_rate.denominator <= 0) return false;
   if (model.evaluation_coverage !== 1 || model.quality_state !== 'exploratory_verified') return false;
   const required = LEADERBOARD_ROLE_CAPABILITIES[model.role];
   if (!passesCatalogCapabilities(model, required)) return false;
   if (required.includes('tool_calling') && model.tool_calling_exclusions !== 0) return false;
-  if (positive(model.latency_p50_ms?.value) === undefined || positive(model.output_tokens?.value) === undefined ||
-    positive(resolveModelProfile(model).parameter_count) === undefined) return false;
+  if (positive(model.latency_p50_ms?.value) === undefined || positive(model.output_tokens?.value) === undefined) return false;
   const security = resolveModelSecurity(model);
   return security !== undefined || model.role === 'lite' ||
     model.security_resistance?.unavailable_reason === 'scenario_not_applicable' ||
     model.security_resistance?.unavailable_reason === 'source_unavailable';
+}
+
+/** Whether the Leaderboard can rank a model: complete evidence and a published parameter count
+ *  for the size factor. Hosted variants never rank; see hostedRoleLeaderboardRows. */
+function isLeaderboardQualified(model: ModelSummary): boolean {
+  return !isHostedProviderClass(model.backend_provider_class) && hasLeaderboardEvidence(model) &&
+    positive(resolveModelProfile(model).parameter_count) !== undefined;
+}
+
+/** Model summaries a role table may show: not a formation dataset, in the role, and not
+ *  barred from tool-bearing roles by a run whose verified probe excluded tool tasks. */
+function roleTableCandidates(models: ModelSummary[], role: ModelRole | 'all', evaluations: EvaluationSummary[]): ModelSummary[] {
+  const formationDatasets = new Set(evaluations.filter((run) => run.evaluation_unit === 'system').map((run) => run.dataset_id));
+  // A run whose verified probe excluded tool tasks shows the variant cannot call tools, so no
+  // other run or role ranks it where tools are required.
+  const toolless = new Set(models.filter((model) => (model.tool_calling_exclusions ?? 0) > 0).map((model) => model.variant_id));
+  return models.filter((model) => !formationDatasets.has(model.dataset_id) &&
+    (role === 'all' || model.role === role) &&
+    !(LEADERBOARD_ROLE_CAPABILITIES[model.role].includes('tool_calling') && toolless.has(model.variant_id)));
 }
 
 /** The series the Leaderboard opens on: the newest with a model it can rank, so neither a
@@ -1556,13 +1584,7 @@ export function modelRoleLeaderboardRows(
   role: ModelRole | 'all' = 'all',
   evaluations: EvaluationSummary[] = [],
 ): ModelRoleLeaderboardRow[] {
-  const formationDatasets = new Set(evaluations.filter((run) => run.evaluation_unit === 'system').map((run) => run.dataset_id));
-  // A run whose verified probe excluded tool tasks shows the variant cannot call tools, so no
-  // other run or role ranks it where tools are required.
-  const toolless = new Set(models.filter((model) => (model.tool_calling_exclusions ?? 0) > 0).map((model) => model.variant_id));
-  const qualified = models.filter((model) => !formationDatasets.has(model.dataset_id) &&
-    (role === 'all' || model.role === role) && isLeaderboardQualified(model) &&
-    !(LEADERBOARD_ROLE_CAPABILITIES[model.role].includes('tool_calling') && toolless.has(model.variant_id)));
+  const qualified = roleTableCandidates(models, role, evaluations).filter(isLeaderboardQualified);
   const measured = modelSummaryGroups(qualified).map(({ model, sources }) => ({
     model, sources,
     latency: model.latency_p50_ms!.value!, tokens: model.output_tokens!.value!, size: model.parameter_count!,
@@ -1603,6 +1625,33 @@ export function modelRoleLeaderboardRows(
   });
   rows.sort(compareModelLeaderboardScores);
   return rows.map((row, index) => ({ ...row, rank: index + 1 }));
+}
+
+/** Hosted variants with complete evidence, one row per variant and role with its runs pooled,
+ *  shown unranked beside the ranked rows. They never enter a role's best-in-role minimums, so
+ *  they leave ranked scores unchanged, and they never enter Overall, which averages role scores. */
+export function hostedRoleLeaderboardRows(
+  models: ModelSummary[],
+  role: ModelRole | 'all' = 'all',
+  evaluations: EvaluationSummary[] = [],
+): HostedLeaderboardRow[] {
+  const hosted = roleTableCandidates(models, role, evaluations)
+    .filter((model) => isHostedProviderClass(model.backend_provider_class) && hasLeaderboardEvidence(model));
+  return modelSummaryGroups(hosted).map(({ model, sources }) => {
+    const runDurations = Object.fromEntries(sources.map((source) => [source.dataset_id, modelRunSeconds(source, evaluations)]));
+    return {
+      model,
+      sources,
+      run_durations: runDurations,
+      pass_rate: model.pass_rate!.estimate,
+      security: resolveModelSecurity(model),
+      latency_p50_ms: model.latency_p50_ms!.value!,
+      output_tokens: model.output_tokens!.value!,
+      throughput_p50: model.output_throughput_p50?.value,
+      run_seconds: sumRunDurations(runDurations),
+    };
+  }).sort((a, b) => b.pass_rate - a.pass_rate ||
+    a.model.display_name.localeCompare(b.model.display_name) || a.model.variant_id.localeCompare(b.model.variant_id));
 }
 
 /** Shared score formula; callers choose a comparable role or formation suite population. */

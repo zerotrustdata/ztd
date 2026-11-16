@@ -116,6 +116,7 @@ export function LeaderboardView() {
             <li>Speed and tokens are best-in-role ÷ model; lower latency and fewer tokens score higher.</li>
             <li>Specifications describe the frozen provider variant. Artifact size is storage, not runtime memory.</li>
             <li>Formations use the same formula within each suite, with whole-stack accuracy and security and total parameters across unique member variants.</li>
+            <li>Hosted models (Gemini, Anthropic, OpenAI) and formations with a hosted member are listed unranked: hosted providers do not disclose parameter counts, so the size factor and score cannot be computed. Their measurements never change ranked scores, and Overall ranks only ranked role rows. A hosted call&apos;s latency is the Inference Operator&apos;s span from sending the request to the last response byte, so it includes prompt processing and network transfer; a local call&apos;s latency is the provider&apos;s reported generation time.</li>
           </ul>
         </details>
       </header>

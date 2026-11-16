@@ -147,6 +147,11 @@
   border: 0;
 }
 
+.leaderboard-rank.rank-unranked {
+  color: var(--fg-dim);
+  border: 0;
+}
+
 .lab-table th .th-sort {
   cursor: pointer;
 }

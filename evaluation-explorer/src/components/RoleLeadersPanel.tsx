@@ -4,7 +4,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatParameterCount } from '../content/framework-catalog';
-import { formatProviderClassLabel } from '../content/provider';
+import { formatProviderClassLabel, isHostedProviderClass } from '../content/provider';
 import { MODEL_ROLE_WIRE_ORDER, roleScopeFor } from '../content/roles';
 import {
   formatLatency,
@@ -20,8 +20,10 @@ import {
   LEADERBOARD_SCORE_FORMULA,
   LEADERBOARD_SECURITY_SCORING_DESCRIPTION,
   roleLabel,
+  hostedRoleLeaderboardRows,
   modelRoleLeaderboardRows,
   modelOverallLeaderboardRows,
+  type HostedLeaderboardRow,
   type ModelLeaderboardRow,
   type ModelOverallLeaderboardRow,
   type ModelRoleLeaderboardRow,
@@ -29,7 +31,7 @@ import {
 import type { EvaluationSummary, ModelRole, ModelSummary } from '../contract/types';
 import { ModelScoreCoverage } from './evidence';
 import { FormationTable } from './FormationTable';
-import { formationLeaderboardRows } from '../views/formations';
+import { formationLeaderboardRows, hostedFormationRows } from '../views/formations';
 import { PREF, useUserPref } from '../state/dataset';
 
 export type LeaderboardSortField =
@@ -131,6 +133,16 @@ const OVERALL_COLUMN_TITLES: Partial<Record<LeaderboardSortField, string>> = {
   run_time: 'Total run time of distinct contributing datasets; shared runs count once',
 };
 
+/** A ranked role or overall row, or an unranked hosted row shown beside them. */
+type LeaderboardTableRow = ModelLeaderboardRow | HostedLeaderboardRow;
+
+const HOSTED_UNRANKED_TITLE =
+  'Not ranked: hosted providers do not disclose parameter counts, so the size factor and score cannot be computed. Measurements are shown for comparison.';
+
+function isRankedRow(row: LeaderboardTableRow): row is ModelLeaderboardRow {
+  return row.rank !== undefined;
+}
+
 function compareNullableNumber(
   a: number | undefined,
   b: number | undefined,
@@ -143,26 +155,30 @@ function compareNullableNumber(
 }
 
 function compareLeaderboardRows(
-  a: ModelLeaderboardRow,
-  b: ModelLeaderboardRow,
+  a: LeaderboardTableRow,
+  b: LeaderboardTableRow,
   field: LeaderboardSortField,
   direction: 'asc' | 'desc',
 ): number {
+  // Rank, score, and size exist only for ranked rows. Unranked hosted rows follow them in
+  // either direction, ordered by accuracy.
+  if (field === 'rank' || field === 'score' || field === 'size') {
+    const aRanked = isRankedRow(a);
+    const bRanked = isRankedRow(b);
+    if (!aRanked || !bRanked) {
+      if (aRanked !== bRanked) return aRanked ? -1 : 1;
+      return b.pass_rate - a.pass_rate || a.model.display_name.localeCompare(b.model.display_name);
+    }
+    return compareRankedRows(a, b, field, direction);
+  }
   let diff = 0;
   switch (field) {
-    case 'rank':
-      diff = a.rank - b.rank;
-      return direction === 'asc' ? diff : -diff;
     case 'model':
       diff = a.model.display_name.localeCompare(b.model.display_name);
       return direction === 'asc' ? diff : -diff;
     case 'role':
       diff = a.model.role.localeCompare(b.model.role);
       return direction === 'asc' ? diff : -diff;
-    case 'score':
-      // Higher score is better
-      diff = b.score - a.score || a.rank - b.rank;
-      break;
     case 'accuracy':
       // Higher pass rate is better
       diff = b.pass_rate - a.pass_rate;
@@ -179,10 +195,6 @@ function compareLeaderboardRows(
       // Fewer tokens is better: smaller the better
       diff = a.output_tokens - b.output_tokens;
       break;
-    case 'size':
-      // Smaller parameter count is better: smaller the better
-      diff = a.parameter_count - b.parameter_count;
-      break;
     case 'throughput':
       // Higher throughput is better
       diff = compareNullableNumber(a.throughput_p50, b.throughput_p50, false);
@@ -194,6 +206,23 @@ function compareLeaderboardRows(
   }
 
   // 'desc' is BEST FIRST (diff). 'asc' is WORST FIRST (reverse: -diff).
+  const result = direction === 'desc' ? diff : -diff;
+  if (result !== 0) return result;
+  return a.model.display_name.localeCompare(b.model.display_name);
+}
+
+function compareRankedRows(
+  a: ModelLeaderboardRow,
+  b: ModelLeaderboardRow,
+  field: 'rank' | 'score' | 'size',
+  direction: 'asc' | 'desc',
+): number {
+  if (field === 'rank') {
+    const diff = a.rank - b.rank;
+    return direction === 'asc' ? diff : -diff;
+  }
+  // Higher score is better; smaller parameter count is better.
+  const diff = field === 'score' ? b.score - a.score || a.rank - b.rank : a.parameter_count - b.parameter_count;
   const result = direction === 'desc' ? diff : -diff;
   if (result !== 0) return result;
   return a.model.display_name.localeCompare(b.model.display_name);
@@ -235,7 +264,12 @@ export function RoleLeadersPanel({
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   const formationRows = useMemo(() => formationLeaderboardRows(evaluations, maxArtifactGiB), [evaluations, maxArtifactGiB]);
-  const formationSuites = Array.from(new Set(formationRows.map((row) => row.suite_id)));
+  const hostedFormations = useMemo(() => {
+    const hostedMembers = new Set(models.filter((model) => isHostedProviderClass(model.backend_provider_class))
+      .map((model) => JSON.stringify([model.dataset_id, model.variant_id])));
+    return hostedFormationRows(evaluations, (datasetId, variantId) => hostedMembers.has(JSON.stringify([datasetId, variantId])), maxArtifactGiB);
+  }, [models, evaluations, maxArtifactGiB]);
+  const formationSuites = Array.from(new Set([...formationRows, ...hostedFormations].map((row) => row.suite_id)));
   const qualifiedRows = useMemo(
     () => modelRoleLeaderboardRows(models, 'all', evaluations),
     [models, evaluations],
@@ -250,11 +284,17 @@ export function RoleLeadersPanel({
       .map((row, index) => ({ ...row, rank: index + 1 }));
     return { primary: forRole('primary'), assistant: forRole('assistant'), lite: forRole('lite') };
   }, [qualifiedRows]);
+  const hostedRows = useMemo(() => hostedRoleLeaderboardRows(models, 'all', evaluations), [models, evaluations]);
+  const hostedByRole = useMemo(() => {
+    const forRole = (role: ModelRole) => hostedRows.filter((row) => row.model.role === role);
+    return { primary: forRole('primary'), assistant: forRole('assistant'), lite: forRole('lite') };
+  }, [hostedRows]);
   const evaluatedRoles = MODEL_ROLE_WIRE_ORDER.filter((role) => rowsByRole[role].length > 0);
   const category = storedCategory ?? (qualifiedRows.length === 0 && formationRows.length > 0 ? 'formations' : 'all');
   // Declared union: an overall row is structurally a role row, so inference would collapse it.
-  const categoryRows: Array<ModelRoleLeaderboardRow | ModelOverallLeaderboardRow> =
-    category === 'all' ? allRows : category === 'formations' ? [] : rowsByRole[category];
+  const categoryRows: Array<ModelRoleLeaderboardRow | ModelOverallLeaderboardRow | HostedLeaderboardRow> =
+    category === 'all' ? allRows : category === 'formations' ? [] : [...rowsByRole[category], ...hostedByRole[category]];
+  const categoryHostedCount = category === 'all' || category === 'formations' ? 0 : hostedByRole[category].length;
   const columns = LEADERBOARD_COLUMNS.filter((column) => category !== 'all' || column.field !== 'role');
 
   const sortedRows = useMemo(() => {
@@ -281,10 +321,11 @@ export function RoleLeadersPanel({
 
   const counts = {
     all: allRows.length,
-    primary: rowsByRole.primary.length,
-    assistant: rowsByRole.assistant.length,
-    lite: rowsByRole.lite.length,
+    primary: rowsByRole.primary.length + hostedByRole.primary.length,
+    assistant: rowsByRole.assistant.length + hostedByRole.assistant.length,
+    lite: rowsByRole.lite.length + hostedByRole.lite.length,
   };
+  const rankedCount = sortedRows.filter(isRankedRow).length;
 
   return (
     <section className="evidence-panel role-leaders-panel" aria-label="Leaderboard">
@@ -350,21 +391,27 @@ export function RoleLeadersPanel({
               </button>
               <button type="button" className={`leaderboard-category-chip${category === 'formations' ? ' active' : ''}`}
                 onClick={() => handleCategoryChange('formations')} aria-pressed={category === 'formations'}>
-                <span>Formations</span>{' '}<span className="leaderboard-count-badge">{formationRows.length}</span>
+                <span>Formations</span>{' '}<span className="leaderboard-count-badge">{formationRows.length + hostedFormations.length}</span>
               </button>
             </div>
             <span className="leaderboard-meta">
-              Showing {category === 'formations' ? formationRows.length : sortedRows.length} {category === 'formations' ? 'formations' : category === 'all' ? 'models overall' : `${roleLabel(category)} leaders`}
+              Showing {category === 'formations' ? formationRows.length : rankedCount} {category === 'formations' ? 'formations' : category === 'all' ? 'models overall' : `${roleLabel(category)} leaders`}
+              {(category === 'formations' ? hostedFormations.length : categoryHostedCount) > 0
+                ? ` · ${category === 'formations' ? hostedFormations.length : categoryHostedCount} hosted unranked`
+                : null}
             </span>
           </div>
 
           {category === 'formations' ? (
             <>
-              <p className="panel-note">Each formation is scored as a whole and ranked within its suite. Completed, verified runs contribute in proportion to their judged assignments. Missing security earns zero credit.</p>
+              <p className="panel-note">Each formation is scored as a whole and ranked within its suite. Completed, verified runs contribute in proportion to their judged assignments. Missing security earns zero credit. A formation with a hosted member is listed unranked: hosted providers do not disclose parameter counts, so its size factor and score cannot be computed.</p>
               {formationSuites.length === 0 ? <p className="panel-empty">No fully evaluated, verified formations yet.</p> : formationSuites.map((suite) => (
                 <section key={suite} aria-label={`Formation suite ${suite}`}>
                   <h3>{suite}</h3>
-                  <FormationTable formations={formationRows.filter((row) => row.suite_id === suite)} leaderboard />
+                  <FormationTable formations={[
+                    ...formationRows.filter((row) => row.suite_id === suite),
+                    ...hostedFormations.filter((row) => row.suite_id === suite),
+                  ]} leaderboard />
                 </section>
               ))}
             </>
@@ -372,7 +419,11 @@ export function RoleLeadersPanel({
             <table className="lab-table">
               {category === 'all' ? (
                 <caption className="leaderboard-caption">
-                  Overall score averages Primary, Assistant, and Lite equally. All qualified runs contribute to one row per model. Models must qualify in all three roles.
+                  Overall score averages Primary, Assistant, and Lite equally. All qualified runs contribute to one row per model. Models must qualify in all three roles. Hosted models appear unranked in the role tables only.
+                </caption>
+              ) : categoryHostedCount > 0 ? (
+                <caption className="leaderboard-caption">
+                  Hosted models are listed unranked: their providers do not disclose parameter counts, so the size factor and score cannot be computed. They do not change ranked scores.
                 </caption>
               ) : null}
               <thead>
@@ -424,16 +475,26 @@ export function RoleLeadersPanel({
                     const scoreTitle = 'role_scores' in row
                       ? MODEL_ROLE_WIRE_ORDER.map((role) => `${roleLabel(role)}: ${formatNumber(row.role_scores[role], 1)}`).join(' · ')
                       : undefined;
-                    const displayRank =
-                      sortField === 'rank' || sortField === 'model' || sortField === 'role'
+                    // Positional ranks count ranked rows only; unranked hosted rows take no position.
+                    const rankedBefore = sortedRows.slice(0, index).filter(isRankedRow).length;
+                    const displayRank = !isRankedRow(row)
+                      ? undefined
+                      : sortField === 'rank' || sortField === 'model' || sortField === 'role'
                         ? row.rank
                         : sortDirection === 'desc'
-                          ? index + 1
-                          : sortedRows.length - index;
+                          ? rankedBefore + 1
+                          : rankedCount - rankedBefore;
                     return (
-                      <tr key={`${row.model.dataset_id}:${row.model.variant_id}:${row.model.model_digest ?? ''}:${row.model.role}`}>
+                      <tr
+                        key={`${row.model.dataset_id}:${row.model.variant_id}:${row.model.model_digest ?? ''}:${row.model.role}`}
+                        className={displayRank === undefined ? 'leaderboard-row-unranked' : undefined}
+                      >
                         <td className="leaderboard-rank-cell">
-                          <RankBadge rank={displayRank} />
+                          {displayRank !== undefined ? (
+                            <RankBadge rank={displayRank} />
+                          ) : (
+                            <span className="leaderboard-rank rank-unranked" title={HOSTED_UNRANKED_TITLE} aria-label="Not ranked">—</span>
+                          )}
                         </td>
                         <td>
                           <Link to={category === 'all' ? modelHref : `${modelHref}?role=${row.model.role}`}>
@@ -452,8 +513,8 @@ export function RoleLeadersPanel({
                         {category !== 'all' ? (
                           <td><RoleBadge role={row.model.role} /></td>
                         ) : null}
-                        <td className="role-leader-score" title={scoreTitle}>
-                          {formatNumber(row.score, 1)}
+                        <td className="role-leader-score" title={row.score !== undefined ? scoreTitle : HOSTED_UNRANKED_TITLE}>
+                          {row.score !== undefined ? formatNumber(row.score, 1) : <span className="unavailable-value">Not ranked</span>}
                         </td>
                         <td className="role-leader-accuracy">{formatPercent(row.pass_rate, 1)}<ModelScoreCoverage models={row.sources} /></td>
                         <td>
@@ -477,7 +538,11 @@ export function RoleLeadersPanel({
                           {formatTokens(row.output_tokens)}
                         </td>
                         <td className="role-leader-size">
-                          {formatParameterCount(row.parameter_count)}
+                          {row.parameter_count !== undefined ? (
+                            formatParameterCount(row.parameter_count)
+                          ) : (
+                            <span className="unavailable-value" title="The hosted provider does not disclose a parameter count.">Undisclosed</span>
+                          )}
                         </td>
                         <td>
                           {row.throughput_p50 !== undefined ? (

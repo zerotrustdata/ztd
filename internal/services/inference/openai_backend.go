@@ -259,7 +259,7 @@ func (b *OpenAIBackend) Generate(ctx context.Context, req models.GenerateRequest
 	var result openaiStreamResult
 	var parts []*operatorv1.InferenceResponsePart
 	var timeToFirstToken *int64
-	responseBody, err := b.consumeHostedResponse(ctx, resp, req.ProviderAttemptID, requestStartedAt, stopGeneration, func(capture *providerResponseCapture) (bool, error) {
+	response, err := b.consumeHostedResponse(ctx, resp, req.ProviderAttemptID, requestStartedAt, stopGeneration, func(capture *providerResponseCapture) (bool, error) {
 		var decodeErr error
 		allowParallelToolCalls := req.ParallelToolCalls == nil || *req.ParallelToolCalls
 		result, parts, timeToFirstToken, decodeErr = b.decodeStream(ctx, capture, capture.arrivalTime, allowParallelToolCalls, req.ProviderAttemptID, stream)
@@ -269,7 +269,7 @@ func (b *OpenAIBackend) Generate(ctx context.Context, req models.GenerateRequest
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, b.statusError(resp.StatusCode, responseBody, req.Model, req.ProviderAttemptID)
+		return nil, b.statusError(resp.StatusCode, response.body, req.Model, req.ProviderAttemptID)
 	}
 
 	attestation, servedModelDigest, err := hostedEgressAttestation(openaiComponent, b.origin, req, hostedResponseEvidence{
@@ -278,7 +278,7 @@ func (b *OpenAIBackend) Generate(ctx context.Context, req models.GenerateRequest
 		identityDigest:        identityDigest,
 		responseID:            result.responseID,
 		normalizedRequestHash: normalizedRequestHash,
-		rawResponse:           responseBody,
+		rawResponse:           response.body,
 	})
 	if err != nil {
 		return nil, err
@@ -291,10 +291,7 @@ func (b *OpenAIBackend) Generate(ctx context.Context, req models.GenerateRequest
 	if err != nil {
 		return nil, fmt.Errorf("%s: generate: %w", openaiComponent, err)
 	}
-	timingSource := operatorv1.InferenceTimingSource_INFERENCE_TIMING_SOURCE_UNSPECIFIED
-	if timeToFirstToken != nil {
-		timingSource = operatorv1.InferenceTimingSource_INFERENCE_TIMING_SOURCE_PROVIDER
-	}
+	timing := newHostedTiming(timeToFirstToken, response.completeNS)
 	return &models.GenerateResponse{
 		HostedEgress:          attestation,
 		Parts:                 parts,
@@ -304,8 +301,10 @@ func (b *OpenAIBackend) Generate(ctx context.Context, req models.GenerateRequest
 		UsageReported:         usage.reported,
 		ThinkingTokens:        usage.thinking,
 		CacheTokens:           usage.cached,
-		TimeToFirstTokenNS:    timeToFirstToken,
-		TimingSource:          timingSource,
+		GenerationDurationNS:  timing.generation,
+		TotalDurationNS:       timing.total,
+		TimeToFirstTokenNS:    timing.firstToken,
+		TimingSource:          timing.source,
 		FinishReason:          result.finishReason,
 		Model:                 req.Model,
 		ServedModelDigest:     servedModelDigest,

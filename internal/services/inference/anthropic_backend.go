@@ -278,7 +278,7 @@ func (b *AnthropicBackend) Generate(ctx context.Context, req models.GenerateRequ
 	var result anthropicStreamResult
 	var parts []*operatorv1.InferenceResponsePart
 	var ttft *int64
-	raw, err := b.consumeHostedResponse(ctx, resp, req.ProviderAttemptID, startedAt, stopGeneration, func(capture *providerResponseCapture) (bool, error) {
+	response, err := b.consumeHostedResponse(ctx, resp, req.ProviderAttemptID, startedAt, stopGeneration, func(capture *providerResponseCapture) (bool, error) {
 		var decodeErr error
 		parallel := req.ParallelToolCalls == nil || *req.ParallelToolCalls
 		result, parts, ttft, decodeErr = b.decodeStream(ctx, capture, capture.arrivalTime, parallel, req.ProviderAttemptID, stream)
@@ -288,11 +288,11 @@ func (b *AnthropicBackend) Generate(ctx context.Context, req models.GenerateRequ
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, b.statusError(resp.StatusCode, raw, req.ProviderAttemptID)
+		return nil, b.statusError(resp.StatusCode, response.body, req.ProviderAttemptID)
 	}
 	attestation, servedDigest, err := hostedEgressAttestation(anthropicComponent, b.origin, req, hostedResponseEvidence{
 		servedModel: result.servedModel, providerModelVersion: metadata.CreatedAt, identityDigest: digest,
-		responseID: result.responseID, normalizedRequestHash: requestHash, rawResponse: raw,
+		responseID: result.responseID, normalizedRequestHash: requestHash, rawResponse: response.body,
 	})
 	if err != nil {
 		return nil, err
@@ -305,15 +305,13 @@ func (b *AnthropicBackend) Generate(ctx context.Context, req models.GenerateRequ
 	if err != nil {
 		return nil, fmt.Errorf("%s: generate: %w", anthropicComponent, err)
 	}
-	timingSource := operatorv1.InferenceTimingSource_INFERENCE_TIMING_SOURCE_UNSPECIFIED
-	if ttft != nil {
-		timingSource = operatorv1.InferenceTimingSource_INFERENCE_TIMING_SOURCE_PROVIDER
-	}
+	timing := newHostedTiming(ttft, response.completeNS)
 	return &models.GenerateResponse{
 		HostedEgress: attestation, Parts: parts, Model: req.Model, ContextWindow: int32(metadata.MaxInputTokens),
 		PromptTokens: usage.prompt, CompletionTokens: usage.completion, TotalTokens: usage.prompt + usage.completion,
 		UsageReported: usage.reported, CacheTokens: usage.cached, ThinkingTokens: usage.thinking,
-		TimeToFirstTokenNS: ttft, TimingSource: timingSource, FinishReason: result.finishReason,
+		GenerationDurationNS: timing.generation, TotalDurationNS: timing.total,
+		TimeToFirstTokenNS: timing.firstToken, TimingSource: timing.source, FinishReason: result.finishReason,
 		ServedModelDigest: servedDigest, NormalizedRequestHash: requestHash, OutputHash: outputHash,
 	}, nil
 }
