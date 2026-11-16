@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -64,11 +66,19 @@ type GeminiBackend struct {
 
 var _ HostedBackend = (*GeminiBackend)(nil)
 
-// NewGeminiBackend builds a Gemini client against origin, the API origin the
-// attestation records. key is the API key; it is never logged or placed in a URL.
+// NewGeminiBackend builds a Gemini client only against the class's fixed API
+// origin. Reject a different origin before credentials can leave the process.
+// key is the API key; it is never logged or placed in a URL.
 func NewGeminiBackend(origin, key string, logger *slog.Logger) (*GeminiBackend, error) {
-	if key == "" || logger == nil {
+	if logger == nil {
 		return nil, fmt.Errorf("%s: %w", geminiComponent, constants.ErrMissingRequiredField)
+	}
+	expectedOrigin, _ := constants.HostedInferenceProviderOrigin(constants.InferenceProviderGemini)
+	if origin != expectedOrigin {
+		return nil, fmt.Errorf("%s: hosted origin: %w", geminiComponent, constants.ErrInferenceEndpointInvalid)
+	}
+	if strings.TrimSpace(key) == "" || strings.ContainsAny(key, "\r\n") {
+		return nil, fmt.Errorf("%s: %w", geminiComponent, constants.ErrInferenceHostedProviderKeyMissing)
 	}
 	headers := http.Header{}
 	headers.Set(constants.HeaderGoogAPIKey, key)
@@ -533,7 +543,7 @@ func geminiUsageCounts(usage *geminiUsage) (geminiTokenCounts, error) {
 		return *count
 	}
 	prompt, candidates, thoughts, cached := value(usage.PromptTokenCount), value(usage.CandidatesTokenCount), value(usage.ThoughtsTokenCount), usage.CachedContentTokenCount
-	if prompt < 0 || candidates < 0 || thoughts < 0 || (cached != nil && *cached < 0) || int64(candidates)+int64(thoughts) > int64(^uint32(0)>>1) {
+	if prompt < 0 || candidates < 0 || thoughts < 0 || (cached != nil && *cached < 0) || int64(prompt)+int64(candidates)+int64(thoughts) > math.MaxInt32 {
 		return geminiTokenCounts{}, invalid
 	}
 	counts := geminiTokenCounts{reported: true, prompt: prompt, completion: candidates + thoughts, cached: cached}
@@ -543,8 +553,9 @@ func geminiUsageCounts(usage *geminiUsage) (geminiTokenCounts, error) {
 	return counts, nil
 }
 
-// statusError classifies a non-200 generation response. The provider's
-// message is logged, never returned or signed: it can echo prompt material.
+// statusError classifies a non-200 generation response. Provider text is used
+// only for classification, never logged, returned, or signed: it can echo
+// prompt material or credentials (INV-STOR-LOG-01).
 func (b *GeminiBackend) statusError(status int, body []byte, req models.GenerateRequest) error {
 	var envelope struct {
 		Error geminiAPIError `json:"error"`
@@ -552,10 +563,7 @@ func (b *GeminiBackend) statusError(status int, body []byte, req models.Generate
 	_ = json.Unmarshal(body, &envelope)
 	b.logger.Warn("Gemini generation failed",
 		"status", status,
-		"provider_status", envelope.Error.Status,
-		"model", req.Model,
 		"provider_attempt_id", req.ProviderAttemptID,
-		"error", envelope.Error.Message,
 	)
 	message := strings.ToLower(envelope.Error.Message)
 	switch {
@@ -880,16 +888,13 @@ func (b *GeminiBackend) decodeStream(
 		if event.Error != nil {
 			b.logger.Warn("Gemini ended the response stream with an error",
 				"provider_attempt_id", providerAttemptID,
-				"model", result.servedModel,
-				"provider_status", event.Error.Status,
-				"error", event.Error.Message,
+				"provider_code", event.Error.Code,
 			)
 			return fail("%w", constants.ErrInferenceProviderStreamError)
 		}
 		if event.PromptFeedback != nil && event.PromptFeedback.BlockReason != "" {
 			b.logger.Warn("Gemini blocked the prompt",
 				"provider_attempt_id", providerAttemptID,
-				"block_reason", event.PromptFeedback.BlockReason,
 			)
 			return fail("prompt blocked by provider: %w", constants.ErrInferenceGenerateFailed)
 		}
@@ -921,8 +926,8 @@ func (b *GeminiBackend) decodeStream(
 			}
 			finishReason = candidate.FinishReason
 		}
-		if finished && len(eventParts) > 0 {
-			return fail("parts after finish: %w", constants.ErrInferenceProviderResponseInvalid)
+		if finished && (len(eventParts) > 0 || finishReason != "") {
+			return fail("candidate output after finish: %w", constants.ErrInferenceProviderResponseInvalid)
 		}
 		for _, part := range eventParts {
 			if part.GetToolCall() != nil {
@@ -950,7 +955,7 @@ func (b *GeminiBackend) decodeStream(
 			}
 			eventParts = released
 			if err := stream.publish(released, result.servedModel, timeToFirstToken); err != nil {
-				b.logger.Warn("Inference progress delivery failed", "provider_attempt_id", providerAttemptID, "error", err)
+				b.logger.Warn("Inference progress delivery failed", slog.String("provider_attempt_id", providerAttemptID), logging.ErrorKind(err))
 			}
 		}
 		parts = append(parts, eventParts...)
@@ -964,7 +969,7 @@ func (b *GeminiBackend) decodeStream(
 	if stream != nil {
 		tail := stream.finish(ctx)
 		if err := stream.publish(tail, result.servedModel, timeToFirstToken); err != nil {
-			b.logger.Warn("Inference progress delivery failed", "provider_attempt_id", providerAttemptID, "error", err)
+			b.logger.Warn("Inference progress delivery failed", slog.String("provider_attempt_id", providerAttemptID), logging.ErrorKind(err))
 		}
 		parts = append(parts, tail...)
 	}

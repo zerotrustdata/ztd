@@ -6697,6 +6697,10 @@
                 "provider_attempt_id": {
                     "type": "string"
                 },
+                "provider_class": {
+                    "description": "Hosted provider class that serves model; empty selects the local\nprovider. See InferenceRequested.provider_class.",
+                    "type": "string"
+                },
                 "request_schema_version": {
                     "type": "string"
                 },
@@ -6808,7 +6812,12 @@
                 "explicit_consent": {
                     "type": "boolean"
                 },
+                "model_identity_digest": {
+                    "description": "Hosted model identity digest of (provider_class, provider_origin,\nrequested_model, provider_model_version); models.ComputeHostedModelIdentityDigest.",
+                    "type": "string"
+                },
                 "model_version": {
+                    "description": "Model the provider reported serving (Gemini modelVersion).",
                     "type": "string"
                 },
                 "normalized_request_hash": {
@@ -6817,7 +6826,30 @@
                 "provenance": {
                     "type": "string"
                 },
+                "provider_class": {
+                    "description": "Hosted provider class that served the attempt (gemini, anthropic, openai).",
+                    "type": "string"
+                },
+                "provider_model_version": {
+                    "description": "Provider metadata version of requested_model, read immediately before the call.",
+                    "type": "string"
+                },
                 "provider_origin": {
+                    "type": "string"
+                },
+                "provider_response_id": {
+                    "description": "Provider-assigned response identifier (Gemini responseId).",
+                    "type": "string"
+                },
+                "raw_response_digest": {
+                    "description": "Hex SHA-256 of the provider's 200 response byte stream.",
+                    "type": "string"
+                },
+                "raw_response_size_bytes": {
+                    "type": "integer"
+                },
+                "requested_model": {
+                    "description": "Model the governed request named.",
                     "type": "string"
                 }
             }

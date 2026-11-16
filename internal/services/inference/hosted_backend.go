@@ -60,10 +60,11 @@ func NewHostedBackend(class string, logger *slog.Logger) (HostedBackend, error) 
 	if !ok {
 		return nil, fmt.Errorf("inference: hosted provider %q: %w", class, constants.ErrInferenceHostedProviderInvalid)
 	}
-	key := strings.TrimSpace(os.Getenv(string(keyEnv)))
-	if key == "" || strings.ContainsAny(key, "\r\n") {
+	key := os.Getenv(string(keyEnv))
+	if strings.TrimSpace(key) == "" || strings.ContainsAny(key, "\r\n") {
 		return nil, fmt.Errorf("inference: hosted provider %q: %s: %w", class, keyEnv, constants.ErrInferenceHostedProviderKeyMissing)
 	}
+	key = strings.TrimSpace(key)
 	switch class {
 	case constants.InferenceProviderGemini:
 		return NewGeminiBackend(origin, key, logger)

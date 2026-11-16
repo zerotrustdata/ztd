@@ -9,6 +9,7 @@ package dispatch
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,6 +19,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
+	"github.com/zerotrustdata/ztd/internal/testutil"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -192,6 +194,22 @@ func TestDispatchInference_HostedRoutesOnlyToAnOperatorServingTheClass(t *testin
 	req.TargetOperatorSessionID = "sess-local"
 	_, err = svc.resolveInferenceOperator(t.Context(), req)
 	require.ErrorIs(t, err, constants.ErrInferenceOperatorNotCapable)
+}
+
+func TestDispatchInference_HostedProvenanceFailureDoesNotLogContent(t *testing.T) {
+	t.Parallel()
+	const sensitive = "private-runtime-path"
+	req := hostedDispatchRequest(t, false)
+	req.ModelDigest = hostedIdentityDigest(t)
+	logger, sink := testutil.NewBufferLogger(t)
+	svc := NewDispatchService(&stubCommandDispatcher{result: hostedDispatchResult(t, req, true)}, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{hostedOp("sess-inf", constants.InferenceProviderGemini)}}, logger)
+	svc.SetHostedProvenanceRecorder(&recordingHostedRecorder{err: fmt.Errorf("persist %s: %w", sensitive, constants.ErrEnforcePermissions)})
+
+	_, err := svc.DispatchInference(testutil.Context(t), req)
+	require.NoError(t, err, "provenance recording is best effort outside a campaign")
+	assert.Contains(t, sink.String(), "hosted model provenance window not recorded")
+	assert.Contains(t, sink.String(), "provider_attempt_id="+req.ProviderAttemptID)
+	assert.NotContains(t, sink.String(), sensitive)
 }
 
 func TestDispatchInference_HostedRequestValidation(t *testing.T) {

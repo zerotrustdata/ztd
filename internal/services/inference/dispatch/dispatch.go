@@ -29,6 +29,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
 	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -766,8 +767,8 @@ func (s *DispatchService) recordHostedProvenance(ctx context.Context, req Dispat
 		return fmt.Errorf("inference dispatch: hosted model provenance: %w", err)
 	}
 	s.logger.Warn("inference dispatch: hosted model provenance window not recorded",
-		"provider_attempt_id", req.ProviderAttemptID,
-		"error", err)
+		slog.String("provider_attempt_id", req.ProviderAttemptID),
+		logging.ErrorKind(err))
 	return nil
 }
 

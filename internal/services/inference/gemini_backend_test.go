@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
@@ -43,12 +44,13 @@ func geminiToolCallStream(servedModel string) string {
 		geminiCapturedCallID, geminiCapturedSignature, servedModel, geminiTestResponseID, servedModel, geminiTestResponseID)
 }
 
-// geminiTextStream streams a thought, then text, ending with finishReason.
-func geminiTextStream(servedModel, finishReason string) string {
+// geminiTextStream streams a thought, then text from geminiTestModel, ending
+// with finishReason.
+func geminiTextStream(finishReason string) string {
 	return fmt.Sprintf(`data: {"candidates":[{"content":{"parts":[{"text":"weighing it","thought":true}],"role":"model"},"index":0}],"modelVersion":"%[1]s","responseId":"r1"}`+"\n\n"+
 		`data: {"candidates":[{"content":{"parts":[{"text":"Hello"}],"role":"model"},"index":0}],"modelVersion":"%[1]s","responseId":"r1"}`+"\n\n"+
 		`data: {"candidates":[{"content":{"parts":[{"text":" there"}],"role":"model"},"finishReason":"%[2]s","index":0}],"usageMetadata":{"promptTokenCount":7,"candidatesTokenCount":2,"thoughtsTokenCount":3,"cachedContentTokenCount":1},"modelVersion":"%[1]s","responseId":"r1"}`+"\n\n",
-		servedModel, finishReason)
+		geminiTestModel, finishReason)
 }
 
 func geminiModelMetadata(model, version string) string {
@@ -253,6 +255,31 @@ func TestGeminiBackend_RedirectIsNotFollowed(t *testing.T) {
 	assert.Equal(t, "generativelanguage.googleapis.com", fake.requests[0].URL.Host)
 }
 
+func TestNewGeminiBackend_RejectsInvalidCredentialTargets(t *testing.T) {
+	t.Parallel()
+	for _, origin := range []string{
+		"http://generativelanguage.googleapis.com",
+		"https://proxy.example",
+		"https://user:password@generativelanguage.googleapis.com",
+		"https://generativelanguage.googleapis.com/prefix",
+		"https://generativelanguage.googleapis.com?key=secret",
+		"https://generativelanguage.googleapis.com#fragment",
+	} {
+		t.Run(origin, func(t *testing.T) {
+			backend, err := NewGeminiBackend(origin, geminiTestKey, testutil.NewTestLogger())
+			require.ErrorIs(t, err, constants.ErrInferenceEndpointInvalid)
+			assert.Nil(t, backend)
+		})
+	}
+	for _, key := range []string{" ", "abc\ndef", "abc\rdef"} {
+		t.Run("invalid key "+fmt.Sprintf("%q", key), func(t *testing.T) {
+			backend, err := NewGeminiBackend(geminiOrigin(t), key, testutil.NewTestLogger())
+			require.ErrorIs(t, err, constants.ErrInferenceHostedProviderKeyMissing)
+			assert.Nil(t, backend)
+		})
+	}
+}
+
 func TestGeminiBackend_PinnedDigestBindsModelVersionAndServedModel(t *testing.T) {
 	t.Parallel()
 	pinned := geminiIdentityDigest(t, geminiTestModel, geminiTestVersion)
@@ -296,7 +323,7 @@ func TestGeminiBackend_PinnedDigestBindsModelVersionAndServedModel(t *testing.T)
 
 func TestGeminiBackend_GenerateRequestMapping(t *testing.T) {
 	t.Parallel()
-	fake := &geminiFake{stream: geminiTextStream(geminiTestModel, "STOP")}
+	fake := &geminiFake{stream: geminiTextStream("STOP")}
 	req := geminiRequest(geminiTestModel)
 	req.Tools = append(req.Tools, &operatorv1.InferenceToolDeclaration{Name: "other", JsonSchema: `{"type":"object"}`})
 	req.ToolChoice = &operatorv1.InferenceToolChoice{Mode: operatorv1.InferenceToolChoiceMode_INFERENCE_TOOL_CHOICE_MODE_AUTO, AllowedToolNames: []string{"get_weather"}}
@@ -349,7 +376,7 @@ func TestGeminiBackend_GenerateRequestMapping(t *testing.T) {
 func TestGeminiBackend_GenerationControls(t *testing.T) {
 	t.Parallel()
 	t.Run("disabled thinking sends a zero budget", func(t *testing.T) {
-		fake := &geminiFake{stream: geminiTextStream(geminiTestModel, "STOP")}
+		fake := &geminiFake{stream: geminiTextStream("STOP")}
 		req := geminiRequest(geminiTestModel)
 		req.Thinking = &operatorv1.InferenceThinkingControl{Mode: &operatorv1.InferenceThinkingControl_Enabled{Enabled: false}}
 		_, err := newFakeGeminiBackend(t, fake).Generate(testutil.Context(t), req)
@@ -358,7 +385,7 @@ func TestGeminiBackend_GenerationControls(t *testing.T) {
 		assert.Equal(t, map[string]any{"thinkingBudget": float64(0)}, config["thinkingConfig"])
 	})
 	t.Run("a JSON response format maps to a response schema", func(t *testing.T) {
-		fake := &geminiFake{stream: geminiTextStream(geminiTestModel, "STOP")}
+		fake := &geminiFake{stream: geminiTextStream("STOP")}
 		req := geminiRequest(geminiTestModel)
 		req.ResponseFormat = &operatorv1.InferenceResponseFormat{MediaType: "application/json", JsonSchema: `{"type":"object"}`}
 		_, err := newFakeGeminiBackend(t, fake).Generate(testutil.Context(t), req)
@@ -377,7 +404,7 @@ func TestGeminiBackend_GenerationControls(t *testing.T) {
 		},
 	} {
 		t.Run(name+" is refused before the prompt leaves", func(t *testing.T) {
-			fake := &geminiFake{stream: geminiTextStream(geminiTestModel, "STOP")}
+			fake := &geminiFake{stream: geminiTextStream("STOP")}
 			req := geminiRequest(geminiTestModel)
 			mutate(&req)
 			_, err := newFakeGeminiBackend(t, fake).Generate(testutil.Context(t), req)
@@ -403,7 +430,7 @@ func TestGeminiBackend_DecodesThoughtsTextAndFinishReasons(t *testing.T) {
 	t.Parallel()
 	for reason, want := range map[string]string{"STOP": "stop", "MAX_TOKENS": "length", "SAFETY": "error", "MALFORMED_FUNCTION_CALL": "error"} {
 		t.Run(reason, func(t *testing.T) {
-			fake := &geminiFake{stream: geminiTextStream(geminiTestModel, reason)}
+			fake := &geminiFake{stream: geminiTextStream(reason)}
 			resp, err := newFakeGeminiBackend(t, fake).Generate(testutil.Context(t), geminiRequest(geminiTestModel))
 			require.NoError(t, err)
 			assert.Equal(t, want, resp.FinishReason)
@@ -435,6 +462,7 @@ func TestGeminiBackend_StreamFailuresFailClosed(t *testing.T) {
 		"two candidates":         {`data: {"candidates":[{"index":0},{"index":1}],"modelVersion":"gemini-3.6-flash"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
 		"a changed served model": {`data: {"candidates":[{"content":{"parts":[{"text":"a"}]},"index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n" + `data: {"candidates":[{"content":{"parts":[{"text":"b"}]},"finishReason":"STOP","index":0}],"modelVersion":"gemini-x"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
 		"parts after the finish": {`data: {"candidates":[{"content":{"parts":[{"text":"a"}]},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n" + `data: {"candidates":[{"content":{"parts":[{"text":"b"}]},"index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
+		"a contradictory finish": {geminiTextStream("STOP") + `data: {"candidates":[{"finishReason":"SAFETY","index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
 		"an inline data part":    {`data: {"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"AA=="}}]},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3.6-flash"}` + "\n\n", constants.ErrInferenceProviderResponseInvalid},
 		"malformed JSON":         {"data: {not json\n\n", constants.ErrInferenceProviderResponseInvalid},
 	} {
@@ -451,6 +479,65 @@ func TestGeminiBackend_StreamFailuresFailClosed(t *testing.T) {
 		_, err := newFakeGeminiBackend(t, &geminiFake{stream: stream}).Generate(testutil.Context(t), req)
 		require.ErrorIs(t, err, constants.ErrInferenceProviderResponseInvalid)
 	})
+}
+
+func TestGeminiBackend_ProviderErrorsDoNotLogContent(t *testing.T) {
+	t.Parallel()
+	const sensitive = "private-prompt-and-api-key"
+	for name, tc := range map[string]struct {
+		fake *geminiFake
+		want error
+	}{
+		"HTTP error": {
+			&geminiFake{status: http.StatusBadRequest, errorBody: `{"error":{"code":400,"message":"` + sensitive + `","status":"` + sensitive + `"}}`},
+			constants.ErrInferenceGenerateFailed,
+		},
+		"stream error": {
+			&geminiFake{stream: `data: {"error":{"code":500,"message":"` + sensitive + `","status":"` + sensitive + `"}}` + "\n\n"},
+			constants.ErrInferenceProviderStreamError,
+		},
+		"blocked prompt": {
+			&geminiFake{stream: `data: {"promptFeedback":{"blockReason":"` + sensitive + `"}}` + "\n\n"},
+			constants.ErrInferenceGenerateFailed,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			backend := newFakeGeminiBackend(t, tc.fake)
+			logger, sink := testutil.NewBufferLogger(t)
+			backend.logger = logger
+			_, err := backend.Generate(testutil.Context(t), geminiRequest(geminiTestModel))
+			require.ErrorIs(t, err, tc.want)
+			assert.NotContains(t, err.Error(), sensitive)
+			assert.NotContains(t, sink.String(), sensitive)
+			assert.Contains(t, sink.String(), "provider_attempt_id=attempt-1", "failures remain diagnosable by attempt ID")
+		})
+	}
+}
+
+func TestGeminiBackend_ProgressFailuresDoNotLogContent(t *testing.T) {
+	t.Parallel()
+	const sensitive = "private-progress-content"
+	backend := newFakeGeminiBackend(t, &geminiFake{stream: geminiTextStream("STOP")})
+	logger, sink := testutil.NewBufferLogger(t)
+	backend.logger = logger
+	req := geminiRequest(geminiTestModel)
+	req.Stream = true
+	req.Scrubber = mustNewScrubbingSvc(t)
+	ctx := WithProgressReporter(testutil.Context(t), func(*operatorv1.InferenceProgressEvent) error {
+		return fmt.Errorf("delivery failed: %s", sensitive)
+	})
+	_, err := backend.Generate(ctx, req)
+	require.NoError(t, err, "progress delivery is best effort")
+	assert.Contains(t, sink.String(), "Inference progress delivery failed")
+	assert.NotContains(t, sink.String(), sensitive)
+}
+
+func TestGeminiBackend_RejectsOverflowingTotalTokens(t *testing.T) {
+	t.Parallel()
+	stream := geminiTextStream("STOP") + fmt.Sprintf(`data: {"usageMetadata":{"promptTokenCount":%d,"candidatesTokenCount":1}}`+"\n\n", math.MaxInt32)
+	response, err := newFakeGeminiBackend(t, &geminiFake{stream: stream}).Generate(testutil.Context(t), geminiRequest(geminiTestModel))
+	require.ErrorIs(t, err, constants.ErrInferenceProviderResponseInvalid)
+	assert.Nil(t, response, "overflow must fail before a negative total can be signed")
 }
 
 func TestGeminiBackend_StatusErrorsAreTyped(t *testing.T) {
@@ -514,6 +601,11 @@ func TestNewHostedBackend_RequiresKeyAndClient(t *testing.T) {
 	})
 	t.Run("a key split across lines fails closed", func(t *testing.T) {
 		t.Setenv(string(constants.EnvVar.GeminiAPIKey), "abc\ndef")
+		_, err := NewHostedBackend(constants.InferenceProviderGemini, testutil.NewTestLogger())
+		require.ErrorIs(t, err, constants.ErrInferenceHostedProviderKeyMissing)
+	})
+	t.Run("a trailing newline in a key fails closed", func(t *testing.T) {
+		t.Setenv(string(constants.EnvVar.GeminiAPIKey), geminiTestKey+"\n")
 		_, err := NewHostedBackend(constants.InferenceProviderGemini, testutil.NewTestLogger())
 		require.ErrorIs(t, err, constants.ErrInferenceHostedProviderKeyMissing)
 	})

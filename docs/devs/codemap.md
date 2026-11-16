@@ -143,7 +143,7 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | `internal/cli/` | CLI commands, API client, authentication, configuration, frontend-origin checks, process management, foreground Gateway and Operator startup, SSE, streams, platform helpers, TUI, and onboarding wizard. |
 | `internal/services/` | Gateway, outbound Operator, governance, transport, persistence, execution, evaluation, compliance, inference, public disclosure, and supporting services. |
 | `internal/constants/` | Go constants for paths, errors, protocol identifiers, permissions, Operator types (`OperatorType`) and capabilities (`OperatorCapabilities`), and runtime behavior. |
-| `internal/config/`, `internal/models/`, `internal/paths/` | Typed configuration, internal service models, and runtime paths derived from project root. |
+| `internal/config/`, `internal/models/`, `internal/paths/` | Typed configuration, internal service models, and runtime paths derived from project root. `internal/models/hosted_model_identity.go` owns `ComputeHostedModelIdentityDigest`, `HostedDispatchProviderClass`, and `ValidateHostedEgress`. |
 | `internal/netutil/` | Wildcard TCP port availability probes shared by configuration and process startup; Windows binds without listening to avoid firewall prompts. |
 | `internal/governance/` | Envelope hash helpers over canonical protobuf `GovernanceEnvelope`. L1 through L5 services reside in `internal/services/governance/`. |
 | `internal/ollama/` | Minimal HTTP client for Ollama model-maintenance endpoints. |
@@ -298,7 +298,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | Operators and dispatch | Operator, dispatch, inference dispatch, Tribunal authoring of typed `run_shell_command` arguments for governed `MCP_CALL` |
 | Streams and ingress | SSE, MCP, pub/sub |
 | Governance and health | Governance, health |
-| Observation and publication | Observe, observe producer, public feed, eval campaign publication, provider observation, model provenance |
+| Observation and publication | Observe, observe producer, public feed, eval campaign publication, provider observation, model provenance (`internal/services/gateway/model_provenance_observation.go`: `RecordHostedAttempt` records hosted provenance windows) |
 
 | Path | Owns |
 | :--- | :--- |
@@ -348,7 +348,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/auth/` | Host and system fingerprinting, CSR and certificate fingerprints, and current-account resolution. |
 | `internal/services/autochthon/` | Gateway-less `ztd autochthon` command (CLI: `internal/cli/cmd/autochthon/`): host sampling, local predictor population, `.ztd/autochthon/` hash-chained tally, and read-only status report. No governance path. |
 | `internal/services/compliance/` | KSI evaluation and history, OSCAL support, catalog validation, evidence import and graph verification, and signed report bundles. |
-| `internal/services/evaluation/` | Model campaign controller, campaign Operator role resolution (`campaign_operator_topology.go`), governed command lane, grading, evidence storage, conformance record storage and compliance admission (`conformance_store.go`, `conformance_compliance.go`), and campaign verification. |
+| `internal/services/evaluation/` | Model campaign controller, campaign Operator role resolution (`campaign_operator_topology.go`), governed command lane, grading, evidence storage, conformance record storage and compliance admission (`conformance_store.go`, `conformance_compliance.go`), and campaign verification. `model_inventory.go` owns `HostedModelVariant` and hosted-model retention on freeze. |
 | `internal/services/evaluation/conformance/` | Governance conformance suite (`governance-conformance@1.1.0`). `cases` holds the catalogue and its validation, `drive` the ingress drivers, fault mutators, sentinel, and attended wrapper, `canary` the effect snapshots, and `oracle` (with `oracle/oracletest`) the anchors, receipt verification, and ledger bracket. `run` captures evidence and writes the record, `verify` recomputes verdicts offline, and `report` builds coverage and recall. |
 | `internal/services/execution/` | Command execution and governed file edits. |
 | `internal/services/fs/` | Scoped `.ztd/` runtime file operations. |
@@ -356,9 +356,9 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/gateway/` | Gateway HTTP and control plane, including child packages in HTTP boundary table. |
 | `internal/services/gateway/embedded/` | In-process Operator substrate (`INV-MODE-02`). |
 | `internal/services/governance/` | L1, L2, L3, L4, L5, governance interfaces, state-root providers, signer stores, and public-key export. |
-| `internal/services/inference/` | Inference dispatch (`internal/services/inference/dispatch/`), provider backends, and attempt storage. |
+| `internal/services/inference/` | Inference dispatch (`internal/services/inference/dispatch/`), provider backends, and attempt storage. `hosted_backend.go` owns `HostedBackend` and `NewHostedBackends`; `gemini_backend.go` is the Gemini client. `dispatch/dispatch.go` owns hosted routing and `recordHostedProvenance`. |
 | `internal/services/inference/provider_observer/` | Provider-boundary GPU and RAM sampling. |
-| `internal/services/inference/model_provenance/` | Storage-side model weight attestation. |
+| `internal/services/inference/model_provenance/` | Storage-side model weight attestation. `hosted.go` derives the hosted attestation window (`HOSTED_PROVIDER_REPORTED`) from the Inference Operator's signed hosted egress attestation. |
 | `internal/services/keystore/` | Encrypted key storage for Gateway secrets and PKI. |
 | `internal/services/logging/` | Runtime log file and `slog` configuration. |
 | `internal/services/mcp/` | MCP and A2A gateway, native tools, field-path governance, suspension, and downstream clients. |

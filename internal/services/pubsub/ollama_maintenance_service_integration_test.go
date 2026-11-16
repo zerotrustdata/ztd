@@ -84,7 +84,7 @@ func (s stubHostedInventory) ListProviderModelInventory(context.Context) ([]infe
 
 func TestOllamaMaintenanceService_HandleInventoryRequest_IncludesHostedModels(t *testing.T) {
 	hosted := stubHostedInventory{entries: []inference.ProviderModelInventoryEntry{{
-		ServedModelTag: "gemini-3.6-flash", ModelDigest: ollamaTestDigestB, ProviderClass: constants.InferenceProviderGemini, Format: "hosted",
+		ServedModelTag: "gemini-3.6-flash", ModelDigest: ollamaTestDigestB, ProviderClass: constants.InferenceProviderGemini, Format: constants.HostedModelFormat,
 	}}}
 	env := newOllamaMaintenanceEnvWithEventsStore(t, fakeOllama(t, ollamaInventoryRoutes()), storagetest.NewTestEventsStore(t, ollamaTestSessionID), []inference.HostedBackend{hosted})
 

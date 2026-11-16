@@ -335,11 +335,8 @@ Examples:
 				if err != nil {
 					return fmt.Errorf("evaluation: models add: read provider: %w", err)
 				}
-				if variant, err = evaluation.HostedModelVariant(entries, providerClass, tag); err != nil {
+				if variant, err = evaluation.HostedModelVariant(entries, providerClass, tag, digest); err != nil {
 					return fmt.Errorf("evaluation: models add: %w", err)
-				}
-				if digest != "" && digest != variant.GetModelDigest() {
-					return fmt.Errorf("evaluation: models add: %s: %w", tag, constants.ErrInferenceModelDigestMismatch)
 				}
 			} else {
 				var parameterCount uint64

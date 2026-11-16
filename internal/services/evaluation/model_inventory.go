@@ -164,11 +164,15 @@ func modelVariantFromProviderEntry(entry inference.ProviderModelInventoryEntry) 
 
 // HostedModelVariant resolves one hosted model from a live provider inventory
 // into a registry variant bound to the hosted model identity digest the
-// Inference Operator reported for it.
-func HostedModelVariant(entries []inference.ProviderModelInventoryEntry, providerClass, servedModelTag string) (*evalv1.ModelVariant, error) {
+// Inference Operator reported for it. A non-empty expectedDigest must equal
+// that live identity: a caller's digest never overrides the provider's.
+func HostedModelVariant(entries []inference.ProviderModelInventoryEntry, providerClass, servedModelTag, expectedDigest string) (*evalv1.ModelVariant, error) {
 	entry, err := hostedInventoryEntry(entries, providerClass, servedModelTag)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: hosted model variant: %w", err)
+	}
+	if expectedDigest != "" && expectedDigest != entry.ModelDigest {
+		return nil, fmt.Errorf("evaluation: hosted model variant: %s model %q: %w", providerClass, servedModelTag, constants.ErrInferenceModelDigestMismatch)
 	}
 	return modelVariantFromProviderEntry(entry), nil
 }

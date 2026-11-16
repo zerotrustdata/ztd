@@ -43,8 +43,8 @@ func (d *inventoryOllamaDispatcher) DispatchOllamaModelCommand(_ context.Context
 func hostedInventoryTestEntries() []*operatorv1.ProviderModelInventoryEntry {
 	return []*operatorv1.ProviderModelInventoryEntry{
 		{ServedModelTag: "qwen3:0.6b", ModelDigest: models.SHA256Hex([]byte("qwen")), ProviderClass: constants.InferenceProviderOllama},
-		{ServedModelTag: "gemini-3.6-flash", ModelDigest: models.SHA256Hex([]byte("3.6")), ProviderClass: constants.InferenceProviderGemini, Format: "hosted"},
-		{ServedModelTag: "gemini-2.5-flash", ModelDigest: models.SHA256Hex([]byte("2.5")), ProviderClass: constants.InferenceProviderGemini, Format: "hosted"},
+		{ServedModelTag: "gemini-3.6-flash", ModelDigest: models.SHA256Hex([]byte("3.6")), ProviderClass: constants.InferenceProviderGemini, Format: constants.HostedModelFormat},
+		{ServedModelTag: "gemini-2.5-flash", ModelDigest: models.SHA256Hex([]byte("2.5")), ProviderClass: constants.InferenceProviderGemini, Format: constants.HostedModelFormat},
 	}
 }
 
@@ -99,22 +99,28 @@ func TestHostedModelVariant(t *testing.T) {
 	t.Parallel()
 	entries := inference.ProviderModelInventoryEntriesFromProto(hostedInventoryTestEntries())
 
-	variant, err := HostedModelVariant(entries, constants.InferenceProviderGemini, "gemini-2.5-flash")
+	variant, err := HostedModelVariant(entries, constants.InferenceProviderGemini, "gemini-2.5-flash", "")
 	require.NoError(t, err)
 	assert.Equal(t, constants.InferenceProviderGemini, variant.GetProviderClass())
 	assert.Equal(t, "gemini-2.5-flash", variant.GetServedModelTag())
 	assert.Equal(t, models.SHA256Hex([]byte("2.5")), variant.GetModelDigest())
-	assert.Equal(t, "hosted", variant.GetModelFormat())
+	assert.Equal(t, constants.HostedModelFormat, variant.GetModelFormat())
 
-	_, err = HostedModelVariant(entries, constants.InferenceProviderGemini, "gemini-9-ultra")
+	pinned, err := HostedModelVariant(entries, constants.InferenceProviderGemini, "gemini-2.5-flash", models.SHA256Hex([]byte("2.5")))
+	require.NoError(t, err, "a digest that agrees with the live identity")
+	assert.Equal(t, variant.GetModelDigest(), pinned.GetModelDigest())
+	_, err = HostedModelVariant(entries, constants.InferenceProviderGemini, "gemini-2.5-flash", models.SHA256Hex([]byte("stale")))
+	require.ErrorIs(t, err, constants.ErrInferenceModelDigestMismatch, "a caller's digest never overrides the provider's identity")
+
+	_, err = HostedModelVariant(entries, constants.InferenceProviderGemini, "gemini-9-ultra", "")
 	require.ErrorIs(t, err, constants.ErrInferenceModelNotFound)
-	_, err = HostedModelVariant(entries, constants.InferenceProviderOpenAI, "gemini-2.5-flash")
+	_, err = HostedModelVariant(entries, constants.InferenceProviderOpenAI, "gemini-2.5-flash", "")
 	require.ErrorIs(t, err, constants.ErrInferenceModelNotFound, "a model is resolved only from its own provider class")
-	_, err = HostedModelVariant(entries, constants.InferenceProviderOllama, "qwen3:0.6b")
+	_, err = HostedModelVariant(entries, constants.InferenceProviderOllama, "qwen3:0.6b", "")
 	require.ErrorIs(t, err, constants.ErrInferenceHostedNotAllowed)
 
 	undigested := []inference.ProviderModelInventoryEntry{{ServedModelTag: "gemini-2.5-flash", ProviderClass: constants.InferenceProviderGemini}}
-	_, err = HostedModelVariant(undigested, constants.InferenceProviderGemini, "gemini-2.5-flash")
+	_, err = HostedModelVariant(undigested, constants.InferenceProviderGemini, "gemini-2.5-flash", "")
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 }
 
