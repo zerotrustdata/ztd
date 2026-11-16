@@ -1716,6 +1716,7 @@ inference request to the Inference Node.
 | retry_count | [uint32](#uint32) |  | Zero-based retry ordinal for this provider attempt. |
 | seed | [int32](#int32) | optional | Optional deterministic generation seed forwarded to the provider when supported. Absent means use the provider default. |
 | decision | [InferenceDecisionRequest](#ztd-operator-v1-InferenceDecisionRequest) |  | Exclusive with messages, tools, streaming and generation controls. |
+| provider_class | [string](#string) |  | Hosted provider class that serves model; empty selects the local provider. See InferenceRequested.provider_class. |
 
 
 
@@ -1789,15 +1790,25 @@ verified completion after the HTTP response has started.
 
 ### InferenceHostedEgressAttestation
 Included in result_digest and therefore bound by the Operator&#39;s signed L5 receipt.
+For hosted generation it is the Inference Operator&#39;s model provenance record:
+the provider cannot attest weights, so the Operator records what the provider
+reported serving and the exact bytes it received.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | provider_origin | [string](#string) |  |  |
-| model_version | [string](#string) |  |  |
+| model_version | [string](#string) |  | Model the provider reported serving (Gemini modelVersion). |
 | provenance | [string](#string) |  |  |
 | normalized_request_hash | [string](#string) |  |  |
 | explicit_consent | [bool](#bool) |  |  |
+| provider_class | [string](#string) |  | Hosted provider class that served the attempt (gemini, anthropic, openai). |
+| requested_model | [string](#string) |  | Model the governed request named. |
+| provider_model_version | [string](#string) |  | Provider metadata version of requested_model, read immediately before the call. |
+| model_identity_digest | [string](#string) |  | Hosted model identity digest of (provider_class, provider_origin, requested_model, provider_model_version); models.ComputeHostedModelIdentityDigest. |
+| provider_response_id | [string](#string) |  | Provider-assigned response identifier (Gemini responseId). |
+| raw_response_digest | [string](#string) |  | Hex SHA-256 of the provider&#39;s 200 response byte stream. |
+| raw_response_size_bytes | [uint64](#uint64) |  |  |
 
 
 
@@ -1954,6 +1965,7 @@ finalized only after terminal receipt/result evidence is available.
 | retry_count | [uint32](#uint32) |  | Zero-based retry ordinal for this provider attempt. Each retry uses a distinct provider_attempt_id and is durably retained. |
 | seed | [int32](#int32) | optional | Optional deterministic generation seed forwarded to the provider when supported. Absent means use the provider default. |
 | decision | [InferenceDecisionRequest](#ztd-operator-v1-InferenceDecisionRequest) |  | Exclusive with messages, tools, streaming and generation controls. |
+| provider_class | [string](#string) |  | Hosted provider class (gemini, anthropic, openai) that serves model. Empty selects the Operator&#39;s local provider (Ollama or llama.cpp). A hosted class is the envelope&#39;s explicit consent to hosted egress: the Operator serves it only when started with that class in --inference-hosted-providers. |
 
 
 
@@ -2101,6 +2113,7 @@ InferenceToolCall carries a model-requested function invocation. arguments_json 
 | call_id | [string](#string) |  |  |
 | name | [string](#string) |  |  |
 | arguments_json | [string](#string) |  |  |
+| provider_signature | [string](#string) |  | Opaque continuation token the provider attached to this call (a Gemini thought signature). It is not content: the scrubber never reads it, the result digest covers it, and a later turn returns it to the same provider verbatim, which a hosted provider requires to continue a tool call. |
 
 
 
@@ -2700,6 +2713,7 @@ OperatorDocument.runtime_config.
 | inference_llamacpp_endpoint | [string](#string) |  | Approved remote llama.cpp llama-server URL (--inference-llamacpp-endpoint). |
 | inference_llamacpp_model_root | [string](#string) |  | llama-server --models-dir as seen by this Operator (--inference-llamacpp-model-root). |
 | provenance_operator_model_storage_format | [string](#string) |  | Model store layout under provenance_operator_model_storage_root (--model-storage-format: ollama or llamacpp). |
+| inference_hosted_providers | [string](#string) | repeated | Hosted inference provider classes this Operator serves (--inference-hosted-providers). |
 
 
 

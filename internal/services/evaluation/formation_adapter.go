@@ -174,7 +174,7 @@ func FormationModelFromVariant(variant *evalv1.ModelVariant) FormationModel {
 	}
 	trust := FormationTrustSovereign
 	providerClass := variant.GetProviderClass()
-	if providerClass == "gemini" {
+	if constants.IsHostedInferenceProvider(providerClass) {
 		trust = FormationTrustDelegated
 	}
 	provider := variant.GetModelFamily()

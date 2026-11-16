@@ -274,7 +274,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		return nil, fmt.Errorf("gateway: create embedded operator working directory: %w", err)
 	}
 	reg := NewRegistrationService(docStore, kvStore, pki, logger, userSvc, cliSessionSvc, operatorSessionSvc, &cfg.Gateway)
-	if err := reg.UpdateOperatorRuntimeConfig(ctx, string(constants.DocIDEmbeddedOperator), &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(cfg.EffectiveOperatorCapabilities()), HttpPort: int32(cfg.HTTPPort), LocalDir: cfg.WorkDir, InferenceOllamaEndpoint: cfg.Inference.OllamaEndpoint, InferenceLlamacppEndpoint: cfg.Inference.LlamaCppEndpoint, InferenceLlamacppModelRoot: cfg.Inference.LlamaCppModelRoot, InferenceKeepAlive: cfg.Inference.KeepAlive, ProvenanceOperatorId: cfg.ProvenanceOperator.OperatorID, ProvenanceOperatorModelStorageRoot: cfg.ProvenanceOperator.ModelStorageRoot, ProvenanceOperatorModelStorageFormat: cfg.ProvenanceOperator.ModelStorageFormat, ProviderBoundaryObserverId: cfg.ProviderBoundaryObserver.ObserverID}); err != nil {
+	if err := reg.UpdateOperatorRuntimeConfig(ctx, string(constants.DocIDEmbeddedOperator), &operatorv1.OperatorRuntimeConfig{Capabilities: models.OperatorCapabilitiesToProto(cfg.EffectiveOperatorCapabilities()), HttpPort: int32(cfg.HTTPPort), LocalDir: cfg.WorkDir, InferenceOllamaEndpoint: cfg.Inference.OllamaEndpoint, InferenceLlamacppEndpoint: cfg.Inference.LlamaCppEndpoint, InferenceLlamacppModelRoot: cfg.Inference.LlamaCppModelRoot, InferenceKeepAlive: cfg.Inference.KeepAlive, InferenceHostedProviders: cfg.Inference.HostedProviders, ProvenanceOperatorId: cfg.ProvenanceOperator.OperatorID, ProvenanceOperatorModelStorageRoot: cfg.ProvenanceOperator.ModelStorageRoot, ProvenanceOperatorModelStorageFormat: cfg.ProvenanceOperator.ModelStorageFormat, ProviderBoundaryObserverId: cfg.ProviderBoundaryObserver.ObserverID}); err != nil {
 		return nil, fmt.Errorf("gateway: embedded runtime config: %w", err)
 	}
 
@@ -435,6 +435,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 				Inference:                handlers.Inference,
 				InferenceAttemptStore:    handlers.InferenceAttemptStore,
 				InferenceProvider:        handlers.InferenceProvider,
+				InferenceHosted:          handlers.InferenceHosted,
 				ProviderBoundaryObserver: handlers.ProviderBoundaryObserver,
 				ModelProvenanceOperator:  handlers.ModelProvenanceOperator,
 				Logger:                   embeddedOperatorLogger,
@@ -571,6 +572,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 	if provenanceWindowStore, err := model_provenance.NewWindowStore(b.fileSvc); err == nil {
 		modelProvenanceCoord = NewModelProvenanceObservationCoordinator(dispatchSvc, ownerOperatorLister, wsHandler, provenanceWindowStore, evidenceWindows, logger)
 		inferenceDispatchSvc.SetProvenanceObservationNotifier(modelProvenanceCoord)
+		inferenceDispatchSvc.SetHostedProvenanceRecorder(modelProvenanceCoord)
 	} else {
 		logger.Warn("Model provenance attestation window store unavailable", "error", err)
 	}

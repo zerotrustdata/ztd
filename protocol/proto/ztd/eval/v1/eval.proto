@@ -832,6 +832,10 @@ enum ModelManifestVerificationStatus {
   MODEL_MANIFEST_VERIFICATION_STATUS_VERIFIED = 2;
   MODEL_MANIFEST_VERIFICATION_STATUS_FAILED = 3;
   MODEL_MANIFEST_VERIFICATION_STATUS_UNAVAILABLE = 4;
+  // A hosted provider served the attempt. There are no weights or manifest to
+  // hash; the window carries the Inference Operator's signed hosted model
+  // record instead (ModelProvenanceAttestationWindow.hosted).
+  MODEL_MANIFEST_VERIFICATION_STATUS_HOSTED_PROVIDER_REPORTED = 5;
 }
 
 // ModelProvenanceAttestationWindow binds cryptographic model-weight evidence
@@ -851,6 +855,25 @@ message ModelProvenanceAttestationWindow {
   int64 attested_at_unix_ms = 12;
   bool digest_match = 13;
   string attestation_digest = 14;
+  // Set only under MODEL_MANIFEST_VERIFICATION_STATUS_HOSTED_PROVIDER_REPORTED.
+  HostedModelAttestation hosted = 15;
+}
+
+// HostedModelAttestation is the hosted provider model record an Inference
+// Operator signed into one attempt's InferenceResult. provenance_operator_id of
+// its window names that Inference Operator.
+message HostedModelAttestation {
+  string provider_class = 1;
+  string provider_origin = 2;
+  string requested_model = 3;
+  string provider_model_version = 4;
+  // Model the provider reported serving.
+  string served_model = 5;
+  string provider_response_id = 6;
+  string raw_response_digest = 7;
+  // Inference transaction whose signed receipt binds result_digest.
+  string inference_transaction_id = 8;
+  string result_digest = 9;
 }
 
 // ModelProvenanceObservationPhase identifies one lifecycle transition for a

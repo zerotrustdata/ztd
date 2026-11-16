@@ -61,6 +61,7 @@ type GatewayFlags struct {
 	InferenceLlamaCppEndpoint            string
 	InferenceLlamaCppModelRoot           string
 	InferenceKeepAlive                   string
+	InferenceHostedProviders             []string
 	ProviderBoundaryObserverID           string
 	ProvenanceOperatorID                 string
 	ProvenanceOperatorModelStorageRoot   string
@@ -107,6 +108,7 @@ func addGatewayFlags(cmd *cobra.Command, f *GatewayFlags) {
 	cmd.Flags().StringVar(&f.InferenceLlamaCppEndpoint, "inference-llamacpp-endpoint", "", "Approved llama.cpp llama-server router endpoint for embedded inference; selects the llama.cpp provider instead of Ollama")
 	cmd.Flags().StringVar(&f.InferenceLlamaCppModelRoot, "inference-llamacpp-model-root", "", "llama-server --models-dir as seen by the Gateway (required with --inference-llamacpp-endpoint)")
 	cmd.Flags().StringVar(&f.InferenceKeepAlive, "inference-keep-alive", "", "Provider keep-alive duration (llama.cpp accepts -1 or 0)")
+	cmd.Flags().StringSliceVar(&f.InferenceHostedProviders, "inference-hosted-providers", nil, "Hosted inference providers this Inference Operator serves besides its local provider: gemini,anthropic,openai (repeat or comma-separate; each needs its API key, for example GEMINI_API_KEY, in the environment or .env)")
 	cmd.Flags().StringVar(&f.ProviderBoundaryObserverID, "provider-boundary-observer-id", "", "Stable observer identity")
 	cmd.Flags().StringVar(&f.ProvenanceOperatorID, "provenance-operator-id", "", "Stable provenance identity")
 	cmd.Flags().StringVar(&f.ProvenanceOperatorModelStorageRoot, "model-storage-root", "", "Root directory of the model weight store")
@@ -186,6 +188,7 @@ func gatewayFlagsToServeConfig(f GatewayFlags) serve.GatewayConfig {
 		InferenceLlamaCppEndpoint:            f.InferenceLlamaCppEndpoint,
 		InferenceLlamaCppModelRoot:           f.InferenceLlamaCppModelRoot,
 		InferenceKeepAlive:                   f.InferenceKeepAlive,
+		InferenceHostedProviders:             f.InferenceHostedProviders,
 		ProviderBoundaryObserverID:           f.ProviderBoundaryObserverID,
 		ProvenanceOperatorID:                 f.ProvenanceOperatorID,
 		ProvenanceOperatorModelStorageRoot:   f.ProvenanceOperatorModelStorageRoot,

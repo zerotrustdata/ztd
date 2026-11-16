@@ -178,7 +178,8 @@ func ComputeDecisionOutputHash(result *operatorv1.InferenceDecisionResult) (stri
 // ValidateDecisionCompletion checks the decision branch and its signed egress declaration.
 func ValidateDecisionCompletion(input *operatorv1.InferenceDecisionRequest, result *operatorv1.InferenceResult) error {
 	if input == nil {
-		if result.GetDecision() != nil || result.GetHostedEgress() != nil {
+		// A generation's hosted egress attestation is checked by ValidateHostedEgress.
+		if result.GetDecision() != nil {
 			return constants.ErrInferenceDecisionResponseInvalid
 		}
 		return nil

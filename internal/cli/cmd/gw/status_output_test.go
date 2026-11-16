@@ -336,6 +336,7 @@ func TestGatewayStatusListsEveryOperatorWithTypeCapabilitiesAndStartValues(t *te
 		{"inference", "--inference-llamacpp-endpoint", "(default)"},
 		{"inference", "--inference-llamacpp-model-root", "(default)"},
 		{"inference", "--inference-keep-alive", "30m"},
+		{"inference", "--inference-hosted-providers", "(default)"},
 		{"provenance", "--model-storage-root", "/mnt/models"},
 		{"provenance", "--model-storage-format", "(default)"},
 		{"provenance", "--provenance-operator-id", "(default)"},

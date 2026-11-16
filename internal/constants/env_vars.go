@@ -44,6 +44,9 @@ var EnvVar = struct {
 	GOModCache            EnvVarKey
 	GOPath                EnvVarKey
 	CloudflareAPIToken    EnvVarKey
+	GeminiAPIKey          EnvVarKey
+	AnthropicAPIKey       EnvVarKey
+	OpenAIAPIKey          EnvVarKey
 }{
 	OllamaEndpoint:        EnvVarKey("ZTD_OLLAMA_ENDPOINT"),
 	E2EFleetSessions:      EnvVarKey("ZTD_E2E_FLEET_SESSIONS"),
@@ -77,12 +80,18 @@ var EnvVar = struct {
 	GOModCache:            EnvVarKey("GOMODCACHE"),
 	GOPath:                EnvVarKey("GOPATH"),
 	CloudflareAPIToken:    EnvVarKey("CLOUDFLARE_API_TOKEN"),
+	GeminiAPIKey:          EnvVarKey("GEMINI_API_KEY"),
+	AnthropicAPIKey:       EnvVarKey("ANTHROPIC_API_KEY"),
+	OpenAIAPIKey:          EnvVarKey("OPENAI_API_KEY"),
 }
 
 // SecretEnvVars are the registry keys in category "secret". They are ztd's own
 // credentials and are withheld from governed child processes.
 var SecretEnvVars = []EnvVarKey{
 	EnvVar.CloudflareAPIToken,
+	EnvVar.GeminiAPIKey,
+	EnvVar.AnthropicAPIKey,
+	EnvVar.OpenAIAPIKey,
 }
 
 // UserEndpointEnvVars are the registry keys in category "user_endpoint".

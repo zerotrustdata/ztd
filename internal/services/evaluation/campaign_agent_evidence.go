@@ -219,7 +219,7 @@ func verifyV7EpisodeOutputs(trace *AgentTrace) error {
 		for _, requested := range calls {
 			spec, declared := specs[requested.GetName()]
 			request := decodeAgentToolRequest(spec, declared, requested.GetArgumentsJson())
-			if requested.GetCallId() == tool.ProviderCallID && requested.GetName() == tool.ToolName && request.ArgumentsJSON == tool.ArgumentsJSON {
+			if requested.GetCallId() == tool.ProviderCallID && requested.GetProviderSignature() == tool.ProviderSignature && requested.GetName() == tool.ToolName && request.ArgumentsJSON == tool.ArgumentsJSON {
 				found = true
 				break
 			}

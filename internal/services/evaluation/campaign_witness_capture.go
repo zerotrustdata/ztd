@@ -122,7 +122,7 @@ func (c *CampaignWitnessCapture) WaitForRunModelProvenanceEvidence(ctx context.C
 	if c == nil || runID == "" {
 		return fmt.Errorf("evaluation: wait for run model provenance evidence: %w", constants.ErrMissingRequiredField)
 	}
-	attempts, err := c.runScoredAttempts(ctx, runID)
+	attempts, err := c.runScoredAttempts(ctx, runID, scoredModelInferences)
 	if err != nil {
 		return fmt.Errorf("evaluation: wait for run model provenance evidence: %w", err)
 	}
@@ -137,24 +137,24 @@ func (c *CampaignWitnessCapture) WaitForRunProviderObservationEvidence(ctx conte
 	if c == nil || runID == "" {
 		return fmt.Errorf("evaluation: wait for run provider observation evidence: %w", constants.ErrMissingRequiredField)
 	}
-	attempts, err := c.runScoredAttempts(ctx, runID)
+	attempts, err := c.runScoredAttempts(ctx, runID, observableModelInferences)
 	if err != nil {
 		return fmt.Errorf("evaluation: wait for run provider observation evidence: %w", err)
 	}
 	return c.waitForProviderObservationEvidence(ctx, runID, attempts)
 }
 
-// runScoredAttempts maps the provider attempt ID of every scored inference in one
-// run's persisted assignment results that reached its provider to the assignment
-// that holds it.
-func (c *CampaignWitnessCapture) runScoredAttempts(ctx context.Context, runID string) (map[string]string, error) {
+// runScoredAttempts maps the provider attempt ID of every inference that
+// inferences selects from one run's persisted assignment results and that
+// reached its provider to the assignment that holds it.
+func (c *CampaignWitnessCapture) runScoredAttempts(ctx context.Context, runID string, inferences func(*evalv1.EvaluationAssignmentResult) []*evalv1.ModelInferenceRecord) (map[string]string, error) {
 	results, err := c.persistedResults(ctx, runID)
 	if err != nil {
 		return nil, err
 	}
 	attempts := make(map[string]string)
 	for assignmentID, result := range results {
-		for _, record := range scoredModelInferences(result) {
+		for _, record := range inferences(result) {
 			// A governance-rejected inference has no provider attempt.
 			if attemptID := record.GetProviderAttemptId(); attemptID != "" {
 				attempts[attemptID] = assignmentID
@@ -241,7 +241,7 @@ func (c *CampaignWitnessCapture) persistedResults(ctx context.Context, runID str
 // both.
 func (c *CampaignWitnessCapture) captureAssignmentProviderEvidence(ctx context.Context, result *evalv1.EvaluationAssignmentResult) error {
 	runID := result.GetRunId()
-	for _, inferenceRecord := range scoredModelInferences(result) {
+	for _, inferenceRecord := range observableModelInferences(result) {
 		attemptID := inferenceRecord.GetProviderAttemptId()
 		if attemptID == "" {
 			continue

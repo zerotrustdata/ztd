@@ -4307,8 +4307,11 @@ type OperatorRuntimeConfig struct {
 	// Model store layout under provenance_operator_model_storage_root
 	// (--model-storage-format: ollama or llamacpp).
 	ProvenanceOperatorModelStorageFormat string `protobuf:"bytes,26,opt,name=provenance_operator_model_storage_format,json=provenanceOperatorModelStorageFormat,proto3" json:"provenance_operator_model_storage_format,omitempty"`
-	unknownFields                        protoimpl.UnknownFields
-	sizeCache                            protoimpl.SizeCache
+	// Hosted inference provider classes this Operator serves
+	// (--inference-hosted-providers).
+	InferenceHostedProviders []string `protobuf:"bytes,27,rep,name=inference_hosted_providers,json=inferenceHostedProviders,proto3" json:"inference_hosted_providers,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *OperatorRuntimeConfig) Reset() {
@@ -4486,6 +4489,13 @@ func (x *OperatorRuntimeConfig) GetProvenanceOperatorModelStorageFormat() string
 		return x.ProvenanceOperatorModelStorageFormat
 	}
 	return ""
+}
+
+func (x *OperatorRuntimeConfig) GetInferenceHostedProviders() []string {
+	if x != nil {
+		return x.InferenceHostedProviders
+	}
+	return nil
 }
 
 // OperatorDocument is the canonical Operator record. The Gateway owns and
@@ -11193,8 +11203,13 @@ type InferenceToolCall struct {
 	CallId        string                 `protobuf:"bytes,1,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	ArgumentsJson string                 `protobuf:"bytes,3,opt,name=arguments_json,json=argumentsJson,proto3" json:"arguments_json,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Opaque continuation token the provider attached to this call (a Gemini
+	// thought signature). It is not content: the scrubber never reads it, the
+	// result digest covers it, and a later turn returns it to the same provider
+	// verbatim, which a hosted provider requires to continue a tool call.
+	ProviderSignature string `protobuf:"bytes,4,opt,name=provider_signature,json=providerSignature,proto3" json:"provider_signature,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *InferenceToolCall) Reset() {
@@ -11244,6 +11259,13 @@ func (x *InferenceToolCall) GetName() string {
 func (x *InferenceToolCall) GetArgumentsJson() string {
 	if x != nil {
 		return x.ArgumentsJson
+	}
+	return ""
+}
+
+func (x *InferenceToolCall) GetProviderSignature() string {
+	if x != nil {
+		return x.ProviderSignature
 	}
 	return ""
 }
@@ -12606,7 +12628,13 @@ type InferenceRequested struct {
 	// supported. Absent means use the provider default.
 	Seed *int32 `protobuf:"varint,29,opt,name=seed,proto3,oneof" json:"seed,omitempty"`
 	// Exclusive with messages, tools, streaming and generation controls.
-	Decision      *InferenceDecisionRequest `protobuf:"bytes,30,opt,name=decision,proto3" json:"decision,omitempty"`
+	Decision *InferenceDecisionRequest `protobuf:"bytes,30,opt,name=decision,proto3" json:"decision,omitempty"`
+	// Hosted provider class (gemini, anthropic, openai) that serves model. Empty
+	// selects the Operator's local provider (Ollama or llama.cpp). A hosted
+	// class is the envelope's explicit consent to hosted egress: the Operator
+	// serves it only when started with that class in
+	// --inference-hosted-providers.
+	ProviderClass string `protobuf:"bytes,31,opt,name=provider_class,json=providerClass,proto3" json:"provider_class,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -12842,6 +12870,13 @@ func (x *InferenceRequested) GetDecision() *InferenceDecisionRequest {
 		return x.Decision
 	}
 	return nil
+}
+
+func (x *InferenceRequested) GetProviderClass() string {
+	if x != nil {
+		return x.ProviderClass
+	}
+	return ""
 }
 
 // InferenceProviderAttemptRecord is the durable operator-local record for one
@@ -13512,7 +13547,10 @@ type InferenceDispatchRequest struct {
 	// supported. Absent means use the provider default.
 	Seed *int32 `protobuf:"varint,36,opt,name=seed,proto3,oneof" json:"seed,omitempty"`
 	// Exclusive with messages, tools, streaming and generation controls.
-	Decision      *InferenceDecisionRequest `protobuf:"bytes,37,opt,name=decision,proto3" json:"decision,omitempty"`
+	Decision *InferenceDecisionRequest `protobuf:"bytes,37,opt,name=decision,proto3" json:"decision,omitempty"`
+	// Hosted provider class that serves model; empty selects the local
+	// provider. See InferenceRequested.provider_class.
+	ProviderClass string `protobuf:"bytes,38,opt,name=provider_class,json=providerClass,proto3" json:"provider_class,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -13797,6 +13835,13 @@ func (x *InferenceDispatchRequest) GetDecision() *InferenceDecisionRequest {
 		return x.Decision
 	}
 	return nil
+}
+
+func (x *InferenceDispatchRequest) GetProviderClass() string {
+	if x != nil {
+		return x.ProviderClass
+	}
+	return ""
 }
 
 // InferenceDispatchFailure is the protocol-owned error body for a non-2xx
@@ -14120,15 +14165,33 @@ func (x *InferenceDispatchResponse) GetObservationReceipts() []*EventReceipt {
 }
 
 // Included in result_digest and therefore bound by the Operator's signed L5 receipt.
+// For hosted generation it is the Inference Operator's model provenance record:
+// the provider cannot attest weights, so the Operator records what the provider
+// reported serving and the exact bytes it received.
 type InferenceHostedEgressAttestation struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	ProviderOrigin        string                 `protobuf:"bytes,1,opt,name=provider_origin,json=providerOrigin,proto3" json:"provider_origin,omitempty"`
-	ModelVersion          string                 `protobuf:"bytes,2,opt,name=model_version,json=modelVersion,proto3" json:"model_version,omitempty"`
-	Provenance            string                 `protobuf:"bytes,3,opt,name=provenance,proto3" json:"provenance,omitempty"`
-	NormalizedRequestHash string                 `protobuf:"bytes,4,opt,name=normalized_request_hash,json=normalizedRequestHash,proto3" json:"normalized_request_hash,omitempty"`
-	ExplicitConsent       bool                   `protobuf:"varint,5,opt,name=explicit_consent,json=explicitConsent,proto3" json:"explicit_consent,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ProviderOrigin string                 `protobuf:"bytes,1,opt,name=provider_origin,json=providerOrigin,proto3" json:"provider_origin,omitempty"`
+	// Model the provider reported serving (Gemini modelVersion).
+	ModelVersion          string `protobuf:"bytes,2,opt,name=model_version,json=modelVersion,proto3" json:"model_version,omitempty"`
+	Provenance            string `protobuf:"bytes,3,opt,name=provenance,proto3" json:"provenance,omitempty"`
+	NormalizedRequestHash string `protobuf:"bytes,4,opt,name=normalized_request_hash,json=normalizedRequestHash,proto3" json:"normalized_request_hash,omitempty"`
+	ExplicitConsent       bool   `protobuf:"varint,5,opt,name=explicit_consent,json=explicitConsent,proto3" json:"explicit_consent,omitempty"`
+	// Hosted provider class that served the attempt (gemini, anthropic, openai).
+	ProviderClass string `protobuf:"bytes,6,opt,name=provider_class,json=providerClass,proto3" json:"provider_class,omitempty"`
+	// Model the governed request named.
+	RequestedModel string `protobuf:"bytes,7,opt,name=requested_model,json=requestedModel,proto3" json:"requested_model,omitempty"`
+	// Provider metadata version of requested_model, read immediately before the call.
+	ProviderModelVersion string `protobuf:"bytes,8,opt,name=provider_model_version,json=providerModelVersion,proto3" json:"provider_model_version,omitempty"`
+	// Hosted model identity digest of (provider_class, provider_origin,
+	// requested_model, provider_model_version); models.ComputeHostedModelIdentityDigest.
+	ModelIdentityDigest string `protobuf:"bytes,9,opt,name=model_identity_digest,json=modelIdentityDigest,proto3" json:"model_identity_digest,omitempty"`
+	// Provider-assigned response identifier (Gemini responseId).
+	ProviderResponseId string `protobuf:"bytes,10,opt,name=provider_response_id,json=providerResponseId,proto3" json:"provider_response_id,omitempty"`
+	// Hex SHA-256 of the provider's 200 response byte stream.
+	RawResponseDigest    string `protobuf:"bytes,11,opt,name=raw_response_digest,json=rawResponseDigest,proto3" json:"raw_response_digest,omitempty"`
+	RawResponseSizeBytes uint64 `protobuf:"varint,12,opt,name=raw_response_size_bytes,json=rawResponseSizeBytes,proto3" json:"raw_response_size_bytes,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *InferenceHostedEgressAttestation) Reset() {
@@ -14194,6 +14257,55 @@ func (x *InferenceHostedEgressAttestation) GetExplicitConsent() bool {
 		return x.ExplicitConsent
 	}
 	return false
+}
+
+func (x *InferenceHostedEgressAttestation) GetProviderClass() string {
+	if x != nil {
+		return x.ProviderClass
+	}
+	return ""
+}
+
+func (x *InferenceHostedEgressAttestation) GetRequestedModel() string {
+	if x != nil {
+		return x.RequestedModel
+	}
+	return ""
+}
+
+func (x *InferenceHostedEgressAttestation) GetProviderModelVersion() string {
+	if x != nil {
+		return x.ProviderModelVersion
+	}
+	return ""
+}
+
+func (x *InferenceHostedEgressAttestation) GetModelIdentityDigest() string {
+	if x != nil {
+		return x.ModelIdentityDigest
+	}
+	return ""
+}
+
+func (x *InferenceHostedEgressAttestation) GetProviderResponseId() string {
+	if x != nil {
+		return x.ProviderResponseId
+	}
+	return ""
+}
+
+func (x *InferenceHostedEgressAttestation) GetRawResponseDigest() string {
+	if x != nil {
+		return x.RawResponseDigest
+	}
+	return ""
+}
+
+func (x *InferenceHostedEgressAttestation) GetRawResponseSizeBytes() uint64 {
+	if x != nil {
+		return x.RawResponseSizeBytes
+	}
+	return 0
 }
 
 // AuditChainCheckpointPayload is the canonical protobuf payload for
@@ -14840,7 +14952,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1f\n" +
 	"\voperator_id\x18\x02 \x01(\tR\n" +
 	"operatorId\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05error\"\xe2\t\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"\xa0\n" +
+	"\n" +
 	"\x15OperatorRuntimeConfig\x12\x1d\n" +
 	"\n" +
 	"cloud_mode\x18\x01 \x01(\bR\tcloudMode\x12%\n" +
@@ -14863,7 +14976,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x17inference_decision_only\x18\x17 \x01(\bR\x15inferenceDecisionOnly\x12>\n" +
 	"\x1binference_llamacpp_endpoint\x18\x18 \x01(\tR\x19inferenceLlamacppEndpoint\x12A\n" +
 	"\x1dinference_llamacpp_model_root\x18\x19 \x01(\tR\x1ainferenceLlamacppModelRoot\x12V\n" +
-	"(provenance_operator_model_storage_format\x18\x1a \x01(\tR$provenanceOperatorModelStorageFormatJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\n" +
+	"(provenance_operator_model_storage_format\x18\x1a \x01(\tR$provenanceOperatorModelStorageFormat\x12<\n" +
+	"\x1ainference_hosted_providers\x18\x1b \x03(\tR\x18inferenceHostedProvidersJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05J\x04\b\n" +
 	"\x10\vJ\x04\b\f\x10\rJ\x04\b\r\x10\x0eR\x15local_storage_enabledR\x11inference_enabledR\"provider_boundary_observer_enabledR\x1bprovenance_operator_enabledR\x06no_git\"\xfd\f\n" +
 	"\x10OperatorDocument\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
@@ -15502,11 +15616,12 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12\x14\n" +
 	"\x05found\x18\x03 \x01(\bR\x05found\x12\x1c\n" +
-	"\tremaining\x18\x04 \x01(\x05R\tremaining\"g\n" +
+	"\tremaining\x18\x04 \x01(\x05R\tremaining\"\x96\x01\n" +
 	"\x11InferenceToolCall\x12\x17\n" +
 	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12%\n" +
-	"\x0earguments_json\x18\x03 \x01(\tR\rargumentsJson\"c\n" +
+	"\x0earguments_json\x18\x03 \x01(\tR\rargumentsJson\x12-\n" +
+	"\x12provider_signature\x18\x04 \x01(\tR\x11providerSignature\"c\n" +
 	"\x13InferenceToolResult\x12\x17\n" +
 	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1f\n" +
@@ -15592,7 +15707,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\rprobabilities\x18\x02 \x03(\v2-.ztd.operator.v1.InferenceDecisionProbabilityR\rprobabilities\x12\x1e\n" +
 	"\n" +
 	"confidence\x18\x03 \x01(\x01R\n" +
-	"confidence\"\x81\v\n" +
+	"confidence\"\xa8\v\n" +
 	"\x12InferenceRequested\x12.\n" +
 	"\x04role\x18\x01 \x01(\x0e2\x1a.ztd.operator.v1.ModelRoleR\x04role\x12\x14\n" +
 	"\x05model\x18\x02 \x01(\tR\x05model\x12 \n" +
@@ -15629,7 +15744,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\vretry_count\x18\x1c \x01(\rR\n" +
 	"retryCount\x12\x17\n" +
 	"\x04seed\x18\x1d \x01(\x05H\x04R\x04seed\x88\x01\x01\x12E\n" +
-	"\bdecision\x18\x1e \x01(\v2).ztd.operator.v1.InferenceDecisionRequestR\bdecisionB\b\n" +
+	"\bdecision\x18\x1e \x01(\v2).ztd.operator.v1.InferenceDecisionRequestR\bdecision\x12%\n" +
+	"\x0eprovider_class\x18\x1f \x01(\tR\rproviderClassB\b\n" +
 	"\x06_top_pB\b\n" +
 	"\x06_top_kB\x16\n" +
 	"\x14_parallel_tool_callsB\x10\n" +
@@ -15707,7 +15823,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x17_time_to_first_token_ns\"\x88\x01\n" +
 	"\x13InferenceCompletion\x127\n" +
 	"\areceipt\x18\x01 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\areceipt\x128\n" +
-	"\x06result\x18\x02 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\"\x91\r\n" +
+	"\x06result\x18\x02 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\"\xb8\r\n" +
 	"\x18InferenceDispatchRequest\x12.\n" +
 	"\x04role\x18\x01 \x01(\x0e2\x1a.ztd.operator.v1.ModelRoleR\x04role\x12\x14\n" +
 	"\x05model\x18\x03 \x01(\tR\x05model\x12 \n" +
@@ -15751,7 +15867,8 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\vretry_count\x18# \x01(\rR\n" +
 	"retryCount\x12\x17\n" +
 	"\x04seed\x18$ \x01(\x05H\x04R\x04seed\x88\x01\x01\x12E\n" +
-	"\bdecision\x18% \x01(\v2).ztd.operator.v1.InferenceDecisionRequestR\bdecisionB\b\n" +
+	"\bdecision\x18% \x01(\v2).ztd.operator.v1.InferenceDecisionRequestR\bdecision\x12%\n" +
+	"\x0eprovider_class\x18& \x01(\tR\rproviderClassB\b\n" +
 	"\x06_top_pB\b\n" +
 	"\x06_top_kB\x16\n" +
 	"\x14_parallel_tool_callsB\x10\n" +
@@ -15776,7 +15893,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x128\n" +
 	"\x06result\x18\x02 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\x127\n" +
 	"\areceipt\x18\x03 \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\areceipt\x12P\n" +
-	"\x14observation_receipts\x18\x04 \x03(\v2\x1d.ztd.operator.v1.EventReceiptR\x13observationReceipts\"\xf3\x01\n" +
+	"\x14observation_receipts\x18\x04 \x03(\v2\x1d.ztd.operator.v1.EventReceiptR\x13observationReceipts\"\xc6\x04\n" +
 	" InferenceHostedEgressAttestation\x12'\n" +
 	"\x0fprovider_origin\x18\x01 \x01(\tR\x0eproviderOrigin\x12#\n" +
 	"\rmodel_version\x18\x02 \x01(\tR\fmodelVersion\x12\x1e\n" +
@@ -15784,7 +15901,15 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"provenance\x18\x03 \x01(\tR\n" +
 	"provenance\x126\n" +
 	"\x17normalized_request_hash\x18\x04 \x01(\tR\x15normalizedRequestHash\x12)\n" +
-	"\x10explicit_consent\x18\x05 \x01(\bR\x0fexplicitConsent\"\xff\x01\n" +
+	"\x10explicit_consent\x18\x05 \x01(\bR\x0fexplicitConsent\x12%\n" +
+	"\x0eprovider_class\x18\x06 \x01(\tR\rproviderClass\x12'\n" +
+	"\x0frequested_model\x18\a \x01(\tR\x0erequestedModel\x124\n" +
+	"\x16provider_model_version\x18\b \x01(\tR\x14providerModelVersion\x122\n" +
+	"\x15model_identity_digest\x18\t \x01(\tR\x13modelIdentityDigest\x120\n" +
+	"\x14provider_response_id\x18\n" +
+	" \x01(\tR\x12providerResponseId\x12.\n" +
+	"\x13raw_response_digest\x18\v \x01(\tR\x11rawResponseDigest\x125\n" +
+	"\x17raw_response_size_bytes\x18\f \x01(\x04R\x14rawResponseSizeBytes\"\xff\x01\n" +
 	"\x1bAuditChainCheckpointPayload\x12,\n" +
 	"\x12pruned_through_seq\x18\x01 \x01(\x03R\x10prunedThroughSeq\x12.\n" +
 	"\x13pruned_through_hash\x18\x02 \x01(\tR\x11prunedThroughHash\x12.\n" +

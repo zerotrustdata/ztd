@@ -18,11 +18,6 @@ import (
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
-// FormationDelegatedRegistryDigestPlaceholder is the frozen-registry digest used
-// for delegated catalog models that are not discovered from a sovereign provider
-// inventory. Weight attestation is skipped at execution time.
-const FormationDelegatedRegistryDigestPlaceholder = "0000000000000000000000000000000000000000000000000000000000000000"
-
 // FormationCatalogServedTags returns the unique served model tags required by
 // the checked-in ExecutionTopologies catalog, sorted lexicographically.
 func FormationCatalogServedTags() []string {
@@ -75,10 +70,9 @@ func selectFormations(topologies *ExecutionTopologies, formationIDs []string) ([
 }
 
 // MaterializeFormationVariants selects the registry variants the named
-// formations require, or every catalog formation when none is named. Sovereign
-// served tags must be present in the source; delegated catalog models missing
-// from the source receive deterministic placeholder digests for registry binding.
-// A nil catalog selects the built-in defaults.
+// formations require, or every catalog formation when none is named. Every
+// served tag, sovereign or delegated, must be present in the source with a
+// model digest. A nil catalog selects the built-in defaults.
 func MaterializeFormationVariants(sourceVariants []*evalv1.ModelVariant, formationIDs []string, catalog *ExecutionTopologies) ([]*evalv1.ModelVariant, error) {
 	formations, err := selectFormations(catalog, formationIDs)
 	if err != nil {
@@ -91,14 +85,13 @@ func MaterializeFormationVariants(sourceVariants []*evalv1.ModelVariant, formati
 			if _, exists := selected[model.ServedModelTag]; exists {
 				continue
 			}
+			// A delegated model binds the hosted model identity digest its
+			// provider inventory reported, as a sovereign model binds its weights.
 			variant := lookupFormationVariant(registry, model.VariantID, model.ServedModelTag)
 			if variant == nil {
-				if model.Trust != FormationTrustDelegated {
-					return nil, fmt.Errorf("evaluation: formation catalog inventory: served tag %q: %w", model.ServedModelTag, constants.ErrInferenceModelNotFound)
-				}
-				variant = formationDelegatedCatalogVariant(model)
+				return nil, fmt.Errorf("evaluation: formation catalog inventory: served tag %q: %w", model.ServedModelTag, constants.ErrInferenceModelNotFound)
 			}
-			if model.Trust == FormationTrustSovereign && variant.GetModelDigest() == "" {
+			if variant.GetModelDigest() == "" {
 				return nil, fmt.Errorf("evaluation: formation catalog inventory: served tag %q: %w", model.ServedModelTag, constants.ErrFormationAttestationRequired)
 			}
 			selected[model.ServedModelTag] = proto.Clone(variant).(*evalv1.ModelVariant)
@@ -162,10 +155,10 @@ func FormationCatalogPullEntries() ([]ModelPullEntry, error) {
 
 // FormationCatalogFixtureVariants returns typed registry variants covering every
 // served tag in the checked-in catalog. digestForTag supplies deterministic
-// digests for hermetic tests.
+// digests for hermetic tests and is required.
 func FormationCatalogFixtureVariants(digestForTag func(string) string) []*evalv1.ModelVariant {
 	if digestForTag == nil {
-		digestForTag = func(string) string { return FormationDelegatedRegistryDigestPlaceholder }
+		return nil
 	}
 	topologies, err := NewExecutionTopologies()
 	if err != nil {
@@ -187,16 +180,6 @@ func FormationCatalogFixtureVariants(digestForTag func(string) string) []*evalv1
 		variants = append(variants, seen[tag])
 	}
 	return variants
-}
-
-func formationDelegatedCatalogVariant(model FormationModel) *evalv1.ModelVariant {
-	return &evalv1.ModelVariant{
-		VariantId:      "freeze-" + model.VariantID,
-		ProviderClass:  model.ProviderClass,
-		ServedModelTag: model.ServedModelTag,
-		ModelDigest:    FormationDelegatedRegistryDigestPlaceholder,
-		ModelFamily:    model.Family,
-	}
 }
 
 func formationCatalogFixtureVariant(model FormationModel, digest string) *evalv1.ModelVariant {

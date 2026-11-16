@@ -79,3 +79,27 @@ func TestNewProvenanceOperatorConfig_ModelStorageFormat(t *testing.T) {
 	_, err = newProvenanceOperatorConfig(true, LoadOptions{ProvenanceOperatorModelStorageRoot: "/models", ProvenanceOperatorModelStorageFormat: "safetensors"})
 	require.ErrorIs(t, err, constants.ErrProvenanceModelStorageFormatInvalid)
 }
+
+func TestNewInferenceConfig_HostedProviders(t *testing.T) {
+	got, err := newInferenceConfig(true, LoadOptions{InferenceHostedProviders: []string{" OpenAI", "gemini", "openai"}})
+	require.NoError(t, err)
+	assert.Equal(t, []string{constants.InferenceProviderGemini, constants.InferenceProviderOpenAI}, got.HostedProviders, "classes are normalized, ordered, and named once")
+
+	got, err = newInferenceConfig(true, LoadOptions{})
+	require.NoError(t, err)
+	assert.Empty(t, got.HostedProviders, "no hosted provider is served unless named")
+
+	for name, classes := range map[string][]string{
+		"a local class":   {constants.InferenceProviderOllama},
+		"an unknown name": {"acme"},
+		"an empty name":   {""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := newInferenceConfig(true, LoadOptions{InferenceHostedProviders: classes})
+			require.ErrorIs(t, err, constants.ErrInferenceHostedProviderInvalid)
+		})
+	}
+
+	_, err = newInferenceConfig(false, LoadOptions{InferenceHostedProviders: []string{constants.InferenceProviderGemini}})
+	require.ErrorIs(t, err, constants.ErrInferenceHostedRequiresInference, "a hosted provider needs the inference capability")
+}

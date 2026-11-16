@@ -755,6 +755,7 @@ func (r *agentRun) loop(ctx context.Context) error {
 			}
 			assistant.Parts = append(assistant.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
 				CallId: toolCall.GetCallId(), Name: toolCall.GetName(), ArgumentsJson: executed.ArgumentsJSON,
+				ProviderSignature: toolCall.GetProviderSignature(),
 			}}})
 			results = append(results, &operatorv1.InferenceMessage{
 				Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_TOOL,
@@ -1164,6 +1165,7 @@ func (r *agentRun) bindInference(call *AgentModelCall, modelRole evalv1.ModelCam
 		Role:                    inferenceRole,
 		Model:                   variant.GetServedModelTag(),
 		ModelDigest:             variant.GetModelDigest(),
+		ProviderClass:           models.HostedDispatchProviderClass(variant.GetProviderClass()),
 		TargetOperatorSessionID: r.trace.Inference.SessionID,
 		Messages:                messages,
 		Tools:                   tools,
@@ -1240,11 +1242,12 @@ func recordInferenceResponse(call *AgentModelCall, probe InferenceProbeRequest, 
 // result; only a harness failure returns an error.
 func (r *agentRun) runTool(ctx context.Context, turn int, modelCallID string, toolCall *operatorv1.InferenceToolCall) (AgentToolCall, error) {
 	record := AgentToolCall{
-		CallID:         r.executor.newID("tool-call"),
-		ModelCallID:    modelCallID,
-		ProviderCallID: toolCall.GetCallId(),
-		ToolName:       toolCall.GetName(),
-		LoopTurn:       turn,
+		CallID:            r.executor.newID("tool-call"),
+		ModelCallID:       modelCallID,
+		ProviderCallID:    toolCall.GetCallId(),
+		ProviderSignature: toolCall.GetProviderSignature(),
+		ToolName:          toolCall.GetName(),
+		LoopTurn:          turn,
 	}
 	spec, declared := r.tools.Spec(toolCall.GetName())
 	request := decodeAgentToolRequest(spec, declared, toolCall.GetArgumentsJson())

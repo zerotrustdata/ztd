@@ -37,6 +37,9 @@ type OllamaMaintenanceService struct {
 	eventsStore *storage.LocalFirstEventsStore
 	scrubbing   *scrubbing.ScrubbingService
 	provider    inference.Provider
+	// hosted are the Operator's hosted provider clients; their models join
+	// the inventory after the local provider's.
+	hosted []inference.HostedBackend
 }
 
 // NewOllamaMaintenanceService creates a new OllamaMaintenanceService. Every dependency
@@ -45,6 +48,8 @@ type OllamaMaintenanceService struct {
 // with constants.ErrEgressScrubberUnavailable when it is nil or disabled. eventsStore records
 // observed-state content evidence; a nil store fails with constants.ErrLocalFirstEventsStoreRequired.
 // provider is nil on an Operator without inference, where every command fails closed.
+// hosted lists the Operator's hosted provider clients, whose models the inventory
+// command also reports.
 func NewOllamaMaintenanceService(
 	cfg *config.Config,
 	logger *slog.Logger,
@@ -52,6 +57,7 @@ func NewOllamaMaintenanceService(
 	scrubbingSvc *scrubbing.ScrubbingService,
 	eventsStore *storage.LocalFirstEventsStore,
 	provider inference.Provider,
+	hosted []inference.HostedBackend,
 ) (*OllamaMaintenanceService, error) {
 	if cfg == nil || logger == nil || client == nil {
 		return nil, fmt.Errorf("ollama maintenance service: %w", constants.ErrMissingRequiredField)
@@ -69,6 +75,7 @@ func NewOllamaMaintenanceService(
 		eventsStore: eventsStore,
 		scrubbing:   scrubbingSvc,
 		provider:    provider,
+		hosted:      hosted,
 	}, nil
 }
 
@@ -97,6 +104,13 @@ func (s *OllamaMaintenanceService) HandleInventoryRequest(ctx context.Context, m
 	entries, err := backend.ListProviderModelInventory(ctx)
 	if err != nil {
 		return fail(executionID, err)
+	}
+	for _, hosted := range s.hosted {
+		hostedEntries, err := hosted.ListProviderModelInventory(ctx)
+		if err != nil {
+			return fail(executionID, fmt.Errorf("%s: %w", hosted.ProviderClass(), err))
+		}
+		entries = append(entries, hostedEntries...)
 	}
 
 	payload := &operatorv1.OllamaModelInventoryResult{

@@ -62,9 +62,12 @@ func InferenceModelRoleFromProto(r operatorv1.ModelRole) InferenceModelRole {
 	}
 }
 
-// GenerateRequest carries the Ollama model name, ordered scrubbed conversation, callable tools, and generation parameters.
+// GenerateRequest carries the model name, ordered scrubbed conversation, callable tools, and generation parameters.
 type GenerateRequest struct {
-	Role                 InferenceModelRole
+	Role InferenceModelRole
+	// ProviderClass names the hosted provider that serves Model; empty is the
+	// Operator's local provider.
+	ProviderClass        string
 	Model                string
 	Messages             []*operatorv1.InferenceMessage
 	Tools                []*operatorv1.InferenceToolDeclaration
@@ -154,6 +157,7 @@ type BackendStatus struct {
 type InferenceRequestPayload struct {
 	Decision             *operatorv1.InferenceDecisionRequest
 	Role                 InferenceModelRole
+	ProviderClass        string
 	Model                string
 	Messages             []*operatorv1.InferenceMessage
 	Tools                []*operatorv1.InferenceToolDeclaration
@@ -238,6 +242,7 @@ func FromProtoInferenceRequested(req *operatorv1.InferenceRequested) InferenceRe
 	return InferenceRequestPayload{
 		Role:                 InferenceModelRoleFromProto(req.GetRole()),
 		Decision:             cloneDecisionRequest(req.GetDecision()),
+		ProviderClass:        req.GetProviderClass(),
 		Model:                req.GetModel(),
 		Messages:             messages,
 		Tools:                tools,
@@ -278,6 +283,7 @@ func (p InferenceRequestPayload) ToGenerateRequest(defaultModel string) Generate
 	}
 	return GenerateRequest{
 		Role:                 p.Role,
+		ProviderClass:        p.ProviderClass,
 		Model:                model,
 		Messages:             p.Messages,
 		Tools:                p.Tools,

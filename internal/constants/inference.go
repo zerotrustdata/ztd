@@ -72,12 +72,78 @@ const (
 )
 
 // Inference provider classes. The class names the provider API an Inference
-// Operator calls; it is recorded on provider inventory entries and formation
-// models. Both are local providers serving weights the deployment holds.
+// Operator calls; it is recorded on provider inventory entries, formation
+// models, and governed inference requests. Ollama and llama.cpp are local
+// providers serving weights the deployment holds. Gemini, Anthropic, and
+// OpenAI are hosted providers: the Operator calls the vendor's API with the
+// vendor's API key, and the weights stay with the vendor.
 const (
-	InferenceProviderOllama   = "ollama"
-	InferenceProviderLlamaCpp = "llamacpp"
+	InferenceProviderOllama    = "ollama"
+	InferenceProviderLlamaCpp  = "llamacpp"
+	InferenceProviderGemini    = "gemini"
+	InferenceProviderAnthropic = "anthropic"
+	InferenceProviderOpenAI    = "openai"
 )
+
+// HostedInferenceProviders lists every hosted provider class, in the order
+// --inference-hosted-providers documents them.
+var HostedInferenceProviders = []string{InferenceProviderGemini, InferenceProviderAnthropic, InferenceProviderOpenAI}
+
+// IsLocalInferenceProvider reports whether class names a provider serving
+// weights the deployment holds.
+func IsLocalInferenceProvider(class string) bool {
+	return class == InferenceProviderOllama || class == InferenceProviderLlamaCpp
+}
+
+// IsHostedInferenceProvider reports whether class names a hosted provider.
+func IsHostedInferenceProvider(class string) bool {
+	for _, hosted := range HostedInferenceProviders {
+		if class == hosted {
+			return true
+		}
+	}
+	return false
+}
+
+// HostedInferenceProviderOrigin returns the API origin a hosted provider
+// class calls. It is bound into every hosted model identity digest, so it is
+// a fixed value, never configuration.
+func HostedInferenceProviderOrigin(class string) (string, bool) {
+	switch class {
+	case InferenceProviderGemini:
+		return "https://generativelanguage.googleapis.com", true
+	case InferenceProviderAnthropic:
+		return "https://api.anthropic.com", true
+	case InferenceProviderOpenAI:
+		return "https://api.openai.com", true
+	default:
+		return "", false
+	}
+}
+
+// HostedInferenceProviderAPIKeyEnv returns the secret env key holding a hosted
+// provider class's API key. Each is the vendor's own variable name, so the
+// agent CLIs ztd mcp agent run launches read the same key.
+func HostedInferenceProviderAPIKeyEnv(class string) (EnvVarKey, bool) {
+	switch class {
+	case InferenceProviderGemini:
+		return EnvVar.GeminiAPIKey, true
+	case InferenceProviderAnthropic:
+		return EnvVar.AnthropicAPIKey, true
+	case InferenceProviderOpenAI:
+		return EnvVar.OpenAIAPIKey, true
+	default:
+		return "", false
+	}
+}
+
+// HostedModelFormat is the provider inventory format of a hosted model: the
+// vendor serves it, so it has no local weight format.
+const HostedModelFormat = "hosted"
+
+// HostedModelProvenance labels a hosted generation's egress attestation: the
+// provider reported the model it served; no weights were attested.
+const HostedModelProvenance = "hosted-provider-reported"
 
 // Model store layouts a Provenance Operator attests beneath its
 // --model-storage-root (--model-storage-format).

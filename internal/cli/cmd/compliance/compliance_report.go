@@ -690,7 +690,9 @@ func buildCampaignReportSource(ctx context.Context, fileSvc fs.RuntimeFileServic
 	if err != nil {
 		return compliancereport.GenerationSource{}, nil, err
 	}
-	attemptIDs := make(map[string]struct{})
+	// attemptIDs maps each scored provider attempt to whether a
+	// provider-boundary observer witnessed it.
+	attemptIDs := make(map[string]bool)
 	for _, assignment := range assignments {
 		exists, existsErr := store.AssignmentResultExists(ctx, runID, assignment.GetAssignmentId())
 		if existsErr != nil {
@@ -705,7 +707,7 @@ func buildCampaignReportSource(ctx context.Context, fileSvc fs.RuntimeFileServic
 		}
 		for _, inferenceRecord := range result.GetModelInferences() {
 			if inferenceRecord.GetProviderAttemptId() != "" {
-				attemptIDs[inferenceRecord.GetProviderAttemptId()] = struct{}{}
+				attemptIDs[inferenceRecord.GetProviderAttemptId()] = evaluation.ProviderObservable(inferenceRecord)
 			}
 		}
 	}
@@ -714,16 +716,21 @@ func buildCampaignReportSource(ctx context.Context, fileSvc fs.RuntimeFileServic
 		attemptIDList = append(attemptIDList, attemptID)
 	}
 	sort.Strings(attemptIDList)
-	// Each scored attempt's sealed provider attempt record, observation window, and
-	// model provenance attestation window sit in the run's evidence directory,
-	// which is collected above. Loading them through the store proves the copy
-	// exists; a missing copy fails the bundle.
+	// Each scored attempt's sealed model provenance attestation window, and for
+	// a locally served attempt its sealed provider attempt record and
+	// observation window, sit in the run's evidence directory, which is
+	// collected above. A hosted provider runs on no host an observer witnesses,
+	// so a hosted attempt's evidence is its hosted provenance window alone.
+	// Loading them through the store proves the copy exists; a missing copy
+	// fails the bundle.
 	for _, attemptID := range attemptIDList {
-		if _, err := store.LoadProviderAttemptRecord(ctx, runID, attemptID); err != nil {
-			return compliancereport.GenerationSource{}, nil, fmt.Errorf("%w: load sealed provider attempt %s: %w", constants.ErrEvalRunVerificationFailed, attemptID, err)
-		}
-		if _, err := store.LoadProviderObservationWindow(ctx, runID, attemptID); err != nil {
-			return compliancereport.GenerationSource{}, nil, fmt.Errorf("%w: load sealed provider observation window %s: %w", constants.ErrEvalRunVerificationFailed, attemptID, err)
+		if attemptIDs[attemptID] {
+			if _, err := store.LoadProviderAttemptRecord(ctx, runID, attemptID); err != nil {
+				return compliancereport.GenerationSource{}, nil, fmt.Errorf("%w: load sealed provider attempt %s: %w", constants.ErrEvalRunVerificationFailed, attemptID, err)
+			}
+			if _, err := store.LoadProviderObservationWindow(ctx, runID, attemptID); err != nil {
+				return compliancereport.GenerationSource{}, nil, fmt.Errorf("%w: load sealed provider observation window %s: %w", constants.ErrEvalRunVerificationFailed, attemptID, err)
+			}
 		}
 		if _, err := store.LoadModelProvenanceWindow(ctx, runID, attemptID); err != nil {
 			return compliancereport.GenerationSource{}, nil, fmt.Errorf("%w: load sealed model provenance window %s: %w", constants.ErrEvalRunVerificationFailed, attemptID, err)

@@ -118,6 +118,9 @@ func ValidateAttestationWindow(window *evalv1.ModelProvenanceAttestationWindow) 
 	if window.GetSchemaVersion() != "" && window.GetSchemaVersion() != SchemaVersion {
 		return fmt.Errorf("model provenance: validate attestation window: unsupported schema version: %w", constants.ErrEvidenceSchemaMismatch)
 	}
+	if err := validateHostedWindow(window); err != nil {
+		return err
+	}
 	for _, weight := range window.GetWeightAttestations() {
 		switch weight.GetVerificationMode() {
 		case evalv1.ModelWeightVerificationMode_MODEL_WEIGHT_VERIFICATION_MODE_FULL_HASH,

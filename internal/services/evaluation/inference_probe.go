@@ -19,10 +19,13 @@ import (
 // InferenceProbeRequest carries a non-scored governed inference probe through
 // the exact Inference Operator session. It is not a scored campaign evaluation.
 type InferenceProbeRequest struct {
-	ProviderAttemptID       string
-	Role                    models.InferenceModelRole
-	Model                   string
-	ModelDigest             string
+	ProviderAttemptID string
+	Role              models.InferenceModelRole
+	Model             string
+	ModelDigest       string
+	// ProviderClass is the hosted provider class serving Model; empty selects
+	// the Inference Operator's local provider (models.HostedDispatchProviderClass).
+	ProviderClass           string
 	TargetOperatorSessionID string
 	Prompt                  string
 	Messages                []*operatorv1.InferenceMessage
@@ -61,6 +64,7 @@ func BuildInferenceProbeDispatchRequest(req InferenceProbeRequest) (*operatorv1.
 		RequestSchemaVersion:    constants.InferenceRequestSchemaVersion,
 		Role:                    req.Role.ToProto(),
 		Model:                   req.Model,
+		ProviderClass:           req.ProviderClass,
 		Messages:                messages,
 		Tools:                   req.Tools,
 		ToolChoice:              req.ToolChoice,

@@ -275,6 +275,7 @@ func newDispatchInferenceRequest(req *operatorv1.InferenceDispatchRequest, appID
 		Messages:                req.GetMessages(),
 		Tools:                   req.GetTools(),
 		Model:                   req.GetModel(),
+		ProviderClass:           req.GetProviderClass(),
 		Temperature:             req.GetTemperature(),
 		MaxTokens:               req.GetMaxTokens(),
 		KeepAlive:               req.GetKeepAlive(),

@@ -193,7 +193,10 @@ type AgentToolCall struct {
 	ModelCallID         string                          `json:"model_call_id"`
 	// ProviderCallID is the call ID the model returned; the assistant and tool
 	// result messages sent on the next turn carry it.
-	ProviderCallID        string `json:"provider_call_id,omitempty"`
+	ProviderCallID string `json:"provider_call_id,omitempty"`
+	// ProviderSignature is the opaque signature a hosted provider issued with
+	// the call; the next turn's assistant message returns it verbatim.
+	ProviderSignature     string `json:"provider_signature,omitempty"`
 	ToolName              string `json:"tool_name"`
 	ArgumentsJSON         string `json:"arguments_json"`
 	ApprovedArgumentsJSON string `json:"approved_arguments_json,omitempty"`
@@ -264,7 +267,7 @@ type AgentTrace struct {
 	// Input is the exact model input of the first turn after any HeldContext.
 	// Every later turn sent this input followed, per earlier turn, by one
 	// assistant message (the call's Text, then its tool calls with
-	// ProviderCallID, ToolName and ArgumentsJSON) and one tool message per
+	// ProviderCallID, ProviderSignature, ToolName and ArgumentsJSON) and one tool message per
 	// call carrying ResultJSON. v3 traces have none.
 	Input                  *AgentTraceInput         `json:"input,omitempty"`
 	ModelCalls             []AgentModelCall         `json:"model_calls"`
@@ -362,9 +365,10 @@ type AgentTraceContextMessage struct {
 
 // AgentTraceContextToolCall is one tool call of a held assistant message.
 type AgentTraceContextToolCall struct {
-	CallID        string `json:"call_id,omitempty"`
-	Name          string `json:"name"`
-	ArgumentsJSON string `json:"arguments_json"`
+	CallID            string `json:"call_id,omitempty"`
+	ProviderSignature string `json:"provider_signature,omitempty"`
+	Name              string `json:"name"`
+	ArgumentsJSON     string `json:"arguments_json"`
 }
 
 // AgentTraceContextToolResult is the result a held tool message returned.
@@ -433,7 +437,7 @@ func (t *AgentTrace) Conversation() ([]AgentTraceContextMessage, error) {
 			if tool.ModelCallID != call.ProviderAttemptID {
 				continue
 			}
-			assistant.ToolCalls = append(assistant.ToolCalls, AgentTraceContextToolCall{CallID: tool.ProviderCallID, Name: tool.ToolName, ArgumentsJSON: tool.ArgumentsJSON})
+			assistant.ToolCalls = append(assistant.ToolCalls, AgentTraceContextToolCall{CallID: tool.ProviderCallID, ProviderSignature: tool.ProviderSignature, Name: tool.ToolName, ArgumentsJSON: tool.ArgumentsJSON})
 			results = append(results, AgentTraceContextMessage{Role: toolRole, ToolResult: &AgentTraceContextToolResult{CallID: tool.ProviderCallID, Name: tool.ToolName, ResultJSON: tool.ResultJSON}})
 		}
 		if len(assistant.ToolCalls) < call.ToolCallCount && t.ProviderFailure != "" {
@@ -463,7 +467,7 @@ func (m AgentTraceContextMessage) inferenceMessage() (*operatorv1.InferenceMessa
 	}
 	for _, call := range m.ToolCalls {
 		message.Parts = append(message.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
-			CallId: call.CallID, Name: call.Name, ArgumentsJson: call.ArgumentsJSON,
+			CallId: call.CallID, Name: call.Name, ArgumentsJson: call.ArgumentsJSON, ProviderSignature: call.ProviderSignature,
 		}}})
 	}
 	if m.ToolResult != nil {

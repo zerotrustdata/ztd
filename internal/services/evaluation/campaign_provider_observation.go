@@ -236,7 +236,7 @@ func (r *CampaignProviderObservationReader) VerifyAssignmentProviderObservations
 	}
 	failures := make([]string, 0)
 	unavailable := make([]string, 0)
-	for _, inferenceRecord := range scoredModelInferences(result) {
+	for _, inferenceRecord := range observableModelInferences(result) {
 		attemptID := inferenceRecord.GetProviderAttemptId()
 		if attemptID == "" {
 			continue
@@ -328,7 +328,7 @@ func (r *CampaignProviderObservationReader) buildPublicBenchmarkObservations(ctx
 		return observations, nil
 	}
 	gpu := &gpuAggregate{}
-	for _, inferenceRecord := range scoredModelInferences(result) {
+	for _, inferenceRecord := range observableModelInferences(result) {
 		attemptID := inferenceRecord.GetProviderAttemptId()
 		if attemptID == "" {
 			continue
@@ -447,6 +447,28 @@ func publicVerdictStatus(status evalv1.EvaluationVerdictStatus) string {
 	default:
 		return "unspecified"
 	}
+}
+
+// ProviderObservable reports whether a provider-boundary observer can witness
+// the inference. A hosted provider runs on no host the platform observes, so a
+// hosted inference has no provider attempt record or observation window; its
+// evidence is the hosted provenance window built from its Inference Operator's
+// signed hosted attestation.
+func ProviderObservable(record *evalv1.ModelInferenceRecord) bool {
+	return !constants.IsHostedInferenceProvider(record.GetModelVariant().GetProviderClass())
+}
+
+// observableModelInferences returns the scored inferences a provider-boundary
+// observer can witness (ProviderObservable).
+func observableModelInferences(result *evalv1.EvaluationAssignmentResult) []*evalv1.ModelInferenceRecord {
+	scored := scoredModelInferences(result)
+	records := make([]*evalv1.ModelInferenceRecord, 0, len(scored))
+	for _, record := range scored {
+		if ProviderObservable(record) {
+			records = append(records, record)
+		}
+	}
+	return records
 }
 
 func scoredModelInferences(result *evalv1.EvaluationAssignmentResult) []*evalv1.ModelInferenceRecord {

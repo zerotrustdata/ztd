@@ -355,8 +355,11 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		ModelVariants:       spec.GetModelRegistry(),
 		JudgeVariant:        spec.GetJudgeVariant(),
 	}
-	if err := gwremote.PreflightProviderObservationDelivery(fileSvc, cfg); err != nil {
-		return executed, fmt.Errorf("evaluation: run execute: %w", err)
+	// A run whose models are all hosted has no provider host to observe.
+	if evaluation.DispatchesLocalModels(spec.GetModelRegistry(), spec.GetJudgeVariant()) {
+		if err := gwremote.PreflightProviderObservationDelivery(fileSvc, cfg); err != nil {
+			return executed, fmt.Errorf("evaluation: run execute: %w", err)
+		}
 	}
 	witness, err := gwremote.NewCampaignWitnessCapture(fileSvc, store, cfg)
 	if err != nil {

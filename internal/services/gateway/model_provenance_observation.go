@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -344,4 +345,30 @@ func (c *ModelProvenanceObservationCoordinator) ingestResult(ctx context.Context
 	if c.attestations != nil {
 		c.attestations.WindowRecorded(ctx, constants.EventModelProvenanceAttestationRecorded, operator.UserID, window.GetProviderAttemptId())
 	}
+}
+
+// RecordHostedAttempt derives, saves, and announces the attestation window of
+// a completed hosted attempt from the hosted egress attestation its Inference
+// Operator signed. It implements dispatch.HostedProvenanceRecorder.
+func (c *ModelProvenanceObservationCoordinator) RecordHostedAttempt(ctx context.Context, requestorUserID string, attempt model_provenance.HostedAttempt) error {
+	if c == nil || c.windows == nil {
+		return fmt.Errorf("model provenance: record hosted attempt: %w", constants.ErrMissingRequiredField)
+	}
+	window, err := model_provenance.HostedAttestationWindow(attempt, time.Now().UTC().UnixMilli())
+	if err != nil {
+		return err
+	}
+	if err := c.windows.Save(ctx, window); err != nil {
+		return fmt.Errorf("model provenance: record hosted attempt: %w", err)
+	}
+	c.logger.Info("Hosted model attestation window recorded",
+		"provider_attempt_id", window.GetProviderAttemptId(),
+		"provider_class", window.GetHosted().GetProviderClass(),
+		"served_model", window.GetHosted().GetServedModel(),
+		"provider_model_version", window.GetHosted().GetProviderModelVersion(),
+		"digest_match", window.GetDigestMatch())
+	if c.attestations != nil {
+		c.attestations.WindowRecorded(ctx, constants.EventModelProvenanceAttestationRecorded, requestorUserID, window.GetProviderAttemptId())
+	}
+	return nil
 }

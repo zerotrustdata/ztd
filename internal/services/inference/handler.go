@@ -33,9 +33,31 @@ const inferenceJSONMediaType = "application/json"
 type InferenceExecutionHandler struct {
 	decisionBackend DecisionBackend
 	backend         Backend
-	cfg             *config.Config
-	scrubbing       *scrubbing.ScrubbingService
-	logger          *slog.Logger
+	// hosted holds the hosted provider clients this Operator was started
+	// with, by provider class. A request naming any other class fails closed.
+	hosted    map[string]HostedBackend
+	cfg       *config.Config
+	scrubbing *scrubbing.ScrubbingService
+	logger    *slog.Logger
+}
+
+// ConfigureHostedBackends attaches the hosted provider clients built for the
+// Operator's --inference-hosted-providers. Only these classes are served.
+func (h *InferenceExecutionHandler) ConfigureHostedBackends(hosted map[string]HostedBackend) {
+	h.hosted = hosted
+}
+
+// generationBackend selects the backend for a request's provider class: the
+// local provider when empty, else the opted-in hosted client for that class.
+func (h *InferenceExecutionHandler) generationBackend(providerClass string) (Backend, error) {
+	if providerClass == "" {
+		return h.backend, nil
+	}
+	hosted, ok := h.hosted[providerClass]
+	if !ok {
+		return nil, fmt.Errorf("provider class %q: %w", providerClass, constants.ErrInferenceHostedNotAllowed)
+	}
+	return hosted, nil
 }
 
 // NewInferenceExecutionHandler constructs an InferenceExecutionHandler. Every
@@ -140,6 +162,9 @@ func (h *InferenceExecutionHandler) ExecuteInference(ctx context.Context, cmdMsg
 	if h.cfg.Inference.DecisionOnly && req.GetDecision() == nil {
 		return nil, constants.ErrInferenceDecisionUnsupported
 	}
+	if req.GetDecision() != nil && req.GetProviderClass() != "" {
+		return nil, constants.ErrInferenceDecisionUnsupported
+	}
 	if req.GetDecision() != nil {
 		found := false
 		for _, model := range h.cfg.Inference.DecisionModels {
@@ -176,6 +201,7 @@ func (h *InferenceExecutionHandler) ExecuteInference(ctx context.Context, cmdMsg
 
 	h.logger.Info("Dispatching governed inference request",
 		"role", infReq.Role,
+		"provider_class", genReq.ProviderClass,
 		"model", genReq.Model,
 		"message_count", len(genReq.Messages),
 		"tool_count", len(genReq.Tools))
@@ -192,7 +218,11 @@ func (h *InferenceExecutionHandler) ExecuteInference(ctx context.Context, cmdMsg
 		}
 		resp, err = backend.Decide(ctx, models.DecisionRequest{Input: infReq.Decision, Model: genReq.Model, ModelDigest: genReq.ModelDigest, KeepAlive: genReq.KeepAlive, ProviderAttemptID: genReq.ProviderAttemptID, AllowHosted: req.GetDecision().GetAllowHosted()})
 	} else {
-		resp, err = h.backend.Generate(ctx, genReq)
+		var backend Backend
+		backend, err = h.generationBackend(genReq.ProviderClass)
+		if err == nil {
+			resp, err = backend.Generate(ctx, genReq)
+		}
 	}
 	if err != nil {
 		failureClass := ClassifyAttemptFailure(err)
@@ -235,6 +265,11 @@ func (h *InferenceExecutionHandler) ExecuteInference(ctx context.Context, cmdMsg
 	}
 	if err != nil {
 		return nil, fmt.Errorf("inference handler: output hash: %w", err)
+	}
+	if infReq.Decision == nil {
+		if err := models.ValidateHostedEgress(genReq.ProviderClass, genReq.Model, genReq.ModelDigest, resp.ToProtoInferenceResult()); err != nil {
+			return nil, fmt.Errorf("inference handler: %w", err)
+		}
 	}
 	resp.Parts = scrubbedParts
 	resp.OutputHash = scrubbedOutputHash

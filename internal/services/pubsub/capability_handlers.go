@@ -27,7 +27,11 @@ type CapabilityHandlers struct {
 	// InferenceProvider is the provider the Inference handler calls, shared
 	// with the Operator's provider maintenance commands. Nil when inference
 	// is disabled.
-	InferenceProvider        inference.Provider
+	InferenceProvider inference.Provider
+	// InferenceHosted are the hosted provider clients built for the
+	// Operator's --inference-hosted-providers, in that order. Empty when none
+	// are enabled.
+	InferenceHosted          []inference.HostedBackend
 	ProviderBoundaryObserver *provider_observer.Handler
 	ModelProvenanceOperator  *model_provenance.Handler
 }
@@ -53,10 +57,19 @@ func NewCapabilityHandlers(cfg *config.Config, logger *slog.Logger, fileSvc fs.R
 	}
 	var inferenceHandler *inference.InferenceExecutionHandler
 	var inferenceAttemptStore inference.AttemptStore
+	var inferenceHosted []inference.HostedBackend
 	if cfg.Inference.Enabled {
 		inferenceHandler, err = inference.NewInferenceExecutionHandler(provider, cfg, scrubbingService, logger)
 		if err != nil {
 			return nil, fmt.Errorf("operator capabilities: inference handler: %w", err)
+		}
+		hosted, err := inference.NewHostedBackends(cfg.Inference.HostedProviders, logger)
+		if err != nil {
+			return nil, fmt.Errorf("operator capabilities: hosted inference providers: %w", err)
+		}
+		inferenceHandler.ConfigureHostedBackends(hosted)
+		for _, class := range cfg.Inference.HostedProviders {
+			inferenceHosted = append(inferenceHosted, hosted[class])
 		}
 		inferenceAttemptStore, err = inference.NewAttemptStore(fileSvc)
 		if err != nil {
@@ -64,7 +77,8 @@ func NewCapabilityHandlers(cfg *config.Config, logger *slog.Logger, fileSvc fs.R
 		}
 		logger.Info("Inference backend initialized",
 			"provider", cfg.Inference.Provider,
-			"endpoint", cfg.Inference.Endpoint())
+			"endpoint", cfg.Inference.Endpoint(),
+			"hosted_providers", cfg.Inference.HostedProviders)
 	}
 
 	var providerBoundaryObserver *provider_observer.Handler
@@ -107,7 +121,7 @@ func NewCapabilityHandlers(cfg *config.Config, logger *slog.Logger, fileSvc fs.R
 			"model_storage_format", cfg.ProvenanceOperator.ModelStorageFormat)
 	}
 
-	return &CapabilityHandlers{Inference: inferenceHandler, InferenceAttemptStore: inferenceAttemptStore, InferenceProvider: provider, ProviderBoundaryObserver: providerBoundaryObserver, ModelProvenanceOperator: modelProvenanceOperator}, nil
+	return &CapabilityHandlers{Inference: inferenceHandler, InferenceAttemptStore: inferenceAttemptStore, InferenceProvider: provider, InferenceHosted: inferenceHosted, ProviderBoundaryObserver: providerBoundaryObserver, ModelProvenanceOperator: modelProvenanceOperator}, nil
 }
 
 // newModelProvenanceAttestor builds the storage attestor for the configured

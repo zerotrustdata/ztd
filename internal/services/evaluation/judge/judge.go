@@ -495,6 +495,7 @@ func (j *Judge) buildDispatchRequest(subject Subject, p prompt) (*operatorv1.Inf
 		Role:                 models.InferenceModelRolePrimary.ToProto(),
 		Model:                j.cfg.Variant.GetServedModelTag(),
 		ModelDigest:          j.cfg.Variant.GetModelDigest(),
+		ProviderClass:        models.HostedDispatchProviderClass(j.cfg.Variant.GetProviderClass()),
 		Messages:             p.messages(),
 		ResponseFormat: &operatorv1.InferenceResponseFormat{
 			MediaType:  "application/json",

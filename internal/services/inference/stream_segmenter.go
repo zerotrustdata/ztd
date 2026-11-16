@@ -263,13 +263,15 @@ func (g *streamSegmenter) segment(ctx context.Context, kind segmentKind, raw str
 	return &operatorv1.InferenceResponsePart{Part: &operatorv1.InferenceResponsePart_Text{Text: scrubbed}}
 }
 
-// toolCallPart scrubs the name and arguments of one tool call and keeps its call ID.
+// toolCallPart scrubs the name and arguments of one tool call and keeps its
+// call ID and opaque provider signature.
 func (g *streamSegmenter) toolCallPart(ctx context.Context, call *operatorv1.InferenceToolCall) *operatorv1.InferenceResponsePart {
 	return &operatorv1.InferenceResponsePart{Part: &operatorv1.InferenceResponsePart_ToolCall{
 		ToolCall: &operatorv1.InferenceToolCall{
-			CallId:        call.GetCallId(),
-			Name:          g.scrubValue(ctx, call.GetName()),
-			ArgumentsJson: g.scrubValue(ctx, call.GetArgumentsJson()),
+			CallId:            call.GetCallId(),
+			Name:              g.scrubValue(ctx, call.GetName()),
+			ArgumentsJson:     g.scrubValue(ctx, call.GetArgumentsJson()),
+			ProviderSignature: call.GetProviderSignature(),
 		},
 	}}
 }

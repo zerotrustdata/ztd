@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -42,6 +43,7 @@ const (
 	flagLlamaCppEndpoint   = "--inference-llamacpp-endpoint"
 	flagLlamaCppModelRoot  = "--inference-llamacpp-model-root"
 	flagInferenceKeepAlive = "--inference-keep-alive"
+	flagHostedProviders    = "--inference-hosted-providers"
 	flagModelStorageRoot   = "--model-storage-root"
 	flagModelStorageFormat = "--model-storage-format"
 	flagProvenanceID       = "--provenance-operator-id"
@@ -58,7 +60,7 @@ var capabilityFlags = []struct {
 	capability constants.OperatorCapability
 	flags      []string
 }{
-	{constants.OperatorCapabilityInference, []string{flagInferenceEndpoint, flagLlamaCppEndpoint, flagLlamaCppModelRoot, flagInferenceKeepAlive}},
+	{constants.OperatorCapabilityInference, []string{flagInferenceEndpoint, flagLlamaCppEndpoint, flagLlamaCppModelRoot, flagInferenceKeepAlive, flagHostedProviders}},
 	{constants.OperatorCapabilityProvenance, []string{flagModelStorageRoot, flagModelStorageFormat, flagProvenanceID}},
 	{constants.OperatorCapabilityObserver, []string{flagObserverID}},
 }
@@ -108,12 +110,16 @@ func operatorStatusFromDocument(op *operatorv1.OperatorDocument) operatorStatus 
 		row.Port = int(rc.HttpPort)
 	}
 	row.reportCustom(rc.LogLevel, rc.CloudMode, rc.CloudProvider)
-	// An Inference Operator serves exactly one provider; list only its flags.
+	// An Inference Operator serves exactly one local provider; list only its
+	// flags. Hosted providers it serves are reported alongside.
 	if rc.InferenceLlamacppEndpoint != "" {
 		row.reported[flagLlamaCppEndpoint] = rc.InferenceLlamacppEndpoint
 		row.reported[flagLlamaCppModelRoot] = rc.InferenceLlamacppModelRoot
 	} else {
 		row.reported[flagInferenceEndpoint] = rc.InferenceOllamaEndpoint
+	}
+	if len(rc.InferenceHostedProviders) > 0 {
+		row.reported[flagHostedProviders] = strings.Join(rc.InferenceHostedProviders, ",")
 	}
 	row.reported[flagModelStorageRoot] = rc.ProvenanceOperatorModelStorageRoot
 	// Operators resolve these to non-empty defaults before reporting; empty
@@ -156,6 +162,7 @@ func (o *operatorStatus) fillFromProfile(cfg serve.GatewayConfig) {
 		flagLlamaCppEndpoint:   cfg.InferenceLlamaCppEndpoint,
 		flagLlamaCppModelRoot:  cfg.InferenceLlamaCppModelRoot,
 		flagInferenceKeepAlive: cfg.InferenceKeepAlive,
+		flagHostedProviders:    strings.Join(cfg.InferenceHostedProviders, ","),
 		flagModelStorageRoot:   cfg.ProvenanceOperatorModelStorageRoot,
 		flagModelStorageFormat: cfg.ProvenanceOperatorModelStorageFormat,
 		flagProvenanceID:       cfg.ProvenanceOperatorID,

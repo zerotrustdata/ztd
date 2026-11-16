@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -115,6 +116,21 @@ type GradingActivitySink interface {
 // terminal assignment result.
 type CampaignAssignmentExecutor interface {
 	ExecuteAssignment(ctx context.Context, req AssignmentExecutionRequest) (*evalv1.EvaluationAssignmentResult, error)
+}
+
+// DispatchesLocalModels reports whether a campaign dispatches any model a local
+// provider serves: a registry model or its judge. Only those inferences run on
+// a host a provider-boundary observer can witness.
+func DispatchesLocalModels(registry []*evalv1.ModelVariant, judge *evalv1.ModelVariant) bool {
+	if judge != nil && !constants.IsHostedInferenceProvider(judge.GetProviderClass()) {
+		return true
+	}
+	for _, variant := range registry {
+		if !constants.IsHostedInferenceProvider(variant.GetProviderClass()) {
+			return true
+		}
+	}
+	return false
 }
 
 // InferenceVariantsFromEvalRegistry converts frozen eval model variants into the

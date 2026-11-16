@@ -44,11 +44,13 @@ type ollamaMaintenanceEnv struct {
 // provider, as on an Operator without inference.
 func newOllamaMaintenanceEnv(t *testing.T, endpoint string) *ollamaMaintenanceEnv {
 	t.Helper()
-	return newOllamaMaintenanceEnvWithEventsStore(t, endpoint, storagetest.NewTestEventsStore(t, ollamaTestSessionID))
+	return newOllamaMaintenanceEnvWithEventsStore(t, endpoint, storagetest.NewTestEventsStore(t, ollamaTestSessionID), nil)
 }
 
-// newOllamaMaintenanceEnvWithEventsStore is newOllamaMaintenanceEnv over a caller-supplied real local-first events store.
-func newOllamaMaintenanceEnvWithEventsStore(t *testing.T, endpoint string, eventsStore *storage.LocalFirstEventsStore) *ollamaMaintenanceEnv {
+// newOllamaMaintenanceEnvWithEventsStore is newOllamaMaintenanceEnv over a
+// caller-supplied real local-first events store and the Operator's hosted
+// provider clients.
+func newOllamaMaintenanceEnvWithEventsStore(t *testing.T, endpoint string, eventsStore *storage.LocalFirstEventsStore, hosted []inference.HostedBackend) *ollamaMaintenanceEnv {
 	t.Helper()
 	cfg := testutil.NewTestConfig(t)
 	client := pubsubtest.NewMockOperatorPubSubClient()
@@ -59,7 +61,7 @@ func newOllamaMaintenanceEnvWithEventsStore(t *testing.T, endpoint string, event
 		require.NoError(t, err)
 		provider = backend
 	}
-	svc, err := NewOllamaMaintenanceService(cfg, logger, client, mustNewScrubbingSvc(t, logger), eventsStore, provider)
+	svc, err := NewOllamaMaintenanceService(cfg, logger, client, mustNewScrubbingSvc(t, logger), eventsStore, provider, hosted)
 	require.NoError(t, err)
 	return &ollamaMaintenanceEnv{svc: svc, client: client, cfg: cfg, eventsStore: eventsStore}
 }
@@ -181,14 +183,14 @@ func TestNewOllamaMaintenanceService_RequiresEveryDependency(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run("rejects "+tt.name, func(t *testing.T) {
-			svc, err := NewOllamaMaintenanceService(tt.cfg, logger, client, tt.scrubber, tt.eventsStore, nil)
+			svc, err := NewOllamaMaintenanceService(tt.cfg, logger, client, tt.scrubber, tt.eventsStore, nil, nil)
 			require.ErrorIs(t, err, tt.wantErr)
 			assert.Nil(t, svc)
 		})
 	}
 
 	t.Run("accepts every dependency", func(t *testing.T) {
-		svc, err := NewOllamaMaintenanceService(cfg, logger, client, scrubber, eventsStore, nil)
+		svc, err := NewOllamaMaintenanceService(cfg, logger, client, scrubber, eventsStore, nil, nil)
 		require.NoError(t, err)
 		assert.NotNil(t, svc)
 	})

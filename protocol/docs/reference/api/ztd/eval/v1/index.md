@@ -55,6 +55,7 @@
     - [HeterogeneousAssignmentTarget](#ztd-eval-v1-HeterogeneousAssignmentTarget)
     - [HeterogeneousStackDefinition](#ztd-eval-v1-HeterogeneousStackDefinition)
     - [HomogeneousAssignmentTarget](#ztd-eval-v1-HomogeneousAssignmentTarget)
+    - [HostedModelAttestation](#ztd-eval-v1-HostedModelAttestation)
     - [MemoryOutput](#ztd-eval-v1-MemoryOutput)
     - [ModelCampaignBinding](#ztd-eval-v1-ModelCampaignBinding)
     - [ModelCapabilityObservation](#ztd-eval-v1-ModelCapabilityObservation)
@@ -1317,6 +1318,31 @@ HeterogeneousStackDefinition binds Primary, Assistant, and Lite slots.
 
 
 
+<a name="ztd-eval-v1-HostedModelAttestation"></a>
+
+### HostedModelAttestation
+HostedModelAttestation is the hosted provider model record an Inference
+Operator signed into one attempt&#39;s InferenceResult. provenance_operator_id of
+its window names that Inference Operator.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| provider_class | [string](#string) |  |  |
+| provider_origin | [string](#string) |  |  |
+| requested_model | [string](#string) |  |  |
+| provider_model_version | [string](#string) |  |  |
+| served_model | [string](#string) |  | Model the provider reported serving. |
+| provider_response_id | [string](#string) |  |  |
+| raw_response_digest | [string](#string) |  |  |
+| inference_transaction_id | [string](#string) |  | Inference transaction whose signed receipt binds result_digest. |
+| result_digest | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="ztd-eval-v1-MemoryOutput"></a>
 
 ### MemoryOutput
@@ -1442,6 +1468,7 @@ to one governed inference provider attempt.
 | attested_at_unix_ms | [int64](#int64) |  |  |
 | digest_match | [bool](#bool) |  |  |
 | attestation_digest | [string](#string) |  |  |
+| hosted | [HostedModelAttestation](#ztd-eval-v1-HostedModelAttestation) |  | Set only under MODEL_MANIFEST_VERIFICATION_STATUS_HOSTED_PROVIDER_REPORTED. |
 
 
 
@@ -3168,6 +3195,7 @@ ModelManifestVerificationStatus reports signed-manifest verification outcome.
 | MODEL_MANIFEST_VERIFICATION_STATUS_VERIFIED | 2 |  |
 | MODEL_MANIFEST_VERIFICATION_STATUS_FAILED | 3 |  |
 | MODEL_MANIFEST_VERIFICATION_STATUS_UNAVAILABLE | 4 |  |
+| MODEL_MANIFEST_VERIFICATION_STATUS_HOSTED_PROVIDER_REPORTED | 5 | A hosted provider served the attempt. There are no weights or manifest to hash; the window carries the Inference Operator&#39;s signed hosted model record instead (ModelProvenanceAttestationWindow.hosted). |
 
 
 

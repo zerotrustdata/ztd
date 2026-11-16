@@ -65,6 +65,9 @@ type LoadOptions struct {
 	InferenceAllowHostedDecision bool
 	InferenceDecisionModels      []string
 	InferenceDecisionOnly        bool
+	// InferenceHostedProviders are the hosted provider classes the Inference
+	// Operator serves (--inference-hosted-providers).
+	InferenceHostedProviders []string
 
 	// ProviderBoundaryObserverID identifies the observer capability.
 	ProviderBoundaryObserverID string
@@ -200,6 +203,13 @@ type InferenceConfig struct {
 	// keeps each requested model resident on the provider. A llama.cpp
 	// router accepts only "-1" (resident) or "0" (unload after the request).
 	KeepAlive string
+
+	// HostedProviders are the hosted provider classes the Operator serves in
+	// addition to its local provider (constants.HostedInferenceProviders),
+	// each in documented order and at most once. A governed request reaches a
+	// hosted provider only by naming its class. API keys are never held here:
+	// each hosted client reads its key from the environment when it is built.
+	HostedProviders []string
 }
 
 // Endpoint returns the HTTP endpoint of the selected provider, or "" when no
@@ -334,6 +344,7 @@ type GatewayOptions struct {
 	InferenceAllowHostedDecision         bool
 	InferenceDecisionModels              []string
 	InferenceDecisionOnly                bool
+	InferenceHostedProviders             []string
 	ProviderBoundaryObserverID           string
 	ProvenanceOperatorID                 string
 	ProvenanceOperatorModelStorageRoot   string
@@ -463,7 +474,7 @@ func LoadGateway(opts GatewayOptions) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	inference, err := newInferenceConfig(capabilities.Has(constants.OperatorCapabilityInference), LoadOptions{InferenceOllamaEndpoint: opts.InferenceOllamaEndpoint, InferenceLlamaCppEndpoint: opts.InferenceLlamaCppEndpoint, InferenceLlamaCppModelRoot: opts.InferenceLlamaCppModelRoot, InferenceKeepAlive: opts.InferenceKeepAlive, InferenceAllowHostedDecision: opts.InferenceAllowHostedDecision, InferenceDecisionModels: opts.InferenceDecisionModels, InferenceDecisionOnly: opts.InferenceDecisionOnly})
+	inference, err := newInferenceConfig(capabilities.Has(constants.OperatorCapabilityInference), LoadOptions{InferenceOllamaEndpoint: opts.InferenceOllamaEndpoint, InferenceLlamaCppEndpoint: opts.InferenceLlamaCppEndpoint, InferenceLlamaCppModelRoot: opts.InferenceLlamaCppModelRoot, InferenceKeepAlive: opts.InferenceKeepAlive, InferenceAllowHostedDecision: opts.InferenceAllowHostedDecision, InferenceDecisionModels: opts.InferenceDecisionModels, InferenceDecisionOnly: opts.InferenceDecisionOnly, InferenceHostedProviders: opts.InferenceHostedProviders})
 	if err != nil {
 		return nil, err
 	}
@@ -742,6 +753,14 @@ func newInferenceConfig(enabled bool, opts LoadOptions) (InferenceConfig, error)
 		LlamaCppModelRoot:   strings.TrimSpace(opts.InferenceLlamaCppModelRoot),
 		KeepAlive:           cmp.Or(opts.InferenceKeepAlive, constants.InferenceDefaultKeepAlive),
 	}
+	hosted, err := normalizeHostedProviders(opts.InferenceHostedProviders)
+	if err != nil {
+		return InferenceConfig{}, err
+	}
+	if len(hosted) > 0 && !enabled {
+		return InferenceConfig{}, constants.ErrInferenceHostedRequiresInference
+	}
+	cfg.HostedProviders = hosted
 	if cfg.LlamaCppEndpoint == "" {
 		if cfg.OllamaEndpoint == "" {
 			cfg.OllamaEndpoint = fmt.Sprintf("http://127.0.0.1:%d", constants.InferenceOllamaDefaultPort)
@@ -762,6 +781,26 @@ func newInferenceConfig(enabled bool, opts LoadOptions) (InferenceConfig, error)
 		return InferenceConfig{}, fmt.Errorf("config: inference keep-alive %q: %w", cfg.KeepAlive, constants.ErrInferenceLlamaCppKeepAliveInvalid)
 	}
 	return cfg, nil
+}
+
+// normalizeHostedProviders validates --inference-hosted-providers and returns
+// the named classes in constants.HostedInferenceProviders order, each once.
+func normalizeHostedProviders(values []string) ([]string, error) {
+	named := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		class := strings.ToLower(strings.TrimSpace(value))
+		if !constants.IsHostedInferenceProvider(class) {
+			return nil, fmt.Errorf("config: --inference-hosted-providers %q: %w", value, constants.ErrInferenceHostedProviderInvalid)
+		}
+		named[class] = struct{}{}
+	}
+	var hosted []string
+	for _, class := range constants.HostedInferenceProviders {
+		if _, ok := named[class]; ok {
+			hosted = append(hosted, class)
+		}
+	}
+	return hosted, nil
 }
 
 func newProviderBoundaryObserverConfig(enabled bool, opts LoadOptions) ProviderBoundaryObserverConfig {

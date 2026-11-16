@@ -63,6 +63,7 @@ type ServeOperatorOptions struct {
 	InferenceAllowHostedDecision bool
 	InferenceDecisionModels      []string
 	InferenceDecisionOnly        bool
+	InferenceHostedProviders     []string
 
 	ProviderBoundaryObserverID string
 
@@ -142,6 +143,7 @@ func buildOperatorLoadOptions(opts ServeOperatorOptions, operatorEndpoint, effec
 		InferenceKeepAlive:           opts.InferenceKeepAlive,
 		InferenceAllowHostedDecision: opts.InferenceAllowHostedDecision,
 		InferenceDecisionModels:      opts.InferenceDecisionModels, InferenceDecisionOnly: opts.InferenceDecisionOnly,
+		InferenceHostedProviders: opts.InferenceHostedProviders,
 
 		ProviderBoundaryObserverID: opts.ProviderBoundaryObserverID,
 

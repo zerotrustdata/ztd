@@ -444,6 +444,9 @@ message OperatorRuntimeConfig {
   // Model store layout under provenance_operator_model_storage_root
   // (--model-storage-format: ollama or llamacpp).
   string provenance_operator_model_storage_format = 26;
+  // Hosted inference provider classes this Operator serves
+  // (--inference-hosted-providers).
+  repeated string inference_hosted_providers = 27;
 }
 
 // OperatorDocument is the canonical Operator record. The Gateway owns and
@@ -1565,6 +1568,11 @@ message InferenceToolCall {
   string call_id = 1;
   string name = 2;
   string arguments_json = 3;
+  // Opaque continuation token the provider attached to this call (a Gemini
+  // thought signature). It is not content: the scrubber never reads it, the
+  // result digest covers it, and a later turn returns it to the same provider
+  // verbatim, which a hosted provider requires to continue a tool call.
+  string provider_signature = 4;
 }
 
 // InferenceToolResult carries a tool continuation value. result_json is a canonical JSON value.
@@ -1739,6 +1747,13 @@ message InferenceRequested {
 
   // Exclusive with messages, tools, streaming and generation controls.
   InferenceDecisionRequest decision = 30;
+
+  // Hosted provider class (gemini, anthropic, openai) that serves model. Empty
+  // selects the Operator's local provider (Ollama or llama.cpp). A hosted
+  // class is the envelope's explicit consent to hosted egress: the Operator
+  // serves it only when started with that class in
+  // --inference-hosted-providers.
+  string provider_class = 31;
 }
 
 enum InferenceTimingSource {
@@ -1970,6 +1985,10 @@ message InferenceDispatchRequest {
 
   // Exclusive with messages, tools, streaming and generation controls.
   InferenceDecisionRequest decision = 37;
+
+  // Hosted provider class that serves model; empty selects the local
+  // provider. See InferenceRequested.provider_class.
+  string provider_class = 38;
 }
 
 // InferenceDispatchFailureCode is the typed classification of a failed
@@ -2096,12 +2115,30 @@ message InferenceDispatchResponse {
 }
 
 // Included in result_digest and therefore bound by the Operator's signed L5 receipt.
+// For hosted generation it is the Inference Operator's model provenance record:
+// the provider cannot attest weights, so the Operator records what the provider
+// reported serving and the exact bytes it received.
 message InferenceHostedEgressAttestation {
  string provider_origin = 1;
+ // Model the provider reported serving (Gemini modelVersion).
  string model_version = 2;
  string provenance = 3;
  string normalized_request_hash = 4;
  bool explicit_consent = 5;
+ // Hosted provider class that served the attempt (gemini, anthropic, openai).
+ string provider_class = 6;
+ // Model the governed request named.
+ string requested_model = 7;
+ // Provider metadata version of requested_model, read immediately before the call.
+ string provider_model_version = 8;
+ // Hosted model identity digest of (provider_class, provider_origin,
+ // requested_model, provider_model_version); models.ComputeHostedModelIdentityDigest.
+ string model_identity_digest = 9;
+ // Provider-assigned response identifier (Gemini responseId).
+ string provider_response_id = 10;
+ // Hex SHA-256 of the provider's 200 response byte stream.
+ string raw_response_digest = 11;
+ uint64 raw_response_size_bytes = 12;
 }
 
 // AuditChainCheckpointPayload is the canonical protobuf payload for

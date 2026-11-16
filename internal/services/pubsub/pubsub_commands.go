@@ -173,6 +173,10 @@ type CommandServiceConfig struct {
 	// inference is disabled; those commands then fail closed.
 	InferenceProvider inference.Provider
 
+	// InferenceHosted are the Inference Operator's hosted provider clients,
+	// whose models the governed provider inventory command also reports.
+	InferenceHosted []inference.HostedBackend
+
 	// ProviderBoundaryObserver handles pubsub observation commands on the
 	// remote provider host. Nil when provider-boundary observation is disabled.
 	ProviderBoundaryObserver *provider_observer.Handler
@@ -244,7 +248,7 @@ func newOperatorPubSubServiceInternal(c CommandServiceConfig, core GovernanceCor
 	}
 	rs.ports = ports
 
-	ollama, err := NewOllamaMaintenanceService(c.Config, c.Logger, client, c.Scrubbing, c.EventsStore, c.InferenceProvider)
+	ollama, err := NewOllamaMaintenanceService(c.Config, c.Logger, client, c.Scrubbing, c.EventsStore, c.InferenceProvider, c.InferenceHosted)
 	if err != nil {
 		cancel()
 		return nil, fmt.Errorf("pubsub: ollama maintenance: %w", err)
