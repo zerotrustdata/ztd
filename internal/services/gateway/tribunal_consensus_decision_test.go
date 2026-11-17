@@ -11,6 +11,7 @@ import (
 	"context"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -67,7 +68,7 @@ func TestTribunalDecisionGovernedVotesAndPinnedOperator(t *testing.T) {
 	signer := newFakeSigner(t, binding.MemberAppIDs...)
 	records := &fakeVoteRecorder{}
 	inferer := assertedDecisionInferer{t: t, operatorID: binding.InferenceOperatorID, decisionVoteInferer: decisionVoteInferer{probability: .99}}
-	d, err := NewTribunalConsensusDeliberator(&fakeBinding{policy: binding}, fakePolicies{}, inferer, records, signer, slog.New(slog.DiscardHandler))
+	d, err := NewTribunalConsensusDeliberator(&fakeBinding{policy: binding}, fakePolicies{}, inferer, records, signer, dispatch.DefaultTransientRetry(), slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
 	env, hash := tribunalTestEnvelope(t)
 	out, err := d.Deliberate(t.Context(), marshalTestEnvelope(t, env))
@@ -85,7 +86,7 @@ func TestTribunalDecisionGovernedVotesAndPinnedOperator(t *testing.T) {
 	}
 	// A vanished pinned Operator produces no vote and never retries an untargeted request.
 	d.inference = decisionVoteInferer{fail: true}
-	vote := d.castVote(t.Context(), binding, binding.MemberAppIDs[0], hash, tribunal.ConsensusSubject{})
+	vote := d.castVote(t.Context(), binding, binding.MemberAppIDs[0], hash, tribunal.ConsensusSubject{}, time.Time{})
 	require.ErrorIs(t, vote.failure, constants.ErrInferenceOperatorNotFound)
 	binding.InferenceOperatorID = ""
 	_, err = d.Deliberate(t.Context(), marshalTestEnvelope(t, env))

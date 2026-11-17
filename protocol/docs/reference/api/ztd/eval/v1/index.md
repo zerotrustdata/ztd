@@ -56,6 +56,7 @@
     - [HeterogeneousStackDefinition](#ztd-eval-v1-HeterogeneousStackDefinition)
     - [HomogeneousAssignmentTarget](#ztd-eval-v1-HomogeneousAssignmentTarget)
     - [HostedModelAttestation](#ztd-eval-v1-HostedModelAttestation)
+    - [JudgeSupersededAttempt](#ztd-eval-v1-JudgeSupersededAttempt)
     - [MemoryOutput](#ztd-eval-v1-MemoryOutput)
     - [ModelCampaignBinding](#ztd-eval-v1-ModelCampaignBinding)
     - [ModelCapabilityObservation](#ztd-eval-v1-ModelCapabilityObservation)
@@ -1243,6 +1244,8 @@ whose digest the signed receipt&#39;s result_summary binds.
 | transaction_id | [string](#string) |  |  |
 | inference_result | [ztd.operator.v1.InferenceResult](#ztd-operator-v1-InferenceResult) |  |  |
 | receipt | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
+| retry_count | [uint32](#uint32) |  | retry_count is the judge call&#39;s retry ordinal: 0 for the first attempt, n for the nth retry after the provider asked to retry later. It equals the signed inference_result&#39;s retry_count. |
+| superseded_attempts | [JudgeSupersededAttempt](#ztd-eval-v1-JudgeSupersededAttempt) | repeated | superseded_attempts are the judge call&#39;s earlier attempts this one retries, in order (retry_count 0..n-1). |
 
 
 
@@ -1338,6 +1341,27 @@ its window names that Inference Operator.
 | raw_response_digest | [string](#string) |  |  |
 | inference_transaction_id | [string](#string) |  | Inference transaction whose signed receipt binds result_digest. |
 | result_digest | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-JudgeSupersededAttempt"></a>
+
+### JudgeSupersededAttempt
+JudgeSupersededAttempt is one judge provider attempt a retry superseded. The
+provider asked to retry later, so the attempt did not complete and the
+Inference Operator signed a FAILED receipt with
+RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT. It carries no result and no verdict.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| provider_attempt_id | [string](#string) |  |  |
+| transaction_id | [string](#string) |  |  |
+| retry_count | [uint32](#uint32) |  |  |
+| receipt | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
 
 
 

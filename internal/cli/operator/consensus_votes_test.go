@@ -10,6 +10,7 @@ package operator
 import (
 	"bytes"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -72,14 +73,15 @@ func TestAttachConsensusVotesRecordsFetchFailure(t *testing.T) {
 func TestWriteConsensusVotes(t *testing.T) {
 	var buf bytes.Buffer
 	WriteConsensusVotes(&buf, "  ", "tx-1", []models.ConsensusVoteRecord{
-		{ConsensusSetID: "tribunal", ModelTag: "gemma4:e2b", Quorum: 3, MemberAppID: "tribunal-1", Outcome: models.ConsensusVoteOutcomeApprove, Reason: "read-only"},
+		{ConsensusSetID: "tribunal", ModelTag: "gemma4:e2b", Quorum: 3, MemberAppID: "tribunal-1", Outcome: models.ConsensusVoteOutcomeApprove, Reason: "read-only", RetryCount: 2},
 		{ConsensusSetID: "tribunal", ModelTag: "gemma4:e2b", Quorum: 3, MemberAppID: "tribunal-2", Outcome: models.ConsensusVoteOutcomeNoVote, Failure: "member inference: timeout"},
 	})
 	out := buf.String()
 	for _, want := range []string{"  Consensus votes for transaction tx-1 (set tribunal, model gemma4:e2b, quorum 3):",
-		"tribunal-1", "reason: read-only", "no_vote", "failure: member inference: timeout", "  Approvals: 1 of 2 votes, quorum 3"} {
+		"tribunal-1", "reason: read-only", "retries: 2 (provider asked to retry later)", "no_vote", "failure: member inference: timeout", "  Approvals: 1 of 2 votes, quorum 3"} {
 		assert.Contains(t, out, want)
 	}
+	assert.Equal(t, 1, strings.Count(out, "retries:"), "a vote with no retry prints no retries line")
 
 	buf.Reset()
 	WriteConsensusVotes(&buf, "", "tx-2", nil)

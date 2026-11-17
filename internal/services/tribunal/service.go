@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/agentpersona"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	inferencedispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -35,14 +37,22 @@ type MemberDispatcher interface {
 // Service is the Gateway's Tribunal: it deliberates one shell command intent with
 // every member call dispatched as governed inference. It returns the audited
 // typed arguments; dispatching them is the caller's ordinary governed MCP_CALL.
+//
+// A member call whose signed FAILED receipt says the provider asked to retry
+// later (RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT) is retried under retry: each
+// retry is a new provider attempt with the next retry_count, recorded as its
+// own member call that names the attempt it retries in retry_of. Hosted clients
+// never retry, so the Gateway that dispatches the call owns the retry.
 type Service struct {
 	members  MemberDispatcher
 	doctrine *governance.L1Doctrine
 	personas *agentpersona.Registry
+	retry    inferencedispatch.TransientRetry
 }
 
 // NewService builds the Tribunal over governed inference and the active
-// Gateway doctrine. Neither dependency may be omitted.
+// Gateway doctrine. Neither dependency may be omitted. Member calls retry under
+// inferencedispatch.DefaultTransientRetry.
 func NewService(members MemberDispatcher, doctrine *governance.L1Doctrine) (*Service, error) {
 	if members == nil {
 		return nil, fmt.Errorf("tribunal: member dispatcher: %w", constants.ErrMissingRequiredField)
@@ -54,7 +64,7 @@ func NewService(members MemberDispatcher, doctrine *governance.L1Doctrine) (*Ser
 	if err != nil {
 		return nil, fmt.Errorf("tribunal: personas: %w", err)
 	}
-	return &Service{members: members, doctrine: doctrine, personas: personas}, nil
+	return &Service{members: members, doctrine: doctrine, personas: personas, retry: inferencedispatch.DefaultTransientRetry()}, nil
 }
 
 // Deliberate runs one intent through the Tribunal. The result never carries an
@@ -67,7 +77,7 @@ func (s *Service) Deliberate(ctx context.Context, req *tribunalv1.TribunalIntent
 	}
 	template := req.GetMemberInference()
 	templates := tribunalTemplates(req)
-	inferer := &memberInferer{members: s.members, templates: templates, prefix: req.GetProviderAttemptPrefix()}
+	inferer := &memberInferer{members: s.members, templates: templates, prefix: req.GetProviderAttemptPrefix(), retry: s.retry}
 	cfg := Config{
 		Inferer:     inferer,
 		Personas:    s.personas,
@@ -140,7 +150,7 @@ func (s *Service) ReviewAdmitted(ctx context.Context, req *tribunalv1.TribunalIn
 	}
 	arguments := models.RunShellCommandRequestFromProto(result.GetArguments())
 	templates := tribunalTemplates(req)
-	inferer := &memberInferer{members: s.members, templates: templates, prefix: req.GetProviderAttemptPrefix(), calls: result.GetMemberCalls()}
+	inferer := &memberInferer{members: s.members, templates: templates, prefix: req.GetProviderAttemptPrefix(), retry: s.retry, calls: result.GetMemberCalls()}
 	defer func() { result.MemberCalls = inferer.calls }()
 	cfg := Config{Inferer: inferer, Personas: s.personas, Doctrine: s.doctrine, Tier: req.GetTier(), ModelTag: req.GetMemberInference().GetModel(), ModelDigest: req.GetMemberInference().GetModelDigest(), StageModels: stageModels(templates)}
 	index := req.GetStepStartIndex() + uint32(len(result.GetSteps()))
@@ -210,7 +220,7 @@ func ValidateIntentRequest(req *tribunalv1.TribunalIntentRequest) error {
 		if models.InferenceModelRoleFromProto(template.GetRole()) == models.InferenceModelRoleUnspecified {
 			return fmt.Errorf("tribunal: %s inference.role: %w", stage, constants.ErrMissingRequiredField)
 		}
-		if len(template.GetMessages()) > 0 || len(template.GetTools()) > 0 || template.GetProviderAttemptId() != "" || template.GetActingAppId() != "" || template.GetStream() || template.GetResponseFormat() != nil {
+		if len(template.GetMessages()) > 0 || len(template.GetTools()) > 0 || template.GetProviderAttemptId() != "" || template.GetActingAppId() != "" || template.GetStream() || template.GetResponseFormat() != nil || template.GetRetryCount() != 0 {
 			return fmt.Errorf("tribunal: %s template has gateway-owned per-call fields: %w", stage, constants.ErrTribunalTemplateInvalid)
 		}
 	}
@@ -351,11 +361,14 @@ func StageFromProto(stage tribunalv1.TribunalStage) Stage {
 }
 
 // memberInferer answers each deliberation call with one governed inference
-// built from the request's template, and records every call it made.
+// built from the request's template, and records every call it made. A member
+// call that failed because the provider asked to retry later is retried under
+// retry; every attempt is its own recorded member call.
 type memberInferer struct {
 	members   MemberDispatcher
 	templates map[Stage]*operatorv1.InferenceDispatchRequest
 	prefix    string
+	retry     inferencedispatch.TransientRetry
 	calls     []*tribunalv1.TribunalMemberCall
 }
 
@@ -364,35 +377,64 @@ func (m *memberInferer) Infer(ctx context.Context, call Call) (string, error) {
 	if template == nil {
 		return "", fmt.Errorf("tribunal: no inference template for %s: %w", call.Stage, constants.ErrMissingRequiredField)
 	}
-	req := proto.Clone(template).(*operatorv1.InferenceDispatchRequest)
-	req.ProviderAttemptId = fmt.Sprintf("%s-%d", m.prefix, len(m.calls)+1)
-	req.Messages = []*operatorv1.InferenceMessage{
-		textMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, call.System),
-		textMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, call.User),
-	}
-	if call.JSONSchema != "" {
-		req.ResponseFormat = &operatorv1.InferenceResponseFormat{MediaType: constants.MediaTypeJSON, JsonSchema: call.JSONSchema}
-	}
-	record := &tribunalv1.TribunalMemberCall{
-		Stage:             call.Stage.Proto(),
-		Persona:           call.Persona,
-		Round:             call.Round,
-		ProviderAttemptId: req.GetProviderAttemptId(),
-	}
-	m.calls = append(m.calls, record)
-	response, failure := m.members.DispatchMember(ctx, req)
-	if failure != nil {
+	var retryOf string
+	for retryCount := uint32(0); ; retryCount++ {
+		req := proto.Clone(template).(*operatorv1.InferenceDispatchRequest)
+		req.ProviderAttemptId = fmt.Sprintf("%s-%d", m.prefix, len(m.calls)+1)
+		req.RetryCount = retryCount
+		req.Messages = []*operatorv1.InferenceMessage{
+			textMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, call.System),
+			textMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, call.User),
+		}
+		if call.JSONSchema != "" {
+			req.ResponseFormat = &operatorv1.InferenceResponseFormat{MediaType: constants.MediaTypeJSON, JsonSchema: call.JSONSchema}
+		}
+		record := &tribunalv1.TribunalMemberCall{
+			Stage:             call.Stage.Proto(),
+			Persona:           call.Persona,
+			Round:             call.Round,
+			ProviderAttemptId: req.GetProviderAttemptId(),
+			RetryCount:        retryCount,
+			RetryOf:           retryOf,
+		}
+		m.calls = append(m.calls, record)
+		response, failure := m.members.DispatchMember(ctx, req)
+		if failure == nil {
+			record.TransactionId = response.GetTransactionId()
+			record.Result = response.GetResult()
+			record.Receipt = response.GetReceipt()
+			record.ObservationReceipts = response.GetObservationReceipts()
+			return models.InferenceResultText(response.GetResult()), nil
+		}
 		record.Failure = failure
 		record.Receipt = failure.GetReceipt()
 		record.TransactionId = failure.GetReceipt().GetTransactionId()
 		record.ObservationReceipts = failure.GetObservationReceipts()
-		return "", fmt.Errorf("%w: %s %s: %s", constants.ErrTribunalInferenceFailed, call.Stage, call.Persona, failure.GetError())
+		if !m.awaitRetry(ctx, failure.GetReceipt(), retryCount+1) {
+			return "", fmt.Errorf("%w: %s %s: %s", constants.ErrTribunalInferenceFailed, call.Stage, call.Persona, failure.GetError())
+		}
+		retryOf = record.GetProviderAttemptId()
 	}
-	record.TransactionId = response.GetTransactionId()
-	record.Result = response.GetResult()
-	record.Receipt = response.GetReceipt()
-	record.ObservationReceipts = response.GetObservationReceipts()
-	return models.InferenceResultText(response.GetResult()), nil
+}
+
+// awaitRetry waits out the delay before the attempt with retry_count retry and
+// reports whether to dispatch it. Only a signed FAILED receipt that says the
+// provider asked to retry later is retried. A retry the policy does not allow,
+// a context that has ended, or a wait that would not end before the context's
+// deadline (a review's envelope lifetime) is never started, so the last failure
+// stands.
+func (m *memberInferer) awaitRetry(ctx context.Context, receipt *operatorv1.EventReceipt, retry uint32) bool {
+	if !governance.IsTransientFailureReceipt(receipt) {
+		return false
+	}
+	delay, ok := m.retry.Delay(retry)
+	if !ok || ctx.Err() != nil {
+		return false
+	}
+	if deadline, ok := ctx.Deadline(); ok && !time.Now().Add(delay).Before(deadline) {
+		return false
+	}
+	return m.retry.Wait(ctx, delay) == nil
 }
 
 func tribunalTemplates(req *tribunalv1.TribunalIntentRequest) map[Stage]*operatorv1.InferenceDispatchRequest {

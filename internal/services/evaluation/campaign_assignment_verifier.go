@@ -147,6 +147,7 @@ func verifyGraderCalls(req CampaignAssignmentVerificationRequest, result *evalv1
 		return []string{"judge config: " + err.Error()}
 	}
 	receipts := newJudgeReceiptCheck(req.AgentTrace)
+	ids := receipts.newIdentities()
 	var failures []string
 	seen := make(map[string]bool, len(grades))
 	for _, call := range result.GetGraderCalls() {
@@ -156,7 +157,7 @@ func verifyGraderCalls(req CampaignAssignmentVerificationRequest, result *evalv1
 			continue
 		}
 		seen[call.GetCriterionId()] = true
-		if err := verifyGraderCall(cfg, receipts, req.AgentTrace, call, grade); err != nil {
+		if err := verifyGraderCall(cfg, receipts, req.AgentTrace, call, grade, ids); err != nil {
 			failures = append(failures, fmt.Sprintf("grader call %s: %v", call.GetGraderCallId(), err))
 		}
 	}
@@ -168,11 +169,26 @@ func verifyGraderCalls(req CampaignAssignmentVerificationRequest, result *evalv1
 	return failures
 }
 
-func verifyGraderCall(cfg judge.Config, receipts judgeReceiptCheck, trace *AgentTrace, call *evalv1.GraderModelCallRecord, grade *evalv1.SemanticGrade) error {
+// verifyGraderCall proves one grader call's signed evidence: its receipt, and
+// when the judgment was retried, the retry evidence under the one shared retry
+// rule. ids spends the attempts and transactions of every grader call of the
+// result, so no judge attempt backs two of them.
+func verifyGraderCall(cfg judge.Config, receipts judgeReceiptCheck, trace *AgentTrace, call *evalv1.GraderModelCallRecord, grade *evalv1.SemanticGrade, ids *judgeIdentities) error {
 	if call.GetProviderAttemptId() == "" || call.GetTransactionId() == "" || call.GetInferenceResult() == nil || call.GetReceipt() == nil {
 		return fmt.Errorf("signed judge evidence: %w", constants.ErrMissingRequiredField)
 	}
-	if err := receipts.verify(judge.Score{Status: judge.StatusScored, TransactionID: call.GetTransactionId(), Receipt: call.GetReceipt(), Result: call.GetInferenceResult()}); err != nil {
+	superseded := judgeSupersededFromRecords(call.GetSupersededAttempts())
+	if len(superseded) > 0 && !ids.claimAttempt(call.GetProviderAttemptId()) {
+		return fmt.Errorf("provider attempt %q is reused: %w", call.GetProviderAttemptId(), constants.ErrEvaluationContentJudgmentMismatch)
+	}
+	if err := receipts.verifyIn(judge.Score{
+		Status:        judge.StatusScored,
+		TransactionID: call.GetTransactionId(),
+		Receipt:       call.GetReceipt(),
+		Result:        call.GetInferenceResult(),
+		RetryCount:    call.GetRetryCount(),
+		Superseded:    superseded,
+	}, ids); err != nil {
 		return err
 	}
 	if criterionID, ok := strings.CutPrefix(call.GetCriterionId(), contentCriterionPrefix); ok {
@@ -188,7 +204,10 @@ func verifyCriterionGraderCall(cfg judge.Config, trace *AgentTrace, criterionID 
 	if !ok || judgment.ProviderAttemptID != call.GetProviderAttemptId() || judgment.TransactionID != call.GetTransactionId() || judgment.RubricVersion != call.GetRubricVersion() {
 		return fmt.Errorf("criterion %q is not the judgment sealed in the trace: %w", criterionID, constants.ErrEvaluationContentJudgmentMismatch)
 	}
-	met, rationale, err := judge.VerifyCriterionResult(cfg, call.GetProviderAttemptId(), call.GetInferenceResult(), call.GetReceipt())
+	if judgment.RetryCount != call.GetRetryCount() || !supersededEqual(judgeSupersededFromTrace(judgment.SupersededAttempts), judgeSupersededFromRecords(call.GetSupersededAttempts())) {
+		return fmt.Errorf("criterion %q retries are not the retries sealed in the trace: %w", criterionID, constants.ErrEvaluationContentJudgmentMismatch)
+	}
+	met, rationale, err := judge.VerifyCriterionResult(cfg, call.GetProviderAttemptId(), call.GetRetryCount(), call.GetInferenceResult(), call.GetReceipt())
 	if err != nil {
 		return err
 	}
@@ -209,7 +228,7 @@ func verifyQualityGraderCall(cfg judge.Config, call *evalv1.GraderModelCallRecor
 	if call.GetRubricVersion() != judge.RubricVersion {
 		return fmt.Errorf("rubric %q is not %q: %w", call.GetRubricVersion(), judge.RubricVersion, constants.ErrEvaluationContentJudgmentMismatch)
 	}
-	value, rationale, err := judge.VerifyQualityResult(cfg, call.GetProviderAttemptId(), call.GetInferenceResult(), call.GetReceipt())
+	value, rationale, err := judge.VerifyQualityResult(cfg, call.GetProviderAttemptId(), call.GetRetryCount(), call.GetInferenceResult(), call.GetReceipt())
 	status := grade.GetStatus()
 	switch {
 	case err != nil:

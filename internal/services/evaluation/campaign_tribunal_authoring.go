@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -117,7 +118,11 @@ func formationSupportCallRole(trace *AgentTrace, purpose string) evalv1.ModelCam
 // persona step joins the trace, and the command's governed answer is recorded
 // as a direct command's is. A deliberation that approves no command is a
 // model-visible failure; a member inference failure is also recorded as the
-// trace's provider failure, which ends the loop.
+// trace's provider failure, which ends the loop. A member call the Gateway
+// retried because the provider asked to retry later is recorded as superseded
+// and is not a failure: only the last attempt of a chain is. The Gateway's
+// retry waits are the provider's time, so the scenario budget is held while
+// the Gateway deliberates and credited for the waits afterwards.
 func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, proposal models.RunShellCommandRequest) (AgentToolCall, error) {
 	if len(proposal.Hostnames) > 0 {
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: "run_shell_command Tribunal authoring does not accept hostnames"})
@@ -152,7 +157,7 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 	if err != nil {
 		return AgentToolCall{}, err
 	}
-	result, err := r.executor.inference.DispatchIntent(ctx, &tribunalv1.TribunalIntentRequest{
+	result, err := r.dispatchTribunalIntent(ctx, &tribunalv1.TribunalIntentRequest{
 		Request:                 record.ArgumentsJSON,
 		Guidelines:              "The agent proposed this run_shell_command call. Preserve its goal using one executable and argv; shell pipelines, redirects, glob expansion, and substitutions are unavailable. Preserve literal utility arguments, including regex patterns and find -exec terminators.",
 		WorkingDirectory:        workingDir,
@@ -174,6 +179,9 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 		return AgentToolCall{}, fmt.Errorf("tool %s: %w", record.ToolName, err)
 	}
 	record.ConsensusInferences = governance.WrapConsensusInferences(result.GetConsensusInferences())
+	if err := memberRetryChainError(result.GetMemberCalls()); err != nil {
+		return AgentToolCall{}, fmt.Errorf("tool %s: %w", record.ToolName, err)
+	}
 	if failure := r.recordMemberCalls(record, r.designated, result.GetMemberCalls()); failure != "" {
 		if failure == modelCallGovernanceRejected {
 			record.PolicyDecision = agentPolicyDecisionDeny
@@ -202,6 +210,101 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 		// INFERENCE_FAILED always carries a failed member call, recorded above.
 		return AgentToolCall{}, fmt.Errorf("%w: tribunal intent outcome %s", constants.ErrEvaluationDispatchFailed, result.GetOutcome())
 	}
+}
+
+// dispatchTribunalIntent sends one Tribunal intent with the scenario budget
+// held, on every path. The Gateway retries a member call the provider asked to
+// retry later and waits between attempts; those waits are known only when the
+// intent returns, so the budget's expiry is deferred meanwhile and the waits
+// the Gateway actually took are credited on release.
+func (r *agentRun) dispatchTribunalIntent(ctx context.Context, req *tribunalv1.TribunalIntentRequest) (*tribunalv1.TribunalIntentResult, error) {
+	r.budget.hold()
+	var result *tribunalv1.TribunalIntentResult
+	defer func() {
+		r.budget.release(memberRetryWait(result.GetMemberCalls()) + voteRetryWait(result.GetConsensusInferences()))
+	}()
+	var err error
+	result, err = r.executor.inference.DispatchIntent(ctx, req)
+	return result, err
+}
+
+// memberRetryWait is the time the Gateway waited before the retries its member
+// calls record: the transient retry policy's delay for each call's retry
+// ordinal. It is what the Gateway took, not the executor's own retry policy.
+func memberRetryWait(calls []*tribunalv1.TribunalMemberCall) time.Duration {
+	policy := dispatch.DefaultTransientRetry()
+	var wait time.Duration
+	for _, call := range calls {
+		if call.GetRetryCount() == 0 {
+			continue
+		}
+		if delay, ok := policy.Delay(call.GetRetryCount()); ok {
+			wait += delay
+		}
+	}
+	return wait
+}
+
+// voteRetryWait is the least time the Gateway waited before the L2 vote
+// retries votes record. Each member's chain waited the transient retry
+// policy's delays for its retry ordinals. One subject's members vote in
+// concurrent batches the executor cannot see, so each subject is credited its
+// longest member chain; subjects (one admission envelope each) deliberate one
+// after another, so their waits add. The credit is never more than the Gateway
+// waited.
+func voteRetryWait(votes []*operatorv1.ConsensusVoteInference) time.Duration {
+	policy := dispatch.DefaultTransientRetry()
+	longest := make(map[string]time.Duration)
+	for _, vote := range votes {
+		var chain time.Duration
+		for retry := uint32(1); retry <= vote.GetRetryCount(); retry++ {
+			if delay, ok := policy.Delay(retry); ok {
+				chain += delay
+			}
+		}
+		subject := vote.GetSubjectTransactionHash()
+		longest[subject] = max(longest[subject], chain)
+	}
+	var wait time.Duration
+	for _, chain := range longest {
+		wait += chain
+	}
+	return wait
+}
+
+// memberRetryChainError rejects member calls whose retries are not a Gateway's
+// retry of the call just before them. A retry's retry_count is one above the
+// call it names in retry_of, that call is the immediately preceding member call
+// and did not complete, and its signed FAILED receipt says the provider asked
+// to retry later. retry_of is set exactly when retry_count is non-zero, and no
+// chain runs past the transient retry bound. A result that breaks this is
+// malformed: it is never graded, so it fails the dispatch.
+func memberRetryChainError(calls []*tribunalv1.TribunalMemberCall) error {
+	malformed := func(call *tribunalv1.TribunalMemberCall, reason string) error {
+		return fmt.Errorf("%w: tribunal member call %q %s", constants.ErrEvaluationDispatchFailed, call.GetProviderAttemptId(), reason)
+	}
+	for i, call := range calls {
+		if (call.GetRetryOf() == "") != (call.GetRetryCount() == 0) {
+			return malformed(call, "retry ordinal and retried attempt disagree")
+		}
+		if call.GetRetryCount() > dispatch.MaxTransientRetries() {
+			return malformed(call, "retries past the transient retry bound")
+		}
+		if call.GetRetryOf() == "" {
+			continue
+		}
+		if i == 0 || calls[i-1].GetProviderAttemptId() != call.GetRetryOf() {
+			return malformed(call, "does not retry the member call before it")
+		}
+		previous := calls[i-1]
+		if previous.GetRetryCount()+1 != call.GetRetryCount() {
+			return malformed(call, "does not follow its retried attempt's ordinal")
+		}
+		if previous.GetFailure() == nil || !governance.IsTransientFailureReceipt(previous.GetReceipt()) {
+			return malformed(call, "retries an attempt the provider did not ask to retry")
+		}
+	}
+	return nil
 }
 
 // runApprovedShellCommand records the governed answer to the Tribunal's approved
@@ -236,8 +339,17 @@ func (r *agentRun) runApprovedShellCommand(record AgentToolCall, result *tribuna
 // infer records an agent turn: every call the Inference runtime executed is
 // recorded, verified against the model it was dispatched under. It returns
 // the trace's provider failure when a member call failed or did not verify;
-// the deliberation stopped there.
+// the deliberation stopped there. A failed call a later member call retries
+// (retry_of) is recorded with its error and does not stop the deliberation: the
+// retry supersedes it. The call's retry_count and retry_of come from the member
+// call, and a completed retry's count must echo in its signed result.
 func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCampaignRole, calls []*tribunalv1.TribunalMemberCall) string {
+	retried := make(map[string]bool, len(calls))
+	for _, member := range calls {
+		if member.GetRetryOf() != "" {
+			retried[member.GetRetryOf()] = true
+		}
+	}
 	for _, member := range calls {
 		callTier := tier
 		if IsHeterogeneousAssignment(r.req.Assignment) {
@@ -250,6 +362,8 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 			LoopTurn:   record.LoopTurn,
 			ToolCallID: record.CallID,
 			Persona:    member.GetPersona(),
+			RetryCount: member.GetRetryCount(),
+			RetryOf:    member.GetRetryOf(),
 		}
 		probe, err := r.bindInference(&call, callTier, member.GetProviderAttemptId(), nil, nil)
 		if err == nil {
@@ -270,6 +384,13 @@ func (r *agentRun) recordMemberCalls(record AgentToolCall, tier evalv1.ModelCamp
 			if call.Receipt == nil && member.GetReceipt() != nil {
 				call.TransactionID = member.GetReceipt().GetTransactionId()
 				call.Receipt = &AgentTraceReceipt{EventReceipt: member.GetReceipt()}
+			}
+			if retried[member.GetProviderAttemptId()] && governance.IsTransientFailureReceipt(member.GetReceipt()) && call.Receipt != nil {
+				// The Gateway retried this attempt: it is evidence, not the
+				// deliberation's failure.
+				call.Error = string(ClassifyExecutionFailure(err))
+				r.trace.ModelCalls = append(r.trace.ModelCalls, call)
+				continue
 			}
 			if isL2GovernanceDenial(member.GetReceipt(), err) {
 				call.Error = modelCallGovernanceRejected

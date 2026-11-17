@@ -296,7 +296,10 @@ func (e *CampaignAgentExecutor) shouldScoreWithJudge(req AssignmentExecutionRequ
 // qualityJudgments is what the quality judge adds to a result: one semantic
 // grade per judged subject, the decomposed score of each counted grade, and the
 // grader call and governed action of each judge inference whose receipt
-// verified.
+// verified. A judgment that was retried after the provider asked to retry later
+// records the attempts it superseded on its grader call; a judgment that ends
+// in a failed dispatch has no signed result, so it has no grader call and
+// those attempts are not persisted.
 type qualityJudgments struct {
 	grades          []*evalv1.SemanticGrade
 	scores          []*evalv1.DecomposedScoreRecord
@@ -408,6 +411,8 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 				TransactionId:      sc.TransactionID,
 				InferenceResult:    proto.Clone(sc.Result).(*operatorv1.InferenceResult),
 				Receipt:            proto.Clone(sc.Receipt).(*operatorv1.EventReceipt),
+				RetryCount:         sc.RetryCount,
+				SupersededAttempts: supersededRecords(sc.Superseded),
 			})
 			out.governedActions = append(out.governedActions, &evalv1.GovernedActionBinding{
 				BindingId:         e.newID("judge-binding"),
@@ -419,6 +424,22 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 				PolicyDecision:    agentPolicyDecisionAllow,
 				ActionType:        string(constants.ActionTypeInference),
 			})
+			// Each superseded attempt is a governed inference the judge's runtime
+			// executed and signed; receipts.verify checked its chain above.
+			for _, attempt := range sc.Superseded {
+				attemptRef := proto.Clone(graderCallRef).(*compliancev1.ComplianceEvidenceReference)
+				attemptRef.ArtifactId = "receipt:" + attempt.TransactionID
+				out.governedActions = append(out.governedActions, &evalv1.GovernedActionBinding{
+					BindingId:         e.newID("judge-binding"),
+					AssignmentId:      assignmentID,
+					TransactionId:     attempt.TransactionID,
+					OperatorId:        trace.Inference.OperatorID,
+					OperatorSessionId: trace.Inference.SessionID,
+					ReceiptRef:        attemptRef,
+					PolicyDecision:    agentPolicyDecisionAllow,
+					ActionType:        string(constants.ActionTypeInference),
+				})
+			}
 		}
 		var (
 			status evalv1.EvaluationVerdictStatus
@@ -1567,7 +1588,15 @@ func (r *agentRun) injectEventReceiptListDefaults(args *agentToolArguments) {
 // rejection or an ingress refusal.
 func (r *agentRun) dispatch(ctx context.Context, record *AgentToolCall, action constants.ActionType, resource string, payload []byte) (GovernedToolDispatch, bool, error) {
 	assignment := r.req.Assignment
+	// L2 vote retries wait on the Gateway; that wait is the provider's, so the
+	// scenario budget is held through the dispatch and credited it after.
+	r.budget.hold()
 	dispatched, err := r.executor.tools.DispatchAgentTool(ctx, r.target, assignment.GetRunId(), assignment.GetAssignmentId(), r.trace.InvestigationID, r.req.AttemptID, action, resource, payload)
+	var votes []*operatorv1.ConsensusVoteInference
+	if dispatched.Outcome != nil {
+		votes = dispatched.Outcome.ConsensusInferences
+	}
+	r.budget.release(voteRetryWait(votes))
 	if err != nil {
 		return GovernedToolDispatch{}, false, fmt.Errorf("tool %s: %w", record.ToolName, err)
 	}

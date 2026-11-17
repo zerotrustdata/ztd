@@ -85,6 +85,9 @@ func WriteConsensusVotes(w io.Writer, indent string, txID string, votes []models
 		if vote.InferenceTransactionID != "" {
 			fmt.Fprintf(w, "%s            inference: %s\n", indent, vote.InferenceTransactionID)
 		}
+		if vote.RetryCount > 0 {
+			fmt.Fprintf(w, "%s            retries: %d (provider asked to retry later)\n", indent, vote.RetryCount)
+		}
 	}
 	fmt.Fprintf(w, "%sApprovals: %d of %d votes, quorum %d\n", indent, approvals, len(votes), first.Quorum)
 }

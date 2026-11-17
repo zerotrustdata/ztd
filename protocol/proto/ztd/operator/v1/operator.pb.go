@@ -5863,8 +5863,19 @@ type ConsensusVoteInference struct {
 	Receipt                *EventReceipt             `protobuf:"bytes,7,opt,name=receipt,proto3" json:"receipt,omitempty"`
 	Failure                *InferenceDispatchFailure `protobuf:"bytes,8,opt,name=failure,proto3" json:"failure,omitempty"`
 	ObservationReceipts    []*EventReceipt           `protobuf:"bytes,9,rep,name=observation_receipts,json=observationReceipts,proto3" json:"observation_receipts,omitempty"`
-	unknownFields          protoimpl.UnknownFields
-	sizeCache              protoimpl.SizeCache
+	// retry_count is the vote attempt's retry ordinal: 0 for the first
+	// attempt, n for the nth retry after the provider asked to retry later. It
+	// equals the dispatched request's and the signed result's retry_count, and
+	// provider_attempt_id is governance.ConsensusVoteAttemptID for it.
+	RetryCount uint32 `protobuf:"varint,10,opt,name=retry_count,json=retryCount,proto3" json:"retry_count,omitempty"`
+	// superseded_attempts are the member's earlier vote attempts this one
+	// retries, in order (retry_count 0..n-1). Each did not complete, carries the
+	// Inference Operator's signed FAILED receipt with
+	// RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT, and has no superseded_attempts of
+	// its own. Every one is execution evidence; only this record casts the vote.
+	SupersededAttempts []*ConsensusVoteInference `protobuf:"bytes,11,rep,name=superseded_attempts,json=supersededAttempts,proto3" json:"superseded_attempts,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *ConsensusVoteInference) Reset() {
@@ -5956,6 +5967,20 @@ func (x *ConsensusVoteInference) GetFailure() *InferenceDispatchFailure {
 func (x *ConsensusVoteInference) GetObservationReceipts() []*EventReceipt {
 	if x != nil {
 		return x.ObservationReceipts
+	}
+	return nil
+}
+
+func (x *ConsensusVoteInference) GetRetryCount() uint32 {
+	if x != nil {
+		return x.RetryCount
+	}
+	return 0
+}
+
+func (x *ConsensusVoteInference) GetSupersededAttempts() []*ConsensusVoteInference {
+	if x != nil {
+		return x.SupersededAttempts
 	}
 	return nil
 }
@@ -15211,7 +15236,7 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"event_type\x18\x10 \x01(\tR\teventType\x12\x1f\n" +
 	"\vaction_type\x18\x11 \x01(\tR\n" +
 	"actionType\x12O\n" +
-	"\x0erejection_code\x18\x12 \x01(\x0e2(.ztd.operator.v1.GovernanceRejectionCodeR\rrejectionCode\"\x8d\x04\n" +
+	"\x0erejection_code\x18\x12 \x01(\x0e2(.ztd.operator.v1.GovernanceRejectionCodeR\rrejectionCode\"\x88\x05\n" +
 	"\x16ConsensusVoteInference\x124\n" +
 	"\x16subject_transaction_id\x18\x01 \x01(\tR\x14subjectTransactionId\x128\n" +
 	"\x18subject_transaction_hash\x18\x02 \x01(\tR\x16subjectTransactionHash\x12\"\n" +
@@ -15221,7 +15246,11 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\x06result\x18\x06 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\x127\n" +
 	"\areceipt\x18\a \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\areceipt\x12C\n" +
 	"\afailure\x18\b \x01(\v2).ztd.operator.v1.InferenceDispatchFailureR\afailure\x12P\n" +
-	"\x14observation_receipts\x18\t \x03(\v2\x1d.ztd.operator.v1.EventReceiptR\x13observationReceipts\"\xb9\x01\n" +
+	"\x14observation_receipts\x18\t \x03(\v2\x1d.ztd.operator.v1.EventReceiptR\x13observationReceipts\x12\x1f\n" +
+	"\vretry_count\x18\n" +
+	" \x01(\rR\n" +
+	"retryCount\x12X\n" +
+	"\x13superseded_attempts\x18\v \x03(\v2'.ztd.operator.v1.ConsensusVoteInferenceR\x12supersededAttempts\"\xb9\x01\n" +
 	"\x1cGovernanceDeliberationResult\x12=\n" +
 	"\benvelope\x18\x01 \x01(\v2!.ztd.common.v1.GovernanceEnvelopeR\benvelope\x12Z\n" +
 	"\x14consensus_inferences\x18\x02 \x03(\v2'.ztd.operator.v1.ConsensusVoteInferenceR\x13consensusInferences\"\xc0\x01\n" +
@@ -16478,130 +16507,131 @@ var file_ztd_operator_v1_operator_proto_depIdxs = []int32{
 	73,  // 24: ztd.operator.v1.ConsensusVoteInference.receipt:type_name -> ztd.operator.v1.EventReceipt
 	168, // 25: ztd.operator.v1.ConsensusVoteInference.failure:type_name -> ztd.operator.v1.InferenceDispatchFailure
 	73,  // 26: ztd.operator.v1.ConsensusVoteInference.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
-	182, // 27: ztd.operator.v1.GovernanceDeliberationResult.envelope:type_name -> ztd.common.v1.GovernanceEnvelope
-	74,  // 28: ztd.operator.v1.GovernanceDeliberationResult.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
-	73,  // 29: ztd.operator.v1.GovernanceRejection.receipt:type_name -> ztd.operator.v1.EventReceipt
-	74,  // 30: ztd.operator.v1.GovernanceRejection.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
-	8,   // 31: ztd.operator.v1.IngressRefusal.code:type_name -> ztd.operator.v1.IngressRefusalCode
-	74,  // 32: ztd.operator.v1.IngressRefusal.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
-	164, // 33: ztd.operator.v1.GovernedDispatchResult.inference_result:type_name -> ztd.operator.v1.InferenceResult
-	73,  // 34: ztd.operator.v1.GovernedDispatchResult.receipt:type_name -> ztd.operator.v1.EventReceipt
-	74,  // 35: ztd.operator.v1.GovernedDispatchResult.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
-	182, // 36: ztd.operator.v1.GovernedDispatchResult.request_envelope:type_name -> ztd.common.v1.GovernanceEnvelope
-	0,   // 37: ztd.operator.v1.CommandResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	0,   // 38: ztd.operator.v1.FsListResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	81,  // 39: ztd.operator.v1.FsListResult.entries:type_name -> ztd.operator.v1.FsEntry
-	0,   // 40: ztd.operator.v1.FsReadResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	0,   // 41: ztd.operator.v1.FsGrepResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	84,  // 42: ztd.operator.v1.FsGrepResult.matches:type_name -> ztd.operator.v1.FsGrepMatch
-	0,   // 43: ztd.operator.v1.FileEditResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	0,   // 44: ztd.operator.v1.ExecutionStatusUpdate.status:type_name -> ztd.operator.v1.ExecutionStatus
-	0,   // 45: ztd.operator.v1.PortCheckResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	88,  // 46: ztd.operator.v1.PortCheckResult.results:type_name -> ztd.operator.v1.PortCheckEntry
-	9,   // 47: ztd.operator.v1.ProviderModelInventoryEntry.parameter_count_source:type_name -> ztd.operator.v1.ParameterCountSource
-	0,   // 48: ztd.operator.v1.OllamaModelInventoryResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	91,  // 49: ztd.operator.v1.OllamaModelInventoryResult.entries:type_name -> ztd.operator.v1.ProviderModelInventoryEntry
-	0,   // 50: ztd.operator.v1.OllamaModelResidencyResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	94,  // 51: ztd.operator.v1.OllamaModelResidencyResult.models:type_name -> ztd.operator.v1.OllamaModelResidencyModel
-	0,   // 52: ztd.operator.v1.OllamaModelReleaseResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	0,   // 53: ztd.operator.v1.OllamaModelPullResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	0,   // 54: ztd.operator.v1.OllamaModelCopyResult.status:type_name -> ztd.operator.v1.ExecutionStatus
-	104, // 55: ztd.operator.v1.AuditEvent.file_mutations:type_name -> ztd.operator.v1.AuditFileMutation
-	103, // 56: ztd.operator.v1.FetchHistoryResult.web_session:type_name -> ztd.operator.v1.AuditWebSession
-	105, // 57: ztd.operator.v1.FetchHistoryResult.events:type_name -> ztd.operator.v1.AuditEvent
-	107, // 58: ztd.operator.v1.FetchFileHistoryResult.history:type_name -> ztd.operator.v1.FileHistoryEntry
-	110, // 59: ztd.operator.v1.FetchFileDiffResult.diffs:type_name -> ztd.operator.v1.FileDiffEntry
-	110, // 60: ztd.operator.v1.FetchFileDiffResult.diff:type_name -> ztd.operator.v1.FileDiffEntry
-	113, // 61: ztd.operator.v1.HeartbeatResult.system_identity:type_name -> ztd.operator.v1.SystemIdentity
-	115, // 62: ztd.operator.v1.HeartbeatResult.network_info:type_name -> ztd.operator.v1.NetworkInfo
-	116, // 63: ztd.operator.v1.HeartbeatResult.version_info:type_name -> ztd.operator.v1.VersionInfo
-	117, // 64: ztd.operator.v1.HeartbeatResult.uptime_info:type_name -> ztd.operator.v1.UptimeInfo
-	118, // 65: ztd.operator.v1.HeartbeatResult.performance_metrics:type_name -> ztd.operator.v1.PerformanceMetrics
-	119, // 66: ztd.operator.v1.HeartbeatResult.os_details:type_name -> ztd.operator.v1.OSDetails
-	120, // 67: ztd.operator.v1.HeartbeatResult.user_details:type_name -> ztd.operator.v1.UserDetails
-	121, // 68: ztd.operator.v1.HeartbeatResult.disk_details:type_name -> ztd.operator.v1.DiskDetails
-	122, // 69: ztd.operator.v1.HeartbeatResult.memory_details:type_name -> ztd.operator.v1.MemoryDetails
-	123, // 70: ztd.operator.v1.HeartbeatResult.environment:type_name -> ztd.operator.v1.EnvironmentDetails
-	124, // 71: ztd.operator.v1.HeartbeatResult.fingerprint_details:type_name -> ztd.operator.v1.FingerprintDetails
-	114, // 72: ztd.operator.v1.NetworkInfo.connectivity_status:type_name -> ztd.operator.v1.NetworkInterface
-	176, // 73: ztd.operator.v1.PasskeyRegisterChallengeResult.rp:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
-	177, // 74: ztd.operator.v1.PasskeyRegisterChallengeResult.user:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
-	178, // 75: ztd.operator.v1.PasskeyRegisterChallengeResult.pub_key_cred_params:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
-	179, // 76: ztd.operator.v1.PasskeyRegisterChallengeResult.authenticator_selection:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
-	128, // 77: ztd.operator.v1.PasskeyRegisterVerifyRequested.attestation_response:type_name -> ztd.operator.v1.AttestationResponse
-	125, // 78: ztd.operator.v1.PasskeyRegisterVerifyResult.credential:type_name -> ztd.operator.v1.PasskeyCredential
-	133, // 79: ztd.operator.v1.PasskeyAuthVerifyRequested.assertion_response:type_name -> ztd.operator.v1.AssertionResponse
-	125, // 80: ztd.operator.v1.ListPasskeyCredentialsResult.credentials:type_name -> ztd.operator.v1.PasskeyCredential
-	140, // 81: ztd.operator.v1.InferenceMessagePart.tool_call:type_name -> ztd.operator.v1.InferenceToolCall
-	141, // 82: ztd.operator.v1.InferenceMessagePart.tool_result:type_name -> ztd.operator.v1.InferenceToolResult
-	142, // 83: ztd.operator.v1.InferenceMessagePart.provider_reasoning:type_name -> ztd.operator.v1.InferenceProviderReasoning
-	11,  // 84: ztd.operator.v1.InferenceMessage.role:type_name -> ztd.operator.v1.InferenceMessageRole
-	143, // 85: ztd.operator.v1.InferenceMessage.parts:type_name -> ztd.operator.v1.InferenceMessagePart
-	12,  // 86: ztd.operator.v1.InferenceToolChoice.mode:type_name -> ztd.operator.v1.InferenceToolChoiceMode
-	140, // 87: ztd.operator.v1.InferenceResponsePart.tool_call:type_name -> ztd.operator.v1.InferenceToolCall
-	142, // 88: ztd.operator.v1.InferenceResponsePart.provider_reasoning:type_name -> ztd.operator.v1.InferenceProviderReasoning
-	152, // 89: ztd.operator.v1.InferenceDecisionRequest.questions:type_name -> ztd.operator.v1.InferenceDecisionQuestion
-	153, // 90: ztd.operator.v1.InferenceDecisionQuestion.noul:type_name -> ztd.operator.v1.InferenceNoulQuestion
-	155, // 91: ztd.operator.v1.InferenceDecisionQuestion.choice:type_name -> ztd.operator.v1.InferenceChoiceQuestion
-	156, // 92: ztd.operator.v1.InferenceDecisionQuestion.score:type_name -> ztd.operator.v1.InferenceScoreQuestion
-	154, // 93: ztd.operator.v1.InferenceChoiceQuestion.criteria:type_name -> ztd.operator.v1.InferenceDecisionCriterion
-	158, // 94: ztd.operator.v1.InferenceDecisionResult.answers:type_name -> ztd.operator.v1.InferenceDecisionAnswer
-	160, // 95: ztd.operator.v1.InferenceDecisionAnswer.choice:type_name -> ztd.operator.v1.InferenceChoiceAnswer
-	161, // 96: ztd.operator.v1.InferenceDecisionAnswer.score:type_name -> ztd.operator.v1.InferenceScoreAnswer
-	159, // 97: ztd.operator.v1.InferenceChoiceAnswer.probabilities:type_name -> ztd.operator.v1.InferenceDecisionProbability
-	159, // 98: ztd.operator.v1.InferenceScoreAnswer.probabilities:type_name -> ztd.operator.v1.InferenceDecisionProbability
-	10,  // 99: ztd.operator.v1.InferenceRequested.role:type_name -> ztd.operator.v1.ModelRole
-	144, // 100: ztd.operator.v1.InferenceRequested.messages:type_name -> ztd.operator.v1.InferenceMessage
-	145, // 101: ztd.operator.v1.InferenceRequested.tools:type_name -> ztd.operator.v1.InferenceToolDeclaration
-	146, // 102: ztd.operator.v1.InferenceRequested.response_format:type_name -> ztd.operator.v1.InferenceResponseFormat
-	147, // 103: ztd.operator.v1.InferenceRequested.tool_choice:type_name -> ztd.operator.v1.InferenceToolChoice
-	148, // 104: ztd.operator.v1.InferenceRequested.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
-	150, // 105: ztd.operator.v1.InferenceRequested.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
-	151, // 106: ztd.operator.v1.InferenceRequested.decision:type_name -> ztd.operator.v1.InferenceDecisionRequest
-	15,  // 107: ztd.operator.v1.InferenceProviderAttemptRecord.retry_classification:type_name -> ztd.operator.v1.InferenceRetryClassification
-	16,  // 108: ztd.operator.v1.InferenceProviderAttemptRecord.status:type_name -> ztd.operator.v1.InferenceProviderAttemptStatus
-	149, // 109: ztd.operator.v1.InferenceResult.parts:type_name -> ztd.operator.v1.InferenceResponsePart
-	13,  // 110: ztd.operator.v1.InferenceResult.timing_source:type_name -> ztd.operator.v1.InferenceTimingSource
-	14,  // 111: ztd.operator.v1.InferenceResult.load_state:type_name -> ztd.operator.v1.InferenceLoadState
-	15,  // 112: ztd.operator.v1.InferenceResult.retry_classification:type_name -> ztd.operator.v1.InferenceRetryClassification
-	157, // 113: ztd.operator.v1.InferenceResult.decision:type_name -> ztd.operator.v1.InferenceDecisionResult
-	172, // 114: ztd.operator.v1.InferenceResult.hosted_egress:type_name -> ztd.operator.v1.InferenceHostedEgressAttestation
-	149, // 115: ztd.operator.v1.InferenceProgressEvent.parts:type_name -> ztd.operator.v1.InferenceResponsePart
-	73,  // 116: ztd.operator.v1.InferenceCompletion.receipt:type_name -> ztd.operator.v1.EventReceipt
-	164, // 117: ztd.operator.v1.InferenceCompletion.result:type_name -> ztd.operator.v1.InferenceResult
-	10,  // 118: ztd.operator.v1.InferenceDispatchRequest.role:type_name -> ztd.operator.v1.ModelRole
-	144, // 119: ztd.operator.v1.InferenceDispatchRequest.messages:type_name -> ztd.operator.v1.InferenceMessage
-	145, // 120: ztd.operator.v1.InferenceDispatchRequest.tools:type_name -> ztd.operator.v1.InferenceToolDeclaration
-	146, // 121: ztd.operator.v1.InferenceDispatchRequest.response_format:type_name -> ztd.operator.v1.InferenceResponseFormat
-	147, // 122: ztd.operator.v1.InferenceDispatchRequest.tool_choice:type_name -> ztd.operator.v1.InferenceToolChoice
-	148, // 123: ztd.operator.v1.InferenceDispatchRequest.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
-	150, // 124: ztd.operator.v1.InferenceDispatchRequest.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
-	151, // 125: ztd.operator.v1.InferenceDispatchRequest.decision:type_name -> ztd.operator.v1.InferenceDecisionRequest
-	17,  // 126: ztd.operator.v1.InferenceDispatchFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
-	73,  // 127: ztd.operator.v1.InferenceDispatchFailure.receipt:type_name -> ztd.operator.v1.EventReceipt
-	73,  // 128: ztd.operator.v1.InferenceDispatchFailure.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
-	17,  // 129: ztd.operator.v1.InferenceDispatchStreamFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
-	165, // 130: ztd.operator.v1.InferenceDispatchStreamFrame.progress:type_name -> ztd.operator.v1.InferenceProgressEvent
-	171, // 131: ztd.operator.v1.InferenceDispatchStreamFrame.completion:type_name -> ztd.operator.v1.InferenceDispatchResponse
-	169, // 132: ztd.operator.v1.InferenceDispatchStreamFrame.failure:type_name -> ztd.operator.v1.InferenceDispatchStreamFailure
-	164, // 133: ztd.operator.v1.InferenceDispatchResponse.result:type_name -> ztd.operator.v1.InferenceResult
-	73,  // 134: ztd.operator.v1.InferenceDispatchResponse.receipt:type_name -> ztd.operator.v1.EventReceipt
-	73,  // 135: ztd.operator.v1.InferenceDispatchResponse.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
-	19,  // 136: ztd.operator.v1.OperatorService.ExecuteCommand:input_type -> ztd.operator.v1.CommandRequested
-	20,  // 137: ztd.operator.v1.OperatorService.CancelCommand:input_type -> ztd.operator.v1.CommandCancelRequested
-	21,  // 138: ztd.operator.v1.OperatorService.EditFile:input_type -> ztd.operator.v1.FileEditRequested
-	24,  // 139: ztd.operator.v1.OperatorService.ListFileSystem:input_type -> ztd.operator.v1.FsListRequested
-	25,  // 140: ztd.operator.v1.OperatorService.ReadFileSystem:input_type -> ztd.operator.v1.FsReadRequested
-	80,  // 141: ztd.operator.v1.OperatorService.ExecuteCommand:output_type -> ztd.operator.v1.CommandResult
-	80,  // 142: ztd.operator.v1.OperatorService.CancelCommand:output_type -> ztd.operator.v1.CommandResult
-	80,  // 143: ztd.operator.v1.OperatorService.EditFile:output_type -> ztd.operator.v1.CommandResult
-	80,  // 144: ztd.operator.v1.OperatorService.ListFileSystem:output_type -> ztd.operator.v1.CommandResult
-	80,  // 145: ztd.operator.v1.OperatorService.ReadFileSystem:output_type -> ztd.operator.v1.CommandResult
-	141, // [141:146] is the sub-list for method output_type
-	136, // [136:141] is the sub-list for method input_type
-	136, // [136:136] is the sub-list for extension type_name
-	136, // [136:136] is the sub-list for extension extendee
-	0,   // [0:136] is the sub-list for field type_name
+	74,  // 27: ztd.operator.v1.ConsensusVoteInference.superseded_attempts:type_name -> ztd.operator.v1.ConsensusVoteInference
+	182, // 28: ztd.operator.v1.GovernanceDeliberationResult.envelope:type_name -> ztd.common.v1.GovernanceEnvelope
+	74,  // 29: ztd.operator.v1.GovernanceDeliberationResult.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
+	73,  // 30: ztd.operator.v1.GovernanceRejection.receipt:type_name -> ztd.operator.v1.EventReceipt
+	74,  // 31: ztd.operator.v1.GovernanceRejection.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
+	8,   // 32: ztd.operator.v1.IngressRefusal.code:type_name -> ztd.operator.v1.IngressRefusalCode
+	74,  // 33: ztd.operator.v1.IngressRefusal.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
+	164, // 34: ztd.operator.v1.GovernedDispatchResult.inference_result:type_name -> ztd.operator.v1.InferenceResult
+	73,  // 35: ztd.operator.v1.GovernedDispatchResult.receipt:type_name -> ztd.operator.v1.EventReceipt
+	74,  // 36: ztd.operator.v1.GovernedDispatchResult.consensus_inferences:type_name -> ztd.operator.v1.ConsensusVoteInference
+	182, // 37: ztd.operator.v1.GovernedDispatchResult.request_envelope:type_name -> ztd.common.v1.GovernanceEnvelope
+	0,   // 38: ztd.operator.v1.CommandResult.status:type_name -> ztd.operator.v1.ExecutionStatus
+	0,   // 39: ztd.operator.v1.FsListResult.status:type_name -> ztd.operator.v1.ExecutionStatus
+	81,  // 40: ztd.operator.v1.FsListResult.entries:type_name -> ztd.operator.v1.FsEntry
+	0,   // 41: ztd.operator.v1.FsReadResult.status:type_name -> ztd.operator.v1.ExecutionStatus
+	0,   // 42: ztd.operator.v1.FsGrepResult.status:type_name -> ztd.operator.v1.ExecutionStatus
+	84,  // 43: ztd.operator.v1.FsGrepResult.matches:type_name -> ztd.operator.v1.FsGrepMatch
+	0,   // 44: ztd.operator.v1.FileEditResult.status:type_name -> ztd.operator.v1.ExecutionStatus
+	0,   // 45: ztd.operator.v1.ExecutionStatusUpdate.status:type_name -> ztd.operator.v1.ExecutionStatus
+	0,   // 46: ztd.operator.v1.PortCheckResult.status:type_name -> ztd.operator.v1.ExecutionStatus
+	88,  // 47: ztd.operator.v1.PortCheckResult.results:type_name -> ztd.operator.v1.PortCheckEntry
+	9,   // 48: ztd.operator.v1.ProviderModelInventoryEntry.parameter_count_source:type_name -> ztd.operator.v1.ParameterCountSource
+	0,   // 49: ztd.operator.v1.OllamaModelInventoryResult.status:type_name -> ztd.operator.v1.ExecutionStatus
+	91,  // 50: ztd.operator.v1.OllamaModelInventoryResult.entries:type_name -> ztd.operator.v1.ProviderModelInventoryEntry
+	0,   // 51: ztd.operator.v1.OllamaModelResidencyResult.status:type_name -> ztd.operator.v1.ExecutionStatus
+	94,  // 52: ztd.operator.v1.OllamaModelResidencyResult.models:type_name -> ztd.operator.v1.OllamaModelResidencyModel
+	0,   // 53: ztd.operator.v1.OllamaModelReleaseResult.status:type_name -> ztd.operator.v1.ExecutionStatus
+	0,   // 54: ztd.operator.v1.OllamaModelPullResult.status:type_name -> ztd.operator.v1.ExecutionStatus
+	0,   // 55: ztd.operator.v1.OllamaModelCopyResult.status:type_name -> ztd.operator.v1.ExecutionStatus
+	104, // 56: ztd.operator.v1.AuditEvent.file_mutations:type_name -> ztd.operator.v1.AuditFileMutation
+	103, // 57: ztd.operator.v1.FetchHistoryResult.web_session:type_name -> ztd.operator.v1.AuditWebSession
+	105, // 58: ztd.operator.v1.FetchHistoryResult.events:type_name -> ztd.operator.v1.AuditEvent
+	107, // 59: ztd.operator.v1.FetchFileHistoryResult.history:type_name -> ztd.operator.v1.FileHistoryEntry
+	110, // 60: ztd.operator.v1.FetchFileDiffResult.diffs:type_name -> ztd.operator.v1.FileDiffEntry
+	110, // 61: ztd.operator.v1.FetchFileDiffResult.diff:type_name -> ztd.operator.v1.FileDiffEntry
+	113, // 62: ztd.operator.v1.HeartbeatResult.system_identity:type_name -> ztd.operator.v1.SystemIdentity
+	115, // 63: ztd.operator.v1.HeartbeatResult.network_info:type_name -> ztd.operator.v1.NetworkInfo
+	116, // 64: ztd.operator.v1.HeartbeatResult.version_info:type_name -> ztd.operator.v1.VersionInfo
+	117, // 65: ztd.operator.v1.HeartbeatResult.uptime_info:type_name -> ztd.operator.v1.UptimeInfo
+	118, // 66: ztd.operator.v1.HeartbeatResult.performance_metrics:type_name -> ztd.operator.v1.PerformanceMetrics
+	119, // 67: ztd.operator.v1.HeartbeatResult.os_details:type_name -> ztd.operator.v1.OSDetails
+	120, // 68: ztd.operator.v1.HeartbeatResult.user_details:type_name -> ztd.operator.v1.UserDetails
+	121, // 69: ztd.operator.v1.HeartbeatResult.disk_details:type_name -> ztd.operator.v1.DiskDetails
+	122, // 70: ztd.operator.v1.HeartbeatResult.memory_details:type_name -> ztd.operator.v1.MemoryDetails
+	123, // 71: ztd.operator.v1.HeartbeatResult.environment:type_name -> ztd.operator.v1.EnvironmentDetails
+	124, // 72: ztd.operator.v1.HeartbeatResult.fingerprint_details:type_name -> ztd.operator.v1.FingerprintDetails
+	114, // 73: ztd.operator.v1.NetworkInfo.connectivity_status:type_name -> ztd.operator.v1.NetworkInterface
+	176, // 74: ztd.operator.v1.PasskeyRegisterChallengeResult.rp:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.RelyingParty
+	177, // 75: ztd.operator.v1.PasskeyRegisterChallengeResult.user:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.UserInfo
+	178, // 76: ztd.operator.v1.PasskeyRegisterChallengeResult.pub_key_cred_params:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.PublicKeyCredentialParameters
+	179, // 77: ztd.operator.v1.PasskeyRegisterChallengeResult.authenticator_selection:type_name -> ztd.operator.v1.PasskeyRegisterChallengeResult.AuthenticatorSelection
+	128, // 78: ztd.operator.v1.PasskeyRegisterVerifyRequested.attestation_response:type_name -> ztd.operator.v1.AttestationResponse
+	125, // 79: ztd.operator.v1.PasskeyRegisterVerifyResult.credential:type_name -> ztd.operator.v1.PasskeyCredential
+	133, // 80: ztd.operator.v1.PasskeyAuthVerifyRequested.assertion_response:type_name -> ztd.operator.v1.AssertionResponse
+	125, // 81: ztd.operator.v1.ListPasskeyCredentialsResult.credentials:type_name -> ztd.operator.v1.PasskeyCredential
+	140, // 82: ztd.operator.v1.InferenceMessagePart.tool_call:type_name -> ztd.operator.v1.InferenceToolCall
+	141, // 83: ztd.operator.v1.InferenceMessagePart.tool_result:type_name -> ztd.operator.v1.InferenceToolResult
+	142, // 84: ztd.operator.v1.InferenceMessagePart.provider_reasoning:type_name -> ztd.operator.v1.InferenceProviderReasoning
+	11,  // 85: ztd.operator.v1.InferenceMessage.role:type_name -> ztd.operator.v1.InferenceMessageRole
+	143, // 86: ztd.operator.v1.InferenceMessage.parts:type_name -> ztd.operator.v1.InferenceMessagePart
+	12,  // 87: ztd.operator.v1.InferenceToolChoice.mode:type_name -> ztd.operator.v1.InferenceToolChoiceMode
+	140, // 88: ztd.operator.v1.InferenceResponsePart.tool_call:type_name -> ztd.operator.v1.InferenceToolCall
+	142, // 89: ztd.operator.v1.InferenceResponsePart.provider_reasoning:type_name -> ztd.operator.v1.InferenceProviderReasoning
+	152, // 90: ztd.operator.v1.InferenceDecisionRequest.questions:type_name -> ztd.operator.v1.InferenceDecisionQuestion
+	153, // 91: ztd.operator.v1.InferenceDecisionQuestion.noul:type_name -> ztd.operator.v1.InferenceNoulQuestion
+	155, // 92: ztd.operator.v1.InferenceDecisionQuestion.choice:type_name -> ztd.operator.v1.InferenceChoiceQuestion
+	156, // 93: ztd.operator.v1.InferenceDecisionQuestion.score:type_name -> ztd.operator.v1.InferenceScoreQuestion
+	154, // 94: ztd.operator.v1.InferenceChoiceQuestion.criteria:type_name -> ztd.operator.v1.InferenceDecisionCriterion
+	158, // 95: ztd.operator.v1.InferenceDecisionResult.answers:type_name -> ztd.operator.v1.InferenceDecisionAnswer
+	160, // 96: ztd.operator.v1.InferenceDecisionAnswer.choice:type_name -> ztd.operator.v1.InferenceChoiceAnswer
+	161, // 97: ztd.operator.v1.InferenceDecisionAnswer.score:type_name -> ztd.operator.v1.InferenceScoreAnswer
+	159, // 98: ztd.operator.v1.InferenceChoiceAnswer.probabilities:type_name -> ztd.operator.v1.InferenceDecisionProbability
+	159, // 99: ztd.operator.v1.InferenceScoreAnswer.probabilities:type_name -> ztd.operator.v1.InferenceDecisionProbability
+	10,  // 100: ztd.operator.v1.InferenceRequested.role:type_name -> ztd.operator.v1.ModelRole
+	144, // 101: ztd.operator.v1.InferenceRequested.messages:type_name -> ztd.operator.v1.InferenceMessage
+	145, // 102: ztd.operator.v1.InferenceRequested.tools:type_name -> ztd.operator.v1.InferenceToolDeclaration
+	146, // 103: ztd.operator.v1.InferenceRequested.response_format:type_name -> ztd.operator.v1.InferenceResponseFormat
+	147, // 104: ztd.operator.v1.InferenceRequested.tool_choice:type_name -> ztd.operator.v1.InferenceToolChoice
+	148, // 105: ztd.operator.v1.InferenceRequested.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
+	150, // 106: ztd.operator.v1.InferenceRequested.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
+	151, // 107: ztd.operator.v1.InferenceRequested.decision:type_name -> ztd.operator.v1.InferenceDecisionRequest
+	15,  // 108: ztd.operator.v1.InferenceProviderAttemptRecord.retry_classification:type_name -> ztd.operator.v1.InferenceRetryClassification
+	16,  // 109: ztd.operator.v1.InferenceProviderAttemptRecord.status:type_name -> ztd.operator.v1.InferenceProviderAttemptStatus
+	149, // 110: ztd.operator.v1.InferenceResult.parts:type_name -> ztd.operator.v1.InferenceResponsePart
+	13,  // 111: ztd.operator.v1.InferenceResult.timing_source:type_name -> ztd.operator.v1.InferenceTimingSource
+	14,  // 112: ztd.operator.v1.InferenceResult.load_state:type_name -> ztd.operator.v1.InferenceLoadState
+	15,  // 113: ztd.operator.v1.InferenceResult.retry_classification:type_name -> ztd.operator.v1.InferenceRetryClassification
+	157, // 114: ztd.operator.v1.InferenceResult.decision:type_name -> ztd.operator.v1.InferenceDecisionResult
+	172, // 115: ztd.operator.v1.InferenceResult.hosted_egress:type_name -> ztd.operator.v1.InferenceHostedEgressAttestation
+	149, // 116: ztd.operator.v1.InferenceProgressEvent.parts:type_name -> ztd.operator.v1.InferenceResponsePart
+	73,  // 117: ztd.operator.v1.InferenceCompletion.receipt:type_name -> ztd.operator.v1.EventReceipt
+	164, // 118: ztd.operator.v1.InferenceCompletion.result:type_name -> ztd.operator.v1.InferenceResult
+	10,  // 119: ztd.operator.v1.InferenceDispatchRequest.role:type_name -> ztd.operator.v1.ModelRole
+	144, // 120: ztd.operator.v1.InferenceDispatchRequest.messages:type_name -> ztd.operator.v1.InferenceMessage
+	145, // 121: ztd.operator.v1.InferenceDispatchRequest.tools:type_name -> ztd.operator.v1.InferenceToolDeclaration
+	146, // 122: ztd.operator.v1.InferenceDispatchRequest.response_format:type_name -> ztd.operator.v1.InferenceResponseFormat
+	147, // 123: ztd.operator.v1.InferenceDispatchRequest.tool_choice:type_name -> ztd.operator.v1.InferenceToolChoice
+	148, // 124: ztd.operator.v1.InferenceDispatchRequest.thinking:type_name -> ztd.operator.v1.InferenceThinkingControl
+	150, // 125: ztd.operator.v1.InferenceDispatchRequest.model_registry:type_name -> ztd.operator.v1.InferenceModelVariant
+	151, // 126: ztd.operator.v1.InferenceDispatchRequest.decision:type_name -> ztd.operator.v1.InferenceDecisionRequest
+	17,  // 127: ztd.operator.v1.InferenceDispatchFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
+	73,  // 128: ztd.operator.v1.InferenceDispatchFailure.receipt:type_name -> ztd.operator.v1.EventReceipt
+	73,  // 129: ztd.operator.v1.InferenceDispatchFailure.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
+	17,  // 130: ztd.operator.v1.InferenceDispatchStreamFailure.code:type_name -> ztd.operator.v1.InferenceDispatchFailureCode
+	165, // 131: ztd.operator.v1.InferenceDispatchStreamFrame.progress:type_name -> ztd.operator.v1.InferenceProgressEvent
+	171, // 132: ztd.operator.v1.InferenceDispatchStreamFrame.completion:type_name -> ztd.operator.v1.InferenceDispatchResponse
+	169, // 133: ztd.operator.v1.InferenceDispatchStreamFrame.failure:type_name -> ztd.operator.v1.InferenceDispatchStreamFailure
+	164, // 134: ztd.operator.v1.InferenceDispatchResponse.result:type_name -> ztd.operator.v1.InferenceResult
+	73,  // 135: ztd.operator.v1.InferenceDispatchResponse.receipt:type_name -> ztd.operator.v1.EventReceipt
+	73,  // 136: ztd.operator.v1.InferenceDispatchResponse.observation_receipts:type_name -> ztd.operator.v1.EventReceipt
+	19,  // 137: ztd.operator.v1.OperatorService.ExecuteCommand:input_type -> ztd.operator.v1.CommandRequested
+	20,  // 138: ztd.operator.v1.OperatorService.CancelCommand:input_type -> ztd.operator.v1.CommandCancelRequested
+	21,  // 139: ztd.operator.v1.OperatorService.EditFile:input_type -> ztd.operator.v1.FileEditRequested
+	24,  // 140: ztd.operator.v1.OperatorService.ListFileSystem:input_type -> ztd.operator.v1.FsListRequested
+	25,  // 141: ztd.operator.v1.OperatorService.ReadFileSystem:input_type -> ztd.operator.v1.FsReadRequested
+	80,  // 142: ztd.operator.v1.OperatorService.ExecuteCommand:output_type -> ztd.operator.v1.CommandResult
+	80,  // 143: ztd.operator.v1.OperatorService.CancelCommand:output_type -> ztd.operator.v1.CommandResult
+	80,  // 144: ztd.operator.v1.OperatorService.EditFile:output_type -> ztd.operator.v1.CommandResult
+	80,  // 145: ztd.operator.v1.OperatorService.ListFileSystem:output_type -> ztd.operator.v1.CommandResult
+	80,  // 146: ztd.operator.v1.OperatorService.ReadFileSystem:output_type -> ztd.operator.v1.CommandResult
+	142, // [142:147] is the sub-list for method output_type
+	137, // [137:142] is the sub-list for method input_type
+	137, // [137:137] is the sub-list for extension type_name
+	137, // [137:137] is the sub-list for extension extendee
+	0,   // [0:137] is the sub-list for field type_name
 }
 
 func init() { file_ztd_operator_v1_operator_proto_init() }

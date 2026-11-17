@@ -1064,6 +1064,12 @@ definitions:
       outcome:
         $ref: '#/definitions/models.ConsensusVoteOutcome'
       provider_attempt_id:
+        description: |-
+          ProviderAttemptID and InferenceTransactionID name the member's final
+          attempt. RetryCount is that attempt's retry ordinal: the number of
+          earlier attempts a provider's transient failure superseded. It is absent
+          for a vote that needed no retry, and so for every record written before
+          vote retries.
         type: string
       quorum:
         type: integer
@@ -1072,6 +1078,8 @@ definitions:
         type: string
       recorded_at:
         type: string
+      retry_count:
+        type: integer
       transaction_hash:
         type: string
       transaction_id:
@@ -2472,10 +2480,27 @@ definitions:
         $ref: '#/definitions/operatorv1.EventReceipt'
       result:
         $ref: '#/definitions/operatorv1.InferenceResult'
+      retry_count:
+        description: |-
+          retry_count is the vote attempt's retry ordinal: 0 for the first
+          attempt, n for the nth retry after the provider asked to retry later. It
+          equals the dispatched request's and the signed result's retry_count, and
+          provider_attempt_id is governance.ConsensusVoteAttemptID for it.
+        type: integer
       subject_transaction_hash:
         type: string
       subject_transaction_id:
         type: string
+      superseded_attempts:
+        description: |-
+          superseded_attempts are the member's earlier vote attempts this one
+          retries, in order (retry_count 0..n-1). Each did not complete, carries the
+          Inference Operator's signed FAILED receipt with
+          RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT, and has no superseded_attempts of
+          its own. Every one is execution evidence; only this record casts the vote.
+        items:
+          $ref: '#/definitions/operatorv1.ConsensusVoteInference'
+        type: array
       transaction_id:
         type: string
     type: object
@@ -4002,9 +4027,10 @@ definitions:
         - $ref: '#/definitions/operatorv1.InferenceDispatchRequest'
         description: |-
           member_inference is the template for generation member calls. The Gateway
-          sets messages, provider_attempt_id and response_format per call; every
-          stage template must leave messages, tools, provider_attempt_id,
-          acting_app_id, stream and response_format empty.
+          sets messages, provider_attempt_id, response_format and retry_count per
+          call; every stage template must leave messages, tools,
+          provider_attempt_id, acting_app_id, stream, response_format and
+          retry_count empty.
       os:
         type: string
       personas:
@@ -4018,8 +4044,9 @@ definitions:
       provider_attempt_prefix:
         description: |-
           provider_attempt_prefix names the member calls: call n (from 1, in
-          deliberation order) uses provider_attempt_id "<prefix>-<n>". Required and
-          unique per intent, so the caller can bind each result to its request.
+          deliberation order, a transient retry included) uses provider_attempt_id
+          "<prefix>-<n>". Required and unique per intent, so the caller can bind
+          each result to its request.
         type: string
       request:
         description: Canonical JSON proposed run_shell_command arguments. Required.
@@ -4113,6 +4140,20 @@ definitions:
         - $ref: '#/definitions/operatorv1.InferenceResult'
         description: result is the complete verified InferenceResult of a completed
           call.
+      retry_count:
+        description: |-
+          retry_count is the call's retry ordinal: 0 for the first attempt, n for
+          the nth retry after the provider asked to retry later
+          (RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT). It equals the dispatched
+          request's and the signed result's retry_count.
+        type: integer
+      retry_of:
+        description: |-
+          retry_of is the provider_attempt_id of the earlier member call this one
+          retries; set exactly when retry_count is non-zero. That call did not
+          complete, and its signed FAILED receipt carries
+          RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT.
+        type: string
       round:
         type: integer
       stage:

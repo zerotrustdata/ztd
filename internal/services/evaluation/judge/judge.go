@@ -13,11 +13,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
+	inferencedispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/protocol"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -82,11 +85,18 @@ type Config struct {
 	Observer Observer
 	// Clock times each dispatch for Observer; nil is time.Now.
 	Clock func() time.Time
+	// Retry is the policy for a dispatch whose signed FAILED receipt says the
+	// provider asked to retry later. The zero value allows no retries, so a
+	// judge built without a policy dispatches each judgment once.
+	Retry inferencedispatch.TransientRetry
 }
 
 // Observer receives each judgment as it happens. Started gets the score once
-// its request is built, before dispatch; Completed gets the final score and the
-// dispatch's wall time. A request that cannot be built is only Completed.
+// its first request is built, before dispatch; Completed gets the final score
+// and the wall time of the final attempt's dispatch. A request that cannot be
+// built is only Completed. A judgment is one Started and one Completed however
+// many attempts it took: Completed's score carries the final attempt and the
+// attempts it superseded, and its elapsed time excludes them and their waits.
 type Observer interface {
 	Started(Score)
 	Completed(Score, time.Duration)
@@ -132,8 +142,17 @@ type Score struct {
 	JudgeModelTag    string
 	JudgeModelDigest string
 	// ProviderAttemptID is the attempt the dispatch was sent under, set once a
-	// request was built; the Operator echoes it on the result.
+	// request was built; the Operator echoes it on the result. After a retry it
+	// is the final attempt's.
 	ProviderAttemptID string
+	// RetryCount is the final attempt's retry ordinal: 0 for the first attempt,
+	// n for the nth retry; it equals len(Superseded).
+	RetryCount uint32
+	// Superseded are the earlier attempts the retries replaced, in order
+	// (retry_count 0..RetryCount-1). Each did not complete: the provider asked
+	// to retry later and the Inference Operator signed a transient FAILED
+	// receipt. They carry no result and no verdict, and are never scored calls.
+	Superseded []SupersededAttempt
 	// Messages are the exact messages dispatched, set once a request was built.
 	Messages      []*operatorv1.InferenceMessage
 	TransactionID string // the governed inference transaction
@@ -141,6 +160,25 @@ type Score struct {
 	Result        *operatorv1.InferenceResult // the result the receipt's result summary binds
 	RubricVersion string
 	Detail        string
+}
+
+// SupersededAttempt is one judge provider attempt a retry replaced.
+type SupersededAttempt struct {
+	ProviderAttemptID string
+	TransactionID     string
+	RetryCount        uint32
+	// Receipt is the transient FAILED receipt the Inference Operator signed.
+	Receipt *operatorv1.EventReceipt
+}
+
+// FirstAttemptID is the provider attempt that opened the judgment, which is
+// ProviderAttemptID when it was never retried. It names the judgment across
+// its attempts: the live feed's started and completed events share it.
+func (s Score) FirstAttemptID() string {
+	if len(s.Superseded) > 0 {
+		return s.Superseded[0].ProviderAttemptID
+	}
+	return s.ProviderAttemptID
 }
 
 // Judge scores traces through governed inference.
@@ -252,10 +290,11 @@ func lastPostTurnMemory(trace *evalv1.AgentTrace) (string, bool) {
 	return "", false
 }
 
-// ScoreCriterion decides one criterion against the final reply through one
+// ScoreCriterion decides one criterion against the final reply through a
 // campaign-authorized dispatch. An empty reply or an incomplete criterion is a
 // FAILED score without a dispatch, never a met verdict; a judge failure is a
-// FAILED score too. It makes no retries.
+// FAILED score too. A dispatch whose provider asked to retry later is retried
+// under Config.Retry; every other failure is final.
 func (j *Judge) ScoreCriterion(ctx context.Context, criterion Criterion, position Position, objective, reply string) Score {
 	result := j.newScore(SubjectCriterion, position, CriterionRubricVersion)
 	result.Criterion = criterion.ID
@@ -300,26 +339,26 @@ func CriterionMessages(criterion Criterion, objective, reply string) []*operator
 }
 
 // VerifyCriterionResult re-checks that one recorded inference result answers
-// the criterion dispatch sent under providerAttemptID with cfg's authority, and
-// decodes its verdict. It is the offline counterpart of the checks dispatch
-// applies to a live response; receipt signature verification stays with the
-// caller, which holds the pinned anchors.
-func VerifyCriterionResult(cfg Config, providerAttemptID string, result *operatorv1.InferenceResult, receipt *operatorv1.EventReceipt) (bool, string, error) {
+// the criterion dispatch sent under providerAttemptID with retry ordinal
+// retryCount and cfg's authority, and decodes its verdict. It is the offline
+// counterpart of the checks dispatch applies to a live response; receipt
+// signature verification stays with the caller, which holds the pinned anchors.
+func VerifyCriterionResult(cfg Config, providerAttemptID string, retryCount uint32, result *operatorv1.InferenceResult, receipt *operatorv1.EventReceipt) (bool, string, error) {
 	if cfg.Variant == nil || cfg.Variant.GetServedModelTag() == "" {
 		return false, "", fmt.Errorf("evaluation judge: verify criterion result: %w", constants.ErrMissingRequiredField)
 	}
-	if err := validateResult(cfg, providerAttemptID, result, receipt); err != nil {
+	if err := validateResult(cfg, providerAttemptID, retryCount, result, receipt); err != nil {
 		return false, "", err
 	}
 	return decodeCriterionVerdict(result)
 }
 
 // VerifyQualityResult is VerifyCriterionResult for a 1..5 quality judgment.
-func VerifyQualityResult(cfg Config, providerAttemptID string, result *operatorv1.InferenceResult, receipt *operatorv1.EventReceipt) (int, string, error) {
+func VerifyQualityResult(cfg Config, providerAttemptID string, retryCount uint32, result *operatorv1.InferenceResult, receipt *operatorv1.EventReceipt) (int, string, error) {
 	if cfg.Variant == nil || cfg.Variant.GetServedModelTag() == "" {
 		return 0, "", fmt.Errorf("evaluation judge: verify quality result: %w", constants.ErrMissingRequiredField)
 	}
-	if err := validateResult(cfg, providerAttemptID, result, receipt); err != nil {
+	if err := validateResult(cfg, providerAttemptID, retryCount, result, receipt); err != nil {
 		return 0, "", err
 	}
 	return decodeJudgment(result)
@@ -341,7 +380,7 @@ func ResultFailure(err error) evalv1.JudgeFailure {
 	}
 }
 
-// score runs one 1..5 quality dispatch for one subject. It makes no retries.
+// score runs one 1..5 quality dispatch for one subject.
 func (j *Judge) score(ctx context.Context, subject Subject, position Position, userText string) Score {
 	return j.dispatch(ctx, j.newScore(subject, position, RubricVersion), prompt{
 		rubric:  rubricFor(subject),
@@ -379,8 +418,11 @@ func (p prompt) messages() []*operatorv1.InferenceMessage {
 	}
 }
 
+// dispatch sends one judgment and retries it while the provider asks to retry
+// later. Observer sees one Started before the first dispatch and one Completed
+// with the final attempt's score, however many attempts it took.
 func (j *Judge) dispatch(ctx context.Context, result Score, p prompt) Score {
-	dispatchReq, providerAttemptID, err := j.buildDispatchRequest(result.Subject, p)
+	dispatchReq, providerAttemptID, err := j.buildDispatchRequest(result.Subject, p, 0)
 	if err != nil {
 		return j.requestInvalid(result, err)
 	}
@@ -389,17 +431,70 @@ func (j *Judge) dispatch(ctx context.Context, result Score, p prompt) Score {
 	if j.cfg.Observer != nil {
 		j.cfg.Observer.Started(result)
 	}
-	started := j.now()
-	result = j.exchange(ctx, result, dispatchReq, p)
-	if j.cfg.Observer != nil {
-		j.cfg.Observer.Completed(result, j.now().Sub(started))
+	for {
+		started := j.now()
+		attempt, failure := j.exchange(ctx, result, dispatchReq, p)
+		next, nextReq, retry := j.nextAttempt(ctx, result, failure, p)
+		if !retry {
+			if j.cfg.Observer != nil {
+				j.cfg.Observer.Completed(attempt, j.now().Sub(started))
+			}
+			return attempt
+		}
+		result, dispatchReq = next, nextReq
 	}
-	return result
+}
+
+// nextAttempt decides whether the attempt that failed with the signed receipt
+// failure is retried, and if so waits out the policy's delay and returns the
+// score and request of the new attempt. The score is the failed attempt's
+// starting score with that attempt recorded as superseded, so the retry is a
+// new provider attempt with the next retry ordinal. A retry is refused, and
+// the failure stands, when the receipt is not a signed transient failure, the
+// policy allows no further retry, ctx has ended or would end before the wait
+// does, the new request cannot be built under a fresh attempt ID, or the wait
+// is cut short.
+func (j *Judge) nextAttempt(ctx context.Context, failed Score, failure *operatorv1.EventReceipt, p prompt) (Score, *operatorv1.InferenceDispatchRequest, bool) {
+	if !governance.IsTransientFailureReceipt(failure) || failure.GetTransactionId() == "" {
+		return Score{}, nil, false
+	}
+	retry := failed.RetryCount + 1
+	delay, ok := j.cfg.Retry.Delay(retry)
+	if !ok || ctx.Err() != nil {
+		return Score{}, nil, false
+	}
+	if deadline, bounded := ctx.Deadline(); bounded && time.Now().Add(delay).After(deadline) {
+		return Score{}, nil, false
+	}
+	req, attemptID, err := j.buildDispatchRequest(failed.Subject, p, retry)
+	if err != nil || attemptID == failed.ProviderAttemptID || slices.ContainsFunc(failed.Superseded, func(a SupersededAttempt) bool { return a.ProviderAttemptID == attemptID }) {
+		return Score{}, nil, false
+	}
+	wait := j.cfg.Retry.Wait
+	if wait == nil {
+		wait = inferencedispatch.WaitDelay
+	}
+	if wait(ctx, delay) != nil {
+		return Score{}, nil, false
+	}
+	next := failed
+	next.Superseded = append(slices.Clone(failed.Superseded), SupersededAttempt{
+		ProviderAttemptID: failed.ProviderAttemptID,
+		TransactionID:     failure.GetTransactionId(),
+		RetryCount:        failed.RetryCount,
+		Receipt:           failure,
+	})
+	next.ProviderAttemptID = attemptID
+	next.RetryCount = retry
+	return next, req, true
 }
 
 // exchange sends a built request and resolves its response into the score;
-// each failing step names its failure code.
-func (j *Judge) exchange(ctx context.Context, result Score, dispatchReq *operatorv1.InferenceDispatchRequest, p prompt) Score {
+// each failing step names its failure code. When the dispatch itself fails it
+// also returns the signed FAILED receipt the error carries, which is the
+// retry decision's evidence and never part of the score: a failed dispatch
+// records no result and no receipt.
+func (j *Judge) exchange(ctx context.Context, result Score, dispatchReq *operatorv1.InferenceDispatchRequest, p prompt) (Score, *operatorv1.EventReceipt) {
 	resp, err := j.dispatcher.DispatchInference(ctx, dispatchReq)
 	if resp != nil {
 		result.TransactionID = resp.GetTransactionId()
@@ -407,15 +502,15 @@ func (j *Judge) exchange(ctx context.Context, result Score, dispatchReq *operato
 		result.Result = resp.GetResult()
 	}
 	if err != nil {
-		return failedScore(result, evalv1.JudgeFailure_JUDGE_FAILURE_DISPATCH_FAILED, err)
+		return failedScore(result, evalv1.JudgeFailure_JUDGE_FAILURE_DISPATCH_FAILED, err), governance.FailedReceipt(err)
 	}
-	if err := j.validateResponse(result.ProviderAttemptID, resp); err != nil {
-		return failedScore(result, ResultFailure(err), err)
+	if err := j.validateResponse(result.ProviderAttemptID, result.RetryCount, resp); err != nil {
+		return failedScore(result, ResultFailure(err), err), nil
 	}
 	if err := p.resolve(&result, resp.GetResult()); err != nil {
-		return failedScore(result, verdictFailure(err), err)
+		return failedScore(result, verdictFailure(err), err), nil
 	}
-	return result
+	return result, nil
 }
 
 // verdictFailure is the failure code of a result that did not resolve into a
@@ -481,7 +576,9 @@ func failedScore(score Score, failure evalv1.JudgeFailure, err error) Score {
 	return score
 }
 
-func (j *Judge) buildDispatchRequest(subject Subject, p prompt) (*operatorv1.InferenceDispatchRequest, string, error) {
+// buildDispatchRequest builds the dispatch of one provider attempt under a new
+// attempt ID: the first attempt has retryCount 0, the nth retry n.
+func (j *Judge) buildDispatchRequest(subject Subject, p prompt, retryCount uint32) (*operatorv1.InferenceDispatchRequest, string, error) {
 	providerAttemptID := j.cfg.NewID("judge-" + string(subject))
 	if providerAttemptID == "" || j.cfg.Variant.GetServedModelTag() == "" || j.cfg.InferenceSessionID == "" ||
 		j.cfg.RunID == "" || j.cfg.AssignmentID == "" || j.cfg.ScenarioID == "" {
@@ -506,6 +603,7 @@ func (j *Judge) buildDispatchRequest(subject Subject, p prompt) (*operatorv1.Inf
 			JsonSchema: p.schema,
 		},
 		ProviderAttemptId:       providerAttemptID,
+		RetryCount:              retryCount,
 		TargetOperatorSessionId: j.cfg.InferenceSessionID,
 		ActingAppId:             protocol.NewWorkloadIdentity().AppSPIFFEID(constants.EvaluationAppName),
 		CampaignId:              j.cfg.CampaignID,
@@ -520,22 +618,24 @@ func (j *Judge) buildDispatchRequest(subject Subject, p prompt) (*operatorv1.Inf
 }
 
 // validateResponse checks that the Operator's result answers this judge's dispatch:
-// same attempt, same campaign authority, and same run, assignment, and scenario.
-func (j *Judge) validateResponse(providerAttemptID string, resp *operatorv1.InferenceDispatchResponse) error {
+// same attempt and retry ordinal, same campaign authority, and same run,
+// assignment, and scenario.
+func (j *Judge) validateResponse(providerAttemptID string, retryCount uint32, resp *operatorv1.InferenceDispatchResponse) error {
 	if resp == nil {
 		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrMissingRequiredField)
 	}
-	return validateResult(j.cfg, providerAttemptID, resp.GetResult(), resp.GetReceipt())
+	return validateResult(j.cfg, providerAttemptID, retryCount, resp.GetResult(), resp.GetReceipt())
 }
 
-// validateResult is the one binding check of a judge result: same attempt, same
-// run, assignment, and scenario, the requested judge model, a result digest the
-// receipt summarizes, and the campaign authority.
-func validateResult(cfg Config, providerAttemptID string, result *operatorv1.InferenceResult, receipt *operatorv1.EventReceipt) error {
+// validateResult is the one binding check of a judge result: same attempt and
+// retry ordinal, same run, assignment, and scenario, the requested judge model,
+// a result digest the receipt summarizes, and the campaign authority.
+func validateResult(cfg Config, providerAttemptID string, retryCount uint32, result *operatorv1.InferenceResult, receipt *operatorv1.EventReceipt) error {
 	if result == nil || receipt == nil {
 		return fmt.Errorf("evaluation judge: validate response: %w", constants.ErrMissingRequiredField)
 	}
 	if result.GetProviderAttemptId() != providerAttemptID ||
+		result.GetRetryCount() != retryCount ||
 		result.GetRunId() != cfg.RunID ||
 		result.GetAssignmentId() != cfg.AssignmentID ||
 		result.GetScenarioId() != cfg.ScenarioID {

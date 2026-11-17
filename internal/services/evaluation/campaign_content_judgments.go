@@ -21,6 +21,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
+	inferencedispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -174,35 +176,253 @@ type judgeReceiptCheck struct {
 	anchors    *oracle.AnchorSet
 	anchorsErr error
 	inference  AgentTraceRuntime
+	// modelTransactions are the governed transactions of the trace's own model
+	// calls, which no judge attempt may reuse.
+	modelTransactions []string
 }
 
 func newJudgeReceiptCheck(trace *AgentTrace) judgeReceiptCheck {
 	anchors, err := agentTraceAnchorSet(trace)
-	return judgeReceiptCheck{anchors: anchors, anchorsErr: err, inference: trace.Inference}
+	return judgeReceiptCheck{anchors: anchors, anchorsErr: err, inference: trace.Inference, modelTransactions: modelCallTransactions(trace)}
+}
+
+// newIdentities starts the judge identities of one verification with the trace's
+// model call transactions already spent.
+func (c judgeReceiptCheck) newIdentities() *judgeIdentities {
+	return newJudgeIdentities(c.modelTransactions)
 }
 
 // verify is the one receipt rule for a judge score: a scored judgment must
-// carry a signed receipt, and any receipt it carries must verify. A failed
-// judgment the runtime never executed has nothing to verify.
+// carry a signed receipt, any receipt it carries must verify, and so must the
+// signed receipt of every attempt its retries superseded. A failed judgment the
+// runtime never executed has nothing to verify.
 func (c judgeReceiptCheck) verify(score judge.Score) error {
+	return c.verifyIn(score, c.newIdentities())
+}
+
+// verifyIn is verify with the attempts and transactions its judgment spends
+// claimed in ids, so a caller verifying several judgments rejects one that
+// reuses another's.
+func (c judgeReceiptCheck) verifyIn(score judge.Score, ids *judgeIdentities) error {
 	switch {
 	case score.Status == judge.StatusScored && (score.TransactionID == "" || score.Receipt == nil):
 		return fmt.Errorf("judge score has no signed governed receipt: %w", constants.ErrMissingRequiredField)
-	case score.TransactionID == "":
+	case score.TransactionID == "" && len(score.Superseded) == 0:
 		return nil
 	case c.anchorsErr != nil:
 		return c.anchorsErr
-	default:
-		return verifyJudgeReceipt(c.anchors, c.inference, score)
 	}
+	if err := verifyJudgeRetries(c.anchors, c.inference, score.TransactionID, score.RetryCount, score.Superseded, ids); err != nil {
+		return err
+	}
+	if score.TransactionID == "" {
+		return nil
+	}
+	return verifyJudgeReceipt(c.anchors, c.inference, score)
+}
+
+// judgeIdentities are the provider attempts and governed transactions the judge
+// calls of one verification have spent, so no attempt or transaction backs two
+// judge calls. A superseded attempt has no signed result that binds its attempt
+// ID, only a signed receipt that binds its transaction, so both are tracked.
+type judgeIdentities struct {
+	attempts     map[string]struct{}
+	transactions map[string]struct{}
+}
+
+// newJudgeIdentities returns identities with the transactions already spent
+// by calls outside the judge claimed. A judge attempt that carries one of them
+// is a receipt copied from another call, not the judge's own.
+func newJudgeIdentities(spent []string) *judgeIdentities {
+	ids := &judgeIdentities{attempts: make(map[string]struct{}), transactions: make(map[string]struct{}, len(spent))}
+	for _, transaction := range spent {
+		ids.claimTransaction(transaction)
+	}
+	return ids
+}
+
+// modelCallTransactions are the governed transactions of the trace's own model
+// calls, the agent's turns and its Interrogator and Tribunal calls. They are
+// signed by the same Inference runtime in the same session as the judge's, so
+// only the transaction tells a judge attempt's receipt from a model call's.
+func modelCallTransactions(trace *AgentTrace) []string {
+	if trace == nil {
+		return nil
+	}
+	transactions := make([]string, 0, len(trace.ModelCalls))
+	for _, call := range trace.ModelCalls {
+		if call.TransactionID != "" {
+			transactions = append(transactions, call.TransactionID)
+		}
+	}
+	// L2 vote attempts, superseded ones included, are inferences on the same
+	// runtimes; a judge attempt must never reuse one of their receipts.
+	for _, tool := range trace.ToolCalls {
+		for _, vote := range tool.ConsensusInferences {
+			for _, attempt := range governance.ConsensusVoteAttempts(vote.ConsensusVoteInference) {
+				if attempt.GetTransactionId() != "" {
+					transactions = append(transactions, attempt.GetTransactionId())
+				}
+			}
+		}
+	}
+	return transactions
+}
+
+// claimAttempt spends a provider attempt ID, and reports false for an empty or
+// reused one.
+func (ids *judgeIdentities) claimAttempt(id string) bool { return claim(ids.attempts, id) }
+
+// claimTransaction spends a governed transaction ID, and reports false for an
+// empty or reused one.
+func (ids *judgeIdentities) claimTransaction(id string) bool { return claim(ids.transactions, id) }
+
+func claim(spent map[string]struct{}, id string) bool {
+	if _, seen := spent[id]; seen || id == "" {
+		return false
+	}
+	spent[id] = struct{}{}
+	return true
+}
+
+// verifyJudgeRetries is the one rule for a judge call's retry evidence, shared
+// by the trace's content judgments, the grader call records, and the live
+// receipt check. A judge call retries only while the provider asks to retry
+// later, so: at most the transient retry policy's bound of attempts are
+// superseded; their retry_count steps 0, 1, 2, ... in order; the final
+// attempt's retry_count is the number superseded; and each superseded attempt
+// is a unique attempt and transaction carrying a receipt the pinned Inference
+// runtime signed as a transient FAILED execution of that transaction. The final
+// attempt's own signed result echoes its retry_count through the judge's
+// result check. A retried call's final transaction, when it has one, is spent
+// too, so a superseded receipt cannot double as the final one. Its attempt ID
+// is spent by the caller, which already spends the final attempt's.
+func verifyJudgeRetries(anchors *oracle.AnchorSet, inference AgentTraceRuntime, finalTransactionID string, retryCount uint32, superseded []judge.SupersededAttempt, ids *judgeIdentities) error {
+	mismatch := func(format string, args ...any) error {
+		return fmt.Errorf("evaluation: judge retries: %s: %w", fmt.Sprintf(format, args...), constants.ErrEvaluationContentJudgmentMismatch)
+	}
+	if len(superseded) > int(inferencedispatch.MaxTransientRetries()) {
+		return mismatch("%d superseded attempts exceed the %d retries the transient retry policy allows", len(superseded), inferencedispatch.MaxTransientRetries())
+	}
+	if int(retryCount) != len(superseded) {
+		return mismatch("retry_count %d does not follow its %d superseded attempts", retryCount, len(superseded))
+	}
+	if len(superseded) > 0 && finalTransactionID != "" && !ids.claimTransaction(finalTransactionID) {
+		return mismatch("final transaction %q is reused", finalTransactionID)
+	}
+	for i, attempt := range superseded {
+		if attempt.RetryCount != uint32(i) {
+			return mismatch("superseded attempt %q has retry_count %d, want %d", attempt.ProviderAttemptID, attempt.RetryCount, i)
+		}
+		if !ids.claimAttempt(attempt.ProviderAttemptID) {
+			return mismatch("superseded attempt %q is empty or reused", attempt.ProviderAttemptID)
+		}
+		if !ids.claimTransaction(attempt.TransactionID) {
+			return mismatch("superseded attempt %q transaction %q is empty or reused", attempt.ProviderAttemptID, attempt.TransactionID)
+		}
+		if attempt.Receipt == nil {
+			return fmt.Errorf("evaluation: judge retries: superseded attempt %q has no signed receipt: %w: %w", attempt.ProviderAttemptID, constants.ErrEvaluationContentJudgmentMissing, constants.ErrMissingRequiredField)
+		}
+		if err := verifyJudgeReceipt(anchors, inference, judge.Score{Status: judge.StatusFailed, TransactionID: attempt.TransactionID, Receipt: attempt.Receipt}); err != nil {
+			return fmt.Errorf("evaluation: judge retries: superseded attempt %q: %w: %w", attempt.ProviderAttemptID, constants.ErrEvaluationContentJudgmentMismatch, err)
+		}
+		if !governance.IsTransientFailureReceipt(attempt.Receipt) {
+			return mismatch("superseded attempt %q receipt is not a signed transient provider failure", attempt.ProviderAttemptID)
+		}
+	}
+	return nil
+}
+
+// traceSuperseded is the trace's record of a judge call's superseded attempts.
+func traceSuperseded(attempts []judge.SupersededAttempt) []AgentJudgeSupersededAttempt {
+	if len(attempts) == 0 {
+		return nil
+	}
+	out := make([]AgentJudgeSupersededAttempt, 0, len(attempts))
+	for _, attempt := range attempts {
+		out = append(out, AgentJudgeSupersededAttempt{
+			ProviderAttemptID: attempt.ProviderAttemptID,
+			TransactionID:     attempt.TransactionID,
+			RetryCount:        attempt.RetryCount,
+			Receipt:           &AgentTraceReceipt{EventReceipt: attempt.Receipt},
+		})
+	}
+	return out
+}
+
+// judgeSupersededFromTrace reads a trace's superseded attempts back as the
+// judge's.
+func judgeSupersededFromTrace(attempts []AgentJudgeSupersededAttempt) []judge.SupersededAttempt {
+	if len(attempts) == 0 {
+		return nil
+	}
+	out := make([]judge.SupersededAttempt, 0, len(attempts))
+	for _, attempt := range attempts {
+		superseded := judge.SupersededAttempt{ProviderAttemptID: attempt.ProviderAttemptID, TransactionID: attempt.TransactionID, RetryCount: attempt.RetryCount}
+		if attempt.Receipt != nil {
+			superseded.Receipt = attempt.Receipt.EventReceipt
+		}
+		out = append(out, superseded)
+	}
+	return out
+}
+
+// supersededRecords is the grader call record's copy of a judge call's
+// superseded attempts.
+func supersededRecords(attempts []judge.SupersededAttempt) []*evalv1.JudgeSupersededAttempt {
+	if len(attempts) == 0 {
+		return nil
+	}
+	out := make([]*evalv1.JudgeSupersededAttempt, 0, len(attempts))
+	for _, attempt := range attempts {
+		out = append(out, &evalv1.JudgeSupersededAttempt{
+			ProviderAttemptId: attempt.ProviderAttemptID,
+			TransactionId:     attempt.TransactionID,
+			RetryCount:        attempt.RetryCount,
+			Receipt:           proto.Clone(attempt.Receipt).(*operatorv1.EventReceipt),
+		})
+	}
+	return out
+}
+
+// judgeSupersededFromRecords reads a grader call record's superseded attempts
+// back as the judge's.
+func judgeSupersededFromRecords(records []*evalv1.JudgeSupersededAttempt) []judge.SupersededAttempt {
+	if len(records) == 0 {
+		return nil
+	}
+	out := make([]judge.SupersededAttempt, 0, len(records))
+	for _, record := range records {
+		out = append(out, judge.SupersededAttempt{
+			ProviderAttemptID: record.GetProviderAttemptId(),
+			TransactionID:     record.GetTransactionId(),
+			RetryCount:        record.GetRetryCount(),
+			Receipt:           record.GetReceipt(),
+		})
+	}
+	return out
+}
+
+// supersededEqual reports whether two records of a judge call's superseded
+// attempts are the same attempts with the same signed receipts.
+func supersededEqual(a, b []judge.SupersededAttempt) bool {
+	return slices.EqualFunc(a, b, func(x, y judge.SupersededAttempt) bool {
+		return x.ProviderAttemptID == y.ProviderAttemptID && x.TransactionID == y.TransactionID && x.RetryCount == y.RetryCount && proto.Equal(x.Receipt, y.Receipt)
+	})
 }
 
 // executionJudgeConfig is campaignJudgeConfig for a live execution: when the
 // request observes judge activity, every dispatch reports to its sink.
 func (e *CampaignAgentExecutor) executionJudgeConfig(ctx context.Context, req AssignmentExecutionRequest, receipts judgeReceiptCheck) (judge.Config, error) {
 	cfg, err := campaignJudgeConfig(req, e.newID)
-	if err != nil || req.GradingActivity == nil {
+	if err != nil {
 		return cfg, err
+	}
+	// The judge retries a dispatch the provider asked to retry later under the
+	// executor's policy, whether or not anything observes the grading.
+	cfg.Retry = e.retry
+	if req.GradingActivity == nil {
+		return cfg, nil
 	}
 	cfg.Observer = judgeActivityObserver{ctx: ctx, sink: req.GradingActivity, variant: cfg.Variant, receipts: receipts}
 	cfg.Clock = e.now
@@ -258,18 +478,20 @@ func (e *CampaignAgentExecutor) recordContentJudgments(ctx context.Context, req 
 			return nil
 		}
 		trace.ContentJudgments = append(trace.ContentJudgments, AgentContentJudgment{
-			CriterionID:       criterion.ID,
-			ProviderAttemptID: score.ProviderAttemptID,
-			TransactionID:     score.TransactionID,
-			JudgeVariantID:    cfg.Variant.GetVariantId(),
-			ServedModelTag:    score.JudgeModelTag,
-			ModelDigest:       score.JudgeModelDigest,
-			RubricVersion:     score.RubricVersion,
-			Messages:          messages,
-			Met:               score.Met,
-			Rationale:         score.Rationale,
-			InferenceResult:   &AgentTraceInferenceResult{InferenceResult: proto.Clone(score.Result).(*operatorv1.InferenceResult)},
-			Receipt:           &AgentTraceReceipt{EventReceipt: score.Receipt},
+			CriterionID:        criterion.ID,
+			ProviderAttemptID:  score.ProviderAttemptID,
+			TransactionID:      score.TransactionID,
+			JudgeVariantID:     cfg.Variant.GetVariantId(),
+			ServedModelTag:     score.JudgeModelTag,
+			ModelDigest:        score.JudgeModelDigest,
+			RubricVersion:      score.RubricVersion,
+			Messages:           messages,
+			Met:                score.Met,
+			Rationale:          score.Rationale,
+			InferenceResult:    &AgentTraceInferenceResult{InferenceResult: proto.Clone(score.Result).(*operatorv1.InferenceResult)},
+			Receipt:            &AgentTraceReceipt{EventReceipt: score.Receipt},
+			RetryCount:         score.RetryCount,
+			SupersededAttempts: traceSuperseded(score.Superseded),
 		})
 	}
 	return nil
@@ -285,18 +507,21 @@ func judgeFailureFromOutput(failure evalv1.JudgeFailure) bool {
 
 // failedContentJudgment records a judgment the pinned judge failed to decide.
 // The failure is the typed code, never the error text, which can echo the
-// judged reply.
+// judged reply. A judgment that was retried records the attempts its retries
+// superseded and the final attempt's retry ordinal, whatever the failure.
 func failedContentJudgment(cfg judge.Config, criterion judge.Criterion, score judge.Score, messages []AgentTraceMessage) AgentContentJudgment {
 	judgment := AgentContentJudgment{
-		CriterionID:       criterion.ID,
-		ProviderAttemptID: score.ProviderAttemptID,
-		TransactionID:     score.TransactionID,
-		JudgeVariantID:    cfg.Variant.GetVariantId(),
-		ServedModelTag:    score.JudgeModelTag,
-		ModelDigest:       score.JudgeModelDigest,
-		RubricVersion:     score.RubricVersion,
-		Messages:          messages,
-		Failure:           score.Failure.String(),
+		CriterionID:        criterion.ID,
+		ProviderAttemptID:  score.ProviderAttemptID,
+		TransactionID:      score.TransactionID,
+		JudgeVariantID:     cfg.Variant.GetVariantId(),
+		ServedModelTag:     score.JudgeModelTag,
+		ModelDigest:        score.JudgeModelDigest,
+		RubricVersion:      score.RubricVersion,
+		Messages:           messages,
+		Failure:            score.Failure.String(),
+		RetryCount:         score.RetryCount,
+		SupersededAttempts: traceSuperseded(score.Superseded),
 	}
 	if judgeFailureFromOutput(score.Failure) && score.Result != nil && score.Receipt != nil {
 		judgment.InferenceResult = &AgentTraceInferenceResult{InferenceResult: proto.Clone(score.Result).(*operatorv1.InferenceResult)}
@@ -357,7 +582,7 @@ func verifyContentJudgments(req AssignmentExecutionRequest, trace *AgentTrace) e
 	if err != nil {
 		return fmt.Errorf("evaluation: verify content judgments: %w", err)
 	}
-	attempts := make(map[string]struct{}, len(criteria))
+	ids := newJudgeIdentities(modelCallTransactions(trace))
 	var errs []error
 	for i, criterion := range criteria[:judged] {
 		rubricVersion, expected := contentJudgeMessages(req, trace, criterion)
@@ -366,12 +591,12 @@ func verifyContentJudgments(req AssignmentExecutionRequest, trace *AgentTrace) e
 			errs = append(errs, fmt.Errorf("evaluation: content judgment %q fails before the last judgment: %w", criterion.ID, constants.ErrEvaluationContentJudgmentMismatch))
 			continue
 		}
-		errs = append(errs, verifyContentJudgment(cfg, anchors, trace, criterion, rubricVersion, expected, judgment, attempts))
+		errs = append(errs, verifyContentJudgment(cfg, anchors, trace, criterion, rubricVersion, expected, judgment, ids))
 	}
 	return errors.Join(errs...)
 }
 
-func verifyContentJudgment(cfg judge.Config, anchors *oracle.AnchorSet, trace *AgentTrace, criterion judge.Criterion, rubricVersion string, rendered []*operatorv1.InferenceMessage, judgment AgentContentJudgment, attempts map[string]struct{}) error {
+func verifyContentJudgment(cfg judge.Config, anchors *oracle.AnchorSet, trace *AgentTrace, criterion judge.Criterion, rubricVersion string, rendered []*operatorv1.InferenceMessage, judgment AgentContentJudgment, ids *judgeIdentities) error {
 	mismatch := func(format string, args ...any) error {
 		return fmt.Errorf("evaluation: content judgment %q: %s: %w", criterion.ID, fmt.Sprintf(format, args...), constants.ErrEvaluationContentJudgmentMismatch)
 	}
@@ -382,15 +607,17 @@ func verifyContentJudgment(cfg judge.Config, anchors *oracle.AnchorSet, trace *A
 		return mismatch("judge %q is not the frozen judge %q", judgment.JudgeVariantID, cfg.Variant.GetVariantId())
 	}
 	if judgment.Failure != "" {
-		return verifyFailedContentJudgment(cfg, anchors, trace, criterion, rubricVersion, rendered, judgment, attempts)
+		return verifyFailedContentJudgment(cfg, anchors, trace, criterion, rubricVersion, rendered, judgment, ids)
 	}
 	if judgment.RubricVersion != rubricVersion {
 		return mismatch("rubric %q is not %q", judgment.RubricVersion, rubricVersion)
 	}
-	if _, seen := attempts[judgment.ProviderAttemptID]; seen || judgment.ProviderAttemptID == "" {
+	if !ids.claimAttempt(judgment.ProviderAttemptID) {
 		return mismatch("provider attempt %q is empty or reused", judgment.ProviderAttemptID)
 	}
-	attempts[judgment.ProviderAttemptID] = struct{}{}
+	if err := verifyJudgeRetries(anchors, trace.Inference, judgment.TransactionID, judgment.RetryCount, judgeSupersededFromTrace(judgment.SupersededAttempts), ids); err != nil {
+		return fmt.Errorf("evaluation: content judgment %q: %w", criterion.ID, err)
+	}
 	expected, err := agentTraceMessages(rendered)
 	if err != nil {
 		return fmt.Errorf("evaluation: content judgment %q: render prompt: %w", criterion.ID, err)
@@ -410,7 +637,7 @@ func verifyContentJudgment(cfg judge.Config, anchors *oracle.AnchorSet, trace *A
 	}); err != nil {
 		return fmt.Errorf("evaluation: content judgment %q: %w: %w", criterion.ID, constants.ErrEvaluationContentJudgmentMismatch, err)
 	}
-	met, rationale, err := judge.VerifyCriterionResult(cfg, judgment.ProviderAttemptID, result, receipt)
+	met, rationale, err := judge.VerifyCriterionResult(cfg, judgment.ProviderAttemptID, judgment.RetryCount, result, receipt)
 	if err != nil {
 		return fmt.Errorf("evaluation: content judgment %q: %w: %w", criterion.ID, constants.ErrEvaluationContentJudgmentMismatch, err)
 	}
@@ -424,8 +651,11 @@ func verifyContentJudgment(cfg judge.Config, anchors *oracle.AnchorSet, trace *A
 // frozen judge's evidence produces. A failure read from the judge's output
 // carries the dispatched prompt, a signed result and receipt, and is
 // re-derived from them exactly; any other failure carries no verdict and no
-// result, and only its typed code is recorded.
-func verifyFailedContentJudgment(cfg judge.Config, anchors *oracle.AnchorSet, trace *AgentTrace, criterion judge.Criterion, rubricVersion string, rendered []*operatorv1.InferenceMessage, judgment AgentContentJudgment, attempts map[string]struct{}) error {
+// result, and only its typed code is recorded. Whatever the failure, a retried
+// judgment's superseded attempts verify under the shared retry rule, except
+// that a request that could not be built was never dispatched and was never
+// retried.
+func verifyFailedContentJudgment(cfg judge.Config, anchors *oracle.AnchorSet, trace *AgentTrace, criterion judge.Criterion, rubricVersion string, rendered []*operatorv1.InferenceMessage, judgment AgentContentJudgment, ids *judgeIdentities) error {
 	mismatch := func(format string, args ...any) error {
 		return fmt.Errorf("evaluation: failed content judgment %q: %s: %w", criterion.ID, fmt.Sprintf(format, args...), constants.ErrEvaluationContentJudgmentMismatch)
 	}
@@ -436,20 +666,32 @@ func verifyFailedContentJudgment(cfg judge.Config, anchors *oracle.AnchorSet, tr
 	if judgment.Met || judgment.Rationale != "" {
 		return mismatch("a failed judgment carries a verdict")
 	}
+	retried := len(judgment.SupersededAttempts) > 0
+	if evalv1.JudgeFailure(failure) == evalv1.JudgeFailure_JUDGE_FAILURE_REQUEST_INVALID && (retried || judgment.RetryCount != 0) {
+		return mismatch("failure %s is a request that was never dispatched, so it was never retried", judgment.Failure)
+	}
 	hasResult := judgment.InferenceResult != nil || judgment.Receipt != nil
 	if !judgeFailureFromOutput(evalv1.JudgeFailure(failure)) {
 		if hasResult {
 			return mismatch("failure %s carries a result it cannot vouch for", judgment.Failure)
+		}
+		if retried && !ids.claimAttempt(judgment.ProviderAttemptID) {
+			return mismatch("provider attempt %q is empty or reused", judgment.ProviderAttemptID)
+		}
+		if err := verifyJudgeRetries(anchors, trace.Inference, judgment.TransactionID, judgment.RetryCount, judgeSupersededFromTrace(judgment.SupersededAttempts), ids); err != nil {
+			return fmt.Errorf("evaluation: failed content judgment %q: %w", criterion.ID, err)
 		}
 		return nil
 	}
 	if judgment.RubricVersion != rubricVersion {
 		return mismatch("rubric %q is not %q", judgment.RubricVersion, rubricVersion)
 	}
-	if _, seen := attempts[judgment.ProviderAttemptID]; seen || judgment.ProviderAttemptID == "" {
+	if !ids.claimAttempt(judgment.ProviderAttemptID) {
 		return mismatch("provider attempt %q is empty or reused", judgment.ProviderAttemptID)
 	}
-	attempts[judgment.ProviderAttemptID] = struct{}{}
+	if err := verifyJudgeRetries(anchors, trace.Inference, judgment.TransactionID, judgment.RetryCount, judgeSupersededFromTrace(judgment.SupersededAttempts), ids); err != nil {
+		return fmt.Errorf("evaluation: failed content judgment %q: %w", criterion.ID, err)
+	}
 	expected, err := agentTraceMessages(rendered)
 	if err != nil {
 		return fmt.Errorf("evaluation: failed content judgment %q: render prompt: %w", criterion.ID, err)
@@ -464,7 +706,7 @@ func verifyFailedContentJudgment(cfg judge.Config, anchors *oracle.AnchorSet, tr
 	if err := verifyJudgeReceipt(anchors, trace.Inference, judge.Score{Status: judge.StatusScored, TransactionID: judgment.TransactionID, Receipt: receipt, Result: result}); err != nil {
 		return fmt.Errorf("evaluation: failed content judgment %q: %w: %w", criterion.ID, constants.ErrEvaluationContentJudgmentMismatch, err)
 	}
-	_, _, err = judge.VerifyCriterionResult(cfg, judgment.ProviderAttemptID, result, receipt)
+	_, _, err = judge.VerifyCriterionResult(cfg, judgment.ProviderAttemptID, judgment.RetryCount, result, receipt)
 	if err == nil {
 		return mismatch("the signed result decodes to a verdict")
 	}
@@ -556,7 +798,29 @@ func attachContentJudgmentEvidence(result *evalv1.EvaluationAssignmentResult, tr
 	}
 	for _, grade := range result.GetSemanticGrades() {
 		judgment, ok := byCriterion[grade.GetCriterionId()]
-		if !ok || judgment.Failure != "" {
+		if !ok {
+			continue
+		}
+		// Each superseded attempt is a governed inference the judge's runtime
+		// executed and signed, so it binds as a governed action, as a retried
+		// agent turn does.
+		for _, attempt := range judgment.SupersededAttempts {
+			ref, err := agentReceiptEvidenceReference(traceEvidence, trace, attempt.TransactionID, attempt.Receipt)
+			if err != nil {
+				return fmt.Errorf("evaluation: content judgment %q superseded attempt evidence: %w", judgment.CriterionID, err)
+			}
+			result.GovernedActions = append(result.GovernedActions, &evalv1.GovernedActionBinding{
+				BindingId:         attempt.ProviderAttemptID,
+				AssignmentId:      result.GetAssignmentId(),
+				TransactionId:     attempt.TransactionID,
+				OperatorId:        trace.Inference.OperatorID,
+				OperatorSessionId: trace.Inference.SessionID,
+				ReceiptRef:        ref,
+				PolicyDecision:    agentPolicyDecisionAllow,
+				ActionType:        attempt.Receipt.GetActionType(),
+			})
+		}
+		if judgment.Failure != "" {
 			continue
 		}
 		ref, err := agentReceiptEvidenceReference(traceEvidence, trace, judgment.TransactionID, judgment.Receipt)
@@ -575,6 +839,8 @@ func attachContentJudgmentEvidence(result *evalv1.EvaluationAssignmentResult, tr
 			TransactionId:      judgment.TransactionID,
 			InferenceResult:    proto.Clone(judgment.InferenceResult.InferenceResult).(*operatorv1.InferenceResult),
 			Receipt:            proto.Clone(judgment.Receipt.EventReceipt).(*operatorv1.EventReceipt),
+			RetryCount:         judgment.RetryCount,
+			SupersededAttempts: supersededRecords(judgeSupersededFromTrace(judgment.SupersededAttempts)),
 		})
 		result.GovernedActions = append(result.GovernedActions, &evalv1.GovernedActionBinding{
 			BindingId:         judgment.ProviderAttemptID,

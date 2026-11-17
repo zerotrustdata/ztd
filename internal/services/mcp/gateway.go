@@ -571,6 +571,11 @@ func (g *GatewayService) handleA2ARequest(w http.ResponseWriter, r *http.Request
 			governance.NewIngressRefusal(fmt.Errorf("a2a request: %w", constants.ErrMethodNotAllowed)))
 		return
 	}
+	// A governed A2A call can outlast http.Server.WriteTimeout: L2 votes,
+	// their transient retries, and the L3 wait all run before the response.
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		g.logger.Warn("a2a request: failed to clear WriteTimeout, governed call may be killed by server deadline", "error", err)
+	}
 
 	if g.isCircuitOpen() {
 		g.logger.Warn("MCP downstream circuit is open, rejecting request", "method", method, "url", g.downstreamURL)

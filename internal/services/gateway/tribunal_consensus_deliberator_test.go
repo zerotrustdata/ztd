@@ -348,7 +348,7 @@ func newTribunalTestDeliberator(t *testing.T, binding *models.ConsensusPolicy, i
 func newRecordingTribunalTestDeliberator(t *testing.T, binding *models.ConsensusPolicy, inferer *fakeInferer, signer *fakeSigner, recorder *fakeVoteRecorder) *TribunalConsensusDeliberator {
 	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
-	deliberator, err := NewTribunalConsensusDeliberator(&fakeBinding{policy: binding}, fakePolicies{}, inferer, recorder, signer, logger)
+	deliberator, err := NewTribunalConsensusDeliberator(&fakeBinding{policy: binding}, fakePolicies{}, inferer, recorder, signer, dispatch.DefaultTransientRetry(), logger)
 	require.NoError(t, err)
 	return deliberator
 }
@@ -416,7 +416,7 @@ func TestRecordVotePublishesTheAuditRecordOnThePublicFeed(t *testing.T) {
 }
 
 func TestNewTribunalConsensusDeliberatorRejectsMissingRequiredDependencies(t *testing.T) {
-	got, err := NewTribunalConsensusDeliberator(nil, fakePolicies{}, &fakeInferer{}, &fakeVoteRecorder{}, nil, slog.New(slog.DiscardHandler))
+	got, err := NewTribunalConsensusDeliberator(nil, fakePolicies{}, &fakeInferer{}, &fakeVoteRecorder{}, nil, dispatch.DefaultTransientRetry(), slog.New(slog.DiscardHandler))
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	require.Nil(t, got)
 }
@@ -1086,7 +1086,7 @@ func TestTribunalConsensusRetainsEveryVoteInferenceReceipt(t *testing.T) {
 	assert.Equal(t, []*operatorv1.EventReceipt{observed}, completed.GetObservationReceipts())
 	assert.Equal(t, env.GetId(), completed.GetSubjectTransactionId())
 	assert.Equal(t, env.GetTransactionHash(), completed.GetSubjectTransactionHash())
-	assert.Equal(t, governance.ConsensusVoteAttemptID(env.GetTransactionHash(), binding.MemberAppIDs[0]), completed.GetProviderAttemptId())
+	assert.Equal(t, governance.ConsensusVoteAttemptID(env.GetTransactionHash(), binding.MemberAppIDs[0], 0), completed.GetProviderAttemptId())
 	assert.Same(t, failed, failure.GetReceipt())
 	assert.Equal(t, failed.GetTransactionId(), failure.GetTransactionId())
 	require.NotNil(t, failure.GetFailure())

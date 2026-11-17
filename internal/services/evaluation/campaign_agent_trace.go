@@ -360,6 +360,26 @@ type AgentContentJudgment struct {
 	// verdict, and carries the signed result and receipt only when its failure
 	// is read from the judge's own output (verdict invalid, repetition).
 	Failure string `json:"failure,omitempty"`
+	// RetryCount is the retry ordinal of the judgment's final attempt (v13): 0
+	// for a first attempt, n for the nth retry after the provider asked to
+	// retry later. It equals len(SupersededAttempts) and, when the judgment
+	// carries a signed result, that result's retry_count.
+	RetryCount uint32 `json:"retry_count,omitempty"`
+	// SupersededAttempts are the judgment's earlier attempts its retries
+	// replaced, in order (retry_count 0..RetryCount-1). Each carries the
+	// Inference Operator's signed transient FAILED receipt and no result or
+	// verdict; none is ever a scored judge call.
+	SupersededAttempts []AgentJudgeSupersededAttempt `json:"superseded_attempts,omitempty"`
+}
+
+// AgentJudgeSupersededAttempt is one judge provider attempt a retry replaced:
+// the provider asked to retry later, so the attempt did not complete and the
+// Inference Operator signed a FAILED receipt for it.
+type AgentJudgeSupersededAttempt struct {
+	ProviderAttemptID string             `json:"provider_attempt_id"`
+	TransactionID     string             `json:"transaction_id"`
+	RetryCount        uint32             `json:"retry_count"`
+	Receipt           *AgentTraceReceipt `json:"receipt"`
 }
 
 // AgentTraceInput is the rendered conversation and the complete tool
@@ -965,12 +985,24 @@ func validateAgentTraceRules(trace *AgentTrace) error {
 			return fmt.Errorf("evaluation: validate agent trace: historical trace carries a retried model call %q: %w", call.ProviderAttemptID, constants.ErrEvidenceArtifactMalformed)
 		}
 	}
+	if !trace.carriesRetries() {
+		for _, tool := range trace.ToolCalls {
+			for _, vote := range tool.ConsensusInferences {
+				if vote.GetRetryCount() != 0 || len(vote.GetSupersededAttempts()) > 0 {
+					return fmt.Errorf("evaluation: validate agent trace: historical trace carries a retried L2 vote %q: %w", vote.GetProviderAttemptId(), constants.ErrEvidenceArtifactMalformed)
+				}
+			}
+		}
+	}
 	if !trace.carriesContentJudgments() && len(trace.ContentJudgments) > 0 {
 		return fmt.Errorf("evaluation: validate agent trace: historical trace carries content judgments: %w", constants.ErrEvidenceArtifactMalformed)
 	}
 	for _, judgment := range trace.ContentJudgments {
 		if judgment.Failure != "" && !trace.carriesFailedJudgments() {
 			return fmt.Errorf("evaluation: validate agent trace: historical trace carries a failed content judgment: %w", constants.ErrEvidenceArtifactMalformed)
+		}
+		if !trace.carriesRetries() && (judgment.RetryCount != 0 || len(judgment.SupersededAttempts) > 0) {
+			return fmt.Errorf("evaluation: validate agent trace: historical trace carries a retried content judgment %q: %w", judgment.CriterionID, constants.ErrEvidenceArtifactMalformed)
 		}
 	}
 	if !trace.carriesObservationEvidence() && len(trace.Observations) > 0 {

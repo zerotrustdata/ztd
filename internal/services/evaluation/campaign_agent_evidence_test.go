@@ -639,7 +639,7 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsConsensusVotes(t *testing.T
 			before := ledger.executed("before", string(constants.ActionTypeFsRead))
 			model := ledger.inference("turn")
 			members := constants.TribunalConsensusMemberAppIDs()
-			result := &operatorv1.InferenceResult{ProviderAttemptId: governance.ConsensusVoteAttemptID("hash-tool", members[0])}
+			result := &operatorv1.InferenceResult{ProviderAttemptId: governance.ConsensusVoteAttemptID("hash-tool", members[0], 0)}
 			digest, err := models.ComputeInferenceResultDigest(result)
 			require.NoError(t, err)
 			result.ResultDigest = digest
@@ -665,7 +665,7 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsConsensusVotes(t *testing.T
 			trace.ToolCalls = []AgentToolCall{allowedToolCall("tool", tool)}
 			// Binding order differs from the order concurrent members committed.
 			trace.ToolCalls[0].ConsensusInferences = governance.WrapConsensusInferences([]*operatorv1.ConsensusVoteInference{
-				{SubjectTransactionId: "tool", SubjectTransactionHash: "hash-tool", MemberAppId: members[1], ProviderAttemptId: governance.ConsensusVoteAttemptID("hash-tool", members[1]), TransactionId: "vote-failed", Receipt: failed, Failure: &operatorv1.InferenceDispatchFailure{Receipt: failed}},
+				{SubjectTransactionId: "tool", SubjectTransactionHash: "hash-tool", MemberAppId: members[1], ProviderAttemptId: governance.ConsensusVoteAttemptID("hash-tool", members[1], 0), TransactionId: "vote-failed", Receipt: failed, Failure: &operatorv1.InferenceDispatchFailure{Receipt: failed}},
 				{SubjectTransactionId: "tool", SubjectTransactionHash: "hash-tool", MemberAppId: members[0], ProviderAttemptId: result.ProviderAttemptId, TransactionId: "vote-completed", Receipt: completed, Result: result, ObservationReceipts: []*operatorv1.EventReceipt{observation}},
 			})
 			if test.corrupt != nil {

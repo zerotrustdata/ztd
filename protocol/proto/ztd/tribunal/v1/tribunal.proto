@@ -42,13 +42,15 @@ message TribunalIntentRequest {
   int32 timeout_seconds = 12;
 
   // member_inference is the template for generation member calls. The Gateway
-  // sets messages, provider_attempt_id and response_format per call; every
-  // stage template must leave messages, tools, provider_attempt_id,
-  // acting_app_id, stream and response_format empty.
+  // sets messages, provider_attempt_id, response_format and retry_count per
+  // call; every stage template must leave messages, tools,
+  // provider_attempt_id, acting_app_id, stream, response_format and
+  // retry_count empty.
   ztd.operator.v1.InferenceDispatchRequest member_inference = 13;
   // provider_attempt_prefix names the member calls: call n (from 1, in
-  // deliberation order) uses provider_attempt_id "<prefix>-<n>". Required and
-  // unique per intent, so the caller can bind each result to its request.
+  // deliberation order, a transient retry included) uses provider_attempt_id
+  // "<prefix>-<n>". Required and unique per intent, so the caller can bind
+  // each result to its request.
   string provider_attempt_prefix = 14;
   // tier is the campaign role recorded on each persona step.
   ztd.eval.v1.ModelCampaignRole tier = 15;
@@ -109,6 +111,16 @@ message TribunalMemberCall {
   // observation_receipts are the observers' signed final receipts for the
   // call's BEGIN and FINALIZE commands (InferenceDispatchResponse field 4).
   repeated ztd.operator.v1.EventReceipt observation_receipts = 9;
+  // retry_count is the call's retry ordinal: 0 for the first attempt, n for
+  // the nth retry after the provider asked to retry later
+  // (RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT). It equals the dispatched
+  // request's and the signed result's retry_count.
+  uint32 retry_count = 10;
+  // retry_of is the provider_attempt_id of the earlier member call this one
+  // retries; set exactly when retry_count is non-zero. That call did not
+  // complete, and its signed FAILED receipt carries
+  // RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT.
+  string retry_of = 11;
 }
 
 // TribunalIntentResult is the HTTP 200 body of POST /api/v1/operators/intents.

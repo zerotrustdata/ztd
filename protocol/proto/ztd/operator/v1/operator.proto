@@ -822,6 +822,17 @@ message ConsensusVoteInference {
   EventReceipt receipt = 7;
   InferenceDispatchFailure failure = 8;
   repeated EventReceipt observation_receipts = 9;
+  // retry_count is the vote attempt's retry ordinal: 0 for the first
+  // attempt, n for the nth retry after the provider asked to retry later. It
+  // equals the dispatched request's and the signed result's retry_count, and
+  // provider_attempt_id is governance.ConsensusVoteAttemptID for it.
+  uint32 retry_count = 10;
+  // superseded_attempts are the member's earlier vote attempts this one
+  // retries, in order (retry_count 0..n-1). Each did not complete, carries the
+  // Inference Operator's signed FAILED receipt with
+  // RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT, and has no superseded_attempts of
+  // its own. Every one is execution evidence; only this record casts the vote.
+  repeated ConsensusVoteInference superseded_attempts = 11;
 }
 
 // GovernanceDeliberationResult is the L2 decision for an authenticated envelope.

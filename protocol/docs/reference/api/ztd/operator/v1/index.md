@@ -556,6 +556,8 @@ signed evidence; they never replace the subject&#39;s L2 quorum proof.
 | receipt | [EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
 | failure | [InferenceDispatchFailure](#ztd-operator-v1-InferenceDispatchFailure) |  |  |
 | observation_receipts | [EventReceipt](#ztd-operator-v1-EventReceipt) | repeated |  |
+| retry_count | [uint32](#uint32) |  | retry_count is the vote attempt&#39;s retry ordinal: 0 for the first attempt, n for the nth retry after the provider asked to retry later. It equals the dispatched request&#39;s and the signed result&#39;s retry_count, and provider_attempt_id is governance.ConsensusVoteAttemptID for it. |
+| superseded_attempts | [ConsensusVoteInference](#ztd-operator-v1-ConsensusVoteInference) | repeated | superseded_attempts are the member&#39;s earlier vote attempts this one retries, in order (retry_count 0..n-1). Each did not complete, carries the Inference Operator&#39;s signed FAILED receipt with RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT, and has no superseded_attempts of its own. Every one is execution evidence; only this record casts the vote. |
 
 
 

@@ -1086,6 +1086,24 @@ message GraderModelCallRecord {
   string transaction_id = 8;
   ztd.operator.v1.InferenceResult inference_result = 9;
   ztd.operator.v1.EventReceipt receipt = 10;
+  // retry_count is the judge call's retry ordinal: 0 for the first attempt,
+  // n for the nth retry after the provider asked to retry later. It equals
+  // the signed inference_result's retry_count.
+  uint32 retry_count = 11;
+  // superseded_attempts are the judge call's earlier attempts this one
+  // retries, in order (retry_count 0..n-1).
+  repeated JudgeSupersededAttempt superseded_attempts = 12;
+}
+
+// JudgeSupersededAttempt is one judge provider attempt a retry superseded. The
+// provider asked to retry later, so the attempt did not complete and the
+// Inference Operator signed a FAILED receipt with
+// RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT. It carries no result and no verdict.
+message JudgeSupersededAttempt {
+  string provider_attempt_id = 1;
+  string transaction_id = 2;
+  uint32 retry_count = 3;
+  ztd.operator.v1.EventReceipt receipt = 4;
 }
 
 message PolicyDecisionRecord {

@@ -554,7 +554,7 @@ func (b *gatewayServiceBuilder) build() (*GatewayModeService, error) {
 		&gatewayOperatorListerAdapter{svc: reg},
 		logger,
 	)
-	tribunalConsensus, err := NewTribunalConsensusDeliberator(consensusStore, db.GetAppPolicyStore(), inferenceDispatchSvc, eventsStore, nil, logger)
+	tribunalConsensus, err := NewTribunalConsensusDeliberator(consensusStore, db.GetAppPolicyStore(), inferenceDispatchSvc, eventsStore, nil, dispatch.DefaultTransientRetry(), logger)
 	if err != nil {
 		return nil, fmt.Errorf("gateway: tribunal consensus deliberator: %w", err)
 	}

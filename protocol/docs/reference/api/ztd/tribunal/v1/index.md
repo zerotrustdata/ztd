@@ -46,8 +46,8 @@ an L2 quorum proof or an L3 approval.
 | cli_session_id | [string](#string) |  |  |
 | execution_id | [string](#string) |  | execution_id is carried by the dispatched McpCallRequested. The Gateway merges timeout_seconds into the reviewed RunShellCommandArguments. |
 | timeout_seconds | [int32](#int32) |  |  |
-| member_inference | [ztd.operator.v1.InferenceDispatchRequest](#ztd-operator-v1-InferenceDispatchRequest) |  | member_inference is the template for generation member calls. The Gateway sets messages, provider_attempt_id and response_format per call; every stage template must leave messages, tools, provider_attempt_id, acting_app_id, stream and response_format empty. |
-| provider_attempt_prefix | [string](#string) |  | provider_attempt_prefix names the member calls: call n (from 1, in deliberation order) uses provider_attempt_id &#34;&lt;prefix&gt;-&lt;n&gt;&#34;. Required and unique per intent, so the caller can bind each result to its request. |
+| member_inference | [ztd.operator.v1.InferenceDispatchRequest](#ztd-operator-v1-InferenceDispatchRequest) |  | member_inference is the template for generation member calls. The Gateway sets messages, provider_attempt_id, response_format and retry_count per call; every stage template must leave messages, tools, provider_attempt_id, acting_app_id, stream, response_format and retry_count empty. |
+| provider_attempt_prefix | [string](#string) |  | provider_attempt_prefix names the member calls: call n (from 1, in deliberation order, a transient retry included) uses provider_attempt_id &#34;&lt;prefix&gt;-&lt;n&gt;&#34;. Required and unique per intent, so the caller can bind each result to its request. |
 | tier | [ztd.eval.v1.ModelCampaignRole](#ztd-eval-v1-ModelCampaignRole) |  | tier is the campaign role recorded on each persona step. |
 | step_start_index | [uint32](#uint32) |  | step_start_index numbers the persona steps from step_start_index &#43; 1. |
 | marshal_inference | [ztd.operator.v1.InferenceDispatchRequest](#ztd-operator-v1-InferenceDispatchRequest) |  | marshal_inference and auditor_inference select their stage&#39;s stack slot. Formation callers bind Lite members, Assistant Marshal and Primary Auditor; homogeneous callers bind all stages to the candidate model. |
@@ -104,6 +104,8 @@ Every call the Inference Operator executed carries its signed receipt.
 | receipt | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) |  | receipt is the Inference Operator&#39;s signed final EventReceipt. |
 | failure | [ztd.operator.v1.InferenceDispatchFailure](#ztd-operator-v1-InferenceDispatchFailure) |  | failure is set on a call that did not complete. |
 | observation_receipts | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) | repeated | observation_receipts are the observers&#39; signed final receipts for the call&#39;s BEGIN and FINALIZE commands (InferenceDispatchResponse field 4). |
+| retry_count | [uint32](#uint32) |  | retry_count is the call&#39;s retry ordinal: 0 for the first attempt, n for the nth retry after the provider asked to retry later (RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT). It equals the dispatched request&#39;s and the signed result&#39;s retry_count. |
+| retry_of | [string](#string) |  | retry_of is the provider_attempt_id of the earlier member call this one retries; set exactly when retry_count is non-zero. That call did not complete, and its signed FAILED receipt carries RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT. |
 
 
 

@@ -1178,7 +1178,7 @@ func TestVerifyClaimsInternalTribunalDeliberationExecutions(t *testing.T) {
 			env.Id = hash
 			env.TransactionHash = hash
 			member := constants.TribunalConsensusMemberAppIDs()[0]
-			result := &operatorv1.InferenceResult{ProviderAttemptId: governance.ConsensusVoteAttemptID(hash, member)}
+			result := &operatorv1.InferenceResult{ProviderAttemptId: governance.ConsensusVoteAttemptID(hash, member, 0)}
 			digest, err := models.ComputeInferenceResultDigest(result)
 			require.NoError(t, err)
 			result.ResultDigest = digest
