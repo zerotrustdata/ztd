@@ -540,6 +540,35 @@ func TestGeminiBackend_RejectsOverflowingTotalTokens(t *testing.T) {
 	assert.Nil(t, response, "overflow must fail before a negative total can be signed")
 }
 
+func TestGeminiBackend_CachedTokensCannotExceedPromptTokens(t *testing.T) {
+	t.Parallel()
+	for name, cached := range map[string]int{
+		"uncached prompt":                       0,
+		"fully cached prompt":                   7,
+		"more cached tokens than prompt tokens": 8,
+	} {
+		t.Run(name, func(t *testing.T) {
+			stream := strings.Replace(geminiTextStream("STOP"), `"cachedContentTokenCount":1`, fmt.Sprintf(`"cachedContentTokenCount":%d`, cached), 1)
+			fake := &geminiFake{stream: stream}
+			store := &hostedRawResponseRecorder{}
+			ctx := WithAttemptStore(testutil.Context(t), store)
+			resp, err := newFakeGeminiBackend(t, fake).Generate(ctx, geminiRequest(geminiTestModel))
+			if cached > 7 {
+				require.ErrorIs(t, err, constants.ErrInferenceProviderResponseInvalid)
+				assert.Nil(t, resp, "impossible cache usage must fail before a result can be signed")
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, resp.CacheTokens)
+				assert.Equal(t, int32(cached), *resp.CacheTokens)
+				assert.Equal(t, int32(7), resp.PromptTokens)
+				assert.Equal(t, int32(12), resp.TotalTokens)
+			}
+			assert.Equal(t, stream, string(store.raw), "the attempt still binds its raw response")
+			assert.Equal(t, 1, fake.posts(), "the client makes one generation request")
+		})
+	}
+}
+
 func TestGeminiBackend_StatusErrorsAreTyped(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct {

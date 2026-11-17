@@ -60,11 +60,10 @@ func openaiUsageCounts(usage *openaiUsage) (openaiTokenCounts, error) {
 		return openaiTokenCounts{}, invalid
 	}
 	total := input + output
-	if usage.TotalTokens != nil {
-		if *usage.TotalTokens < 0 || *usage.TotalTokens > math.MaxInt32 {
-			return openaiTokenCounts{}, invalid
-		}
-		total = *usage.TotalTokens
+	// The signed result defines total as prompt plus completion. Reject a
+	// contradictory provider total here, before L5 can sign a completed result.
+	if usage.TotalTokens != nil && *usage.TotalTokens != total {
+		return openaiTokenCounts{}, invalid
 	}
 	counts := openaiTokenCounts{
 		reported:   true,

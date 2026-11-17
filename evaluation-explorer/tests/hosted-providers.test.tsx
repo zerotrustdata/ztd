@@ -32,7 +32,15 @@ import { AssignmentDetailView } from '../src/views/AssignmentDetailView';
 import { EvaluationDetailView } from '../src/views/EvaluationDetailView';
 import { JudgeActivity } from '../src/components/JudgeActivity';
 import { RoleLeadersPanel } from '../src/components/RoleLeadersPanel';
-import { hostedRoleLeaderboardRows, modelOverallLeaderboardRows, modelRoleLeaderboardRows } from '../src/views/derived';
+import { LeaderboardView } from '../src/views/LeaderboardView';
+import {
+  defaultLeaderboardRelease,
+  hostedRoleLeaderboardRows,
+  modelCombinedOverallLeaderboardRows,
+  modelOverallLeaderboardRows,
+  modelRemoteHostedLeaderboardRows,
+  modelRoleLeaderboardRows,
+} from '../src/views/derived';
 
 const DATASET_ID = 'ds-live-hosted-run';
 const RUN_ID = 'hosted-run';
@@ -432,13 +440,142 @@ describe('hosted models on the leaderboard', () => {
     expect(hosted[0]?.parameter_count).toBeUndefined();
   });
 
-  it('keeps hosted variants out of Overall and applies the tool-calling probe gate', () => {
+  it('keeps hosted variants out of Self-hosted overall and applies the tool-calling probe gate', () => {
     const roles = (['primary', 'assistant', 'lite'] as const).map((role) => timedHosted({ role }));
     expect(modelOverallLeaderboardRows(modelRoleLeaderboardRows(roles))).toHaveLength(0);
     expect(hostedRoleLeaderboardRows(roles)).toHaveLength(3);
 
     const toolless = [timedHosted({ tool_calling_exclusions: 2 }), timedHosted({ role: 'lite', tool_calling_exclusions: 0 })];
     expect(hostedRoleLeaderboardRows(toolless).map((row) => row.model.role)).toEqual(['lite']);
+    expect(modelCombinedOverallLeaderboardRows(toolless)).toHaveLength(0);
+    expect(modelRemoteHostedLeaderboardRows(toolless)).toHaveLength(0);
+  });
+
+  it('scores hosted and self-hosted models side by side in Overall without size or catalog probe requirements', () => {
+    const roles = ['primary', 'assistant', 'lite'] as const;
+    const hosted = roles.map((role) => timedHosted({ role }));
+    const selfHosted = roles.map((role) => local({ role }));
+    const uncataloguedLocal = roles.map((role) => local({
+      role,
+      variant_id: 'uncatalogued-local',
+      display_name: 'Uncatalogued Local',
+      served_model_tag: 'uncatalogued:8b',
+      parameter_count: 8_000_000_000,
+      pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 40 },
+      security_pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 14 },
+      latency_p50_ms: { value: 1000 },
+      output_tokens: { value: 100 },
+    }));
+    const models = [...hosted, ...selfHosted, ...uncataloguedLocal];
+
+    const overall = modelCombinedOverallLeaderboardRows(models);
+    expect(overall.map((row) => row.model.variant_id)).toEqual([
+      'uncatalogued-local',
+      'gemini-3-6-flash',
+      'qwen3-4b',
+    ]);
+    expect(overall.map((row) => row.rank)).toEqual([1, 2, 3]);
+    expect(overall[1]?.parameter_count).toBeUndefined();
+    expect(overall[2]?.parameter_count).toBe(4_000_000_000);
+
+    // Pre-timing hosted runs (latency unavailable) stay excluded from Overall and Remote-hosted.
+    const untimed = roles.map((role) => publishedHosted({ role, variant_id: 'gemini-untimed', display_name: 'Untimed Gemini' }));
+    expect(modelCombinedOverallLeaderboardRows([...models, ...untimed])).toEqual(overall);
+    expect(modelRemoteHostedLeaderboardRows([...models, ...untimed]).map((row) => row.model.variant_id)).toEqual(['gemini-3-6-flash']);
+
+    // Remote-hosted scores only hosted variants, normalized within hosted models.
+    const anthropic = roles.map((role) => timedHosted({
+      role,
+      variant_id: 'claude-sonnet-5-5',
+      display_name: 'Claude Sonnet 5.5',
+      served_model_tag: 'claude-sonnet-5-5',
+      backend_provider_class: 'anthropic',
+      pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 40 },
+      security_pass_rate: { estimate: 0.9, lower: 0.9, upper: 0.9, denominator: 14 },
+      latency_p50_ms: { value: 1000 },
+      output_tokens: { value: 100 },
+    }));
+    const remote = modelRemoteHostedLeaderboardRows([...models, ...anthropic]);
+    expect(remote.map((row) => row.model.variant_id)).toEqual(['claude-sonnet-5-5', 'gemini-3-6-flash']);
+    expect(remote.map((row) => row.rank)).toEqual([1, 2]);
+  });
+
+  it('defaults LeaderboardView to the newest release with a three-role hosted model', () => {
+    const roles = ['primary', 'assistant', 'lite'] as const;
+    const oldLocal = roles.map((role) => local({
+      role,
+      release: 'v1.9.0',
+      release_basis: 'recorded',
+    }));
+    const newHosted = roles.map((role) => timedHosted({
+      role,
+      release: 'v1.10.2',
+      release_basis: 'recorded',
+    }));
+    expect(defaultLeaderboardRelease([...oldLocal, ...newHosted])).toBe('v1.10.x');
+
+    evalStore.loadFixtures([...oldLocal, ...newHosted], []);
+    render(
+      <MemoryRouter initialEntries={['/leaderboard']}>
+        <LeaderboardView />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('combobox', { name: 'Filter by release' })).toHaveValue('v1.10.x');
+    expect(screen.getByRole('link', { name: 'Gemini 3.6 Flash' })).toBeInTheDocument();
+  });
+
+  it('compares hosted and self-hosted side by side in Overall and isolates them in Self-hosted and Remote-hosted tabs', async () => {
+    const user = userEvent.setup();
+    const roles = ['primary', 'assistant', 'lite'] as const;
+    const models = [
+      ...roles.map((role) => local({ role })),
+      ...roles.map((role) => timedHosted({ role })),
+    ];
+    render(
+      <MemoryRouter>
+        <RoleLeadersPanel models={models} evaluations={[]} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Overall 2' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Self-hosted 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Remote-hosted 1' })).toBeInTheDocument();
+
+    const rows = () => screen.getAllByRole('row').slice(1);
+    expect(rows().map((row) => within(row).getAllByRole('link')[0]!.textContent)).toEqual([
+      'Gemini 3.6 Flash',
+      'Qwen 3 4B',
+    ]);
+    const hostedOverallRow = screen.getByRole('link', { name: 'Gemini 3.6 Flash' }).closest('tr')!;
+    expect(within(hostedOverallRow).getByText('1st')).toBeInTheDocument();
+    expect(hostedOverallRow).not.toHaveTextContent('Not ranked');
+    expect(hostedOverallRow).toHaveTextContent('Undisclosed');
+    const localOverallRow = screen.getByRole('link', { name: 'Qwen 3 4B' }).closest('tr')!;
+    expect(within(localOverallRow).getByText('2nd')).toBeInTheDocument();
+    expect(localOverallRow).toHaveTextContent('4B');
+
+    // Sorting Overall by Parameters puts known counts before Undisclosed in both directions.
+    await user.click(screen.getByRole('button', { name: 'Sort by Parameters' }));
+    expect(rows().map((row) => within(row).getAllByRole('link')[0]!.textContent)).toEqual([
+      'Qwen 3 4B',
+      'Gemini 3.6 Flash',
+    ]);
+    await user.click(screen.getByRole('button', { name: 'Sort by Parameters' }));
+    expect(rows().map((row) => within(row).getAllByRole('link')[0]!.textContent)).toEqual([
+      'Qwen 3 4B',
+      'Gemini 3.6 Flash',
+    ]);
+
+    // Self-hosted tab shows only local ranked models.
+    await user.click(screen.getByRole('button', { name: 'Self-hosted 1' }));
+    expect(rows().map((row) => within(row).getAllByRole('link')[0]!.textContent)).toEqual(['Qwen 3 4B']);
+    expect(screen.queryByRole('link', { name: 'Gemini 3.6 Flash' })).not.toBeInTheDocument();
+
+    // Remote-hosted tab shows only hosted ranked models.
+    await user.click(screen.getByRole('button', { name: 'Remote-hosted 1' }));
+    expect(rows().map((row) => within(row).getAllByRole('link')[0]!.textContent)).toEqual(['Gemini 3.6 Flash']);
+    expect(screen.queryByRole('link', { name: 'Qwen 3 4B' })).not.toBeInTheDocument();
+    expect(within(rows()[0]!).getByText('1st')).toBeInTheDocument();
   });
 
   it('renders the hosted row unranked beside ranked rows and keeps ranks for ranked rows when sorted', async () => {

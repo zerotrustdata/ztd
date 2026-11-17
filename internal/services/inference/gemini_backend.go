@@ -491,7 +491,7 @@ func geminiUsageCounts(usage *geminiUsage) (geminiTokenCounts, error) {
 		return *count
 	}
 	prompt, candidates, thoughts, cached := value(usage.PromptTokenCount), value(usage.CandidatesTokenCount), value(usage.ThoughtsTokenCount), usage.CachedContentTokenCount
-	if prompt < 0 || candidates < 0 || thoughts < 0 || (cached != nil && *cached < 0) || int64(prompt)+int64(candidates)+int64(thoughts) > math.MaxInt32 {
+	if prompt < 0 || candidates < 0 || thoughts < 0 || (cached != nil && (*cached < 0 || *cached > prompt)) || int64(prompt)+int64(candidates)+int64(thoughts) > math.MaxInt32 {
 		return geminiTokenCounts{}, invalid
 	}
 	counts := geminiTokenCounts{reported: true, prompt: prompt, completion: candidates + thoughts, cached: cached}

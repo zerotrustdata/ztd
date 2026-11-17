@@ -789,6 +789,38 @@ func TestOpenAIBackend_RejectsOverflowingTotalTokens(t *testing.T) {
 	assert.Nil(t, resp)
 }
 
+func TestOpenAIBackend_RejectsInconsistentTotalTokens(t *testing.T) {
+	t.Parallel()
+	for name, total := range map[string]int{
+		"zero total":              0,
+		"below input plus output": 11,
+		"above input plus output": 13,
+	} {
+		t.Run(name, func(t *testing.T) {
+			stream := strings.Replace(openaiTextStream("completed", ""), `"total_tokens":12`, fmt.Sprintf(`"total_tokens":%d`, total), 1)
+			fake := &openaiFake{stream: stream}
+			store := &hostedRawResponseRecorder{}
+			ctx := WithAttemptStore(testutil.Context(t), store)
+			resp, err := newFakeOpenAIBackend(t, fake).Generate(ctx, openaiRequest(openaiTestModel))
+			require.ErrorIs(t, err, constants.ErrInferenceProviderResponseInvalid)
+			assert.Nil(t, resp, "contradictory usage must fail before a result can be signed")
+			assert.Equal(t, stream, string(store.raw), "the failed attempt still binds its raw response")
+			assert.Equal(t, 1, fake.posts(), "invalid usage is never retried by the client")
+		})
+	}
+}
+
+func TestOpenAIBackend_TotalTokensComputedWhenOmitted(t *testing.T) {
+	t.Parallel()
+	stream := strings.Replace(openaiTextStream("completed", ""), `,"total_tokens":12`, "", 1)
+	resp, err := newFakeOpenAIBackend(t, &openaiFake{stream: stream}).Generate(testutil.Context(t), openaiRequest(openaiTestModel))
+	require.NoError(t, err)
+	assert.True(t, resp.UsageReported)
+	assert.Equal(t, int32(7), resp.PromptTokens)
+	assert.Equal(t, int32(5), resp.CompletionTokens)
+	assert.Equal(t, int32(12), resp.TotalTokens)
+}
+
 func TestOpenAIBackend_StatusErrorsAreTyped(t *testing.T) {
 	t.Parallel()
 	for name, tc := range map[string]struct {
