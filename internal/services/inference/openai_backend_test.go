@@ -870,7 +870,7 @@ func TestNewHostedBackend_OpenAI(t *testing.T) {
 	t.Run("key with newline fails closed", func(t *testing.T) {
 		t.Setenv(string(constants.EnvVar.OpenAIAPIKey), openaiTestKey+"\n")
 		_, err := NewHostedBackend(constants.InferenceProviderOpenAI, testutil.NewTestLogger())
-		require.ErrorIs(t, err, constants.ErrInferenceHostedProviderKeyMissing)
+		require.ErrorIs(t, err, constants.ErrInferenceHostedProviderKeyInvalid)
 	})
 	t.Run("valid key builds OpenAIBackend against fixed origin", func(t *testing.T) {
 		t.Setenv(string(constants.EnvVar.OpenAIAPIKey), openaiTestKey)

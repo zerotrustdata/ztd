@@ -102,7 +102,6 @@ func TestReExecArgsMatchStartCmdFlags(t *testing.T) {
 			OperatorCapabilities:                 constants.OperatorCapabilities{constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityProvenance, constants.OperatorCapabilityObserver},
 			InferenceOllamaEndpoint:              "http://localhost:11434",
 			InferenceKeepAlive:                   "-1",
-			InferenceHostedProviders:             []string{constants.InferenceProviderGemini},
 			ProviderBoundaryObserverID:           "observer",
 			ProvenanceOperatorID:                 "provenance",
 			ProvenanceOperatorModelStorageRoot:   "/models",

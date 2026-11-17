@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -126,8 +127,11 @@ func (e operatorBootstrapExchange) run(ctx context.Context) error {
 		return err
 	}
 
-	// Bind the validated declaration to the governed issuance request.
+	// Bind the validated declaration to the governed issuance request: the
+	// owner approves the capabilities and the hosted provider classes the
+	// Operator will serve.
 	enrollment.Operator.Capabilities = models.OperatorCapabilitiesFromProto(runtimeConfig.GetCapabilities()).WithDefault()
+	enrollment.Operator.HostedProviders = slices.Clone(runtimeConfig.GetInferenceHostedProviders())
 
 	// Request creation is rejected before bootstrap; an Operator started
 	// ahead of the owner holds here until the first user exists.
@@ -200,10 +204,15 @@ func (e operatorBootstrapExchange) run(ctx context.Context) error {
 }
 
 // operatorBootstrapRuntimeConfig decodes the declared runtime config and
-// rejects a heartbeat interval the Gateway's staleness window cannot honor.
+// rejects hosted provider classes the declared capabilities cannot serve and a
+// heartbeat interval the Gateway's staleness window cannot honor.
 func operatorBootstrapRuntimeConfig(req *models.OperatorBootstrapRequest) (*operatorv1.OperatorRuntimeConfig, error) {
 	runtimeConfig, err := models.UnmarshalOperatorRuntimeConfig(req.RuntimeConfig)
 	if err != nil {
+		return nil, fmt.Errorf("%w: runtime_config: %w", constants.ErrPlatformEnrollmentInvalidPayload, err)
+	}
+	capabilities := models.OperatorCapabilitiesFromProto(runtimeConfig.GetCapabilities()).WithDefault()
+	if err := models.ValidateOperatorHostedProviders(capabilities, runtimeConfig.GetInferenceHostedProviders()); err != nil {
 		return nil, fmt.Errorf("%w: runtime_config: %w", constants.ErrPlatformEnrollmentInvalidPayload, err)
 	}
 	declared := time.Duration(runtimeConfig.GetHeartbeatIntervalMs()) * time.Millisecond

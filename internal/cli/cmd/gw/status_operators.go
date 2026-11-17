@@ -34,7 +34,9 @@ import (
 
 // Start flags `gw status` can attribute to an Operator. The Gateway only knows
 // the values an Operator reported at registration (operatorv1.OperatorRuntimeConfig) plus,
-// for the embedded Operator, the Gateway's own launch profile.
+// for the embedded Operator, the Gateway's own launch profile. rowHostedProviders
+// is not a flag: it lists the hosted provider classes the Operator enrolled
+// with, discovered from the API keys set when it started.
 const (
 	flagLog                = "--log"
 	flagCloud              = "--cloud"
@@ -43,7 +45,7 @@ const (
 	flagLlamaCppEndpoint   = "--inference-llamacpp-endpoint"
 	flagLlamaCppModelRoot  = "--inference-llamacpp-model-root"
 	flagInferenceKeepAlive = "--inference-keep-alive"
-	flagHostedProviders    = "--inference-hosted-providers"
+	rowHostedProviders     = "hosted-providers"
 	flagModelStorageRoot   = "--model-storage-root"
 	flagModelStorageFormat = "--model-storage-format"
 	flagProvenanceID       = "--provenance-operator-id"
@@ -60,7 +62,7 @@ var capabilityFlags = []struct {
 	capability constants.OperatorCapability
 	flags      []string
 }{
-	{constants.OperatorCapabilityInference, []string{flagInferenceEndpoint, flagLlamaCppEndpoint, flagLlamaCppModelRoot, flagInferenceKeepAlive, flagHostedProviders}},
+	{constants.OperatorCapabilityInference, []string{flagInferenceEndpoint, flagLlamaCppEndpoint, flagLlamaCppModelRoot, flagInferenceKeepAlive, rowHostedProviders}},
 	{constants.OperatorCapabilityProvenance, []string{flagModelStorageRoot, flagModelStorageFormat, flagProvenanceID}},
 	{constants.OperatorCapabilityObserver, []string{flagObserverID}},
 }
@@ -111,7 +113,7 @@ func operatorStatusFromDocument(op *operatorv1.OperatorDocument) operatorStatus 
 	}
 	row.reportCustom(rc.LogLevel, rc.CloudMode, rc.CloudProvider)
 	// An Inference Operator serves exactly one local provider; list only its
-	// flags. Hosted providers it serves are reported alongside.
+	// flags. Hosted providers it enrolled with are reported alongside.
 	if rc.InferenceLlamacppEndpoint != "" {
 		row.reported[flagLlamaCppEndpoint] = rc.InferenceLlamacppEndpoint
 		row.reported[flagLlamaCppModelRoot] = rc.InferenceLlamacppModelRoot
@@ -119,7 +121,7 @@ func operatorStatusFromDocument(op *operatorv1.OperatorDocument) operatorStatus 
 		row.reported[flagInferenceEndpoint] = rc.InferenceOllamaEndpoint
 	}
 	if len(rc.InferenceHostedProviders) > 0 {
-		row.reported[flagHostedProviders] = strings.Join(rc.InferenceHostedProviders, ",")
+		row.reported[rowHostedProviders] = strings.Join(rc.InferenceHostedProviders, ",")
 	}
 	row.reported[flagModelStorageRoot] = rc.ProvenanceOperatorModelStorageRoot
 	// Operators resolve these to non-empty defaults before reporting; empty
@@ -162,7 +164,6 @@ func (o *operatorStatus) fillFromProfile(cfg serve.GatewayConfig) {
 		flagLlamaCppEndpoint:   cfg.InferenceLlamaCppEndpoint,
 		flagLlamaCppModelRoot:  cfg.InferenceLlamaCppModelRoot,
 		flagInferenceKeepAlive: cfg.InferenceKeepAlive,
-		flagHostedProviders:    strings.Join(cfg.InferenceHostedProviders, ","),
 		flagModelStorageRoot:   cfg.ProvenanceOperatorModelStorageRoot,
 		flagModelStorageFormat: cfg.ProvenanceOperatorModelStorageFormat,
 		flagProvenanceID:       cfg.ProvenanceOperatorID,

@@ -29,7 +29,8 @@ type CapabilityHandlers struct {
 	// is disabled.
 	InferenceProvider inference.Provider
 	// InferenceHosted are the hosted provider clients built for the
-	// Operator's --inference-hosted-providers, in that order. Empty when none
+	// hosted classes the Operator serves (cfg.Inference.HostedProviders, from
+	// the API keys set when it started), in that order. Empty when none
 	// are enabled.
 	InferenceHosted          []inference.HostedBackend
 	ProviderBoundaryObserver *provider_observer.Handler

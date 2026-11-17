@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -127,6 +128,16 @@ func PlatformEnrollmentFingerprints(fps models.PlatformEnrollmentCSRFingerprints
 		out = append(out, EnrollmentFingerprint{Label: "CLI key", Value: fps.CLI})
 	}
 	return out
+}
+
+// PlatformEnrollmentHostedProviders renders the hosted inference provider
+// classes an Operator enrollment request declares, or "none". Shared by
+// 'ztd auth pending', 'ztd auth approve' and the TUI.
+func PlatformEnrollmentHostedProviders(classes []string) string {
+	if len(classes) == 0 {
+		return "none"
+	}
+	return strings.Join(classes, ", ")
 }
 
 // PlatformEnrollmentIssuedIdentity names the identity a completed platform

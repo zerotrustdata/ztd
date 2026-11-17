@@ -237,8 +237,8 @@ type DispatchInferenceRequest struct {
 
 	// ProviderClass names the hosted provider class (gemini, anthropic,
 	// openai) serving Model. Empty selects the Inference Operator's local
-	// provider. A hosted class routes only to an Operator started with it in
-	// --inference-hosted-providers.
+	// provider. A hosted class routes only to an Operator whose enrolled
+	// runtime config lists it (inference_hosted_providers).
 	ProviderClass string
 
 	// Temperature overrides the backend's default temperature. Zero means

@@ -327,7 +327,7 @@ Examples:
 			}
 			var variant *evalv1.ModelVariant
 			if constants.IsHostedInferenceProvider(providerClass) {
-				env, err := resolveGovernedModelMaintenance(cmd, deps)
+				env, err := resolveGovernedModelMaintenance(cmd, deps, []string{providerClass})
 				if err != nil {
 					return fmt.Errorf("evaluation: models add: %w", err)
 				}
@@ -558,12 +558,14 @@ lists fails the freeze.`,
 			if err != nil {
 				return err
 			}
-			env, err := resolveGovernedModelMaintenance(cmd, deps)
+			inventories := newModelInventories(fileSvc, cfg.ProjectRoot)
+			registry, err := inventories.freezeOrEmpty(cmd.Context(), modelScopeRegistry)
 			if err != nil {
 				return fmt.Errorf("evaluation: models freeze: %w", err)
 			}
-			inventories := newModelInventories(fileSvc, cfg.ProjectRoot)
-			registry, err := inventories.freezeOrEmpty(cmd.Context(), modelScopeRegistry)
+			// The Inference Operator re-reads every hosted model the registry
+			// keeps, so it must serve each of their classes.
+			env, err := resolveGovernedModelMaintenance(cmd, deps, evaluation.HostedProviderClasses(registry.Variants, nil))
 			if err != nil {
 				return fmt.Errorf("evaluation: models freeze: %w", err)
 			}
@@ -707,7 +709,9 @@ func modelsDiffCmd(deps nativeEvalDeps) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("evaluation: models diff: read registry: %w", err)
 			}
-			env, err := resolveGovernedModelMaintenance(cmd, deps)
+			// The frozen registry's hosted classes must be served; a catalog-only
+			// hosted model with no serving Operator shows as a difference.
+			env, err := resolveGovernedModelMaintenance(cmd, deps, evaluation.HostedProviderClasses(registryVariants, nil))
 			if err != nil {
 				return fmt.Errorf("evaluation: models diff: %w", err)
 			}

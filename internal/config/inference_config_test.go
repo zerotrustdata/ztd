@@ -80,26 +80,59 @@ func TestNewProvenanceOperatorConfig_ModelStorageFormat(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrProvenanceModelStorageFormatInvalid)
 }
 
-func TestNewInferenceConfig_HostedProviders(t *testing.T) {
-	got, err := newInferenceConfig(true, LoadOptions{InferenceHostedProviders: []string{" OpenAI", "gemini", "openai"}})
-	require.NoError(t, err)
-	assert.Equal(t, []string{constants.InferenceProviderGemini, constants.InferenceProviderOpenAI}, got.HostedProviders, "classes are normalized, ordered, and named once")
-
-	got, err = newInferenceConfig(true, LoadOptions{})
-	require.NoError(t, err)
-	assert.Empty(t, got.HostedProviders, "no hosted provider is served unless named")
-
-	for name, classes := range map[string][]string{
-		"a local class":   {constants.InferenceProviderOllama},
-		"an unknown name": {"acme"},
-		"an empty name":   {""},
-	} {
-		t.Run(name, func(t *testing.T) {
-			_, err := newInferenceConfig(true, LoadOptions{InferenceHostedProviders: classes})
-			require.ErrorIs(t, err, constants.ErrInferenceHostedProviderInvalid)
-		})
+func TestNewInferenceConfig_HostedProvidersComeFromKeys(t *testing.T) {
+	setKeys := func(t *testing.T, gemini, anthropic, openai string) {
+		t.Helper()
+		t.Setenv(string(constants.EnvVar.GeminiAPIKey), gemini)
+		t.Setenv(string(constants.EnvVar.AnthropicAPIKey), anthropic)
+		t.Setenv(string(constants.EnvVar.OpenAIAPIKey), openai)
 	}
 
-	_, err = newInferenceConfig(false, LoadOptions{InferenceHostedProviders: []string{constants.InferenceProviderGemini}})
-	require.ErrorIs(t, err, constants.ErrInferenceHostedRequiresInference, "a hosted provider needs the inference capability")
+	t.Run("each class with a key is served, in canonical order", func(t *testing.T) {
+		setKeys(t, "g-key", "", " o-key ")
+		got, err := newInferenceConfig(true, LoadOptions{})
+		require.NoError(t, err)
+		assert.Equal(t, []string{constants.InferenceProviderGemini, constants.InferenceProviderOpenAI}, got.HostedProviders)
+	})
+	t.Run("no key serves no hosted class", func(t *testing.T) {
+		setKeys(t, "", "", "")
+		got, err := newInferenceConfig(true, LoadOptions{})
+		require.NoError(t, err)
+		assert.Empty(t, got.HostedProviders)
+	})
+	t.Run("without the inference capability keys are ignored", func(t *testing.T) {
+		setKeys(t, "g-key", "a-key", "\n")
+		got, err := newInferenceConfig(false, LoadOptions{})
+		require.NoError(t, err)
+		assert.Empty(t, got.HostedProviders)
+	})
+	for name, key := range map[string]string{
+		"a whitespace-only key": "   ",
+		"a key split by LF":     "abc\ndef",
+		"a key ending in CR":    "abc\r",
+	} {
+		t.Run(name+" fails startup", func(t *testing.T) {
+			setKeys(t, "", key, "")
+			_, err := newInferenceConfig(true, LoadOptions{})
+			require.ErrorIs(t, err, constants.ErrInferenceHostedProviderKeyInvalid)
+			assert.Contains(t, err.Error(), string(constants.EnvVar.AnthropicAPIKey), "the error names the variable")
+			assert.NotContains(t, err.Error(), "abc", "the error never carries the value")
+		})
+	}
+}
+
+func TestHostedProviderAPIKey(t *testing.T) {
+	t.Setenv(string(constants.EnvVar.GeminiAPIKey), "  g-key  ")
+	key, err := HostedProviderAPIKey(constants.InferenceProviderGemini)
+	require.NoError(t, err)
+	assert.Equal(t, "g-key", key, "the key is trimmed")
+
+	t.Setenv(string(constants.EnvVar.GeminiAPIKey), "")
+	_, err = HostedProviderAPIKey(constants.InferenceProviderGemini)
+	require.ErrorIs(t, err, constants.ErrInferenceHostedProviderKeyMissing)
+
+	for _, class := range []string{constants.InferenceProviderOllama, constants.InferenceProviderLlamaCpp, "acme", ""} {
+		_, err = HostedProviderAPIKey(class)
+		require.ErrorIs(t, err, constants.ErrInferenceHostedProviderInvalid, class)
+	}
 }

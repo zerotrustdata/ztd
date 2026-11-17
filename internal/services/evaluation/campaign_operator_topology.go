@@ -44,17 +44,20 @@ type CampaignOperatorTopology struct {
 
 // ResolveCampaignOperatorTopology resolves the Inference and Data roles from the
 // operator registry. inferenceSessionID pins the Inference session when set;
-// otherwise SelectInferenceOperator's default applies. Anchors are not bound.
-func ResolveCampaignOperatorTopology(operators []*operatorv1.OperatorDocument, inferenceSessionID string) (CampaignOperatorTopology, error) {
-	return ResolveCampaignOperatorTopologyForDataOperator(operators, inferenceSessionID, "")
+// otherwise SelectInferenceOperator's default applies. The Inference Operator
+// must serve every class in hostedClasses (HostedProviderClasses). Anchors are
+// not bound.
+func ResolveCampaignOperatorTopology(operators []*operatorv1.OperatorDocument, inferenceSessionID string, hostedClasses []string) (CampaignOperatorTopology, error) {
+	return ResolveCampaignOperatorTopologyForDataOperator(operators, inferenceSessionID, "", hostedClasses)
 }
 
 // ResolveCampaignOperatorTopologyForDataOperator resolves the Inference and
 // Data roles from the operator registry. dataOperatorID pins the Data role to
 // a stable Operator identity while allowing its active session to change. An
 // empty ID keeps the default Data Operator selection used by fresh campaigns.
-func ResolveCampaignOperatorTopologyForDataOperator(operators []*operatorv1.OperatorDocument, inferenceSessionID, dataOperatorID string) (CampaignOperatorTopology, error) {
-	inference, err := SelectInferenceOperator(operators, inferenceSessionID)
+// The Inference Operator must serve every class in hostedClasses.
+func ResolveCampaignOperatorTopologyForDataOperator(operators []*operatorv1.OperatorDocument, inferenceSessionID, dataOperatorID string, hostedClasses []string) (CampaignOperatorTopology, error) {
+	inference, err := SelectInferenceOperator(operators, inferenceSessionID, hostedClasses)
 	if err != nil {
 		return CampaignOperatorTopology{}, fmt.Errorf("evaluation: resolve operator topology: %w", err)
 	}

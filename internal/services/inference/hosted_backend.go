@@ -11,9 +11,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 
+	"github.com/zerotrustdata/ztd/internal/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
@@ -33,9 +33,9 @@ type HostedBackend interface {
 }
 
 // NewHostedBackends builds one client per hosted provider class the Operator
-// was started with (--inference-hosted-providers). Each reads its API key from
-// the process environment once, here; the key is held only by the client and
-// sent only in a request header.
+// serves (config.InferenceConfig.HostedProviders, discovered from the keys set
+// when it starts). Each reads its API key from the process environment once,
+// here; the key is held only by the client and sent only in a request header.
 func NewHostedBackends(classes []string, logger *slog.Logger) (map[string]HostedBackend, error) {
 	backends := make(map[string]HostedBackend, len(classes))
 	for _, class := range classes {
@@ -49,22 +49,17 @@ func NewHostedBackends(classes []string, logger *slog.Logger) (map[string]Hosted
 }
 
 // NewHostedBackend builds the client for one hosted provider class. A class
-// without its API key in the environment fails closed, as does a class this
-// build has no client for.
+// whose API key config.HostedProviderAPIKey rejects fails closed, as does a
+// class this build has no client for.
 func NewHostedBackend(class string, logger *slog.Logger) (HostedBackend, error) {
 	origin, ok := constants.HostedInferenceProviderOrigin(class)
 	if !ok {
 		return nil, fmt.Errorf("inference: hosted provider %q: %w", class, constants.ErrInferenceHostedProviderInvalid)
 	}
-	keyEnv, ok := constants.HostedInferenceProviderAPIKeyEnv(class)
-	if !ok {
-		return nil, fmt.Errorf("inference: hosted provider %q: %w", class, constants.ErrInferenceHostedProviderInvalid)
+	key, err := config.HostedProviderAPIKey(class)
+	if err != nil {
+		return nil, fmt.Errorf("inference: %w", err)
 	}
-	key := os.Getenv(string(keyEnv))
-	if strings.TrimSpace(key) == "" || strings.ContainsAny(key, "\r\n") {
-		return nil, fmt.Errorf("inference: hosted provider %q: %s: %w", class, keyEnv, constants.ErrInferenceHostedProviderKeyMissing)
-	}
-	key = strings.TrimSpace(key)
 	switch class {
 	case constants.InferenceProviderGemini:
 		return NewGeminiBackend(origin, key, logger)

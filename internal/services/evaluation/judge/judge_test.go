@@ -504,6 +504,31 @@ func TestJudgmentJSONSchema_IsCanonical(t *testing.T) {
 	assert.Equal(t, string(canonical), judgmentJSONSchema) //nolint:testifylint // exact bytes, not JSON equivalence
 }
 
+// TestJudgeSchemas_UseOnlyPortableConstraints: a judge may be any registry
+// model, local or hosted, so its response schemas use only constraints every
+// provider applies. Anthropic structured outputs reject numerical and string
+// length constraints; the score range is an enum the decoder also enforces.
+func TestJudgeSchemas_UseOnlyPortableConstraints(t *testing.T) {
+	for name, schema := range map[string]string{"judgment": judgmentJSONSchema, "criterion": criterionJSONSchema} {
+		for _, keyword := range []string{`"minimum"`, `"maximum"`, `"exclusiveMinimum"`, `"exclusiveMaximum"`, `"multipleOf"`, `"minLength"`, `"maxLength"`} {
+			assert.NotContains(t, schema, keyword, name)
+		}
+	}
+	var decoded struct {
+		Properties struct {
+			Score struct {
+				Enum []int `json:"enum"`
+			} `json:"score"`
+		} `json:"properties"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(judgmentJSONSchema), &decoded))
+	want := make([]int, 0, judgeScoreMax-judgeScoreMin+1)
+	for score := judgeScoreMin; score <= judgeScoreMax; score++ {
+		want = append(want, score)
+	}
+	assert.Equal(t, want, decoded.Properties.Score.Enum)
+}
+
 func TestNew_RejectsEachMissingRequiredField(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -588,6 +613,38 @@ func TestScoreCriterion_VerdictIsBoundToTheFrozenJudgeAndCampaignAuthority(t *te
 			assert.Contains(t, user, criterionStatement)
 			assert.Contains(t, user, judgeObjective)
 			assert.Contains(t, user, criterionReply)
+		})
+	}
+}
+
+// TestScoreCriterion_JudgeDispatchesItsFrozenProviderClass: the judge is any
+// frozen registry model, local or hosted, whatever the graded subject is. A
+// local judge leaves the dispatch class empty so the Inference Operator's
+// local provider serves it; a hosted judge names its class.
+func TestScoreCriterion_JudgeDispatchesItsFrozenProviderClass(t *testing.T) {
+	for _, tc := range []struct {
+		providerClass string
+		wantDispatch  string
+	}{
+		{providerClass: constants.InferenceProviderOllama, wantDispatch: ""},
+		{providerClass: constants.InferenceProviderLlamaCpp, wantDispatch: ""},
+		{providerClass: constants.InferenceProviderGemini, wantDispatch: constants.InferenceProviderGemini},
+		{providerClass: constants.InferenceProviderAnthropic, wantDispatch: constants.InferenceProviderAnthropic},
+		{providerClass: constants.InferenceProviderOpenAI, wantDispatch: constants.InferenceProviderOpenAI},
+	} {
+		t.Run(tc.providerClass, func(t *testing.T) {
+			dispatcher := &fakeDispatcher{respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+				return judgmentResponse(req, `{"met": true, "rationale": "declines"}`), nil
+			}}
+			j := newTestJudge(t, dispatcher, func(cfg *Config) { cfg.Variant.ProviderClass = tc.providerClass })
+
+			score := j.ScoreCriterion(context.Background(), refusalCriterion(), onlyPosition, judgeObjective, criterionReply)
+
+			assert.Equal(t, StatusScored, score.Status)
+			require.Len(t, dispatcher.requests, 1)
+			assert.Equal(t, tc.wantDispatch, dispatcher.requests[0].GetProviderClass())
+			assert.Equal(t, judgeModelTag, dispatcher.requests[0].GetModel())
+			assert.Equal(t, strings.Repeat("d", 64), dispatcher.requests[0].GetModelDigest())
 		})
 	}
 }

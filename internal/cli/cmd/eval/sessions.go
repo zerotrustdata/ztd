@@ -14,9 +14,9 @@ import (
 )
 
 // resolveOperatorTopologyForDataOperator resolves the selected Inference
-// session and either the default Data Operator or a campaign's frozen stable
-// Data Operator identity.
-func resolveOperatorTopologyForDataOperator(cmd *cobra.Command, deps nativeEvalDeps, dataOperatorID string) (evaluation.CampaignOperatorTopology, error) {
+// session, which must serve every class in hostedClasses, and either the
+// default Data Operator or a campaign's frozen stable Data Operator identity.
+func resolveOperatorTopologyForDataOperator(cmd *cobra.Command, deps nativeEvalDeps, dataOperatorID string, hostedClasses []string) (evaluation.CampaignOperatorTopology, error) {
 	gatewayDeps := deps.gatewayDeps()
 	cfg, _, authContext, err := gatewayEvalEnvironment(cmd, gatewayDeps)
 	if err != nil {
@@ -26,5 +26,5 @@ func resolveOperatorTopologyForDataOperator(cmd *cobra.Command, deps nativeEvalD
 	if err != nil {
 		return evaluation.CampaignOperatorTopology{}, err
 	}
-	return evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", dataOperatorID)
+	return evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", dataOperatorID, hostedClasses)
 }

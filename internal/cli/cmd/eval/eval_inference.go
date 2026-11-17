@@ -97,7 +97,7 @@ func gatesInferenceEvalCmd(deps nativeEvalDeps) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("evaluation: list operators: %w", err)
 			}
-			selected, err := evaluation.SelectInferenceOperator(operators, "")
+			selected, err := evaluation.SelectInferenceOperator(operators, "", probeHostedClasses(providerClass))
 			if err != nil {
 				return fmt.Errorf("evaluation: gates inference: %w", err)
 			}
@@ -198,6 +198,15 @@ func gatesInferenceEvalCmd(deps nativeEvalDeps) *cobra.Command {
 
 const probeProviderFlagUsage = "Hosted provider class serving the model (gemini, anthropic, openai); omit for the Operator's local provider"
 
+// probeHostedClasses is the hosted class a probe's Inference Operator must
+// serve: none for the Operator's local provider.
+func probeHostedClasses(providerClass string) []string {
+	if providerClass == "" {
+		return nil
+	}
+	return []string{providerClass}
+}
+
 // validateProbeProviderClass admits an empty class (the Operator's local
 // provider) or a hosted provider class.
 func validateProbeProviderClass(providerClass string) error {
@@ -239,7 +248,7 @@ func gatesProbeEvalCmd(deps nativeEvalDeps) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("evaluation: list operators: %w", err)
 			}
-			selected, err := evaluation.SelectInferenceOperator(operators, operatorSessionID)
+			selected, err := evaluation.SelectInferenceOperator(operators, operatorSessionID, probeHostedClasses(providerClass))
 			if err != nil {
 				return fmt.Errorf("evaluation: gates probe: %w", err)
 			}

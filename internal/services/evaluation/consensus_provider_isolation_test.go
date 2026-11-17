@@ -51,7 +51,7 @@ func TestDecisionOnlyOperatorExcludedFromDefaultCampaignSelection(t *testing.T) 
 		{Id: "decision", OperatorType: string(constants.OperatorTypeRemote), OperatorSessionId: "decision-session", Status: string(constants.OperatorStatusActive), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{"inference"}, InferenceDecisionOnly: true}},
 		{Id: "campaign", OperatorType: string(constants.OperatorTypeRemote), OperatorSessionId: "campaign-session", Status: string(constants.OperatorStatusActive), RuntimeConfig: &operatorv1.OperatorRuntimeConfig{Capabilities: []string{"inference"}}},
 	}
-	selected, err := SelectInferenceOperator(ops, "")
+	selected, err := SelectInferenceOperator(ops, "", nil)
 	require.NoError(t, err)
 	require.Equal(t, "campaign", selected.OperatorID)
 }

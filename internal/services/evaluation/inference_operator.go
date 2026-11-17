@@ -10,6 +10,7 @@ package evaluation
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
@@ -75,18 +76,25 @@ func inferenceOperatorStatus(op *operatorv1.OperatorDocument) InferenceOperatorS
 	}
 }
 
-// SelectInferenceOperator resolves an active inference-capable Operator, giving
-// embedded precedence. An explicit session must belong to an eligible Operator.
-func SelectInferenceOperator(operators []*operatorv1.OperatorDocument, sessionID string) (*InferenceOperatorStatus, error) {
-	return SelectInferenceOperatorForHardware(operators, sessionID, "")
+// SelectInferenceOperator resolves an active inference-capable Operator that
+// serves every class in hostedClasses, giving embedded precedence. An explicit
+// session must belong to an eligible Operator that serves them.
+func SelectInferenceOperator(operators []*operatorv1.OperatorDocument, sessionID string, hostedClasses []string) (*InferenceOperatorStatus, error) {
+	return SelectInferenceOperatorForHardware(operators, sessionID, "", hostedClasses)
 }
 
 // SelectInferenceOperatorForHardware resolves an inference operator using the
-// exact OperatorDocument system fingerprint when one is available.
+// exact OperatorDocument system fingerprint when one is available. Only an
+// Operator whose enrolled runtime config lists every class in hostedClasses
+// is selectable: one Inference Operator serves every model a campaign names,
+// local and hosted. A pinned session that lacks a class fails with
+// ErrInferenceOperatorNotCapable, and no serving Operator with
+// ErrInferenceOperatorNotFound; both name the missing classes.
 func SelectInferenceOperatorForHardware(
 	operators []*operatorv1.OperatorDocument,
 	sessionID string,
 	systemFingerprint string,
+	hostedClasses []string,
 ) (*InferenceOperatorStatus, error) {
 	var eligible []*operatorv1.OperatorDocument
 	for _, op := range operators {
@@ -98,6 +106,9 @@ func SelectInferenceOperatorForHardware(
 	if sessionID != "" {
 		for _, op := range matches {
 			if op.GetOperatorSessionId() == sessionID {
+				if missing := missingHostedProviders(op, hostedClasses); len(missing) > 0 {
+					return nil, fmt.Errorf("%w: session %s does not serve hosted providers %s", constants.ErrInferenceOperatorNotCapable, sessionID, strings.Join(missing, ", "))
+				}
 				selected := inferenceOperatorStatus(op)
 				return &selected, nil
 			}
@@ -105,7 +116,16 @@ func SelectInferenceOperatorForHardware(
 		return nil, fmt.Errorf("%w: session %s", constants.ErrInferenceOperatorNotCapable, sessionID)
 	}
 
-	matches = operatorcapability.PreferEmbedded(matches)
+	serving := make([]*operatorv1.OperatorDocument, 0, len(matches))
+	for _, op := range matches {
+		if len(missingHostedProviders(op, hostedClasses)) == 0 {
+			serving = append(serving, op)
+		}
+	}
+	if len(serving) == 0 && len(matches) > 0 {
+		return nil, fmt.Errorf("%w: no active Inference Operator serves hosted providers %s", constants.ErrInferenceOperatorNotFound, strings.Join(hostedClasses, ", "))
+	}
+	matches = operatorcapability.PreferEmbedded(serving)
 	switch len(matches) {
 	case 0:
 		return nil, constants.ErrInferenceOperatorNotFound
@@ -121,6 +141,18 @@ func SelectInferenceOperatorForHardware(
 	}
 }
 
+// missingHostedProviders returns the classes in hostedClasses that op's
+// enrolled runtime config does not list, in hostedClasses order.
+func missingHostedProviders(op *operatorv1.OperatorDocument, hostedClasses []string) []string {
+	var missing []string
+	for _, class := range hostedClasses {
+		if !slices.Contains(op.GetRuntimeConfig().GetInferenceHostedProviders(), class) {
+			missing = append(missing, class)
+		}
+	}
+	return missing
+}
+
 // RequireOllamaInferenceOperator fails closed with
 // constants.ErrInferenceProviderOllamaRequired unless the exact Inference Operator
 // session serves Ollama, the only provider with model pull and copy. The Operator
@@ -130,7 +162,7 @@ func RequireOllamaInferenceOperator(operators []*operatorv1.OperatorDocument, in
 	if inferenceSessionID == "" {
 		return fmt.Errorf("evaluation: require Ollama inference operator: %w", constants.ErrMissingRequiredField)
 	}
-	selected, err := SelectInferenceOperator(operators, inferenceSessionID)
+	selected, err := SelectInferenceOperator(operators, inferenceSessionID, nil)
 	if err != nil {
 		return fmt.Errorf("evaluation: require Ollama inference operator: %w", err)
 	}

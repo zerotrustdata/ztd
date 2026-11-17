@@ -73,6 +73,9 @@ type ConsensusBindingSpec struct {
 	Quorum       int
 	ModelTag     string
 	ModelDigest  string
+	// ModelProviderClass is the hosted inference provider class that serves
+	// ModelTag for generative Tribunal votes; empty selects the local provider.
+	ModelProviderClass string
 }
 
 // ResolveConsensusBinding validates and normalizes a binding for its provider.
@@ -87,8 +90,11 @@ type ConsensusBindingSpec struct {
 // canonical Tribunal member app IDs in canonical order (empty means canonical);
 // quorum defaults to TribunalConsensusDefaultQuorum and must be between
 // TribunalConsensusMinQuorum and the member count; model tag and digest are
-// required except for explicitly opted-in versioned hosted decisions. Per-member
-// owner and trusted-signer checks stay with the caller.
+// required except for explicitly opted-in versioned hosted decisions. A model
+// provider class, when set, must name a hosted inference provider and is
+// admitted only for a digest-pinned generative binding: the digest is then the
+// hosted model identity digest the Inference Operator re-verifies on every
+// vote. Per-member owner and trusted-signer checks stay with the caller.
 func ResolveConsensusBinding(spec ConsensusBindingSpec) (ConsensusBindingSpec, error) {
 	provider, err := constants.ParseConsensusProvider(string(spec.Provider))
 	if err != nil {
@@ -101,6 +107,7 @@ func ResolveConsensusBinding(spec ConsensusBindingSpec) (ConsensusBindingSpec, e
 		ModelTag:    strings.TrimSpace(spec.ModelTag),
 		ModelDigest: strings.TrimSpace(spec.ModelDigest),
 	}
+	out.ModelProviderClass = strings.TrimSpace(spec.ModelProviderClass)
 	out.VoteKind = strings.TrimSpace(spec.VoteKind)
 	out.InferenceOperatorID = strings.TrimSpace(spec.InferenceOperatorID)
 	out.VoteThresholds = append([]ConsensusDecisionThreshold(nil), spec.VoteThresholds...)
@@ -118,6 +125,9 @@ func ResolveConsensusBinding(spec ConsensusBindingSpec) (ConsensusBindingSpec, e
 		}
 		if out.ModelTag == "" || (out.ModelDigest == "" && !out.AllowHosted) {
 			return ConsensusBindingSpec{}, constants.ErrConsensusModelRequired
+		}
+		if err := validateConsensusModelProviderClass(out); err != nil {
+			return ConsensusBindingSpec{}, err
 		}
 		canonical := constants.TribunalConsensusMemberAppIDs()
 		if out.AppID != canonical[0] {
@@ -150,7 +160,7 @@ func ResolveConsensusBinding(spec ConsensusBindingSpec) (ConsensusBindingSpec, e
 		if err := ValidateConsensusEndpoint(out.EndpointURL); err != nil {
 			return ConsensusBindingSpec{}, fmt.Errorf("consensus endpoint: %w", err)
 		}
-		if out.ModelTag != "" || out.ModelDigest != "" {
+		if out.ModelTag != "" || out.ModelDigest != "" || out.ModelProviderClass != "" {
 			return ConsensusBindingSpec{}, constants.ErrConsensusModelUnexpected
 		}
 		members, quorum, err := ResolveConsensusMembership(out.AppID, spec.MemberAppIDs, spec.Quorum)
@@ -161,4 +171,32 @@ func ResolveConsensusBinding(spec ConsensusBindingSpec) (ConsensusBindingSpec, e
 		out.Quorum = quorum
 		return out, nil
 	}
+}
+
+// validateConsensusModelProviderClass admits an empty class (the local
+// provider) or a hosted class serving a digest-pinned generative vote model.
+// Decision votes keep their own backend selection and never name a class.
+func validateConsensusModelProviderClass(s ConsensusBindingSpec) error {
+	if s.ModelProviderClass == "" {
+		return nil
+	}
+	if !constants.IsHostedInferenceProvider(s.ModelProviderClass) {
+		return fmt.Errorf("consensus model provider class %q: %w", s.ModelProviderClass, constants.ErrInferenceHostedProviderInvalid)
+	}
+	if s.VoteKind == ConsensusVoteKindDecision {
+		return fmt.Errorf("consensus model provider class %q: %w", s.ModelProviderClass, constants.ErrConsensusDecisionBindingInvalid)
+	}
+	if !IsSHA256Hex(s.ModelDigest) {
+		return fmt.Errorf("consensus model provider class %q: %w", s.ModelProviderClass, constants.ErrConsensusModelRequired)
+	}
+	return nil
+}
+
+// ConsensusModelLabel names a Tribunal vote model with the hosted provider
+// class that serves it; a locally served vote model is its tag alone.
+func ConsensusModelLabel(tag, providerClass string) string {
+	if providerClass == "" {
+		return tag
+	}
+	return tag + " (hosted: " + providerClass + ")"
 }

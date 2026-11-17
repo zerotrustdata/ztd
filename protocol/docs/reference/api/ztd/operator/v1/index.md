@@ -1990,7 +1990,7 @@ covers it.
 | retry_count | [uint32](#uint32) |  | Zero-based retry ordinal for this provider attempt. Each retry uses a distinct provider_attempt_id and is durably retained. |
 | seed | [int32](#int32) | optional | Optional deterministic generation seed forwarded to the provider when supported. Absent means use the provider default. |
 | decision | [InferenceDecisionRequest](#ztd-operator-v1-InferenceDecisionRequest) |  | Exclusive with messages, tools, streaming and generation controls. |
-| provider_class | [string](#string) |  | Hosted provider class (gemini, anthropic, openai) that serves model. Empty selects the Operator&#39;s local provider (Ollama or llama.cpp). A hosted class is the envelope&#39;s explicit consent to hosted egress: the Operator serves it only when started with that class in --inference-hosted-providers. |
+| provider_class | [string](#string) |  | Hosted provider class (gemini, anthropic, openai) that serves model. Empty selects the Operator&#39;s local provider (Ollama or llama.cpp). A hosted class is the envelope&#39;s explicit consent to hosted egress: the Operator serves it only when its runtime config lists that class, discovered from the class&#39;s API key when the Operator started. |
 
 
 
@@ -2739,7 +2739,7 @@ OperatorDocument.runtime_config.
 | inference_llamacpp_endpoint | [string](#string) |  | Approved remote llama.cpp llama-server URL (--inference-llamacpp-endpoint). |
 | inference_llamacpp_model_root | [string](#string) |  | llama-server --models-dir as seen by this Operator (--inference-llamacpp-model-root). |
 | provenance_operator_model_storage_format | [string](#string) |  | Model store layout under provenance_operator_model_storage_root (--model-storage-format: ollama or llamacpp). |
-| inference_hosted_providers | [string](#string) | repeated | Hosted inference provider classes this Operator serves (--inference-hosted-providers). |
+| inference_hosted_providers | [string](#string) | repeated | Hosted inference provider classes this Operator serves, discovered from the provider API keys set when it starts and bound at enrollment. |
 
 
 

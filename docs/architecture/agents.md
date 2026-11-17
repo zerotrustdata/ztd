@@ -140,7 +140,7 @@ ztd gw start --mcp-downstream-url http://localhost:3000/mcp
 `ztd mcp agent run` and hosted inference providers serve complementary roles across the governance boundary:
 
 - **Agent model calls stay outside ztd**: Under `ztd mcp agent run <agent>`, the agent CLI sends its own model requests directly to its vendor using credentials from the process environment or `.env`. Only the agent's MCP tool calls traverse the Gateway (`L1`–`L5`, signed receipts).
-- **Hosted inference runs inside ztd**: Enabling `--inference-hosted-providers` on `ztd gw start` or `ztd operator start` brings vendor models inside the governance boundary on the Inference Operator for evaluation rollouts, judges, and Tribunal deliberation. Every hosted call carries a signed result digest and egress attestation, and digest-pinned hosted calls record a `HOSTED_PROVIDER_REPORTED` provenance window ([Evaluation Architecture](evals.md), [Model Provenance](model-provenance.md)).
+- **Hosted inference runs inside ztd**: An Inference Operator started with a vendor API key set in its environment or `.env` (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENAI_API_KEY`) brings vendor models inside the governance boundary on the Inference Operator for evaluation rollouts, judges, and Tribunal deliberation. Every hosted call carries a signed result digest and egress attestation, and digest-pinned hosted calls record a `HOSTED_PROVIDER_REPORTED` provenance window ([Evaluation Architecture](evals.md), [Model Provenance](model-provenance.md)).
 - **Shared key variables, decoupled code paths**: Each vendor uses one standard API key variable (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) in the environment or `.env` (`constants.HostedInferenceProviderAPIKeyEnv` in `internal/constants/inference.go`). The agent launcher and hosted inference clients share no code path into the Gateway, keystore, or vault.
 
 `constants.AgentHostedInferenceProvider` (`internal/constants/inference.go`) maps each vendor-backed agent to its hosted provider class:
@@ -158,8 +158,8 @@ For agents with a matching class, `ztd mcp agent verify <agent>` and `ztd mcp ag
 Run an agent alongside governed evaluation of the same vendor's models using this sequence (confirm command flags with `./ztd <command> --help`):
 
 ```bash
-# 1. Start the Gateway with the matching hosted provider class enabled:
-ztd gw start --posture doctrine --capabilities inference,data --inference-hosted-providers gemini
+# 1. Start the Gateway with the inference capability, with the matching API key set in its environment or `.env`:
+ztd gw start --posture doctrine --capabilities inference,data
 
 # 2. Verify tool lockdown, Gateway Inference Operator hosted support, and eval registry models:
 ztd mcp agent verify gemini

@@ -42,7 +42,8 @@ type InferenceExecutionHandler struct {
 }
 
 // ConfigureHostedBackends attaches the hosted provider clients built for the
-// Operator's --inference-hosted-providers. Only these classes are served.
+// classes the Operator serves (config.InferenceConfig.HostedProviders). Only
+// these classes are served.
 func (h *InferenceExecutionHandler) ConfigureHostedBackends(hosted map[string]HostedBackend) {
 	h.hosted = hosted
 }

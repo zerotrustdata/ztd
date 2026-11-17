@@ -1090,8 +1090,11 @@ type PlatformEnrollmentGovernancePayload struct {
 	ConsensusInferenceOperatorId string                        `protobuf:"bytes,28,opt,name=consensus_inference_operator_id,json=consensusInferenceOperatorId,proto3" json:"consensus_inference_operator_id,omitempty"`
 	ConsensusVoteThresholds      []*ConsensusDecisionThreshold `protobuf:"bytes,29,rep,name=consensus_vote_thresholds,json=consensusVoteThresholds,proto3" json:"consensus_vote_thresholds,omitempty"`
 	ConsensusAllowHosted         bool                          `protobuf:"varint,30,opt,name=consensus_allow_hosted,json=consensusAllowHosted,proto3" json:"consensus_allow_hosted,omitempty"`
-	unknownFields                protoimpl.UnknownFields
-	sizeCache                    protoimpl.SizeCache
+	// Hosted inference provider class serving consensus_model_tag for generative
+	// Tribunal votes; empty selects the Inference Operator's local provider.
+	ConsensusModelProviderClass string `protobuf:"bytes,31,opt,name=consensus_model_provider_class,json=consensusModelProviderClass,proto3" json:"consensus_model_provider_class,omitempty"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
 }
 
 func (x *PlatformEnrollmentGovernancePayload) Reset() {
@@ -1332,6 +1335,13 @@ func (x *PlatformEnrollmentGovernancePayload) GetConsensusAllowHosted() bool {
 		return x.ConsensusAllowHosted
 	}
 	return false
+}
+
+func (x *PlatformEnrollmentGovernancePayload) GetConsensusModelProviderClass() string {
+	if x != nil {
+		return x.ConsensusModelProviderClass
+	}
+	return ""
 }
 
 type PlatformEnrollmentDecisionTarget struct {
@@ -1774,7 +1784,7 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\vsigning_key\x18\x04 \x01(\tR\n" +
 	"signingKey\x12\x1f\n" +
 	"\vauditor_key\x18\x05 \x01(\tR\n" +
-	"auditorKey\"\x84\f\n" +
+	"auditorKey\"\xc9\f\n" +
 	"#PlatformEnrollmentGovernancePayload\x12\x16\n" +
 	"\x06action\x18\x01 \x01(\tR\x06action\x12\x16\n" +
 	"\x06intent\x18\x02 \x01(\tR\x06intent\x12\x1d\n" +
@@ -1809,7 +1819,8 @@ const file_ztd_common_v1_common_proto_rawDesc = "" +
 	"\x13consensus_vote_kind\x18\x1b \x01(\tR\x11consensusVoteKind\x12E\n" +
 	"\x1fconsensus_inference_operator_id\x18\x1c \x01(\tR\x1cconsensusInferenceOperatorId\x12e\n" +
 	"\x19consensus_vote_thresholds\x18\x1d \x03(\v2).ztd.common.v1.ConsensusDecisionThresholdR\x17consensusVoteThresholds\x124\n" +
-	"\x16consensus_allow_hosted\x18\x1e \x01(\bR\x14consensusAllowHosted\"\x94\x01\n" +
+	"\x16consensus_allow_hosted\x18\x1e \x01(\bR\x14consensusAllowHosted\x12C\n" +
+	"\x1econsensus_model_provider_class\x18\x1f \x01(\tR\x1bconsensusModelProviderClass\"\x94\x01\n" +
 	" PlatformEnrollmentDecisionTarget\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12Q\n" +

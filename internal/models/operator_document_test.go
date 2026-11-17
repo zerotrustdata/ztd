@@ -476,3 +476,24 @@ func TestOperatorDocumentGoldenFixture(t *testing.T) {
 
 	assert.Equal(t, strings.ReplaceAll(string(storedData), "\r\n", "\n"), strings.ReplaceAll(string(prettyData), "\r\n", "\n"), "operator document JSON should match golden fixture")
 }
+
+func TestValidateOperatorHostedProviders(t *testing.T) {
+	t.Parallel()
+	inference := constants.OperatorCapabilities{constants.OperatorCapabilityInference}
+	require.NoError(t, ValidateOperatorHostedProviders(inference, nil))
+	require.NoError(t, ValidateOperatorHostedProviders(constants.OperatorCapabilities{constants.OperatorCapabilityData}, nil), "no class needs no capability")
+	require.NoError(t, ValidateOperatorHostedProviders(inference, constants.HostedInferenceProviders))
+	require.NoError(t, ValidateOperatorHostedProviders(inference, []string{constants.InferenceProviderAnthropic}))
+
+	require.ErrorIs(t, ValidateOperatorHostedProviders(constants.OperatorCapabilities{constants.OperatorCapabilityData}, []string{constants.InferenceProviderGemini}),
+		constants.ErrInferenceHostedRequiresInference)
+	for name, classes := range map[string][]string{
+		"local class":    {constants.InferenceProviderOllama},
+		"unknown class":  {"acme"},
+		"empty class":    {""},
+		"repeated class": {constants.InferenceProviderGemini, constants.InferenceProviderGemini},
+		"out of order":   {constants.InferenceProviderOpenAI, constants.InferenceProviderAnthropic},
+	} {
+		require.ErrorIs(t, ValidateOperatorHostedProviders(inference, classes), constants.ErrInferenceHostedProviderInvalid, name)
+	}
+}

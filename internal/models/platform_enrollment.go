@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -216,6 +217,9 @@ func (r PlatformEnrollmentCreateRequest) ValidateShape() error {
 			if err := r.Operator.Capabilities.Validate(); err != nil {
 				return err
 			}
+			if err := ValidateOperatorHostedProviders(r.Operator.Capabilities.WithDefault(), r.Operator.HostedProviders); err != nil {
+				return err
+			}
 		}
 		if r.App != nil || r.Operator == nil || r.Operator.OperatorCSRPEM == "" || r.Operator.CLICSRPEM == "" {
 			return constants.ErrPlatformEnrollmentInvalidPayload
@@ -281,6 +285,10 @@ type PlatformOperatorCSRPayload struct {
 	AuditorPublicKey string                         `json:"auditor_public_key"`
 	AuditorKeyID     string                         `json:"auditor_key_id"`
 	Capabilities     constants.OperatorCapabilities `json:"capabilities,omitempty"`
+	// HostedProviders are the hosted inference provider classes the Operator
+	// serves, discovered from the API keys set when it started. The owner's
+	// approval of the request binds them with the capabilities.
+	HostedProviders []string `json:"hosted_providers,omitempty"`
 }
 
 // ActuatorKey decodes the presented Actuator public key. It fails with
@@ -359,9 +367,13 @@ type PlatformEnrollmentPendingRequest struct {
 	Hostname          string                            `json:"hostname"`
 	SystemFingerprint string                            `json:"system_fingerprint,omitempty"`
 	Fingerprints      PlatformEnrollmentCSRFingerprints `json:"fingerprints"`
-	State             PlatformEnrollmentState           `json:"state"`
-	CreatedAt         time.Time                         `json:"created_at"`
-	ExpiresAt         time.Time                         `json:"expires_at"`
+	// Capabilities and HostedProviders are what an Operator request asks the
+	// owner to approve; both are empty for an application request.
+	Capabilities    constants.OperatorCapabilities `json:"capabilities,omitempty"`
+	HostedProviders []string                       `json:"hosted_providers,omitempty"`
+	State           PlatformEnrollmentState        `json:"state"`
+	CreatedAt       time.Time                      `json:"created_at"`
+	ExpiresAt       time.Time                      `json:"expires_at"`
 }
 
 type PlatformEnrollmentPendingResponse struct {
@@ -579,7 +591,7 @@ type PlatformEnrollmentRequest struct {
 }
 
 func (r PlatformEnrollmentRequest) PendingMetadata() PlatformEnrollmentPendingRequest {
-	return PlatformEnrollmentPendingRequest{
+	pending := PlatformEnrollmentPendingRequest{
 		RequestID:         r.ID,
 		ComponentKind:     r.ComponentKind,
 		ComponentName:     r.ComponentName,
@@ -591,6 +603,11 @@ func (r PlatformEnrollmentRequest) PendingMetadata() PlatformEnrollmentPendingRe
 		CreatedAt:         r.CreatedAt,
 		ExpiresAt:         r.ExpiresAt,
 	}
+	if r.Operator != nil {
+		pending.Capabilities = r.Operator.Capabilities.WithDefault()
+		pending.HostedProviders = slices.Clone(r.Operator.HostedProviders)
+	}
+	return pending
 }
 
 func (r PlatformEnrollmentRequest) EnrolledMetadata() PlatformEnrollmentEnrolledRequest {

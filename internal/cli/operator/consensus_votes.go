@@ -69,7 +69,7 @@ func WriteConsensusVotes(w io.Writer, indent string, txID string, votes []models
 		return
 	}
 	first := votes[0]
-	fmt.Fprintf(w, "%sConsensus votes for transaction %s (set %s, model %s, quorum %d):\n", indent, txID, first.ConsensusSetID, first.ModelTag, first.Quorum)
+	fmt.Fprintf(w, "%sConsensus votes for transaction %s (set %s, model %s, quorum %d):\n", indent, txID, first.ConsensusSetID, models.ConsensusModelLabel(first.ModelTag, first.ModelProviderClass), first.Quorum)
 	approvals := 0
 	for _, vote := range votes {
 		if vote.Outcome == models.ConsensusVoteOutcomeApprove {

@@ -49,3 +49,31 @@ func TestOperatorBootstrapRuntimeConfig_RejectsUndecodableConfig(t *testing.T) {
 	})
 	require.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidPayload)
 }
+
+func TestOperatorBootstrapRuntimeConfig_KeepsDiscoveredHostedProviders(t *testing.T) {
+	cfg, err := operatorBootstrapRuntimeConfig(&models.OperatorBootstrapRequest{
+		RuntimeConfig: json.RawMessage(`{"capabilities":["inference"],"inference_hosted_providers":["gemini","openai"]}`),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{constants.InferenceProviderGemini, constants.InferenceProviderOpenAI}, cfg.GetInferenceHostedProviders())
+}
+
+func TestOperatorBootstrapRuntimeConfig_RejectsHostedProvidersTheOperatorCannotServe(t *testing.T) {
+	for name, tc := range map[string]struct {
+		config string
+		want   error
+	}{
+		"no inference capability": {`{"capabilities":["data"],"inference_hosted_providers":["gemini"]}`, constants.ErrInferenceHostedRequiresInference},
+		"default data capability": {`{"inference_hosted_providers":["gemini"]}`, constants.ErrInferenceHostedRequiresInference},
+		"a local class":           {`{"capabilities":["inference"],"inference_hosted_providers":["ollama"]}`, constants.ErrInferenceHostedProviderInvalid},
+		"an unknown class":        {`{"capabilities":["inference"],"inference_hosted_providers":["acme"]}`, constants.ErrInferenceHostedProviderInvalid},
+		"a repeated class":        {`{"capabilities":["inference"],"inference_hosted_providers":["gemini","gemini"]}`, constants.ErrInferenceHostedProviderInvalid},
+		"out of canonical order":  {`{"capabilities":["inference"],"inference_hosted_providers":["openai","gemini"]}`, constants.ErrInferenceHostedProviderInvalid},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := operatorBootstrapRuntimeConfig(&models.OperatorBootstrapRequest{RuntimeConfig: json.RawMessage(tc.config)})
+			require.ErrorIs(t, err, constants.ErrPlatformEnrollmentInvalidPayload)
+			require.ErrorIs(t, err, tc.want)
+		})
+	}
+}

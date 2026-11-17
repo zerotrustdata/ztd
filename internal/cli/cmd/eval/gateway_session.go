@@ -239,7 +239,7 @@ func evalPreflightGatewayGovernance(
 	if err != nil {
 		return evaluation.RunGovernance{}, fmt.Errorf("evaluation: decision provider preflight: %w", err)
 	}
-	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", spec.GetInvestigation().GetDataOperatorId())
+	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", spec.GetInvestigation().GetDataOperatorId(), evaluation.HostedProviderClasses(spec.GetModelRegistry(), spec.GetJudgeVariant()))
 	if err != nil {
 		return evaluation.RunGovernance{}, fmt.Errorf("evaluation: decision provider preflight: %w", err)
 	}

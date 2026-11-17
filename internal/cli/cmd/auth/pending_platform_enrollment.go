@@ -89,6 +89,10 @@ to decide specific requests, or run 'ztd auth enroll approve' without arguments 
 				if req.SystemFingerprint != "" {
 					cmd.Printf("    System FP:     %s\n", req.SystemFingerprint)
 				}
+				if len(req.Capabilities) > 0 {
+					cmd.Printf("    Capabilities:  %s\n", req.Capabilities.String())
+					cmd.Printf("    Hosted:        %s\n", auth.PlatformEnrollmentHostedProviders(req.HostedProviders))
+				}
 				cmd.Printf("    State:         %s\n", string(req.State))
 				cmd.Printf("    Created:       %s\n", req.CreatedAt.Format("2006-01-02 15:04:05 MST"))
 				cmd.Printf("    Expires:       %s\n", req.ExpiresAt.Format("2006-01-02 15:04:05 MST"))

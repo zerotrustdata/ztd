@@ -203,19 +203,19 @@
       "_go_const": "EnvVar.GeminiAPIKey",
       "value": "GEMINI_API_KEY",
       "category": "secret",
-      "description": "Gemini API key for the hosted gemini inference provider an Inference Operator serves with --inference-hosted-providers gemini; also read by the Gemini CLI that ztd mcp agent run gemini launches"
+      "description": "Gemini API key for the hosted gemini inference provider an Inference Operator serves when this key is set at its start; also read by the Gemini CLI that ztd mcp agent run gemini launches"
     },
     "AnthropicAPIKey": {
       "_go_const": "EnvVar.AnthropicAPIKey",
       "value": "ANTHROPIC_API_KEY",
       "category": "secret",
-      "description": "Anthropic API key for the hosted anthropic inference provider an Inference Operator serves with --inference-hosted-providers anthropic; also read by the Claude Code agent that ztd mcp agent run claude launches"
+      "description": "Anthropic API key for the hosted anthropic inference provider an Inference Operator serves when this key is set at its start; also read by the Claude Code agent that ztd mcp agent run claude launches"
     },
     "OpenAIAPIKey": {
       "_go_const": "EnvVar.OpenAIAPIKey",
       "value": "OPENAI_API_KEY",
       "category": "secret",
-      "description": "OpenAI API key for the hosted openai inference provider an Inference Operator serves with --inference-hosted-providers openai; also read by the Codex agent that ztd mcp agent run codex launches"
+      "description": "OpenAI API key for the hosted openai inference provider an Inference Operator serves when this key is set at its start; also read by the Codex agent that ztd mcp agent run codex launches"
     }
   }
 }

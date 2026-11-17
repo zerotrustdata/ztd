@@ -85,8 +85,8 @@ const (
 	InferenceProviderOpenAI    = "openai"
 )
 
-// HostedInferenceProviders lists every hosted provider class, in the order
-// --inference-hosted-providers documents them.
+// HostedInferenceProviders lists every hosted provider class in canonical
+// order: the order an Inference Operator discovers and declares them in.
 var HostedInferenceProviders = []string{InferenceProviderGemini, InferenceProviderAnthropic, InferenceProviderOpenAI}
 
 // IsLocalInferenceProvider reports whether class names a provider serving

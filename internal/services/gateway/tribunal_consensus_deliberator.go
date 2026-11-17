@@ -70,7 +70,8 @@ const tribunalVoteStagePrefix = "tribunal vote\n"
 
 // TribunalConsensusDeliberator produces L2 votes from the Gateway-hosted
 // Tribunal panel. Each bound member votes through one governed INFERENCE on
-// the binding's pinned model, under its own app identity, and signs
+// the binding's pinned model, served by the local provider or by the hosted
+// provider class the binding names, under its own app identity, and signs
 // "<tx_hash>|<decision>" with its sealed app signing key. INFERENCE changes no
 // state, so a member's vote inference is never itself voted on. The envelope it returns differs from the input in L2 only.
 type TribunalConsensusDeliberator struct {
@@ -139,10 +140,11 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 		return nil, fmt.Errorf("tribunal consensus: binding provider: %w", constants.ErrTxL2ConsensusNotConfigured)
 	}
 
-	if bound.EffectiveVoteKind() != models.ConsensusVoteKindGenerative {
-		if _, err := models.ResolveConsensusBinding(models.ConsensusBindingSpec{Provider: constants.ConsensusProviderTribunal, AppID: bound.PrimaryAppID(), MemberAppIDs: bound.MemberAppIDs, Quorum: bound.Quorum, ModelTag: bound.ModelTag, ModelDigest: bound.ModelDigest, VoteKind: bound.VoteKind, InferenceOperatorID: bound.InferenceOperatorID, VoteThresholds: bound.VoteThresholds, AllowHosted: bound.AllowHosted}); err != nil {
-			return nil, fmt.Errorf("tribunal consensus: decision binding: %w", err)
-		}
+	// The stored binding is re-validated before any member is asked, so a
+	// binding that names no admissible vote model or provider class casts no
+	// vote rather than reaching a provider it was never admitted for.
+	if _, err := models.ResolveConsensusBinding(models.ConsensusBindingSpec{Provider: constants.ConsensusProviderTribunal, AppID: bound.PrimaryAppID(), MemberAppIDs: bound.MemberAppIDs, Quorum: bound.Quorum, ModelTag: bound.ModelTag, ModelDigest: bound.ModelDigest, ModelProviderClass: bound.ModelProviderClass, VoteKind: bound.VoteKind, InferenceOperatorID: bound.InferenceOperatorID, VoteThresholds: bound.VoteThresholds, AllowHosted: bound.AllowHosted}); err != nil {
+		return nil, fmt.Errorf("tribunal consensus: binding: %w", err)
 	}
 
 	subject, err := consensusSubject(&env)
@@ -247,6 +249,7 @@ func (d *TribunalConsensusDeliberator) recordVote(ctx context.Context, env *comm
 		InferenceTransactionID: vote.inferenceTxID,
 		ProviderAttemptID:      vote.attemptID,
 		ModelTag:               bound.ModelTag,
+		ModelProviderClass:     bound.ModelProviderClass,
 		Quorum:                 bound.Quorum,
 		VoteKind:               bound.EffectiveVoteKind(), DecisionEvidence: vote.evidence,
 		RecordedAt: time.Now().UTC(),
@@ -388,6 +391,7 @@ func (d *TribunalConsensusDeliberator) castVote(ctx context.Context, bound *mode
 		},
 		Model:             bound.ModelTag,
 		ModelDigest:       bound.ModelDigest,
+		ProviderClass:     bound.ModelProviderClass,
 		ProviderAttemptID: attemptID,
 		RequestorUserID:   policy.OwnerUserID,
 		ActingAppID:       memberAppID,

@@ -297,9 +297,6 @@ func (pm *ProcessManager) BuildReExecArgs(opts OperatorStartOptions) ([]string, 
 	if opts.InferenceKeepAlive != "" {
 		args = append(args, "--inference-keep-alive", opts.InferenceKeepAlive)
 	}
-	if len(opts.InferenceHostedProviders) > 0 {
-		args = append(args, "--inference-hosted-providers", strings.Join(opts.InferenceHostedProviders, ","))
-	}
 	if opts.ProviderBoundaryObserverID != "" {
 		args = append(args, "--provider-boundary-observer-id", opts.ProviderBoundaryObserverID)
 	}

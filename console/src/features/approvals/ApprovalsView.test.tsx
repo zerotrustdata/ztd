@@ -104,6 +104,56 @@ describe('ApprovalsView platform enrollment decisions', () => {
     );
   }
 
+  it('shows an Operator request\'s capabilities and hosted providers before approval', async () => {
+    routes = {
+      'GET /api/v1/approvals': () => [200, { transactions: [] }],
+      'GET /api/v1/auth/platform-enrollments/pending': () => [
+        200,
+        {
+          requests: [
+            {
+              ...PENDING_REQ,
+              request_id: 'req-op',
+              component_kind: 'operator',
+              component_name: 'ztdo',
+              capabilities: ['inference'],
+              hosted_providers: ['gemini', 'openai'],
+              fingerprints: { operator: 'SHA256:op-fp', cli: 'SHA256:cli-fp' },
+            },
+            {
+              ...PENDING_REQ,
+              request_id: 'req-op-local',
+              component_kind: 'operator',
+              component_name: 'ztdo',
+              capabilities: ['data', 'inference'],
+              fingerprints: { operator: 'SHA256:op2-fp', cli: 'SHA256:cli2-fp' },
+            },
+          ],
+        },
+      ],
+    };
+
+    renderApprovalsView();
+
+    expect(await screen.findByText('gemini, openai')).toBeInTheDocument();
+    expect(screen.getByText('inference')).toBeInTheDocument();
+    expect(screen.getByText('data, inference')).toBeInTheDocument();
+    expect(screen.getByText('none')).toBeInTheDocument();
+    expect(screen.getAllByText('Hosted providers')).toHaveLength(2);
+  });
+
+  it('shows no capability rows for an application request', async () => {
+    routes = {
+      'GET /api/v1/approvals': () => [200, { transactions: [] }],
+      'GET /api/v1/auth/platform-enrollments/pending': () => [200, { requests: [PENDING_REQ] }],
+    };
+
+    renderApprovalsView();
+
+    expect(await screen.findByText('req-1')).toBeInTheDocument();
+    expect(screen.queryByText('Hosted providers')).toBeNull();
+  });
+
   it('completes immediately on 200 OK without invoking approveTransaction', async () => {
     let decided = false;
     const approveSpy = vi.spyOn(webauthn, 'approveTransaction');

@@ -286,7 +286,7 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	require.NoError(t, err)
 	operators, _, err := gateway.ListOperators(ctx)
 	require.NoError(t, err)
-	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, inferenceWorkload.OperatorSessionID, dataWorkload.OperatorID)
+	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, inferenceWorkload.OperatorSessionID, dataWorkload.OperatorID, nil)
 	require.NoError(t, err)
 	topology, err = topology.WithAnchors(operators)
 	require.NoError(t, err)

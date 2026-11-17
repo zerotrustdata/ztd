@@ -402,6 +402,9 @@ message EvaluationConsensusIdentity {
   // binding_digest is the SHA-256 of the complete governing binding,
   // including the fields not projected above. Empty when unbound.
   string binding_digest = 9;
+  // model_provider_class is the hosted provider class serving model_tag;
+  // empty when the vote model is served by a local provider.
+  string model_provider_class = 10;
 }
 
 message EvaluationAttempt {

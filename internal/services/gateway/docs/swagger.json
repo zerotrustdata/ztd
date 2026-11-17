@@ -3995,6 +3995,10 @@
                 "member_app_id": {
                     "type": "string"
                 },
+                "model_provider_class": {
+                    "description": "ModelProviderClass is the hosted provider class that served ModelTag;\nempty when the vote model is served by a local provider.",
+                    "type": "string"
+                },
                 "model_tag": {
                     "type": "string"
                 },
@@ -5326,6 +5330,13 @@
                 },
                 "cli_csr_pem": {
                     "type": "string"
+                },
+                "hosted_providers": {
+                    "description": "HostedProviders are the hosted inference provider classes the Operator\nserves, discovered from the API keys set when it started. The owner's\napproval of the request binds them with the capabilities.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "operator_csr_pem": {
                     "type": "string"

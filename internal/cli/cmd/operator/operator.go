@@ -212,7 +212,6 @@ func operatorStartCmdWithConfig(
 	var inferenceAllowHostedDecision bool
 	var inferenceDecisionModels []string
 	var inferenceDecisionOnly bool
-	var inferenceHostedProviders []string
 	var providerBoundaryObserverID string
 	var provenanceOperatorID string
 	var provenanceOperatorModelStorageRoot string
@@ -261,7 +260,6 @@ The first start that creates a master key prints a recovery key once and stores 
 				InferenceLlamaCppModelRoot:   inferenceLlamaCppModelRoot,
 				InferenceAllowHostedDecision: inferenceAllowHostedDecision,
 				InferenceDecisionModels:      inferenceDecisionModels, InferenceDecisionOnly: inferenceDecisionOnly,
-				InferenceHostedProviders:   inferenceHostedProviders,
 				InferenceKeepAlive:         inferenceKeepAlive,
 				ProviderBoundaryObserverID: providerBoundaryObserverID,
 
@@ -309,7 +307,6 @@ The first start that creates a master key prints a recovery key once and stores 
 	cmd.Flags().StringSliceVar(&inferenceDecisionModels, "decision-model", nil, "Decision models this Operator is provisioned to serve (repeat or comma-separate)")
 	cmd.Flags().BoolVar(&inferenceDecisionOnly, "decision-only", false, "Reserve this Inference Operator for decisions and exclude it from campaign/chat routing")
 	cmd.Flags().BoolVar(&inferenceAllowHostedDecision, "allow-hosted-decision", false, "Allow decision requests to use hosted Jev with the runtime vault credential")
-	cmd.Flags().StringSliceVar(&inferenceHostedProviders, "inference-hosted-providers", nil, "Hosted inference providers this Inference Operator serves besides its local provider: gemini,anthropic,openai (repeat or comma-separate; each needs its API key, for example GEMINI_API_KEY, in the environment or .env)")
 	cmd.Flags().StringVar(&inferenceKeepAlive, "inference-keep-alive", "", fmt.Sprintf("Provider keep-alive duration (default: %s for infinite; llama.cpp accepts -1 or 0)", constants.InferenceDefaultKeepAlive))
 	cmd.Flags().StringVar(&providerBoundaryObserverID, "provider-boundary-observer-id", "", "Stable observer identity pseudonym")
 	cmd.Flags().StringVar(&provenanceOperatorID, "provenance-operator-id", "", "Stable provenance operator identity pseudonym")

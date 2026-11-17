@@ -79,6 +79,10 @@ export interface PlatformEnrollmentRequest {
   instance_id?: string;
   hostname?: string;
   system_fingerprint?: string;
+  /** Operator requests only: what the owner approves the Operator to run. */
+  capabilities?: OperatorCapability[];
+  /** Hosted inference provider classes discovered from the API keys the Operator holds. */
+  hosted_providers?: string[];
   state: string;
   created_at?: string;
   expires_at?: string;

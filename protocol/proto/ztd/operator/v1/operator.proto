@@ -444,8 +444,8 @@ message OperatorRuntimeConfig {
   // Model store layout under provenance_operator_model_storage_root
   // (--model-storage-format: ollama or llamacpp).
   string provenance_operator_model_storage_format = 26;
-  // Hosted inference provider classes this Operator serves
-  // (--inference-hosted-providers).
+  // Hosted inference provider classes this Operator serves, discovered from
+  // the provider API keys set when it starts and bound at enrollment.
   repeated string inference_hosted_providers = 27;
 }
 
@@ -1772,8 +1772,8 @@ message InferenceRequested {
   // Hosted provider class (gemini, anthropic, openai) that serves model. Empty
   // selects the Operator's local provider (Ollama or llama.cpp). A hosted
   // class is the envelope's explicit consent to hosted egress: the Operator
-  // serves it only when started with that class in
-  // --inference-hosted-providers.
+  // serves it only when its runtime config lists that class, discovered from
+  // the class's API key when the Operator started.
   string provider_class = 31;
 }
 

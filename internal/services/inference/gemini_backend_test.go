@@ -617,12 +617,17 @@ func TestNewHostedBackend_RequiresKeyAndClient(t *testing.T) {
 	t.Run("a key split across lines fails closed", func(t *testing.T) {
 		t.Setenv(string(constants.EnvVar.GeminiAPIKey), "abc\ndef")
 		_, err := NewHostedBackend(constants.InferenceProviderGemini, testutil.NewTestLogger())
-		require.ErrorIs(t, err, constants.ErrInferenceHostedProviderKeyMissing)
+		require.ErrorIs(t, err, constants.ErrInferenceHostedProviderKeyInvalid)
 	})
 	t.Run("a trailing newline in a key fails closed", func(t *testing.T) {
 		t.Setenv(string(constants.EnvVar.GeminiAPIKey), geminiTestKey+"\n")
 		_, err := NewHostedBackend(constants.InferenceProviderGemini, testutil.NewTestLogger())
-		require.ErrorIs(t, err, constants.ErrInferenceHostedProviderKeyMissing)
+		require.ErrorIs(t, err, constants.ErrInferenceHostedProviderKeyInvalid)
+	})
+	t.Run("a whitespace-only key fails closed", func(t *testing.T) {
+		t.Setenv(string(constants.EnvVar.GeminiAPIKey), "  ")
+		_, err := NewHostedBackend(constants.InferenceProviderGemini, testutil.NewTestLogger())
+		require.ErrorIs(t, err, constants.ErrInferenceHostedProviderKeyInvalid)
 	})
 	t.Run("gemini builds against its fixed origin", func(t *testing.T) {
 		t.Setenv(string(constants.EnvVar.GeminiAPIKey), geminiTestKey)

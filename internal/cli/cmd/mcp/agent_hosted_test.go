@@ -201,7 +201,7 @@ func TestAgentVerifyAndShow_HostedProviderAndRegistryReport(t *testing.T) {
 			wantGatewayStatus:  gatewayHostedStatusNotServed,
 			wantRegistryStatus: evalRegistryStatusLoaded,
 			wantRegistryTags:   []string{"gemini-3.6-flash"},
-			wantHumanSubstrs:   []string{"gemini", "not served", "--inference-hosted-providers gemini", "gemini-3.6-flash"},
+			wantHumanSubstrs:   []string{"gemini", "not served", "set GEMINI_API_KEY", "gemini-3.6-flash"},
 		},
 		{
 			name:               "claude with CLI not enrolled and absent registry",

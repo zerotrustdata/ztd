@@ -298,7 +298,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err != nil {
 		return 0, err
 	}
-	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", investigation.GetDataOperatorId())
+	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", investigation.GetDataOperatorId(), evaluation.HostedProviderClasses(spec.GetModelRegistry(), spec.GetJudgeVariant()))
 	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}

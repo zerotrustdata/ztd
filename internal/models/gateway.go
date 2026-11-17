@@ -154,6 +154,7 @@ type ConsensusReadiness struct {
 	Quorum              int
 	ModelTag            string
 	ModelDigest         string
+	ModelProviderClass  string
 	Members             []ConsensusMemberReadiness
 	// Usable counts members with an enabled trusted signer and, under the
 	// tribunal provider, a sealed signing key present on this host.

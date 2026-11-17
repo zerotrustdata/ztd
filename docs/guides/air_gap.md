@@ -157,7 +157,7 @@ On the air-gapped target host:
 - Block outbound internet traffic at host firewall and network perimeter.
 - Do not configure any endpoint outside the air gap (INV-AIR-ISO-02).
 - Point consensus application endpoints at internal `https://` hosts. `ValidateConsensusEndpoint` (`internal/models/consensus_endpoint.go`) rejects any other scheme, empty host, userinfo, or fragment.
-- For Tribunal consensus (`./ztd consensus enroll tribunal --model <tag>`), bind a local model tag. Hosted Jev access is disabled by default, so leave it off; the bind command rejects hosted use unless `--allow-hosted` is given.
+- For Tribunal consensus (`./ztd consensus enroll tribunal --model <tag>`), bind a local registry model tag. A hosted registry model sends scrubbed vote prompts to its provider, so an air-gapped Gateway binds a local model. Hosted Jev access is disabled by default, so leave it off; the bind command rejects hosted Jev use unless `--allow-hosted` is given. With no hosted API key set (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENAI_API_KEY`) on any Inference Operator, no hosted class is available.
 - Restrict permissions on `.ztd/` (directory mode 0700, sensitive files 0600).
 
 ## Anti-patterns

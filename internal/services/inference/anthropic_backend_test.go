@@ -1089,7 +1089,7 @@ func TestNewHostedBackend_Anthropic(t *testing.T) {
 	t.Run("key with newline fails closed", func(t *testing.T) {
 		t.Setenv(string(constants.EnvVar.AnthropicAPIKey), anthropicTestKey+"\n")
 		_, err := NewHostedBackend(constants.InferenceProviderAnthropic, testutil.NewTestLogger())
-		require.ErrorIs(t, err, constants.ErrInferenceHostedProviderKeyMissing)
+		require.ErrorIs(t, err, constants.ErrInferenceHostedProviderKeyInvalid)
 	})
 	t.Run("anthropic builds against its fixed origin", func(t *testing.T) {
 		t.Setenv(string(constants.EnvVar.AnthropicAPIKey), anthropicTestKey)

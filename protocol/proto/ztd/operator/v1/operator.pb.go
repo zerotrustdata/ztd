@@ -4315,8 +4315,8 @@ type OperatorRuntimeConfig struct {
 	// Model store layout under provenance_operator_model_storage_root
 	// (--model-storage-format: ollama or llamacpp).
 	ProvenanceOperatorModelStorageFormat string `protobuf:"bytes,26,opt,name=provenance_operator_model_storage_format,json=provenanceOperatorModelStorageFormat,proto3" json:"provenance_operator_model_storage_format,omitempty"`
-	// Hosted inference provider classes this Operator serves
-	// (--inference-hosted-providers).
+	// Hosted inference provider classes this Operator serves, discovered from
+	// the provider API keys set when it starts and bound at enrollment.
 	InferenceHostedProviders []string `protobuf:"bytes,27,rep,name=inference_hosted_providers,json=inferenceHostedProviders,proto3" json:"inference_hosted_providers,omitempty"`
 	unknownFields            protoimpl.UnknownFields
 	sizeCache                protoimpl.SizeCache
@@ -12735,8 +12735,8 @@ type InferenceRequested struct {
 	// Hosted provider class (gemini, anthropic, openai) that serves model. Empty
 	// selects the Operator's local provider (Ollama or llama.cpp). A hosted
 	// class is the envelope's explicit consent to hosted egress: the Operator
-	// serves it only when started with that class in
-	// --inference-hosted-providers.
+	// serves it only when its runtime config lists that class, discovered from
+	// the class's API key when the Operator started.
 	ProviderClass string `protobuf:"bytes,31,opt,name=provider_class,json=providerClass,proto3" json:"provider_class,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

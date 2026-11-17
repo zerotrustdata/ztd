@@ -61,7 +61,11 @@ func (s *DocumentStoreService) SetOperatorRuntimeConfig(ctx context.Context, id 
 	if cfg == nil {
 		return constants.ErrMissingRequiredField
 	}
-	if err := models.OperatorCapabilitiesFromProto(cfg.GetCapabilities()).Validate(); err != nil {
+	capabilities := models.OperatorCapabilitiesFromProto(cfg.GetCapabilities())
+	if err := capabilities.Validate(); err != nil {
+		return err
+	}
+	if err := models.ValidateOperatorHostedProviders(capabilities.WithDefault(), cfg.GetInferenceHostedProviders()); err != nil {
 		return err
 	}
 	return s.db.ExecInImmediateTxWithRetry(ctx, func(conn *sql.Conn) error {

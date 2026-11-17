@@ -828,6 +828,7 @@ mixes two vote producers or vote models in one run.
 | quorum | [uint32](#uint32) |  |  |
 | member_app_ids | [string](#string) | repeated |  |
 | binding_digest | [string](#string) |  | binding_digest is the SHA-256 of the complete governing binding, including the fields not projected above. Empty when unbound. |
+| model_provider_class | [string](#string) |  | model_provider_class is the hosted provider class serving model_tag; empty when the vote model is served by a local provider. |
 
 
 

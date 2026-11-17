@@ -1566,8 +1566,8 @@ export type OperatorRuntimeConfig = Message<"ztd.operator.v1.OperatorRuntimeConf
   provenanceOperatorModelStorageFormat: string;
 
   /**
-   * Hosted inference provider classes this Operator serves
-   * (--inference-hosted-providers).
+   * Hosted inference provider classes this Operator serves, discovered from
+   * the provider API keys set when it starts and bound at enrollment.
    *
    * @generated from field: repeated string inference_hosted_providers = 27;
    */
@@ -5976,8 +5976,8 @@ export type InferenceRequested = Message<"ztd.operator.v1.InferenceRequested"> &
    * Hosted provider class (gemini, anthropic, openai) that serves model. Empty
    * selects the Operator's local provider (Ollama or llama.cpp). A hosted
    * class is the envelope's explicit consent to hosted egress: the Operator
-   * serves it only when started with that class in
-   * --inference-hosted-providers.
+   * serves it only when its runtime config lists that class, discovered from
+   * the class's API key when the Operator started.
    *
    * @generated from field: string provider_class = 31;
    */

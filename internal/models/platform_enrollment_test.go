@@ -296,3 +296,26 @@ func TestValidateAppNameEnforcesFormatAndLength(t *testing.T) {
 		})
 	}
 }
+
+func TestPlatformEnrollmentPendingMetadata_ShowsWhatAnOperatorAsksToRun(t *testing.T) {
+	operator := PlatformEnrollmentRequest{
+		ID: "req-op", ComponentKind: PlatformComponentOperator,
+		Operator: &PlatformOperatorCSRPayload{
+			Capabilities:    constants.OperatorCapabilities{constants.OperatorCapabilityInference},
+			HostedProviders: []string{constants.InferenceProviderGemini},
+		},
+	}
+	pending := operator.PendingMetadata()
+	assert.Equal(t, constants.OperatorCapabilities{constants.OperatorCapabilityInference}, pending.Capabilities)
+	assert.Equal(t, []string{constants.InferenceProviderGemini}, pending.HostedProviders)
+	pending.HostedProviders[0] = "changed"
+	assert.Equal(t, constants.InferenceProviderGemini, operator.Operator.HostedProviders[0], "the view never aliases the stored request")
+
+	defaulted := PlatformEnrollmentRequest{ID: "req-data", ComponentKind: PlatformComponentOperator, Operator: &PlatformOperatorCSRPayload{}}
+	assert.Equal(t, constants.OperatorCapabilities{constants.OperatorCapabilityData}, defaulted.PendingMetadata().Capabilities, "an Operator with no declared capability runs data")
+	assert.Empty(t, defaulted.PendingMetadata().HostedProviders)
+
+	app := PlatformEnrollmentRequest{ID: "req-app", ComponentKind: PlatformComponentApplication, App: &PlatformAppCSRPayload{}}
+	assert.Empty(t, app.PendingMetadata().Capabilities)
+	assert.Empty(t, app.PendingMetadata().HostedProviders)
+}

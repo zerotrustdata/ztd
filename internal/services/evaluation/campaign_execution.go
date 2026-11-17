@@ -10,6 +10,7 @@ package evaluation
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -131,6 +132,26 @@ func DispatchesLocalModels(registry []*evalv1.ModelVariant, judge *evalv1.ModelV
 		}
 	}
 	return false
+}
+
+// HostedProviderClasses returns the hosted provider classes a campaign
+// dispatches: those of its frozen registry models, formation members
+// included, and of its judge, in constants.HostedInferenceProviders order,
+// each once. The campaign's one Inference Operator must serve all of them.
+func HostedProviderClasses(registry []*evalv1.ModelVariant, judge *evalv1.ModelVariant) []string {
+	named := make(map[string]bool, len(constants.HostedInferenceProviders))
+	for _, variant := range append(slices.Clone(registry), judge) {
+		if class := variant.GetProviderClass(); constants.IsHostedInferenceProvider(class) {
+			named[class] = true
+		}
+	}
+	var classes []string
+	for _, class := range constants.HostedInferenceProviders {
+		if named[class] {
+			classes = append(classes, class)
+		}
+	}
+	return classes
 }
 
 // InferenceVariantsFromEvalRegistry converts frozen eval model variants into the

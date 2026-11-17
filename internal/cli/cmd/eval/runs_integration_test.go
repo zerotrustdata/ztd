@@ -441,7 +441,7 @@ func TestRunsStart_PersistentRejectsReplacementOperatorAfterReenrollment(t *test
 	require.NotEqual(t, oldSession, workload.OperatorSessionID)
 	operators, err := stackRun.stack.Gateway.Service.GetRegistrationService().ListUserOperators(env.cmd.Context(), stackRun.stack.Identity.UserID)
 	require.NoError(t, err)
-	_, err = evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", env.dataOperatorID)
+	_, err = evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", env.dataOperatorID, nil)
 	require.ErrorIs(t, err, constants.ErrDataOperatorNotFound)
 	assert.Zero(t, stackRun.stack.Provider.ChatCount(), "re-enrollment must not silently replace a persistent investigation's frozen Operator")
 }

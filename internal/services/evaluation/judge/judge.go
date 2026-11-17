@@ -192,9 +192,13 @@ const criterionJSONSchema = `{"additionalProperties":false,"properties":{"met":{
 	`"rationale":{"type":"string"}},"required":["met","rationale"],"type":"object"}`
 
 // judgmentJSONSchema is canonical JSON (sorted keys, no whitespace): the
-// Inference Operator refuses a non-canonical response schema.
+// Inference Operator refuses a non-canonical response schema. The score is an
+// enum of judgeScoreMin..judgeScoreMax, never a minimum/maximum range: every
+// judge provider, local or hosted, can apply an enum, while Anthropic
+// structured outputs reject numerical range constraints. decodeJudgmentText
+// enforces the same range on the answer.
 const judgmentJSONSchema = `{"additionalProperties":false,"properties":{"rationale":{"type":"string"},` +
-	`"score":{"maximum":5,"minimum":1,"type":"integer"}},"required":["score","rationale"],"type":"object"}`
+	`"score":{"enum":[1,2,3,4,5],"type":"integer"}},"required":["score","rationale"],"type":"object"}`
 
 // New validates the judge configuration. Every field is required, so a judge that
 // cannot dispatch is never constructed.

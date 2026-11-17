@@ -347,6 +347,7 @@ The assertion must still verify for this user, credential and transaction.
 | consensus_inference_operator_id | [string](#string) |  |  |
 | consensus_vote_thresholds | [ConsensusDecisionThreshold](#ztd-common-v1-ConsensusDecisionThreshold) | repeated |  |
 | consensus_allow_hosted | [bool](#bool) |  |  |
+| consensus_model_provider_class | [string](#string) |  | Hosted inference provider class serving consensus_model_tag for generative Tribunal votes; empty selects the Inference Operator&#39;s local provider. |
 
 
 

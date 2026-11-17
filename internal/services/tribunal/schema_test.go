@@ -10,6 +10,7 @@ package tribunal
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -185,4 +186,14 @@ func TestRoundTwoGivesNemesisItsAdversarialLens(t *testing.T) {
 	}
 	assert.Equal(t, generationPrompt(Request{Request: testRequest}, MemberNemesis, nil), generationPrompt(Request{Request: testRequest}, MemberAxiom, nil),
 		"round 1 gives every seat the same request")
+}
+
+// TestConsensusVoteJSONSchema_UsesOnlyPortableConstraints: an L2 vote may be
+// served by any registry model, local or hosted, so the vote schema uses only
+// constraints every provider applies (Anthropic structured outputs reject
+// numerical and string length constraints).
+func TestConsensusVoteJSONSchema_UsesOnlyPortableConstraints(t *testing.T) {
+	for _, keyword := range strings.Fields(`"minimum" "maximum" "exclusiveMinimum" "exclusiveMaximum" "multipleOf" "minLength" "maxLength" "pattern"`) {
+		assert.NotContains(t, ConsensusVoteJSONSchema, keyword)
+	}
 }

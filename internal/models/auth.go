@@ -601,19 +601,22 @@ type ConsensusPolicy struct {
 	VoteThresholds      []ConsensusDecisionThreshold `json:"vote_thresholds,omitempty"`
 	AllowHosted         bool                         `json:"allow_hosted,omitempty"`
 
-	ID              string    `json:"id"`                        // consensus name/id
-	BindingVersion  int64     `json:"binding_version,omitempty"` // monotonic version incremented on each bind/unbind
-	AppID           string    `json:"app_id,omitempty"`          // primary bound consensus application identity
-	MemberAppIDs    []string  `json:"member_app_ids"`            // == TrustedSigner.ID per member
-	Quorum          int       `json:"quorum"`                    // K affirmative distinct signers required
-	RequireDistinct bool      `json:"require_distinct"`          // reject duplicate signer keys
-	EndpointURL     string    `json:"endpoint_url,omitempty"`    // HTTPS deliberation endpoint for bound consensus app
-	Provider        string    `json:"provider"`                  // constants.ConsensusProvider; required
-	ModelTag        string    `json:"model_tag,omitempty"`       // tribunal provider: pinned vote model tag
-	ModelDigest     string    `json:"model_digest,omitempty"`    // tribunal provider: pinned vote model digest
-	Enabled         bool      `json:"enabled"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID              string   `json:"id"`                        // consensus name/id
+	BindingVersion  int64    `json:"binding_version,omitempty"` // monotonic version incremented on each bind/unbind
+	AppID           string   `json:"app_id,omitempty"`          // primary bound consensus application identity
+	MemberAppIDs    []string `json:"member_app_ids"`            // == TrustedSigner.ID per member
+	Quorum          int      `json:"quorum"`                    // K affirmative distinct signers required
+	RequireDistinct bool     `json:"require_distinct"`          // reject duplicate signer keys
+	EndpointURL     string   `json:"endpoint_url,omitempty"`    // HTTPS deliberation endpoint for bound consensus app
+	Provider        string   `json:"provider"`                  // constants.ConsensusProvider; required
+	ModelTag        string   `json:"model_tag,omitempty"`       // tribunal provider: pinned vote model tag
+	ModelDigest     string   `json:"model_digest,omitempty"`    // tribunal provider: pinned vote model digest
+	// ModelProviderClass is the hosted inference provider class serving
+	// ModelTag for generative Tribunal votes; empty selects the local provider.
+	ModelProviderClass string    `json:"model_provider_class,omitempty"`
+	Enabled            bool      `json:"enabled"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 // ConsensusProvider decodes the binding's vote producer. An empty or unknown
@@ -654,6 +657,9 @@ type PlatformEnrollmentBindConsensusRequest struct {
 	Provider     string   `json:"provider"`               // constants.ConsensusProvider; required
 	ModelTag     string   `json:"model_tag,omitempty"`    // tribunal provider only
 	ModelDigest  string   `json:"model_digest,omitempty"` // tribunal provider only
+	// ModelProviderClass is the hosted provider class serving ModelTag
+	// (tribunal generative votes only); empty selects the local provider.
+	ModelProviderClass string `json:"model_provider_class,omitempty"`
 }
 
 // EnrollmentToken represents a one-time use token for secure passkey enrollment.

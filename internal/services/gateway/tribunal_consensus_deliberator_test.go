@@ -84,6 +84,7 @@ type inferCall struct {
 	role        models.InferenceModelRole
 	model       string
 	modelDigest string
+	class       string
 	requestorID string
 	schema      string
 	format      *operatorv1.InferenceResponseFormat
@@ -144,6 +145,7 @@ func (f *fakeInferer) DispatchInference(ctx context.Context, req dispatch.Dispat
 		role:        req.Role,
 		model:       req.Model,
 		modelDigest: req.ModelDigest,
+		class:       req.ProviderClass,
 		requestorID: req.RequestorUserID,
 		schema:      req.RequestSchemaVersion,
 		format:      req.ResponseFormat,
@@ -781,6 +783,9 @@ func TestTribunalConsensusCallsCarryMemberIdentityAndPinnedModel(t *testing.T) {
 		if call.modelDigest != tribunalTestDigest {
 			t.Fatalf("call %d model digest = %q, want %q", i, call.modelDigest, tribunalTestDigest)
 		}
+		if call.class != "" {
+			t.Fatalf("call %d provider class = %q, want the local provider", i, call.class)
+		}
 		if call.requestorID != tribunalTestOwnerID {
 			t.Fatalf("call %d requestor = %q, want owner %q", i, call.requestorID, tribunalTestOwnerID)
 		}
@@ -790,6 +795,60 @@ func TestTribunalConsensusCallsCarryMemberIdentityAndPinnedModel(t *testing.T) {
 		if call.format.GetJsonSchema() != tribunal.ConsensusVoteJSONSchema {
 			t.Fatalf("call %d response format = %v, want the consensus vote JSON schema", i, call.format)
 		}
+	}
+}
+
+// TestTribunalConsensusHostedBindingDispatchesItsProviderClass: a binding
+// pinned to a hosted registry model sends every member's vote to that hosted
+// class with the pinned identity digest, and each recorded vote names it.
+func TestTribunalConsensusHostedBindingDispatchesItsProviderClass(t *testing.T) {
+	env, _ := tribunalTestEnvelope(t)
+	binding := tribunalTestBinding()
+	binding.ModelTag, binding.ModelProviderClass = "gemini-3.6-flash", constants.InferenceProviderGemini
+	inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
+	signer := newFakeSigner(t, binding.MemberAppIDs...)
+	recorder := &fakeVoteRecorder{}
+	d := newRecordingTribunalTestDeliberator(t, binding, inferer, signer, recorder)
+
+	_, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env))
+	require.NoError(t, err)
+	require.NotEmpty(t, inferer.calls)
+	for _, call := range inferer.calls {
+		require.Equal(t, constants.InferenceProviderGemini, call.class, call.actingAppID)
+		require.Equal(t, "gemini-3.6-flash", call.model, call.actingAppID)
+		require.Equal(t, tribunalTestDigest, call.modelDigest, call.actingAppID)
+	}
+	records := recorder.records(t)
+	require.Len(t, records, len(inferer.calls))
+	for _, record := range records {
+		require.Equal(t, "gemini-3.6-flash", record.ModelTag)
+		require.Equal(t, constants.InferenceProviderGemini, record.ModelProviderClass)
+	}
+}
+
+// TestTribunalConsensusInadmissibleModelProviderFailsClosed: a stored binding
+// whose vote model or provider class the binding validator would not admit
+// asks no member, so no vote reaches a provider it was never bound to.
+func TestTribunalConsensusInadmissibleModelProviderFailsClosed(t *testing.T) {
+	for name, mutate := range map[string]func(*models.ConsensusPolicy){
+		"local class name": func(p *models.ConsensusPolicy) { p.ModelProviderClass = constants.InferenceProviderOllama },
+		"unknown class":    func(p *models.ConsensusPolicy) { p.ModelProviderClass = "bogus" },
+		"hosted class, bad digest": func(p *models.ConsensusPolicy) {
+			p.ModelProviderClass, p.ModelDigest = constants.InferenceProviderGemini, "sha256:short"
+		},
+		"no pinned digest": func(p *models.ConsensusPolicy) { p.ModelDigest = "" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			env, _ := tribunalTestEnvelope(t)
+			binding := tribunalTestBinding()
+			mutate(binding)
+			inferer := &fakeInferer{replies: repliesForAll(inferReply{text: tribunalApproveAnswer})}
+			d := newTribunalTestDeliberator(t, binding, inferer, newFakeSigner(t, binding.MemberAppIDs...))
+
+			_, err := d.Deliberate(context.Background(), marshalTestEnvelope(t, env))
+			require.Error(t, err)
+			require.Empty(t, inferer.calls)
+		})
 	}
 }
 

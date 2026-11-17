@@ -3683,8 +3683,11 @@ type EvaluationConsensusIdentity struct {
 	// binding_digest is the SHA-256 of the complete governing binding,
 	// including the fields not projected above. Empty when unbound.
 	BindingDigest string `protobuf:"bytes,9,opt,name=binding_digest,json=bindingDigest,proto3" json:"binding_digest,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// model_provider_class is the hosted provider class serving model_tag;
+	// empty when the vote model is served by a local provider.
+	ModelProviderClass string `protobuf:"bytes,10,opt,name=model_provider_class,json=modelProviderClass,proto3" json:"model_provider_class,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *EvaluationConsensusIdentity) Reset() {
@@ -3776,6 +3779,13 @@ func (x *EvaluationConsensusIdentity) GetMemberAppIds() []string {
 func (x *EvaluationConsensusIdentity) GetBindingDigest() string {
 	if x != nil {
 		return x.BindingDigest
+	}
+	return ""
+}
+
+func (x *EvaluationConsensusIdentity) GetModelProviderClass() string {
+	if x != nil {
+		return x.ModelProviderClass
 	}
 	return ""
 }
@@ -13943,7 +13953,7 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\x1bprovider_observation_policy\x18\x0e \x01(\x0e2$.ztd.eval.v1.EvaluationWitnessPolicyR\x19providerObservationPolicy\x12\\\n" +
 	"\x17model_provenance_policy\x18\x0f \x01(\x0e2$.ztd.eval.v1.EvaluationWitnessPolicyR\x15modelProvenancePolicy\x12F\n" +
 	"\tconsensus\x18\x10 \x01(\v2(.ztd.eval.v1.EvaluationConsensusIdentityR\tconsensus\x12R\n" +
-	"\x13tool_calling_probes\x18\x11 \x03(\v2\".ztd.eval.v1.ModelToolCallingProbeR\x11toolCallingProbes\"\xb0\x02\n" +
+	"\x13tool_calling_probes\x18\x11 \x03(\v2\".ztd.eval.v1.ModelToolCallingProbeR\x11toolCallingProbes\"\xe2\x02\n" +
 	"\x1bEvaluationConsensusIdentity\x12\x14\n" +
 	"\x05bound\x18\x01 \x01(\bR\x05bound\x12\x1d\n" +
 	"\n" +
@@ -13954,7 +13964,9 @@ const file_ztd_eval_v1_eval_proto_rawDesc = "" +
 	"\fmodel_digest\x18\x06 \x01(\tR\vmodelDigest\x12\x16\n" +
 	"\x06quorum\x18\a \x01(\rR\x06quorum\x12$\n" +
 	"\x0emember_app_ids\x18\b \x03(\tR\fmemberAppIds\x12%\n" +
-	"\x0ebinding_digest\x18\t \x01(\tR\rbindingDigest\"\xb1\x04\n" +
+	"\x0ebinding_digest\x18\t \x01(\tR\rbindingDigest\x120\n" +
+	"\x14model_provider_class\x18\n" +
+	" \x01(\tR\x12modelProviderClass\"\xb1\x04\n" +
 	"\x11EvaluationAttempt\x12\x1d\n" +
 	"\n" +
 	"attempt_id\x18\x01 \x01(\tR\tattemptId\x12\x15\n" +

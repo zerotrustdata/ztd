@@ -10,6 +10,7 @@ package models
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -77,6 +78,29 @@ func UnmarshalOperatorRuntimeConfig(data []byte) (*operatorv1.OperatorRuntimeCon
 }
 
 // OperatorCapabilitiesFromProto converts the proto capability strings to the typed set.
+// ValidateOperatorHostedProviders checks the hosted provider classes an
+// Operator declares beside its capabilities: each one a hosted class, in
+// constants.HostedInferenceProviders order and at most once, and only on an
+// Operator holding the inference capability. An Operator discovers them from
+// the API keys set when it starts, and its enrollment binds them.
+func ValidateOperatorHostedProviders(capabilities constants.OperatorCapabilities, classes []string) error {
+	if len(classes) == 0 {
+		return nil
+	}
+	if !capabilities.Has(constants.OperatorCapabilityInference) {
+		return constants.ErrInferenceHostedRequiresInference
+	}
+	next := 0
+	for _, class := range classes {
+		position := slices.Index(constants.HostedInferenceProviders, class)
+		if position < next {
+			return fmt.Errorf("operator hosted provider %q: %w", class, constants.ErrInferenceHostedProviderInvalid)
+		}
+		next = position + 1
+	}
+	return nil
+}
+
 func OperatorCapabilitiesFromProto(capabilities []string) constants.OperatorCapabilities {
 	out := make(constants.OperatorCapabilities, 0, len(capabilities))
 	for _, capability := range capabilities {

@@ -210,12 +210,23 @@ func inspectGatewayHostedProvider(
 	report.GatewayReason = fmt.Sprintf("Inference Operator does not serve %s", providerClass)
 }
 
+// hostedProviderKeyName names the environment variable holding a hosted
+// provider class's API key; an Inference Operator serves the class when the
+// key is set as it enrolls.
+func hostedProviderKeyName(class string) string {
+	key, ok := constants.HostedInferenceProviderAPIKeyEnv(class)
+	if !ok {
+		return "the provider's API key"
+	}
+	return string(key)
+}
+
 func formatGatewayHostedStatus(report *agentHostedProviderReport) string {
 	switch report.GatewayStatus {
 	case gatewayHostedStatusServed:
 		return fmt.Sprintf("served (%s)", strings.Join(report.ServedByOperators, ", "))
 	case gatewayHostedStatusNotServed:
-		return fmt.Sprintf("not served (%s; enable with --inference-hosted-providers %s)", report.GatewayReason, report.ProviderClass)
+		return fmt.Sprintf("not served (%s; set %s on an Inference Operator's host and restart it to re-enroll, or restart the Gateway for its embedded Operator)", report.GatewayReason, hostedProviderKeyName(report.ProviderClass))
 	default:
 		return fmt.Sprintf("unavailable (%s)", report.GatewayReason)
 	}
