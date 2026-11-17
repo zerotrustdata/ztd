@@ -109,7 +109,7 @@ func TestReviewAdmittedGivesAuditorActualGovernanceEvidence(t *testing.T) {
 			MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat -tlpn", MemberNemesis: "lsof -i",
 		}),
 		marshal: lowRisk,
-		audit:   []string{approve, approve},
+		audit:   []string{approveSplit, approve},
 	}
 	service := admittedService(t, dispatcher)
 	req := admittedRequest()

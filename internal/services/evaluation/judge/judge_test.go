@@ -510,9 +510,7 @@ func TestJudgmentJSONSchema_IsCanonical(t *testing.T) {
 // length constraints; the score range is an enum the decoder also enforces.
 func TestJudgeSchemas_UseOnlyPortableConstraints(t *testing.T) {
 	for name, schema := range map[string]string{"judgment": judgmentJSONSchema, "criterion": criterionJSONSchema} {
-		for _, keyword := range []string{`"minimum"`, `"maximum"`, `"exclusiveMinimum"`, `"exclusiveMaximum"`, `"multipleOf"`, `"minLength"`, `"maxLength"`} {
-			assert.NotContains(t, schema, keyword, name)
-		}
+		require.NoError(t, models.ValidatePortableResponseSchema(schema), name)
 	}
 	var decoded struct {
 		Properties struct {

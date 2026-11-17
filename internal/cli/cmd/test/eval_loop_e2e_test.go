@@ -344,8 +344,8 @@ func evalLoopReplies() []fixtures.OllamaReply {
 	return append(replies,
 		fixtures.OllamaReply{Content: evalLoopTribunalDissent},
 		fixtures.OllamaReply{Content: `{"risk": "LOW", "rationale": "read-only", "feedback": ""}`},
-		fixtures.OllamaReply{Content: `{"verdict": "APPROVE", "rationale": "correct"}`},
-		fixtures.OllamaReply{Content: `{"verdict": "APPROVE", "rationale": "governance decisions consistent"}`},
+		fixtures.OllamaReply{Content: `{"verdict": "APPROVE", "revised_arguments": null, "swap_to_cluster": null, "rationale": "correct"}`},
+		fixtures.OllamaReply{Content: `{"verdict": "APPROVE", "revised_arguments": null, "rationale": "governance decisions consistent"}`},
 		fixtures.OllamaReply{Content: evalLoopTribunalAnswer},
 	)
 }

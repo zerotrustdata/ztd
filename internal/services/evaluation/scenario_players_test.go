@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 )
 
 // The Triage response schema must be canonical (the Inference Operator refuses
@@ -48,4 +49,17 @@ func TestTriageResultJSONSchemaIsCanonicalAndMatchesParser(t *testing.T) {
 	}
 	required := decoded["required"].([]any)
 	assert.Len(t, required, reflect.TypeOf(TriageResult{}).NumField(), "every TriageResult field is required")
+}
+
+// TestEvaluationResponseSchemas_UseOnlyThePortableSubset: a Lite cell or an
+// acceptance probe may run on any registry model, local or hosted, so its
+// response schema is one every provider applies. The Triage parser, not the
+// schema, rejects a blank intent_summary.
+func TestEvaluationResponseSchemas_UseOnlyThePortableSubset(t *testing.T) {
+	for name, schema := range map[string]string{
+		"triage":           triageResultJSONSchema,
+		"probe structured": ProbeStructuredResponseFormat().GetJsonSchema(),
+	} {
+		require.NoError(t, models.ValidatePortableResponseSchema(schema), name)
+	}
 }

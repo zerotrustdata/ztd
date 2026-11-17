@@ -35,7 +35,7 @@ func TestTribunalInferenceCallsCarrySharedSecurityPrompts(t *testing.T) {
 			return proposalAnswer("pwd")
 		},
 		marshal: lowRisk,
-		audit:   []string{approve},
+		audit:   []string{approveSplit},
 	}
 	result, err := Run(context.Background(), testConfig(inferer), Request{Request: "show working directory"}, 0)
 	require.NoError(t, err)

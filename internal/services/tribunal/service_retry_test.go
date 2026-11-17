@@ -82,7 +82,9 @@ func retryService(t *testing.T, dispatcher *scriptedMemberDispatcher) (*Service,
 func approvingDispatcher(failures ...operatorv1.ReceiptFailureCode) *scriptedMemberDispatcher {
 	return &scriptedMemberDispatcher{
 		fakeMemberDispatcher: &fakeMemberDispatcher{
-			generate: proposals(map[Member]string{MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat -tlpn", MemberNemesis: "netstat -tlpn"}),
+			// A unanimous panel leaves the Auditor no SWAP, as the admitted
+			// review's single authorized cluster does, so one answer fits both.
+			generate: proposals(map[Member]string{MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "ss -tlpn", MemberNemesis: "ss -tlpn"}),
 			marshal:  lowRisk,
 			audit:    []string{approve},
 		},

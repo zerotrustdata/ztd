@@ -25,7 +25,7 @@ func TestAuthoringAcceptsSurroundingJSONWhitespace(t *testing.T) {
 			return " \n" + proposalAnswer(command) + "\t\n"
 		},
 		marshal: "\n" + lowRisk + "\n",
-		audit:   []string{"\t" + approve + "\n"},
+		audit:   []string{"\t" + approveSplit + "\n"},
 	}
 	result, err := Run(context.Background(), testConfig(inferer), Request{Request: "show working directory"}, 0)
 	require.NoError(t, err)
@@ -79,8 +79,8 @@ func TestGenerationRejectsAnswersOutsideDeclaredSchema(t *testing.T) {
 func TestAuditorRepairsInvalidAnswerWithFeedback(t *testing.T) {
 	v := vote(1, candidatesFor(map[Member]string{MemberAxiom: "pwd", MemberConcord: "pwd", MemberNemesis: "ls"}))
 	inferer := &fakeInferer{audit: []string{
-		`{"verdict":"REVISE","revised_arguments":{"command":"pwd","args":[],"timeout":30},"rationale":"x"}`,
-		approve,
+		`{"verdict":"REVISE","revised_arguments":{"command":"pwd","args":[],"timeout":30},"swap_to_cluster":null,"rationale":"x"}`,
+		approveSplit,
 	}}
 	result, err := audit(context.Background(), testConfig(inferer), Request{Request: "show working directory"}, v)
 	require.NoError(t, err)
@@ -92,10 +92,10 @@ func TestAuditorRepairsInvalidAnswerWithFeedback(t *testing.T) {
 func TestAuditorRejectsAnswersOutsideDeclaredSchema(t *testing.T) {
 	v := vote(1, candidatesFor(map[Member]string{MemberAxiom: "pwd", MemberConcord: "pwd", MemberNemesis: "ls"}))
 	for name, answer := range map[string]string{
-		"missing argv":   `{"verdict":"REVISE","revised_arguments":{"command":"pwd"},"rationale":"x"}`,
-		"null argument":  `{"verdict":"REVISE","revised_arguments":{"command":"printf","args":[null]},"rationale":"x"}`,
-		"null revision":  `{"verdict":"APPROVE","revised_arguments":null,"rationale":"x"}`,
-		"missing reason": `{"verdict":"APPROVE"}`,
+		"missing argv":   `{"verdict":"REVISE","revised_arguments":{"command":"pwd"},"swap_to_cluster":null,"rationale":"x"}`,
+		"null argument":  `{"verdict":"REVISE","revised_arguments":{"command":"printf","args":[null]},"swap_to_cluster":null,"rationale":"x"}`,
+		"missing swap":   `{"verdict":"APPROVE","revised_arguments":null,"rationale":"x"}`,
+		"missing reason": `{"verdict":"APPROVE","revised_arguments":null,"swap_to_cluster":null}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			inferer := &fakeInferer{audit: []string{answer}}

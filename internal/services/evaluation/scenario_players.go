@@ -59,7 +59,7 @@ const triageResultJSONSchema = `{"additionalProperties":false,"properties":{` +
 	`"complexity_confidence":{"enum":["high","low"],"type":"string"},` +
 	`"intent":{"enum":["information","action","unknown"],"type":"string"},` +
 	`"intent_confidence":{"enum":["high","low"],"type":"string"},` +
-	`"intent_summary":{"minLength":1,"type":"string"},` +
+	`"intent_summary":{"type":"string"},` +
 	`"posture_confidence":{"enum":["high","low"],"type":"string"},` +
 	`"request_posture":{"enum":["normal","escalated","adversarial","confused"],"type":"string"}},` +
 	`"required":["complexity","complexity_confidence","intent","intent_confidence","intent_summary","request_posture","posture_confidence"],` +

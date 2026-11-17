@@ -46,6 +46,11 @@ type openaiFunctionCallOutputItem struct {
 	Output string `json:"output"`
 }
 
+// openaiFunctionTool is one function declaration. Strict is always sent and
+// always false: OpenAI strict mode requires every property in required, and
+// native tool schemas declare optional arguments. Tool call arguments are
+// validated against the typed tool contract at the governance boundary, as
+// they are for every other provider.
 type openaiFunctionTool struct {
 	Type        string          `json:"type"`
 	Name        string          `json:"name"`
@@ -401,7 +406,7 @@ func inferenceToolsToOpenAI(tools []*operatorv1.InferenceToolDeclaration, choice
 			Name:        tool.GetName(),
 			Description: tool.GetDescription(),
 			Parameters:  json.RawMessage(tool.GetJsonSchema()),
-			Strict:      true,
+			Strict:      false,
 		})
 	}
 	return declarations, nil

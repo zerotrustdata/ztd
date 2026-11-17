@@ -138,7 +138,7 @@ func TestDeliberateApproved(t *testing.T) {
 			MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat -tlpn", MemberNemesis: "netstat -tlpn",
 		}),
 		marshal: lowRisk,
-		audit:   []string{approve},
+		audit:   []string{approveSplit},
 	}
 	service, err := NewService(dispatcher, governance.NewL1Doctrine())
 	require.NoError(t, err)

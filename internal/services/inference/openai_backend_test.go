@@ -415,7 +415,7 @@ func TestOpenAIBackend_GenerateRequestMappingAndReasoningRoundTrip(t *testing.T)
 	tool := tools[0].(map[string]any)
 	assert.Equal(t, "function", tool["type"])
 	assert.Equal(t, "get_weather", tool["name"])
-	assert.Equal(t, true, tool["strict"])
+	assert.Equal(t, false, tool["strict"], "strict mode forbids the optional arguments native tools declare")
 
 	input := body["input"].([]any)
 	require.Len(t, input, 6, "user, reasoning, assistant text, function_call, function_call_output, mid-history developer")
