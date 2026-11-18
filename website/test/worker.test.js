@@ -278,7 +278,11 @@ const RELEASE_SETS = {
   'v2.3.10-rc.1/ztd-binaries.json': manifest('2.3.10-rc.1'),
   'v2.3.1/ztd-binaries.json': manifest('2.3.1'),
   'v2.3.0/ztd-linux-amd64': 'manifest not uploaded yet',
-  'v2.4.0/ztd-binaries.json': manifest('2.4.0')
+  'v2.4.0/ztd-binaries.json': manifest('2.4.0'),
+  'v1.10.0/ztd-binaries.json': manifest('1.10.0'),
+  'v1.10.0/ztd-linux-amd64': 'binary',
+  'v1.9.3/ztd-binaries.json': manifest('1.9.3'),
+  'v1.9.3/ztd-linux-amd64': 'archived binary'
 };
 
 function siteAssets(files = {}, requested = []) {
@@ -302,7 +306,7 @@ test('/releases/ lists complete, promoted versions newest first with the latest 
   assert.match(response.headers.get('content-security-policy'), /script-src 'self'/);
   const html = await response.text();
   const listed = [...html.matchAll(/class="release-version" href="\/releases\/v([^/]+)\/"/g)].map(match => match[1]);
-  assert.deepEqual(listed, ['2.3.2', '2.3.1'], 'unpromoted 2.4.0 and 2.3.10-rc.1 and the manifest-less 2.3.0 are hidden');
+  assert.deepEqual(listed, ['2.3.2', '2.3.1', '1.10.0', '1.9.3'], 'unpromoted 2.4.0 and 2.3.10-rc.1 and the manifest-less 2.3.0 are hidden');
   assert.match(html, /curl -fsSL https:\/\/zerotrustdata\.io\/start\.sh \| sh</);
   assert.match(html, /href="\/v\/2\.3\.2\/ztd-linux-amd64" download/);
   assert.ok(html.indexOf('ztd-linux-amd64') < html.indexOf('ztd-windows-amd64.exe'), 'platforms are ordered Linux first');
@@ -326,6 +330,44 @@ test('/releases/v<version>/ shows pinned commands, verification, and the build-t
   assert.match(html, /commit\/0123456789abcdef0123456789abcdef01234567/);
   assert.doesNotMatch(html, /badge latest/, 'only the latest version carries the Latest badge');
   assert.deepEqual(requested, ['/_release-notes/2.3.1.html']);
+});
+
+test('versions before v1.10 stay listed with their date and notes but offer no downloads', async () => {
+  const index = await (await page('/releases/', { ASSETS: noAssets, RELEASES: releaseBucket(RELEASE_SETS) })).text();
+  const row = version => index.split('<li class="release-row">').find(item => item.includes(`href="/releases/v${version}/"`));
+  assert.match(row('1.9.3'), /badge archived">Archived</);
+  assert.match(row('1.9.3'), /<time datetime="[^"]+">/);
+  assert.match(row('1.9.3'), />Release notes </);
+  assert.match(row('1.10.0'), />Downloads and notes </);
+  assert.doesNotMatch(row('1.10.0'), /badge archived/);
+
+  const env = { ASSETS: siteAssets({ '/_release-notes/1.9.3.html': '<p>Old <em>fixes</em>.</p>' }), RELEASES: releaseBucket(RELEASE_SETS) };
+  const archived = await page('/releases/v1.9.3/', env);
+  assert.equal(archived.status, 200);
+  const html = await archived.text();
+  assert.match(html, /<p>Old <em>fixes<\/em>\.<\/p>/);
+  assert.match(html, /no longer offered for download/);
+  assert.match(html, /href="\/releases\/v2\.3\.2\/">Install v2\.3\.2/);
+  assert.doesNotMatch(html, /\/v\/1\.9\.3\//);
+  assert.doesNotMatch(html, /ZTD_VERSION/);
+  assert.doesNotMatch(html, /cosign verify-blob/);
+
+  const current = await (await page('/releases/v1.10.0/', env)).text();
+  assert.match(current, /href="\/v\/1\.10\.0\/ztd-linux-amd64" download/);
+  assert.match(current, /ZTD_VERSION=1\.10\.0/);
+});
+
+test('/v/<version>/ is a 404 for versions before v1.10 without reading the bucket', async () => {
+  const requested = [];
+  for (const path of ['/v/1.9.3/ztd-linux-amd64', '/v/1.9.3/ztd-binaries.json', '/v/1.9.3/ztd-linux-amd64.sha256']) {
+    const response = await worker.fetch(new Request(`https://zerotrustdata.io${path}`), { ASSETS: noAssets, RELEASES: releases(RELEASE_SETS, requested) });
+    assert.equal(response.status, 404, path);
+    assert.equal(await response.text(), 'not found', path);
+  }
+  assert.deepEqual(requested, []);
+  const current = await worker.fetch(new Request('https://zerotrustdata.io/v/1.10.0/ztd-linux-amd64'), { ASSETS: noAssets, RELEASES: releases(RELEASE_SETS, requested) });
+  assert.equal(current.status, 200);
+  assert.equal(await current.text(), 'binary');
 });
 
 test('a release page without notes links to the GitHub release', async () => {
