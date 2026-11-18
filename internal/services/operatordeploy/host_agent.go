@@ -39,7 +39,8 @@ var EndpointPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 var RemoteDirPattern = regexp.MustCompile(`^(~|~?/?[A-Za-z0-9_.-]+)(/[A-Za-z0-9_.-]+)*/?$`)
 
 // ExecuteDeployHost executes a typed DeployHostRequest and returns a typed DeployHostResponse.
-func ExecuteDeployHost(ctx context.Context, req models.DeployHostRequest, factory func(string, *slog.Logger) (fs.RuntimeFileService, error)) (models.DeployHostResponse, error) {
+// An optional preflight runner handles DeployHostActionPreflight when non-nil.
+func ExecuteDeployHost(ctx context.Context, req models.DeployHostRequest, factory func(string, *slog.Logger) (fs.RuntimeFileService, error), preflight func(context.Context, []string) error) (models.DeployHostResponse, error) {
 	if factory == nil {
 		factory = func(workingDir string, logger *slog.Logger) (fs.RuntimeFileService, error) {
 			return fs.NewRuntimeFileService(workingDir, logger)
@@ -120,7 +121,10 @@ func ExecuteDeployHost(ctx context.Context, req models.DeployHostRequest, factor
 		if len(args) == 0 {
 			args = req.Args
 		}
-		if err := ExecuteDeployHostPreflight(ctx, args); err != nil {
+		if preflight == nil {
+			return resp, fmt.Errorf("operator deploy-host preflight handler not configured: %w", constants.ErrOperatorDeployFailed)
+		}
+		if err := preflight(ctx, args); err != nil {
 			return resp, err
 		}
 		return resp, nil
@@ -375,31 +379,40 @@ func ExecuteDeployHostStart(ctx context.Context, workingDir, binary string, args
 	return pid, nil
 }
 
-// ExecuteDeployHostPreflight parses gateway-preflight flags and verifies the
-// Gateway bootstrap websocket and mTLS port are reachable.
-func ExecuteDeployHostPreflight(ctx context.Context, preflightArgs []string) error {
+// ParseGatewayPreflightArgs parses and validates gateway-preflight flags and
+// target host without opening any network connection.
+func ParseGatewayPreflightArgs(preflightArgs []string) (host string, httpPort, httpsPort int, err error) {
 	fs := pflag.NewFlagSet("gateway-preflight", pflag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	var httpPort, httpsPort int
 	fs.IntVar(&httpPort, "gateway-http-port", 0, "")
 	fs.IntVar(&httpsPort, "gateway-https-port", 0, "")
 	if err := fs.Parse(preflightArgs); err != nil {
-		return err
+		return "", 0, 0, err
 	}
 	args := fs.Args()
 	if len(args) != 1 {
-		return fmt.Errorf("gateway-preflight requires 1 argument (got %d): %w", len(args), constants.ErrMissingRequiredField)
+		return "", 0, 0, fmt.Errorf("gateway-preflight requires 1 argument (got %d): %w", len(args), constants.ErrMissingRequiredField)
 	}
 	if !EndpointPattern.MatchString(args[0]) {
-		return fmt.Errorf("%w: gateway host %q must match %s", constants.ErrPathValidation, args[0], EndpointPattern)
+		return "", 0, 0, fmt.Errorf("%w: gateway host %q must match %s", constants.ErrPathValidation, args[0], EndpointPattern)
 	}
 	if err := ValidateGatewayPort("gateway-http-port", httpPort); err != nil {
-		return err
+		return "", 0, 0, err
 	}
 	if err := ValidateGatewayPort("gateway-https-port", httpsPort); err != nil {
+		return "", 0, 0, err
+	}
+	return args[0], httpPort, httpsPort, nil
+}
+
+// ExecuteDeployHostPreflight parses gateway-preflight flags and verifies the
+// Gateway bootstrap websocket and mTLS port are reachable.
+func ExecuteDeployHostPreflight(ctx context.Context, preflightArgs []string) error {
+	host, httpPort, httpsPort, err := ParseGatewayPreflightArgs(preflightArgs)
+	if err != nil {
 		return err
 	}
-	return RunGatewayPreflight(ctx, args[0], httpPort, httpsPort)
+	return RunGatewayPreflight(ctx, host, httpPort, httpsPort)
 }
 
 // ExecuteDeployHostStop stops every worker under destDir or matching workingDir concurrently.

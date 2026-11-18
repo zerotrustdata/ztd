@@ -171,6 +171,7 @@ Gateway HTTPS port, and deploy approves only requests carrying the keys each Ope
 			}
 			if background {
 				stageOpts.Preflight = operatorDeployPreflightArgs(cmd, workerEndpoint)
+				stageOpts.PreflightFunc = operatordeploy.ExecuteDeployHostPreflight
 				events, stopEvents, err := connectEvents(ctx, fileSvc, cfg)
 				if err != nil {
 					return err

@@ -90,12 +90,13 @@ func ExecuteDeploy(ctx context.Context, req DeployRequest) (DeployOutcome, func(
 		override, hasOverride := req.LocalOverrides[host]
 		isLocal := IsLocalTarget(host) || hasOverride
 		s := HostTransport{
-			Host:           host,
-			Port:           req.Port,
-			IdentityFile:   req.IdentityFile,
-			Local:          isLocal,
-			EnsureRecovery: req.EnsureRecovery,
-			LocalStartFunc: override.StartFunc,
+			Host:               host,
+			Port:               req.Port,
+			IdentityFile:       req.IdentityFile,
+			Local:              isLocal,
+			EnsureRecovery:     req.EnsureRecovery,
+			LocalStartFunc:     override.StartFunc,
+			LocalPreflightFunc: req.Stage.PreflightFunc,
 		}
 		targetRemoteDir := remoteDir
 		targetDirs := dirs

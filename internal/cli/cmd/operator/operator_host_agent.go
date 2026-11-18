@@ -44,7 +44,7 @@ func operatorDeployHostCmdWithFactory(factory func(string, *slog.Logger) (fs.Run
 				return fmt.Errorf("decode deploy-host request: %w", err)
 			}
 
-			resp, err := operatordeploy.ExecuteDeployHost(cmd.Context(), req, factory)
+			resp, err := operatordeploy.ExecuteDeployHost(cmd.Context(), req, factory, operatordeploy.ExecuteDeployHostPreflight)
 			if err != nil {
 				resp.Success = false
 				resp.Error = err.Error()

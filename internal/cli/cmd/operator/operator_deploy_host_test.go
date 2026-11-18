@@ -340,17 +340,15 @@ func TestExecuteDeployHostState(t *testing.T) {
 	})
 }
 
-func TestExecuteDeployHostPreflight(t *testing.T) {
-	ctx := context.Background()
-
+func TestParseGatewayPreflightArgs(t *testing.T) {
 	t.Run("invalid host fails validation", func(t *testing.T) {
-		err := operatordeploy.ExecuteDeployHostPreflight(ctx, []string{"invalid$$host"})
+		_, _, _, err := operatordeploy.ParseGatewayPreflightArgs([]string{"invalid$$host"})
 		require.Error(t, err)
 		require.ErrorIs(t, err, constants.ErrPathValidation)
 	})
 
 	t.Run("no args fails validation", func(t *testing.T) {
-		err := operatordeploy.ExecuteDeployHostPreflight(ctx, []string{})
+		_, _, _, err := operatordeploy.ParseGatewayPreflightArgs([]string{})
 		require.Error(t, err)
 		require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 		require.Contains(t, err.Error(), "requires 1 argument")
@@ -524,7 +522,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 			Action: models.DeployHostActionPrepare,
 			Dirs:   []string{filepath.Join(tempDir, "dir1")},
 		}
-		resp, err := operatordeploy.ExecuteDeployHost(ctx, req, nil)
+		resp, err := operatordeploy.ExecuteDeployHost(ctx, req, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, resp.ResolvedDirs, 1)
 	})
@@ -540,7 +538,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 			Source: src,
 			Target: target,
 		}
-		_, err := operatordeploy.ExecuteDeployHost(ctx, req, nil)
+		_, err := operatordeploy.ExecuteDeployHost(ctx, req, nil, nil)
 		require.NoError(t, err)
 
 		_, err = os.Stat(target)
@@ -558,7 +556,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 			Source:  src,
 			DestDir: destDir,
 		}
-		_, err := operatordeploy.ExecuteDeployHost(ctx, req, nil)
+		_, err := operatordeploy.ExecuteDeployHost(ctx, req, nil, nil)
 		require.NoError(t, err)
 
 		expectedTarget := filepath.Join(destDir, constants.DeployBinDirname, "ztd")
@@ -580,7 +578,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 			DestDir:   destDir,
 			Binary:    "ztd",
 		}
-		_, err := operatordeploy.ExecuteDeployHost(ctx, req, nil)
+		_, err := operatordeploy.ExecuteDeployHost(ctx, req, nil, nil)
 		require.NoError(t, err)
 
 		_, err = os.Stat(filepath.Join(destDir, "ztd"))
@@ -606,7 +604,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 		factory := func(string, *slog.Logger) (fs.RuntimeFileService, error) {
 			return fileSvc, nil
 		}
-		resp, err := operatordeploy.ExecuteDeployHost(ctx, req, factory)
+		resp, err := operatordeploy.ExecuteDeployHost(ctx, req, factory, nil)
 		require.NoError(t, err)
 		require.NotNil(t, resp.State)
 		require.Equal(t, models.OperatorDeploymentPhaseReady, resp.State.Phase)
@@ -625,7 +623,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 			Action:     models.DeployHostActionStop,
 			WorkingDir: testutil.TempDir(t),
 		}
-		resp, err := operatordeploy.ExecuteDeployHost(ctx, req, nil)
+		resp, err := operatordeploy.ExecuteDeployHost(ctx, req, nil, nil)
 		require.NoError(t, err)
 		require.Equal(t, 0, resp.StoppedCount)
 	})
@@ -634,7 +632,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 		req := models.DeployHostRequest{
 			Action: "invalid-action",
 		}
-		_, err := operatordeploy.ExecuteDeployHost(ctx, req, nil)
+		_, err := operatordeploy.ExecuteDeployHost(ctx, req, nil, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unknown deploy-host action")
 	})

@@ -173,7 +173,7 @@ func runDeployHostExec(command string, stdin []byte, stdout, stderr io.Writer) u
 		_, _ = io.WriteString(stderr, "decode deploy-host request: "+err.Error())
 		return 1
 	}
-	resp, err := operatordeploy.ExecuteDeployHost(context.Background(), req, fs.NewRuntimeFileService)
+	resp, err := operatordeploy.ExecuteDeployHost(context.Background(), req, fs.NewRuntimeFileService, operatordeploy.ExecuteDeployHostPreflight)
 	if err != nil {
 		_, _ = io.WriteString(stderr, err.Error())
 		return 1

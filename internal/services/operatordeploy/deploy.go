@@ -402,15 +402,16 @@ type DeployedOperator struct {
 
 // HostTransport executes staging, preflight, and worker launch on one local or remote host.
 type HostTransport struct {
-	Host           string
-	Port           int
-	IdentityFile   string
-	Local          bool
-	BinaryDir      string
-	LaunchID       string
-	RemoteClient   RemoteDeployClient
-	EnsureRecovery func(dir string) error
-	LocalStartFunc func(ctx context.Context, dir, binary string, args []string) (int, error)
+	Host               string
+	Port               int
+	IdentityFile       string
+	Local              bool
+	BinaryDir          string
+	LaunchID           string
+	RemoteClient       RemoteDeployClient
+	EnsureRecovery     func(dir string) error
+	LocalStartFunc     func(ctx context.Context, dir, binary string, args []string) (int, error)
+	LocalPreflightFunc func(ctx context.Context, args []string) error
 }
 
 func (s HostTransport) Name() string { return s.Host }
@@ -472,7 +473,10 @@ func (s HostTransport) InstallBinary(ctx context.Context, sourceBinary, dir stri
 // PreflightGateway runs gateway-preflight on this host.
 func (s HostTransport) PreflightGateway(ctx context.Context, args []string) error {
 	if s.Local {
-		return ExecuteDeployHostPreflight(ctx, args)
+		if s.LocalPreflightFunc == nil {
+			return fmt.Errorf("local gateway preflight handler not configured: %w", constants.ErrOperatorDeployFailed)
+		}
+		return s.LocalPreflightFunc(ctx, args)
 	}
 	_, err := s.RemoteClient.ExecuteAgent(ctx, models.DeployHostRequest{
 		Action:        models.DeployHostActionPreflight,
@@ -541,6 +545,7 @@ type StageOptions struct {
 	Background       bool
 	StartArgs        []string
 	Preflight        []string
+	PreflightFunc    func(ctx context.Context, args []string) error
 	ReadFingerprints bool
 	Events           DeploymentWatcher
 	EnrollTimeout    time.Duration
@@ -651,7 +656,7 @@ func DeployOperator(ctx context.Context, out io.Writer, s HostTransport, sourceB
 	if err != nil {
 		return DeployedOperator{}, err
 	}
-	if !(s.Local && s.LocalStartFunc != nil && sourceBinary == "" && s.BinaryDir == "") {
+	if !s.Local || s.LocalStartFunc == nil || sourceBinary != "" || s.BinaryDir != "" {
 		if err := s.InstallBinary(ctx, sourceBinary, absDir); err != nil {
 			return DeployedOperator{}, err
 		}

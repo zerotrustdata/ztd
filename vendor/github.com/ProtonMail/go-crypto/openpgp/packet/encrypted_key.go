@@ -34,11 +34,11 @@ type EncryptedKey struct {
 	CipherFunc     CipherFunction // only valid after a successful Decrypt for a v3 packet
 	Key            []byte         // only valid after a successful Decrypt
 
-	encryptedMPI1         encoding.Field    // used for RSA, Elgamal and ECDH
-	encryptedMPI2         encoding.Field    // used for Elgamal and ECDH
-	ephemeralPublicEcc    []byte            // used for X25519, X448 and ML-KEM
-	ephemeralPublicMlKem  []byte            // used for ML-KEM
-	encryptedSession      []byte            // used for X25519, X448 and ML-KEM
+	encryptedMPI1        encoding.Field // used for RSA, Elgamal and ECDH
+	encryptedMPI2        encoding.Field // used for Elgamal and ECDH
+	ephemeralPublicEcc   []byte         // used for X25519, X448 and ML-KEM
+	ephemeralPublicMlKem []byte         // used for ML-KEM
+	encryptedSession     []byte         // used for X25519, X448 and ML-KEM
 }
 
 func (e *EncryptedKey) parse(r io.Reader) (err error) {
