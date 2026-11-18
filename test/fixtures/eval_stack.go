@@ -13,6 +13,8 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,7 +24,9 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 )
 
 // EvalStackOptions configures the production-shaped eval fixture.
@@ -52,6 +56,10 @@ type EvalStackOptions struct {
 	// may freeze. Zero or one launches only Data. Every further member is a
 	// separately rooted Data-only Operator on its own host directory.
 	DataOperators int
+	// DeployTargetHostname, when non-empty, provisions an isolated deploy
+	// target host and configures local deploy overrides on initial Data
+	// Operators so operatordeploy stages into it without SSH.
+	DeployTargetHostname string
 }
 
 // EvalStack holds the real Gateway and outbound Operators used by eval
@@ -69,7 +77,12 @@ type EvalStack struct {
 	Inference     *OperatorProcess
 	DataHost      *OperatorHost
 	InferenceHost *OperatorHost
-	Provider      *ScriptedOllama
+	// DeployHost is the provisioned target host for DeployTargetHostname, nil
+	// unless EvalStackOptions.DeployTargetHostname is set.
+	DeployHost *OperatorHost
+	// DeployTargetHostname is the configured local deploy target hostname.
+	DeployTargetHostname string
+	Provider             *ScriptedOllama
 	// Provenance is the Provenance Operator, nil unless EvalStackOptions.Provenance.
 	Provenance *OperatorProcess
 	// Posture is the posture the Gateway runs under.
@@ -110,6 +123,33 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 	witness := NewOperatorWireWitness(t, gateway)
 	provider := NewScriptedOllama(t, opts.Replies)
 
+	var deployHost *OperatorHost
+	var deployOverrides map[string]models.OperatorDeployLocalOverride
+	if opts.DeployTargetHostname != "" {
+		deployHost = NewOperatorHost(t)
+		var deployMu sync.Mutex
+		var deployLaunched bool
+		deployOverrides = map[string]models.OperatorDeployLocalOverride{
+			opts.DeployTargetHostname: {
+				DestDir: deployHost.WorkingDir,
+				StartFunc: func(_ context.Context, _, _ string, args []string) (int, error) {
+					deployMu.Lock()
+					defer deployMu.Unlock()
+					if deployLaunched {
+						return os.Getpid(), nil
+					}
+					deployLaunched = true
+					deploymentID := operatordeploy.OperatorArgValue(args, "--deployment-id")
+					witness.LaunchOperator(t, deployHost, OperatorProcessOptions{
+						DeploymentID: deploymentID,
+						Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData},
+					})
+					return os.Getpid(), nil
+				},
+			},
+		}
+	}
+
 	var dataHost, inferenceHost *OperatorHost
 	var data, inference *OperatorProcess
 	if opts.SharedRuntime {
@@ -120,13 +160,15 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 				constants.OperatorCapabilityData, constants.OperatorCapabilityInference, constants.OperatorCapabilityObserver,
 			},
 			InferenceOllamaEndpoint: provider.Endpoint(),
+			OperatorDeployOverrides: deployOverrides,
 		})
 		inference = data
 	} else {
 		dataHost = NewOperatorHost(t)
 		inferenceHost = NewOperatorHost(t)
 		data = witness.LaunchOperator(t, dataHost, OperatorProcessOptions{
-			Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData},
+			Capabilities:            constants.OperatorCapabilities{constants.OperatorCapabilityData},
+			OperatorDeployOverrides: deployOverrides,
 		})
 		inference = witness.LaunchOperator(t, inferenceHost, OperatorProcessOptions{
 			Capabilities:            constants.OperatorCapabilities{constants.OperatorCapabilityInference, constants.OperatorCapabilityObserver},
@@ -137,7 +179,8 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 	for len(fleet) < opts.DataOperators {
 		host := NewOperatorHost(t)
 		fleet = append(fleet, witness.LaunchOperator(t, host, OperatorProcessOptions{
-			Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData},
+			Capabilities:            constants.OperatorCapabilities{constants.OperatorCapabilityData},
+			OperatorDeployOverrides: deployOverrides,
 		}))
 		fleetHosts = append(fleetHosts, host)
 	}
@@ -177,8 +220,8 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 	return &EvalStack{
 		Gateway: gateway, Identity: identity, Owner: owner, Witness: witness,
 		Data: data, Fleet: fleet, FleetHosts: fleetHosts, Inference: inference, DataHost: dataHost,
-		InferenceHost: inferenceHost, Provider: provider,
-		Provenance: provenance, Posture: posture,
+		InferenceHost: inferenceHost, DeployHost: deployHost, DeployTargetHostname: opts.DeployTargetHostname,
+		Provider: provider, Provenance: provenance, Posture: posture,
 	}
 }
 

@@ -27,17 +27,9 @@ func v7EvidenceTrace(t *testing.T) (*AgentTrace, oracletest.Signer) {
 	inference := newRuntimeLedger(t, oracletest.NewSigner(t), evidenceInferenceOperatorID, evidenceInferenceSessionID)
 	before := data.executed("tx-before", string(constants.ActionTypeFsRead))
 	after := data.executed("tx-after", string(constants.ActionTypeFsRead))
-	receipt := inference.inference("tx-model")
 	trace := evidenceTrace(inference.runtime(), data.runtime())
-	trace.SchemaVersion = agentTraceSchemaVersion
-	trace.CampaignID = "campaign-1"
-	trace.DesignatedRole = "primary"
-	trace.ServedModelTag = "model-a:latest"
-	trace.ModelDigest = strings.Repeat("a", 64)
-	trace.ModelRegistryDigest = strings.Repeat("b", 64)
 	trace.FinalOutput = "answer"
 	trace.Roster[0].Bracket = bracketOf(before, after)
-	withRosterPrompt(trace)
 
 	result := &operatorv1.InferenceResult{
 		PromptTokens:         2,
@@ -63,6 +55,7 @@ func v7EvidenceTrace(t *testing.T) (*AgentTrace, oracletest.Signer) {
 	digest, err := models.ComputeInferenceResultDigest(result)
 	require.NoError(t, err)
 	result.ResultDigest = digest
+	receipt := inference.inference("tx-model")
 	receipt.ResultSummary = digest
 	inference.signer.Resign(t, receipt)
 	trace.ModelCalls = []AgentModelCall{{
@@ -91,12 +84,7 @@ func v7EvidenceTrace(t *testing.T) (*AgentTrace, oracletest.Signer) {
 
 func v7EvidenceTraceWithToolCalls(t *testing.T) *AgentTrace {
 	t.Helper()
-	trace, _ := v7EvidenceTrace(t)
-	legacy, _ := validEvidenceTrace(t)
-	trace.Roster = legacy.Roster
-	trace.ToolCalls = legacy.ToolCalls
-	trace.Input = testAgentTraceInput()
-	withRosterPrompt(trace)
+	trace, _ := validEvidenceTrace(t)
 	return trace
 }
 

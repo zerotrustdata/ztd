@@ -406,6 +406,7 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 		InferenceHosted:           handlers.InferenceHosted,
 		ProviderBoundaryObserver:  handlers.ProviderBoundaryObserver,
 		ModelProvenanceOperator:   handlers.ModelProvenanceOperator,
+		OperatorDeploy:            vs.config.OperatorDeploy,
 		ActuatorSigningKey:        actuatorPriv,
 		ActuatorKeyID:             actuatorKeyID,
 		AuditorSigningKey:         auditorPriv,

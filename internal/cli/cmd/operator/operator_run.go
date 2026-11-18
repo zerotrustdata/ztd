@@ -30,6 +30,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/uuid"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -182,14 +183,14 @@ func operatorStopCmdWithConfig(
 	clientFactory authcmd.APIClientFactory,
 	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error),
 ) *cobra.Command {
-	return operatorStopCmdWithLocal(configLoader, clientFactory, fileSvcFactory, discoverLocalOperators)
+	return operatorStopCmdWithLocal(configLoader, clientFactory, fileSvcFactory, operatordeploy.DiscoverLocalOperators)
 }
 
 func operatorStopCmdWithLocal(
 	configLoader func(string) (*config.Config, error),
 	clientFactory authcmd.APIClientFactory,
 	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error),
-	discover func() ([]localOperatorProcess, error),
+	discover func() ([]operatordeploy.LocalOperatorProcess, error),
 ) *cobra.Command {
 	var reason string
 	var grace time.Duration
@@ -217,7 +218,9 @@ missing from the gateway registry. Remote-only targets receive governed shutdown
 			locals, discoveryErr := discover()
 			defer func() {
 				for _, p := range locals {
-					p.close()
+					if p.Close != nil {
+						p.Close()
+					}
 				}
 			}()
 			if sessionID == "" && discoveryErr != nil {
@@ -269,9 +272,9 @@ missing from the gateway registry. Remote-only targets receive governed shutdown
 				if err := operator.CheckStoppable(target); err != nil {
 					return err
 				}
-				var matched []localOperatorProcess
+				var matched []operatordeploy.LocalOperatorProcess
 				for _, p := range locals {
-					if p.matches(target) {
+					if localOperatorMatches(p, target) {
 						matched = append(matched, p)
 					}
 				}
@@ -315,7 +318,7 @@ missing from the gateway registry. Remote-only targets receive governed shutdown
 					for i := range jobs {
 						p := locals[i]
 						if err := cmd.Context().Err(); err != nil {
-							results[i] = operatorStopResult{PID: p.pid, Method: "failed", Error: err.Error()}
+							results[i] = operatorStopResult{PID: p.PID, Method: "failed", Error: err.Error()}
 							continue
 						}
 						response := models.StopOperatorResponse{}
@@ -323,14 +326,14 @@ missing from the gateway registry. Remote-only targets receive governed shutdown
 						if err == nil {
 							var targets []*operatorv1.OperatorDocument
 							for _, op := range operators {
-								if constants.OperatorType(op.OperatorType) == constants.OperatorTypeRemote && p.matches(op) {
+								if constants.OperatorType(op.OperatorType) == constants.OperatorTypeRemote && localOperatorMatches(p, op) {
 									targets = append(targets, op)
 								}
 							}
 							if len(targets) == 1 {
 								response, err = requestOperatorStop(client, targets[0].OperatorSessionId, reason)
 							} else {
-								err = fmt.Errorf("no unique gateway session for local PID %d", p.pid)
+								err = fmt.Errorf("no unique gateway session for local PID %d", p.PID)
 							}
 						}
 						results[i] = stopLocalOperator(cmd, p, response, err, grace)

@@ -31,6 +31,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	inferencedispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -45,10 +46,14 @@ const DispatchTimeout = 30 * time.Second
 
 // resultDeadline is how long dispatchEnvelope waits for a terminal result when
 // the request sets no explicit Timeout. An action that carries its own execution
-// timeout (EXECUTE_BASH, OLLAMA_MODEL_PULL) waits that long plus DispatchTimeout
-// as the governed round-trip margin, so a long command or download is not
-// reported as a 504 while it is still running on the Operator.
+// timeout (EXECUTE_BASH, OLLAMA_MODEL_PULL, OPERATOR_DEPLOY) waits that long
+// plus DispatchTimeout as the governed round-trip margin, so a long command,
+// download, or deployment is not reported as a 504 while it is still running
+// on the Operator.
 func resultDeadline(actionType constants.ActionType, payload []byte) time.Duration {
+	if actionType == constants.ActionTypeOperatorDeploy {
+		return operatordeploy.DefaultEnrollTimeout + DispatchTimeout
+	}
 	if actionType != constants.ActionTypeExecuteBash && actionType != constants.ActionTypeOllamaModelPull {
 		return DispatchTimeout
 	}

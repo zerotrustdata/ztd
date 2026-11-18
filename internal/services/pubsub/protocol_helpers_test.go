@@ -104,6 +104,13 @@ func TestMapProtoToPayloadType(t *testing.T) {
 		assert.Equal(t, "heartbeat", result)
 	})
 
+	t.Run("maps OperatorDeployResult to operator_deploy_result", func(t *testing.T) {
+		t.Parallel()
+		msg := &operatorv1.OperatorDeployResult{}
+		result := mapProtoToPayloadType(msg)
+		assert.Equal(t, "operator_deploy_result", result)
+	})
+
 	t.Run("maps FetchFileHistoryResult with success=false to fetch_file_history_error", func(t *testing.T) {
 		t.Parallel()
 		msg := &operatorv1.FetchFileHistoryResult{Success: false}
@@ -468,6 +475,15 @@ func TestUnmarshalPayload(t *testing.T) {
 		msg, err := unmarshalPayload(constants.Event.Operator.Eval.AnswerRequested, payload)
 		require.NoError(t, err)
 		assert.IsType(t, &operatorv1.EvalAnswerRequested{}, msg)
+	})
+
+	t.Run("unmarshals OperatorDeployRequested", func(t *testing.T) {
+		t.Parallel()
+		req := &operatorv1.OperatorDeployRequested{ExecutionId: "exec-1", Hostnames: []string{"localhost"}}
+		payload, _ := proto.Marshal(req)
+		msg, err := unmarshalPayload(constants.EventOperatorDeployRequested, payload)
+		require.NoError(t, err)
+		assert.IsType(t, &operatorv1.OperatorDeployRequested{}, msg)
 	})
 
 	t.Run("rejects unknown event type", func(t *testing.T) {

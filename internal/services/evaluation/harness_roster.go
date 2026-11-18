@@ -94,6 +94,25 @@ func renderRosterPrompt(roster []AgentTraceRosterMember) string {
 	return b.String()
 }
 
+// renderRosterUpdateMessage renders the user-role roster update block appended
+// to the conversation after a newly deployed Data Operator joins the roster.
+func renderRosterUpdateMessage(member AgentTraceRosterMember) string {
+	var b strings.Builder
+	b.WriteString("<operator_roster_update>\n")
+	fmt.Fprintf(&b, "Added Operator [%d] operator_id=%s", member.Index, member.Runtime.OperatorID)
+	for _, field := range []struct{ name, value string }{
+		{"hostname", member.Hostname}, {"os", member.OS}, {"arch", member.Architecture},
+	} {
+		if field.value != "" {
+			fmt.Fprintf(&b, " %s=%s", field.name, field.value)
+		}
+	}
+	fmt.Fprintf(&b, " workspace=%s\n", member.Workspace.Root)
+	b.WriteString("Use target_operators (roster indexes, Operator IDs, hostnames, or [\"all\"]) to target it.\n")
+	b.WriteString("</operator_roster_update>\n")
+	return b.String()
+}
+
 // splitTargetOperators removes target_operators from raw tool arguments. It
 // returns the remaining arguments, the selectors, and whether the argument was
 // present. An explicit null is absent. problem is the model-visible reason a
@@ -400,9 +419,9 @@ func catalogToolSpec(name string) (agentToolSpec, error) {
 // turn that requested it. The group's first record must match a requested
 // call exactly; every record must share its identity and arguments; and the
 // records' targets must be exactly the targets the signed request resolves
-// to against the frozen roster, in roster order. A request that fails its
-// contract or its target resolution is one record with no target.
-func verifyFanOutGroup(trace *AgentTrace, turns map[string]*AgentModelCall, specs map[string]agentToolSpec, group []AgentToolCall) error {
+// to against the active roster at that turn, in roster order. A request that
+// fails its contract or its target resolution is one record with no target.
+func verifyFanOutGroup(activeRoster []AgentTraceRosterMember, turns map[string]*AgentModelCall, specs map[string]agentToolSpec, group []AgentToolCall) error {
 	mismatch := func(reason string) error {
 		return fmt.Errorf("tool call group %s %s: %w", group[0].GroupID, reason, constants.ErrHarnessFanOutMismatch)
 	}
@@ -433,7 +452,7 @@ func verifyFanOutGroup(trace *AgentTrace, turns map[string]*AgentModelCall, spec
 	}
 	var targets []int
 	if declared && request.Failure == nil {
-		targets, _ = resolveRosterTargets(trace.Roster, request.TargetSelectors, request.TargetsPresent)
+		targets, _ = resolveRosterTargets(activeRoster, request.TargetSelectors, request.TargetsPresent)
 	}
 	if len(targets) == 0 {
 		if len(group) != 1 || lead.TargetIndex != 0 {

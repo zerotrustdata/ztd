@@ -41,6 +41,7 @@ const (
 	ActionTypeOllamaModelPull                   ActionType = "OLLAMA_MODEL_PULL"
 	ActionTypeOllamaModelRelease                ActionType = "OLLAMA_MODEL_RELEASE"
 	ActionTypeOllamaModelResidency              ActionType = "OLLAMA_MODEL_RESIDENCY"
+	ActionTypeOperatorDeploy                    ActionType = "OPERATOR_DEPLOY"
 	ActionTypePlatformEnrollmentBindConsensus   ActionType = "PLATFORM_ENROLLMENT_BIND_CONSENSUS"
 	ActionTypePlatformEnrollmentCreate          ActionType = "PLATFORM_ENROLLMENT_CREATE"
 	ActionTypePlatformEnrollmentCreateSession   ActionType = "PLATFORM_ENROLLMENT_CREATE_SESSION"
@@ -85,6 +86,7 @@ var AllActionTypes = []ActionType{
 	ActionTypeOllamaModelPull,
 	ActionTypeOllamaModelRelease,
 	ActionTypeOllamaModelResidency,
+	ActionTypeOperatorDeploy,
 	ActionTypePlatformEnrollmentBindConsensus,
 	ActionTypePlatformEnrollmentCreate,
 	ActionTypePlatformEnrollmentCreateSession,
@@ -114,6 +116,7 @@ func (a ActionType) IsMutation() bool {
 		ActionTypeOllamaModelCopy,
 		ActionTypeOllamaModelPull,
 		ActionTypeOllamaModelRelease,
+		ActionTypeOperatorDeploy,
 		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentDecide,
@@ -173,6 +176,7 @@ func (a ActionType) IsStateChange() bool {
 		ActionTypeMcpCall,
 		ActionTypeOllamaModelCopy,
 		ActionTypeOllamaModelPull,
+		ActionTypeOperatorDeploy,
 		ActionTypePlatformEnrollmentBindConsensus,
 		ActionTypePlatformEnrollmentCreateSession,
 		ActionTypePlatformEnrollmentDecide,

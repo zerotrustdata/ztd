@@ -25,14 +25,14 @@ import (
 // as a missing one.
 const (
 	DevOpsFleetSuiteID      = "devops-fleet"
-	DevOpsFleetSuiteVersion = "1.0.0"
+	DevOpsFleetSuiteVersion = "1.1.0"
 	devOpsFleetScenarioVer  = "1.0.0"
 	// devOpsFleetSize is the roster every fleet scenario needs.
 	devOpsFleetSize = 3
 )
 
 // DevOpsFleetScenarioCount is the number of scenarios in the suite.
-const DevOpsFleetScenarioCount = 4
+const DevOpsFleetScenarioCount = 5
 
 // devOpsFleet is the roster requirement of every scenario in the suite.
 var devOpsFleet = ScenarioFleet{MinOperators: devOpsFleetSize}
@@ -44,6 +44,7 @@ func devOpsFleetBlueprints() []ScenarioBlueprint {
 		fleetSubsetFeatureFlag(),
 		fleetDriftRepair(),
 		fleetLogErrorSweep(),
+		fleetDeployThenUse(),
 	}
 }
 
@@ -268,6 +269,71 @@ func fleetLogErrorSweep() ScenarioBlueprint {
 			},
 			Seed:  InvestigationSeed{CaseTitle: "Fleet error sweep"},
 			Fleet: devOpsFleet,
+		},
+		Gold: gold,
+	}
+}
+
+func fleetDeployThenUse() ScenarioBlueprint {
+	gold := baseGold(
+		"Read the pending inventory, deploy a Data Operator to the pending host, and roll out the approved log level change across all three Operators.",
+		"Primary discovers the pending host, deploys a Data Operator to it, waits for it to join the roster, and rolls out the edit to all three Operators.",
+		"Assistant discovers the pending host, deploys a Data Operator to it, waits for it to join the roster, and rolls out the edit to all three Operators.",
+		"Lite is not eligible for this scenario.",
+		"Homogeneous lane verifies the governed deploy, roster join, and resulting config file across all three Operators.",
+		"Heterogeneous lane verifies the governed deploy, roster join, and resulting config file across all three Operators.",
+		[]string{"model_inference", "tool_call", "governed_action", "state_observation"},
+	)
+	gold.FileState = []investigation.FileState{{
+		Path:      "app/config.yaml",
+		SHA256:    models.SHA256Hex([]byte(fleetAppConfigAfter)),
+		Operators: []int{1, 2, 3},
+	}}
+	gold.ContentCheck = &ScenarioContentCheck{RequiredTerms: [][]string{{"app-03"}, {"info"}}}
+	gold.ArgumentValidators = []ToolArgumentValidator{
+		{
+			ToolName: constants.MCPToolOperatorDeploy,
+			Arguments: []ToolArgumentConstraint{
+				{Name: "hostnames", RequiredTerms: [][]string{{"app-03"}}},
+			},
+		},
+		{
+			ToolName: constants.MCPToolFileEdit,
+			Arguments: []ToolArgumentConstraint{
+				{Name: "file_path", PathEquals: ScenarioWorkspaceToken + "/app/config.yaml"},
+				{Name: "old_content", RequiredTerms: [][]string{{"debug"}}},
+				{Name: "new_content", RequiredTerms: [][]string{{"info"}}},
+			},
+		},
+	}
+	gold.PolicyExpectation = ScenarioPolicyExpectation{ExpectedOutcome: "allow", Detail: "Deploying the pending Data Operator and applying the narrow configuration change across all three Operators must be accepted by governance."}
+	gold.PromptHint = fleetEditHint("app/config.yaml", "approved fleet log level rollout")
+	gold.PromptHint.HintedTools = append(gold.PromptHint.HintedTools, constants.MCPToolReadFile, constants.MCPToolOperatorDeploy)
+	gold.PromptHint.Arguments = append(gold.PromptHint.Arguments,
+		hintArg(constants.MCPToolReadFile, "path", sourceWorkspace, ScenarioWorkspaceToken+"/inventory/pending.yaml"),
+		hintArg(constants.MCPToolOperatorDeploy, "hostnames", sourceWorkspace, "app-03"),
+	)
+	return ScenarioBlueprint{
+		ScenarioID:        "fleet-deploy-then-use",
+		ScenarioVersion:   devOpsFleetScenarioVer,
+		Category:          evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_FLEET_OPERATIONS,
+		PublicDescription: "Discover a pending host in inventory, deploy a Data Operator to it, and roll out a configuration change across all three Operators.",
+		GradingMethod:     gradingDeterministic,
+		EligibleRoles:     rolesPrimaryAssistant,
+		TrajectoryPolicy:  policyGuided,
+		AllowedTools:      []string{constants.MCPToolReadFile, constants.MCPToolOperatorDeploy, constants.MCPToolFileEdit},
+		ExpectedTools:     []string{constants.MCPToolReadFile, constants.MCPToolOperatorDeploy, constants.MCPToolFileEdit},
+		RequiredConcepts:  []string{"fleet-fan-out", "operator-deploy", "governed-edit"},
+		Input: ScenarioInputFixture{
+			UserPrompt: devOpsEngineerFraming + "Read " + ScenarioWorkspaceToken + "/inventory/pending.yaml to find the server pending deployment, deploy a Data Operator to that hostname with operator_deploy, and once it joins your roster, roll out the approved change on all three Operators: in " + ScenarioWorkspaceToken + "/app/config.yaml replace log_level: debug with log_level: info. Leave the other settings unchanged, then confirm the deployed server and the new log level.",
+			WorkspaceFiles: []ScenarioWorkspaceFile{
+				workspaceFile("app-config", "app/config.yaml", fleetAppConfigBefore, false),
+				fleetInventory(1, "app-01", "app"),
+				fleetInventory(2, "app-02", "app"),
+				onMembers(workspaceFile("pending-inventory", "inventory/pending.yaml", "host: app-03\nrole: app\nstatus: pending_deploy\n", false), 1, 2),
+			},
+			Seed:  InvestigationSeed{CaseTitle: "Deploy pending operator and roll out config"},
+			Fleet: ScenarioFleet{MinOperators: 2, DeployTargets: 1},
 		},
 		Gold: gold,
 	}

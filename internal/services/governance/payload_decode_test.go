@@ -119,6 +119,7 @@ func TestDecodePayloadForAction_KnownActionsDecode(t *testing.T) {
 		constants.ActionTypeExecuteBash,
 		constants.ActionTypeMcpCall,
 		constants.ActionTypeHeartbeat,
+		constants.ActionTypeOperatorDeploy,
 	}
 	for _, at := range samples {
 		t.Run(string(at), func(t *testing.T) {

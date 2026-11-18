@@ -22,6 +22,7 @@ import (
 	"golang.org/x/sys/windows"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -49,8 +50,8 @@ func TestOperatorDeployLocalWindowsDoesNotWaitForDetachedWorkers(t *testing.T) {
 		dir := filepath.Join(root, strconv.Itoa(i))
 		require.NoError(t, os.Mkdir(dir, constants.PermDirPrivate))
 		require.NoError(t, CopyFile(bin, filepath.Join(dir, "ztd.exe")))
-		host := deploySSH{local: true}
-		require.NoError(t, host.startOperator(t.Context(), dir, constants.LocalhostIP))
+		host := operatordeploy.HostTransport{Local: true}
+		require.NoError(t, host.StartOperator(t.Context(), dir, constants.LocalhostIP))
 		data, err := os.ReadFile(filepath.Join(dir, constants.OperatorPIDFilename))
 		require.NoError(t, err)
 		pid, err := strconv.Atoi(strings.TrimSpace(string(data)))

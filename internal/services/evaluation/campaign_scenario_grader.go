@@ -250,9 +250,9 @@ func (g homogeneousGrader) gradeContent() scenarioContentResult {
 	if !g.isLiteTriageCell() && !fileStateOnlyObjective && (g.req.ScenarioGold.ContentCheck != nil || !g.semanticJudge()) {
 		if g.req.ScenarioGold.ContentCheck != nil {
 			contentPassed, contentDetail = evaluateContentCheckForGold(trace.FinalOutput, *g.req.ScenarioGold.ContentCheck, ws, g.req.ScenarioGold)
-			// Only the Interrogator asks: a v11 reasoner that writes the block
+			// Only the Interrogator asks: a reasoner that writes the block
 			// itself did not signal for clarification.
-			if contentPassed && trace.carriesPersona() && endedInInterrogationForGold(trace.FinalOutput, g.req.ScenarioGold) && !trace.interrogatorAsked(trace.FinalOutput) {
+			if contentPassed && endedInInterrogationForGold(trace.FinalOutput, g.req.ScenarioGold) && !trace.interrogatorAsked(trace.FinalOutput) {
 				contentPassed, contentDetail = false, constants.ErrEvaluationInterrogationNotSignalled.Error()
 			}
 			if contentPassed && g.req.ScenarioGold.ContentCheck.SearchPattern != "" {
@@ -545,6 +545,11 @@ func (g homogeneousGrader) evaluateFileState() finalCheck {
 	roster := g.view.Trace.Roster
 	denied := false
 	for _, state := range g.req.ScenarioGold.FileState {
+		for _, index := range state.Operators {
+			if index < 1 || index > len(roster) {
+				return finalCheck{detail: fmt.Sprintf("%s requires roster [%d], but roster only has %d Operator(s)", state.Path, index, len(roster))}
+			}
+		}
 		for _, index := range rosterSubset(roster, state.Operators) {
 			ws := roster[index-1].ScenarioWorkspace()
 			label := fmt.Sprintf("%s on roster [%d]", state.Path, index)

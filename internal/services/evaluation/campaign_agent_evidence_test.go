@@ -9,15 +9,19 @@ package evaluation
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	govhash "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
@@ -114,26 +118,177 @@ func evidenceResultDigest(txID string) string {
 	return "digest-" + txID
 }
 
-func completedModelCall(txID string, receipt *operatorv1.EventReceipt) AgentModelCall {
+func buildModelTurnResult(tb testing.TB, trace *AgentTrace, attemptID, text string, tools ...*operatorv1.InferenceToolCall) *operatorv1.InferenceResult {
+	tb.Helper()
+	var parts []*operatorv1.InferenceResponsePart
+	if text != "" {
+		parts = append(parts, &operatorv1.InferenceResponsePart{Part: &operatorv1.InferenceResponsePart_Text{Text: text}})
+	}
+	for _, tc := range tools {
+		parts = append(parts, &operatorv1.InferenceResponsePart{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: tc}})
+	}
+	result := &operatorv1.InferenceResult{
+		PromptTokens:         2,
+		CompletionTokens:     3,
+		TotalTokens:          5,
+		FinishReason:         "stop",
+		Model:                trace.ServedModelTag,
+		Parts:                parts,
+		UsageReported:        true,
+		ProviderAttemptId:    attemptID,
+		RequestedModel:       trace.ServedModelTag,
+		RequestedModelDigest: trace.ModelDigest,
+		ServedModelDigest:    trace.ModelDigest,
+		CampaignId:           trace.CampaignID,
+		RunId:                trace.RunID,
+		AssignmentId:         trace.AssignmentID,
+		EvaluationAttemptId:  trace.EvaluationAttemptID,
+		ScenarioId:           trace.ScenarioID,
+		ModelRegistryDigest:  trace.ModelRegistryDigest,
+		LoadState:            operatorv1.InferenceLoadState_INFERENCE_LOAD_STATE_UNSPECIFIED,
+		RetryClassification:  operatorv1.InferenceRetryClassification_INFERENCE_RETRY_CLASSIFICATION_UNSPECIFIED,
+	}
+	digest, err := models.ComputeInferenceResultDigest(result)
+	require.NoError(tb, err)
+	result.ResultDigest = digest
+	return result
+}
+
+func modelCallFromResult(txID string, loopTurn int, trace *AgentTrace, result *operatorv1.InferenceResult, receipt *operatorv1.EventReceipt, toolsCount int, text string) AgentModelCall {
 	return AgentModelCall{
-		ProviderAttemptID: "attempt-" + txID,
+		ProviderAttemptID: result.GetProviderAttemptId(),
 		TransactionID:     txID,
-		ResultDigest:      evidenceResultDigest(txID),
+		Purpose:           agentModelCallPurposeTurn,
+		LoopTurn:          loopTurn,
+		ModelVariantID:    "variant-a",
+		ModelRole:         operatorv1.ModelRole_MODEL_ROLE_PRIMARY.String(),
+		ServedModelTag:    trace.ServedModelTag,
+		ModelDigest:       trace.ModelDigest,
+		ToolsDeclared:     []string{},
+		ResultDigest:      result.GetResultDigest(),
+		UsageReported:     true,
+		PromptTokens:      2,
+		CompletionTokens:  3,
+		FinishReason:      "stop",
+		LoadState:         operatorLoadStateToEvaluation(result.GetLoadState()).String(),
+		Text:              text,
+		ToolCallCount:     toolsCount,
 		Receipt:           &AgentTraceReceipt{EventReceipt: receipt},
+		InferenceResult:   &AgentTraceInferenceResult{InferenceResult: result},
 	}
 }
 
-func failedModelCall(txID string, receipt *operatorv1.EventReceipt) AgentModelCall {
+func sealModelTurn(tb testing.TB, ledger *evidenceLedger, trace *AgentTrace, txID string, loopTurn int, tools ...*operatorv1.InferenceToolCall) AgentModelCall {
+	tb.Helper()
+	result := buildModelTurnResult(tb, trace, "attempt-"+txID, "", tools...)
+	receipt := ledger.executed(txID, string(constants.ActionTypeInference))
+	receipt.ResultSummary = result.GetResultDigest()
+	ledger.signer.Resign(tb, receipt)
+	return modelCallFromResult(txID, loopTurn, trace, result, receipt, len(tools), "")
+}
+
+func sealFailedModelTurn(txID string, loopTurn int, trace *AgentTrace, receipt *operatorv1.EventReceipt) AgentModelCall {
 	return AgentModelCall{
 		ProviderAttemptID: "attempt-" + txID,
 		TransactionID:     txID,
+		Purpose:           agentModelCallPurposeTurn,
+		LoopTurn:          loopTurn,
+		ModelVariantID:    "variant-a",
+		ModelRole:         operatorv1.ModelRole_MODEL_ROLE_PRIMARY.String(),
+		ServedModelTag:    trace.ServedModelTag,
+		ModelDigest:       trace.ModelDigest,
 		Error:             "provider failed",
 		Receipt:           &AgentTraceReceipt{EventReceipt: receipt},
 	}
 }
 
-func allowedToolCall(txID string, receipt *operatorv1.EventReceipt) AgentToolCall {
-	return AgentToolCall{CallID: "call-" + txID, GroupID: "call-" + txID, TargetIndex: 1, TransactionID: txID, PolicyDecision: agentPolicyDecisionAllow, Receipt: &AgentTraceReceipt{EventReceipt: receipt}}
+func prepareShellToolCall(tb testing.TB, trace *AgentTrace, modelTxID, callID, command string) (*operatorv1.InferenceToolCall, AgentToolCall) {
+	tb.Helper()
+	const targetIndex = 1
+	args := (models.RunShellCommandRequest{Command: command}).CanonicalJSON()
+	member := trace.Roster[targetIndex-1]
+	spec, err := catalogToolSpec(constants.MCPToolRunShellCommand)
+	require.NoError(tb, err)
+	dispatchArgs, failure, err := harnessDispatchArguments(spec, args, member, trace.InvestigationID)
+	require.NoError(tb, err)
+	require.Nil(tb, failure)
+	payload, err := proto.Marshal(&operatorv1.McpCallRequested{
+		ToolName:      constants.MCPToolRunShellCommand,
+		ArgumentsJson: dispatchArgs,
+		ExecutionId:   callID,
+	})
+	require.NoError(tb, err)
+	envelope := &commonv1.GovernanceEnvelope{
+		ActionType:        string(constants.ActionTypeMcpCall),
+		TargetResource:    constants.MCPToolRunShellCommand,
+		Payload:           payload,
+		OperatorId:        member.Runtime.OperatorID,
+		OperatorSessionId: member.Runtime.SessionID,
+		InvestigationId:   trace.InvestigationID,
+		TaskId:            trace.EvaluationAttemptID,
+	}
+	hash, err := govhash.GenerateMessageID(envelope)
+	require.NoError(tb, err)
+	envelope.TransactionHash = hash
+	requestedArgs := args
+	var targetOperators []string
+	if len(trace.Roster) > 1 {
+		target := fmt.Sprintf("%d", targetIndex)
+		targetOperators = []string{target}
+		requestedArgs = fmt.Sprintf(`{"command":%q,"target_operators":[%q]}`, command, target)
+	}
+	call := AgentToolCall{
+		CallID:          callID,
+		GroupID:         callID,
+		ModelCallID:     "attempt-" + modelTxID,
+		ProviderCallID:  "provider-" + callID,
+		ToolName:        constants.MCPToolRunShellCommand,
+		TargetOperators: targetOperators,
+		TargetIndex:     targetIndex,
+		ArgumentsJSON:   args,
+		LoopTurn:        1,
+		ActionType:      string(constants.ActionTypeMcpCall),
+		RequestEnvelope: &AgentTraceEnvelope{GovernanceEnvelope: envelope},
+	}
+	requested := &operatorv1.InferenceToolCall{
+		CallId:        call.ProviderCallID,
+		Name:          constants.MCPToolRunShellCommand,
+		ArgumentsJson: requestedArgs,
+	}
+	return requested, call
+}
+
+func attachShellToolReceipt(tb testing.TB, ledger *evidenceLedger, call AgentToolCall, txID string, receipt *operatorv1.EventReceipt) AgentToolCall {
+	tb.Helper()
+	envelope := call.RequestEnvelope.GovernanceEnvelope
+	envelope.Id = txID
+	receipt.TransactionHash = envelope.GetTransactionHash()
+	receipt.ResultSummary = `{"exit_code":0,"stdout":"ok"}`
+	for _, stage := range receipt.DeterministicStageEvidence {
+		stage.TransactionHash = envelope.GetTransactionHash()
+	}
+	ledger.signer.Resign(tb, receipt)
+	call.TransactionID = txID
+	call.PolicyDecision = agentPolicyDecisionAllow
+	call.Receipt = &AgentTraceReceipt{EventReceipt: receipt}
+	completed, err := (&agentRun{}).completeNativeToolCall(call)
+	require.NoError(tb, err)
+	return completed
+}
+
+func commitShellToolCall(tb testing.TB, ledger *evidenceLedger, call AgentToolCall, txID string) AgentToolCall {
+	tb.Helper()
+	return attachShellToolReceipt(tb, ledger, call, txID, ledger.executed(txID, string(constants.ActionTypeMcpCall)))
+}
+
+func rejectShellToolCall(tb testing.TB, ledger *evidenceLedger, call AgentToolCall, txID string) AgentToolCall {
+	tb.Helper()
+	rejected := ledger.rejected(txID, string(constants.ActionTypeMcpCall))
+	call.TransactionID = txID
+	call.PolicyDecision = agentPolicyDecisionDeny
+	call.RequestEnvelope = nil
+	call.Receipt = &AgentTraceReceipt{EventReceipt: rejected}
+	return call
 }
 
 func bracketOf(before, after *operatorv1.EventReceipt) *AgentTraceBracket {
@@ -141,23 +296,44 @@ func bracketOf(before, after *operatorv1.EventReceipt) *AgentTraceBracket {
 }
 
 func evidenceTrace(inference, data AgentTraceRuntime) *AgentTrace {
-	return &AgentTrace{
-		SchemaVersion: agentTraceSchemaVersionV6,
-		RunID:         "run-1", AssignmentID: "assignment-1", EvaluationAttemptID: "attempt-1", ScenarioID: "scenario-1",
-		Inference: inference, Roster: rosterOfOne(data, AgentTraceWorkspace{}), Input: testAgentTraceInput(),
+	trace := &AgentTrace{
+		SchemaVersion:       agentTraceSchemaVersion,
+		CampaignID:          "campaign-1",
+		RunID:               "run-1",
+		AssignmentID:        "assignment-1",
+		EvaluationAttemptID: "attempt-1",
+		ScenarioID:          "scenario-1",
+		DesignatedRole:      "primary",
+		ServedModelTag:      "model-a:latest",
+		ModelDigest:         strings.Repeat("a", 64),
+		ModelRegistryDigest: strings.Repeat("b", 64),
+		Inference:           inference,
+		Roster:              rosterOfOne(data, AgentTraceWorkspace{Root: "/work", OperatorWorkingDirectory: "/"}),
+		Input:               testAgentTraceInput(),
 	}
+	withRosterPrompt(trace)
+	return trace
 }
 
 // testAgentTraceInput is the minimal recorded model input a sealed trace
 // requires.
 func testAgentTraceInput() *AgentTraceInput {
-	return &AgentTraceInput{
-		Messages: []AgentTraceMessage{
-			{Role: "INFERENCE_MESSAGE_ROLE_SYSTEM", Text: "You are the primary investigator."},
-			{Role: "INFERENCE_MESSAGE_ROLE_USER", Text: "Why is checkout failing?"},
-		},
-		Tools: []AgentTraceTool{{Name: "inspect", Description: "Inspect one target.", JSONSchema: `{"type":"object"}`}},
+	catalog, err := newAgentToolCatalog()
+	if err != nil {
+		panic(err)
 	}
+	scope, err := catalog.Scope(ScenarioToolExpectations{AllowedTools: []string{constants.MCPToolRunShellCommand}})
+	if err != nil {
+		panic(err)
+	}
+	input, err := newAgentTraceInput([]*operatorv1.InferenceMessage{
+		agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, "You are the primary investigator."),
+		agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, "Why is checkout failing?"),
+	}, scope.Declarations())
+	if err != nil {
+		panic(err)
+	}
+	return input
 }
 
 // validEvidenceTrace returns a trace on distinct Inference and Data runtimes
@@ -169,17 +345,16 @@ func validEvidenceTrace(t *testing.T) (*AgentTrace, oracletest.Signer) {
 	signer := oracletest.NewSigner(t)
 	data := newEvidenceLedger(t, signer)
 	inference := newRuntimeLedger(t, oracletest.NewSigner(t), evidenceInferenceOperatorID, evidenceInferenceSessionID)
-	model := inference.inference("tx-m1")
-	before := data.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
-	executed := data.executed("tx-1", string(constants.ActionTypeExecuteBash))
-	rejected := data.rejected("tx-2", string(constants.ActionTypeExecuteBash))
-	after := data.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
 	trace := evidenceTrace(inference.runtime(), data.runtime())
-	trace.ModelCalls = []AgentModelCall{completedModelCall("tx-m1", model)}
-	trace.ToolCalls = []AgentToolCall{
-		allowedToolCall("tx-1", executed),
-		{CallID: "call-2", GroupID: "call-2", TargetIndex: 1, TransactionID: "tx-2", PolicyDecision: agentPolicyDecisionDeny, Receipt: &AgentTraceReceipt{EventReceipt: rejected}},
-	}
+	req1, call1 := prepareShellToolCall(t, trace, "tx-m1", "call-1", "echo")
+	req2, call2 := prepareShellToolCall(t, trace, "tx-m1", "call-2", "rm")
+	m1 := sealModelTurn(t, inference, trace, "tx-m1", 1, req1, req2)
+	before := data.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
+	call1 = commitShellToolCall(t, data, call1, "tx-1")
+	call2 = rejectShellToolCall(t, data, call2, "tx-2")
+	after := data.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
+	trace.ModelCalls = []AgentModelCall{m1}
+	trace.ToolCalls = []AgentToolCall{call1, call2}
 	trace.Roster[0].Bracket = bracketOf(before, after)
 	return trace, signer
 }
@@ -190,14 +365,15 @@ func validEvidenceTrace(t *testing.T) (*AgentTrace, oracletest.Signer) {
 func sharedRuntimeTrace(t *testing.T) (*AgentTrace, *evidenceLedger) {
 	t.Helper()
 	ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
-	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
-	first := ledger.inference("tx-m1")
-	tool := ledger.executed("tx-1", string(constants.ActionTypeExecuteBash))
-	second := ledger.inference("tx-m2")
-	after := ledger.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
 	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
-	trace.ModelCalls = []AgentModelCall{completedModelCall("tx-m1", first), completedModelCall("tx-m2", second)}
-	trace.ToolCalls = []AgentToolCall{allowedToolCall("tx-1", tool)}
+	req1, call1 := prepareShellToolCall(t, trace, "tx-m1", "call-1", "echo")
+	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
+	m1 := sealModelTurn(t, ledger, trace, "tx-m1", 1, req1)
+	call1 = commitShellToolCall(t, ledger, call1, "tx-1")
+	m2 := sealModelTurn(t, ledger, trace, "tx-m2", 2)
+	after := ledger.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
+	trace.ModelCalls = []AgentModelCall{m1, m2}
+	trace.ToolCalls = []AgentToolCall{call1}
 	trace.Roster[0].Bracket = bracketOf(before, after)
 	return trace, ledger
 }
@@ -223,14 +399,6 @@ func TestVerifyAgentTraceEvidence_AcceptsConnectedBracketWithExecutedAndRejected
 	require.NoError(t, VerifyAgentTraceEvidence(trace))
 }
 
-// Published legacy traces stay verifiable directly: the live import's schema pin
-// is the gate that stops an earlier-version trace from being graded live.
-func TestVerifyAgentTraceEvidence_AcceptsLegacyV6Trace(t *testing.T) {
-	trace, _ := validEvidenceTrace(t)
-	require.Equal(t, agentTraceSchemaVersionV6, trace.SchemaVersion)
-	require.NoError(t, VerifyAgentTraceEvidence(trace))
-}
-
 func TestVerifyAgentTraceEvidence_RejectsFlippedSignatureByteInCallReceipt(t *testing.T) {
 	trace, _ := validEvidenceTrace(t)
 	receipt := trace.ToolCalls[0].Receipt.EventReceipt
@@ -242,7 +410,7 @@ func TestVerifyAgentTraceEvidence_RejectsFlippedSignatureByteInCallReceipt(t *te
 func TestVerifyAgentTraceEvidence_RejectsReceiptSignedByAnotherKey(t *testing.T) {
 	trace, _ := validEvidenceTrace(t)
 	stranger := newEvidenceLedger(t, oracletest.NewSigner(t))
-	trace.ToolCalls[0].Receipt = &AgentTraceReceipt{EventReceipt: stranger.executed("tx-1", string(constants.ActionTypeExecuteBash))}
+	trace.ToolCalls[0] = attachShellToolReceipt(t, stranger, trace.ToolCalls[0], "tx-1", stranger.executed("tx-1", string(constants.ActionTypeMcpCall)))
 
 	requireEvidenceError(t, trace, constants.ErrConformanceAnchorUnknown)
 }
@@ -293,11 +461,15 @@ func TestVerifyAgentTraceEvidence_RejectsExecutedReceiptOnCallRecordedAsDeny(t *
 // bracket, so only the session comparison can reject it.
 func TestVerifyAgentTraceEvidence_RejectsClaimedToolReceiptFromAnotherSession(t *testing.T) {
 	ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
-	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
-	foreign := ledger.executedInSession("tx-1", string(constants.ActionTypeExecuteBash), "session-other")
-	after := ledger.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
 	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
-	trace.ToolCalls = []AgentToolCall{allowedToolCall("tx-1", foreign)}
+	req1, call1 := prepareShellToolCall(t, trace, "tx-m1", "call-1", "echo")
+	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
+	m1 := sealModelTurn(t, ledger, trace, "tx-m1", 1, req1)
+	foreign := ledger.executedInSession("tx-1", string(constants.ActionTypeMcpCall), "session-other")
+	call1 = attachShellToolReceipt(t, ledger, call1, "tx-1", foreign)
+	after := ledger.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
+	trace.ModelCalls = []AgentModelCall{m1}
+	trace.ToolCalls = []AgentToolCall{call1}
 	trace.Roster[0].Bracket = bracketOf(before, after)
 
 	requireEvidenceError(t, trace, constants.ErrEvaluationEvidenceTraceMismatch)
@@ -307,13 +479,14 @@ func TestVerifyAgentTraceEvidence_RejectsClaimedInferenceReceiptFromAnotherSessi
 	signer := oracletest.NewSigner(t)
 	data := newEvidenceLedger(t, signer)
 	inference := newRuntimeLedger(t, oracletest.NewSigner(t), evidenceInferenceOperatorID, evidenceInferenceSessionID)
+	trace := evidenceTrace(inference.runtime(), data.runtime())
+	result := buildModelTurnResult(t, trace, "attempt-tx-m1", "")
 	model := inference.executedInSession("tx-m1", string(constants.ActionTypeInference), "session-other")
-	model.ResultSummary = evidenceResultDigest("tx-m1")
+	model.ResultSummary = result.GetResultDigest()
 	inference.signer.Resign(t, model)
 	before := data.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
 	after := data.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
-	trace := evidenceTrace(inference.runtime(), data.runtime())
-	trace.ModelCalls = []AgentModelCall{completedModelCall("tx-m1", model)}
+	trace.ModelCalls = []AgentModelCall{modelCallFromResult("tx-m1", 1, trace, result, model, 0, "")}
 	trace.Roster[0].Bracket = bracketOf(before, after)
 
 	requireEvidenceError(t, trace, constants.ErrEvaluationEvidenceTraceMismatch)
@@ -321,12 +494,15 @@ func TestVerifyAgentTraceEvidence_RejectsClaimedInferenceReceiptFromAnotherSessi
 
 func TestVerifyAgentTraceEvidence_RejectsUnclaimedExecutionBetweenSentinels(t *testing.T) {
 	ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
+	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
+	req1, call1 := prepareShellToolCall(t, trace, "tx-m1", "call-1", "echo")
 	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
-	claimed := ledger.executed("tx-1", string(constants.ActionTypeExecuteBash))
+	m1 := sealModelTurn(t, ledger, trace, "tx-m1", 1, req1)
+	call1 = commitShellToolCall(t, ledger, call1, "tx-1")
 	_ = ledger.executed("tx-unclaimed", string(constants.ActionTypeExecuteBash))
 	after := ledger.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
-	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
-	trace.ToolCalls = []AgentToolCall{allowedToolCall("tx-1", claimed)}
+	trace.ModelCalls = []AgentModelCall{m1}
+	trace.ToolCalls = []AgentToolCall{call1}
 	trace.Roster[0].Bracket = bracketOf(before, after)
 
 	requireEvidenceError(t, trace, constants.ErrConformanceUnclaimedExecution)
@@ -334,14 +510,16 @@ func TestVerifyAgentTraceEvidence_RejectsUnclaimedExecutionBetweenSentinels(t *t
 
 func TestVerifyAgentTraceEvidence_RejectsClaimedCallsSwappedInTraceAsLedgerGap(t *testing.T) {
 	ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
-	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
-	model := ledger.inference("tx-m1")
-	first := ledger.executed("tx-1", string(constants.ActionTypeExecuteBash))
-	second := ledger.executed("tx-2", string(constants.ActionTypeExecuteBash))
-	after := ledger.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
 	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
-	trace.ModelCalls = []AgentModelCall{completedModelCall("tx-m1", model)}
-	trace.ToolCalls = []AgentToolCall{allowedToolCall("tx-2", second), allowedToolCall("tx-1", first)}
+	req1, call1 := prepareShellToolCall(t, trace, "tx-m1", "call-1", "echo")
+	req2, call2 := prepareShellToolCall(t, trace, "tx-m1", "call-2", "pwd")
+	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
+	m1 := sealModelTurn(t, ledger, trace, "tx-m1", 1, req1, req2)
+	call1 = commitShellToolCall(t, ledger, call1, "tx-1")
+	call2 = commitShellToolCall(t, ledger, call2, "tx-2")
+	after := ledger.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
+	trace.ModelCalls = []AgentModelCall{m1}
+	trace.ToolCalls = []AgentToolCall{call2, call1}
 	trace.Roster[0].Bracket = bracketOf(before, after)
 
 	requireEvidenceError(t, trace, constants.ErrConformanceLedgerGap)
@@ -388,14 +566,15 @@ func TestVerifyAgentTraceEvidence_DistinctRuntimesDoNotClaimInferenceInDataBrack
 // bracket claims it.
 func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsFailedInference(t *testing.T) {
 	ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
+	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
+	req1, call1 := prepareShellToolCall(t, trace, "tx-m1", "call-1", "echo")
 	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
-	completed := ledger.inference("tx-m1")
-	tool := ledger.executed("tx-1", string(constants.ActionTypeExecuteBash))
+	m1 := sealModelTurn(t, ledger, trace, "tx-m1", 1, req1)
+	call1 = commitShellToolCall(t, ledger, call1, "tx-1")
 	failed := ledger.inferenceFailed("tx-m2")
 	after := ledger.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
-	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
-	trace.ModelCalls = []AgentModelCall{completedModelCall("tx-m1", completed), failedModelCall("tx-m2", failed)}
-	trace.ToolCalls = []AgentToolCall{allowedToolCall("tx-1", tool)}
+	trace.ModelCalls = []AgentModelCall{m1, sealFailedModelTurn("tx-m2", 2, trace, failed)}
+	trace.ToolCalls = []AgentToolCall{call1}
 	trace.Roster[0].Bracket = bracketOf(before, after)
 
 	require.NoError(t, VerifyAgentTraceEvidence(trace))
@@ -411,29 +590,32 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsFailedInference(t *testing.
 // claimed here; a non-observation receipt cannot ride in as an observation.
 func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsObservationReceipts(t *testing.T) {
 	ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
+	baseTrace := evidenceTrace(ledger.runtime(), ledger.runtime())
+	req1, call1 := prepareShellToolCall(t, baseTrace, "tx-m1", "call-1", "echo")
 	before := ledger.executed("tx-sentinel-before", string(constants.ActionTypeFsRead))
 	begin := ledger.executed("tx-observe-begin", string(constants.ActionTypeProviderBoundaryObservation))
-	model := ledger.inference("tx-m1")
+	m1 := sealModelTurn(t, ledger, baseTrace, "tx-m1", 1, req1)
 	finalize := ledger.executed("tx-observe-finalize", string(constants.ActionTypeModelProvenanceObservation))
-	tool := ledger.executed("tx-1", string(constants.ActionTypeExecuteBash))
+	call1 = commitShellToolCall(t, ledger, call1, "tx-1")
 	after := ledger.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
 	observer := newRuntimeLedger(t, oracletest.NewSigner(t), "operator-observer-1", "session-observer-1")
 	foreign := observer.executed("tx-observe-foreign", string(constants.ActionTypeProviderBoundaryObservation))
 	newTrace := func(observations ...*operatorv1.EventReceipt) *AgentTrace {
 		trace := evidenceTrace(ledger.runtime(), ledger.runtime())
-		call := completedModelCall("tx-m1", model)
+		call := m1
+		call.ObservationReceipts = nil
 		for _, receipt := range observations {
 			call.ObservationReceipts = append(call.ObservationReceipts, AgentTraceReceipt{EventReceipt: receipt})
 		}
 		trace.ModelCalls = []AgentModelCall{call}
-		trace.ToolCalls = []AgentToolCall{allowedToolCall("tx-1", tool)}
+		trace.ToolCalls = []AgentToolCall{call1}
 		trace.Roster[0].Bracket = bracketOf(before, after)
 		return trace
 	}
 
 	require.NoError(t, VerifyAgentTraceEvidence(newTrace(begin, foreign, finalize)))
 	requireEvidenceError(t, newTrace(begin), constants.ErrConformanceUnclaimedExecution)
-	requireEvidenceError(t, newTrace(begin, finalize, tool), constants.ErrEvaluationEvidenceTraceMismatch)
+	requireEvidenceError(t, newTrace(begin, finalize, call1.Receipt.EventReceipt), constants.ErrEvaluationEvidenceTraceMismatch)
 }
 
 // An observer whose handler failed still commits on the ledger it signs for, so
@@ -450,7 +632,7 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsFailedObservationReceipts(t
 	after := ledger.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
 	newTrace := func(observations ...*operatorv1.EventReceipt) *AgentTrace {
 		trace := evidenceTrace(ledger.runtime(), ledger.runtime())
-		call := failedModelCall("tx-m1", model)
+		call := sealFailedModelTurn("tx-m1", 1, trace, model)
 		for _, receipt := range observations {
 			call.ObservationReceipts = append(call.ObservationReceipts, AgentTraceReceipt{EventReceipt: receipt})
 		}
@@ -467,7 +649,7 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsFailedObservationReceipts(t
 func TestVerifyAgentTraceEvidence_AcceptsRejectedInferenceWithoutCommitment(t *testing.T) {
 	trace, ledger := sharedRuntimeTrace(t)
 	rejected := ledger.rejected("tx-m3", string(constants.ActionTypeInference))
-	trace.ModelCalls = append(trace.ModelCalls, failedModelCall("tx-m3", rejected))
+	trace.ModelCalls = append(trace.ModelCalls, sealFailedModelTurn("tx-m3", 3, trace, rejected))
 
 	require.NoError(t, VerifyAgentTraceEvidence(trace))
 }
@@ -486,7 +668,7 @@ func TestVerifyAgentTraceEvidence_RejectsModelCallEvidence(t *testing.T) {
 		{
 			name:    "result digest differs from the signed result summary",
 			corrupt: func(_ *testing.T, trace *AgentTrace) { trace.ModelCalls[0].ResultDigest = "digest-forged" },
-			cause:   constants.ErrEvaluationEvidenceTraceMismatch,
+			cause:   constants.ErrInferenceResultDigest,
 		},
 		{
 			name:    "receipt is for another transaction",
@@ -499,7 +681,10 @@ func TestVerifyAgentTraceEvidence_RejectsModelCallEvidence(t *testing.T) {
 				t.Helper()
 				failed := newRuntimeLedger(t, oracletest.NewSigner(t), evidenceInferenceOperatorID, evidenceInferenceSessionID)
 				trace.Inference = failed.runtime()
-				trace.ModelCalls[0].Receipt = &AgentTraceReceipt{EventReceipt: failed.inferenceFailed("tx-m1")}
+				receipt := failed.inferenceFailed("tx-m1")
+				receipt.ResultSummary = trace.ModelCalls[0].ResultDigest
+				failed.signer.Resign(t, receipt)
+				trace.ModelCalls[0].Receipt = &AgentTraceReceipt{EventReceipt: receipt}
 			},
 			cause: constants.ErrEvaluationEvidenceTraceMismatch,
 		},
@@ -530,7 +715,7 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeMustPinOneKey(t *testing.T) {
 	requireEvidenceError(t, trace, constants.ErrConformanceAnchorInvalid)
 }
 
-// shellEpisodeTrace returns a v7 trace whose one signed agent turn requested
+// shellEpisodeTrace returns a v14 trace whose one signed agent turn requested
 // run_shell_command with raw, declared from the native catalog, and whose
 // recorded tool call carries recorded as its arguments.
 func shellEpisodeTrace(t *testing.T, raw, recorded string) *AgentTrace {
@@ -545,7 +730,7 @@ func shellEpisodeTrace(t *testing.T, raw, recorded string) *AgentTrace {
 		Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{CallId: "call-1", Name: constants.MCPToolRunShellCommand, ArgumentsJson: raw}},
 	}}}
 	return &AgentTrace{
-		SchemaVersion: agentTraceSchemaVersionV7,
+		SchemaVersion: agentTraceSchemaVersion,
 		Input:         input,
 		ModelCalls: []AgentModelCall{{
 			ProviderAttemptID: "attempt-1", TransactionID: "tx-m1", Purpose: agentModelCallPurposeTurn,
@@ -649,10 +834,13 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsConsensusVotes(t *testing.T
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
+			trace := evidenceTrace(ledger.runtime(), ledger.runtime())
+			reqTool, toolCall := prepareShellToolCall(t, trace, "turn", "call-tool", "echo")
+			hash := toolCall.RequestEnvelope.GetTransactionHash()
 			before := ledger.executed("before", string(constants.ActionTypeFsRead))
-			model := ledger.inference("turn")
+			m1 := sealModelTurn(t, ledger, trace, "turn", 1, reqTool)
 			members := constants.TribunalConsensusMemberAppIDs()
-			result := &operatorv1.InferenceResult{ProviderAttemptId: governance.ConsensusVoteAttemptID("hash-tool", members[0], 0)}
+			result := &operatorv1.InferenceResult{ProviderAttemptId: governance.ConsensusVoteAttemptID(hash, members[0], 0)}
 			digest, err := models.ComputeInferenceResultDigest(result)
 			require.NoError(t, err)
 			result.ResultDigest = digest
@@ -668,18 +856,15 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsConsensusVotes(t *testing.T
 				stage.ActingAppId = members[1]
 			}
 			ledger.signer.Resign(t, failed)
-			tool := ledger.executed("tool", string(constants.ActionTypeMcpCall))
-			tool.TransactionHash = "hash-tool"
-			ledger.signer.Resign(t, tool)
+			toolCall = commitShellToolCall(t, ledger, toolCall, "tool")
 			after := ledger.executed("after", string(constants.ActionTypeFsRead))
-			trace := evidenceTrace(ledger.runtime(), ledger.runtime())
 			trace.Roster[0].Bracket = bracketOf(before, after)
-			trace.ModelCalls = []AgentModelCall{completedModelCall("turn", model)}
-			trace.ToolCalls = []AgentToolCall{allowedToolCall("tool", tool)}
+			trace.ModelCalls = []AgentModelCall{m1}
+			trace.ToolCalls = []AgentToolCall{toolCall}
 			// Binding order differs from the order concurrent members committed.
 			trace.ToolCalls[0].ConsensusInferences = governance.WrapConsensusInferences([]*operatorv1.ConsensusVoteInference{
-				{SubjectTransactionId: "tool", SubjectTransactionHash: "hash-tool", MemberAppId: members[1], ProviderAttemptId: governance.ConsensusVoteAttemptID("hash-tool", members[1], 0), TransactionId: "vote-failed", Receipt: failed, Failure: &operatorv1.InferenceDispatchFailure{Receipt: failed}},
-				{SubjectTransactionId: "tool", SubjectTransactionHash: "hash-tool", MemberAppId: members[0], ProviderAttemptId: result.ProviderAttemptId, TransactionId: "vote-completed", Receipt: completed, Result: result, ObservationReceipts: []*operatorv1.EventReceipt{observation}},
+				{SubjectTransactionId: "tool", SubjectTransactionHash: hash, MemberAppId: members[1], ProviderAttemptId: governance.ConsensusVoteAttemptID(hash, members[1], 0), TransactionId: "vote-failed", Receipt: failed, Failure: &operatorv1.InferenceDispatchFailure{Receipt: failed}},
+				{SubjectTransactionId: "tool", SubjectTransactionHash: hash, MemberAppId: members[0], ProviderAttemptId: result.ProviderAttemptId, TransactionId: "vote-completed", Receipt: completed, Result: result, ObservationReceipts: []*operatorv1.EventReceipt{observation}},
 			})
 			if test.corrupt != nil {
 				test.corrupt(trace)
@@ -692,4 +877,95 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsConsensusVotes(t *testing.T
 			}
 		})
 	}
+}
+
+func TestVerifyV7EpisodeOutputs_RosterJoinsAndPreJoinTargeting(t *testing.T) {
+	catalog, err := newAgentToolCatalog()
+	require.NoError(t, err)
+	scope, err := catalog.Scope(ScenarioToolExpectations{
+		AllowedTools: []string{constants.MCPToolOperatorDeploy, constants.MCPToolReadFile},
+	})
+	require.NoError(t, err)
+
+	roster := fleetRoster()
+	systemRole := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM.String()
+	deployArgs := `{"hostnames":["app-03"],"target_operators":["1"]}`
+	readArgs := `{"path":"./app/config.yaml","target_operators":["3"]}`
+
+	buildTrace := func(sameTurn bool) *AgentTrace {
+		input, err := newAgentTraceInput([]*operatorv1.InferenceMessage{
+			agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, "System.\n"+renderRosterPrompt(roster[:2])),
+			agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, "Deploy and read."),
+		}, scope.Declarations())
+		require.NoError(t, err)
+
+		if sameTurn {
+			res := &operatorv1.InferenceResult{Parts: []*operatorv1.InferenceResponsePart{
+				{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{CallId: "c1", Name: constants.MCPToolOperatorDeploy, ArgumentsJson: deployArgs}}},
+				{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{CallId: "c2", Name: constants.MCPToolReadFile, ArgumentsJson: readArgs}}},
+			}}
+			return &AgentTrace{
+				SchemaVersion: agentTraceSchemaVersion,
+				Input:         input,
+				Roster:        roster,
+				RosterJoins:   []AgentTraceRosterJoin{{Index: 3, Runtime: roster[2].Runtime, JoinedAfterCall: "tc-1"}},
+				ModelCalls: []AgentModelCall{{
+					ProviderAttemptID: "m1", TransactionID: "tx-m1", Purpose: agentModelCallPurposeTurn, LoopTurn: 1,
+					InferenceResult: &AgentTraceInferenceResult{InferenceResult: res},
+				}},
+				ToolCalls: []AgentToolCall{
+					{CallID: "tc-1", GroupID: "tc-1", TargetIndex: 1, ModelCallID: "m1", ProviderCallID: "c1", ToolName: constants.MCPToolOperatorDeploy, TargetOperators: []string{"1"}, ArgumentsJSON: `{"hostnames":["app-03"]}`, Success: true, LoopTurn: 1},
+					{CallID: "tc-2", GroupID: "tc-2", TargetIndex: 3, ModelCallID: "m1", ProviderCallID: "c2", ToolName: constants.MCPToolReadFile, TargetOperators: []string{"3"}, ArgumentsJSON: `{"path":"./app/config.yaml"}`, Success: true, LoopTurn: 1},
+				},
+			}
+		}
+
+		res1 := &operatorv1.InferenceResult{Parts: []*operatorv1.InferenceResponsePart{
+			{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{CallId: "c1", Name: constants.MCPToolOperatorDeploy, ArgumentsJson: deployArgs}}},
+		}}
+		res2 := &operatorv1.InferenceResult{Parts: []*operatorv1.InferenceResponsePart{
+			{Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{CallId: "c2", Name: constants.MCPToolReadFile, ArgumentsJson: readArgs}}},
+		}}
+		return &AgentTrace{
+			SchemaVersion: agentTraceSchemaVersion,
+			Input:         input,
+			Roster:        roster,
+			RosterJoins:   []AgentTraceRosterJoin{{Index: 3, Runtime: roster[2].Runtime, JoinedAfterCall: "tc-1"}},
+			ModelCalls: []AgentModelCall{
+				{ProviderAttemptID: "m1", TransactionID: "tx-m1", Purpose: agentModelCallPurposeTurn, LoopTurn: 1, InferenceResult: &AgentTraceInferenceResult{InferenceResult: res1}},
+				{ProviderAttemptID: "m2", TransactionID: "tx-m2", Purpose: agentModelCallPurposeTurn, LoopTurn: 2, InferenceResult: &AgentTraceInferenceResult{InferenceResult: res2}},
+			},
+			ToolCalls: []AgentToolCall{
+				{CallID: "tc-1", GroupID: "tc-1", TargetIndex: 1, ModelCallID: "m1", ProviderCallID: "c1", ToolName: constants.MCPToolOperatorDeploy, TargetOperators: []string{"1"}, ArgumentsJSON: `{"hostnames":["app-03"]}`, Success: true, LoopTurn: 1},
+				{CallID: "tc-2", GroupID: "tc-2", TargetIndex: 3, ModelCallID: "m2", ProviderCallID: "c2", ToolName: constants.MCPToolReadFile, TargetOperators: []string{"3"}, ArgumentsJSON: `{"path":"./app/config.yaml"}`, Success: true, LoopTurn: 2},
+			},
+		}
+	}
+
+	t.Run("valid join followed by targeting in next turn passes", func(t *testing.T) {
+		trace := buildTrace(false)
+		require.NoError(t, verifyRosterPrompt(trace))
+		require.NoError(t, verifyV7EpisodeOutputs(trace))
+	})
+
+	t.Run("targeting joined member in the same turn as operator_deploy fails", func(t *testing.T) {
+		trace := buildTrace(true)
+		require.ErrorIs(t, verifyV7EpisodeOutputs(trace), constants.ErrHarnessFanOutMismatch)
+	})
+
+	t.Run("targeting joined member in a turn before operator_deploy fails", func(t *testing.T) {
+		trace := buildTrace(false)
+		// Swap order so read targeting [3] happens in m1 before deploy in m2.
+		trace.ModelCalls[0], trace.ModelCalls[1] = trace.ModelCalls[1], trace.ModelCalls[0]
+		trace.ModelCalls[0].LoopTurn, trace.ModelCalls[1].LoopTurn = 1, 2
+		trace.ToolCalls[0], trace.ToolCalls[1] = trace.ToolCalls[1], trace.ToolCalls[0]
+		trace.ToolCalls[0].LoopTurn, trace.ToolCalls[1].LoopTurn = 1, 2
+		require.ErrorIs(t, verifyV7EpisodeOutputs(trace), constants.ErrHarnessFanOutMismatch)
+	})
+
+	t.Run("verifyRosterPrompt requires initial roster prompt, not full post-join roster", func(t *testing.T) {
+		trace := buildTrace(false)
+		trace.Input.Messages[0] = AgentTraceMessage{Role: systemRole, Text: "System.\n" + renderRosterPrompt(roster)}
+		require.ErrorIs(t, verifyRosterPrompt(trace), constants.ErrHarnessRosterMismatch)
+	})
 }

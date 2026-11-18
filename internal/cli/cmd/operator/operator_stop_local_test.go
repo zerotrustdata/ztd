@@ -26,6 +26,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -44,7 +45,7 @@ func TestStopLocalOperatorEscalation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var signals []bool
 			checks := 0
-			p := localOperatorProcess{pid: 123, wait: func(time.Duration) (bool, error) { v := tc.exits[checks]; checks++; return v, nil }, signal: func(force bool) error { signals = append(signals, force); return nil }}
+			p := operatordeploy.LocalOperatorProcess{PID: 123, Wait: func(time.Duration) (bool, error) { v := tc.exits[checks]; checks++; return v, nil }, Signal: func(force bool) error { signals = append(signals, force); return nil }}
 			cmd := &cobra.Command{}
 			cmd.SetContext(context.Background())
 			cmd.SetErr(&bytes.Buffer{})
@@ -63,8 +64,10 @@ func TestOperatorStopLocalWithoutGateway(t *testing.T) {
 	var signals []bool
 	checks := 0
 	closed := false
-	p := localOperatorProcess{pid: 123, wait: func(time.Duration) (bool, error) { checks++; return checks == 3, nil }, signal: func(force bool) error { signals = append(signals, force); return nil }, close: func() { closed = true }}
-	cmd := operatorStopCmdWithLocal(cmdtest.ConfigLoaderFor(cfg), authcmd.MockClientFactory(client), cmdtest.FileSvcFactoryFor(fileSvc), func() ([]localOperatorProcess, error) { return []localOperatorProcess{p}, nil })
+	p := operatordeploy.LocalOperatorProcess{PID: 123, Wait: func(time.Duration) (bool, error) { checks++; return checks == 3, nil }, Signal: func(force bool) error { signals = append(signals, force); return nil }, Close: func() { closed = true }}
+	cmd := operatorStopCmdWithLocal(cmdtest.ConfigLoaderFor(cfg), authcmd.MockClientFactory(client), cmdtest.FileSvcFactoryFor(fileSvc), func() ([]operatordeploy.LocalOperatorProcess, error) {
+		return []operatordeploy.LocalOperatorProcess{p}, nil
+	})
 	cmd.SetOut(&bytes.Buffer{})
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{"--grace=0s"})
@@ -81,15 +84,15 @@ func TestOperatorStopLocal_BoundedConcurrencyAndAccounting(t *testing.T) {
 		const count = 70
 		started := make(chan int, count)
 		release := make(chan struct{})
-		locals := make([]localOperatorProcess, count)
+		locals := make([]operatordeploy.LocalOperatorProcess, count)
 		for i := range locals {
-			locals[i] = localOperatorProcess{pid: i + 1, close: func() {}, wait: func(time.Duration) (bool, error) {
+			locals[i] = operatordeploy.LocalOperatorProcess{PID: i + 1, Close: func() {}, Wait: func(time.Duration) (bool, error) {
 				started <- i
 				<-release
 				return true, nil
 			}}
 		}
-		cmd := operatorStopCmdWithLocal(cmdtest.ConfigLoaderFor(cfg), authcmd.MockClientFactory(client), cmdtest.FileSvcFactoryFor(fileSvc), func() ([]localOperatorProcess, error) { return locals, nil })
+		cmd := operatorStopCmdWithLocal(cmdtest.ConfigLoaderFor(cfg), authcmd.MockClientFactory(client), cmdtest.FileSvcFactoryFor(fileSvc), func() ([]operatordeploy.LocalOperatorProcess, error) { return locals, nil })
 		var out bytes.Buffer
 		cmd.SetOut(&out)
 		cmd.SetErr(&bytes.Buffer{})
@@ -117,15 +120,15 @@ func TestOperatorStopLocal_CancellationAccountsForQueuedWorkers(t *testing.T) {
 		defer cancel()
 		started := make(chan int, 70)
 		release := make(chan struct{})
-		locals := make([]localOperatorProcess, 70)
+		locals := make([]operatordeploy.LocalOperatorProcess, 70)
 		for i := range locals {
-			locals[i] = localOperatorProcess{pid: i + 1, close: func() {}, wait: func(time.Duration) (bool, error) {
+			locals[i] = operatordeploy.LocalOperatorProcess{PID: i + 1, Close: func() {}, Wait: func(time.Duration) (bool, error) {
 				started <- i
 				<-release
 				return false, nil
-			}, signal: func(bool) error { panic("cancellation must prevent signals") }}
+			}, Signal: func(bool) error { panic("cancellation must prevent signals") }}
 		}
-		cmd := operatorStopCmdWithLocal(cmdtest.ConfigLoaderFor(cfg), authcmd.MockClientFactory(client), cmdtest.FileSvcFactoryFor(fileSvc), func() ([]localOperatorProcess, error) { return locals, nil })
+		cmd := operatorStopCmdWithLocal(cmdtest.ConfigLoaderFor(cfg), authcmd.MockClientFactory(client), cmdtest.FileSvcFactoryFor(fileSvc), func() ([]operatordeploy.LocalOperatorProcess, error) { return locals, nil })
 		var out bytes.Buffer
 		var errOut bytes.Buffer
 		root := cmdtest.GlobalJSONRoot(t, cmd)
@@ -155,7 +158,7 @@ func TestOperatorStopLocal_CancellationAccountsForQueuedWorkers(t *testing.T) {
 func TestStopLocalOperatorSignalFailure(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.Background())
-	result := stopLocalOperator(cmd, localOperatorProcess{pid: 123, wait: func(time.Duration) (bool, error) { return false, nil }, signal: func(bool) error { return errors.New("permission denied") }}, models.StopOperatorResponse{}, nil, 0)
+	result := stopLocalOperator(cmd, operatordeploy.LocalOperatorProcess{PID: 123, Wait: func(time.Duration) (bool, error) { return false, nil }, Signal: func(bool) error { return errors.New("permission denied") }}, models.StopOperatorResponse{}, nil, 0)
 	require.False(t, result.Success)
 	require.Contains(t, result.Error, "permission denied")
 }
@@ -168,8 +171,10 @@ func TestTargetedStopFallsBackAfterShutdownFailure(t *testing.T) {
 	client := &cmdtest.MockAPIClient{GetResp: body, PostErr: errors.New("shutdown channel disconnected")}
 	checks := 0
 	var signals []bool
-	p := localOperatorProcess{pid: 123, sessionID: "session-a", wait: func(time.Duration) (bool, error) { checks++; return checks == 2, nil }, signal: func(force bool) error { signals = append(signals, force); return nil }, close: func() {}}
-	cmd := operatorStopCmdWithLocal(cmdtest.ConfigLoaderFor(cfg), authcmd.MockClientFactory(client), cmdtest.FileSvcFactoryFor(fileSvc), func() ([]localOperatorProcess, error) { return []localOperatorProcess{p}, nil })
+	p := operatordeploy.LocalOperatorProcess{PID: 123, SessionID: "session-a", Wait: func(time.Duration) (bool, error) { checks++; return checks == 2, nil }, Signal: func(force bool) error { signals = append(signals, force); return nil }, Close: func() {}}
+	cmd := operatorStopCmdWithLocal(cmdtest.ConfigLoaderFor(cfg), authcmd.MockClientFactory(client), cmdtest.FileSvcFactoryFor(fileSvc), func() ([]operatordeploy.LocalOperatorProcess, error) {
+		return []operatordeploy.LocalOperatorProcess{p}, nil
+	})
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&bytes.Buffer{})
@@ -187,9 +192,9 @@ func TestLocalOperatorDir(t *testing.T) {
 	cwd := filepath.Join(testutil.TempDir(t), "cwd")
 	start := []string{"ztd", "operator", "start"}
 
-	require.Equal(t, cwd, localOperatorDir(start, cwd))
-	require.Equal(t, filepath.Join(cwd, "ops"), localOperatorDir(append(start, "--working-dir", "ops"), cwd))
-	require.Equal(t, filepath.Join(home, ".ztd-data"), localOperatorDir(append(start, "--working-dir", "~/.ztd-data"), cwd))
-	require.Equal(t, filepath.Join(home, ".ztd-data"), localOperatorDir(append(start, "--working-dir=~/.ztd-data"), cwd))
-	require.Equal(t, filepath.Join(home, "abs"), localOperatorDir(append(start, "--working-dir", filepath.Join(home, "x", "..", "abs")), cwd))
+	require.Equal(t, cwd, operatordeploy.LocalOperatorDir(start, cwd))
+	require.Equal(t, filepath.Join(cwd, "ops"), operatordeploy.LocalOperatorDir(append(start, "--working-dir", "ops"), cwd))
+	require.Equal(t, filepath.Join(home, ".ztd-data"), operatordeploy.LocalOperatorDir(append(start, "--working-dir", "~/.ztd-data"), cwd))
+	require.Equal(t, filepath.Join(home, ".ztd-data"), operatordeploy.LocalOperatorDir(append(start, "--working-dir=~/.ztd-data"), cwd))
+	require.Equal(t, filepath.Join(home, "abs"), operatordeploy.LocalOperatorDir(append(start, "--working-dir", filepath.Join(home, "x", "..", "abs")), cwd))
 }

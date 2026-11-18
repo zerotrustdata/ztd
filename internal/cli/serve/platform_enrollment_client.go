@@ -22,10 +22,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -36,8 +34,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/httpclient"
 	"github.com/zerotrustdata/ztd/internal/models"
-	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/services/auth"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -486,28 +484,7 @@ func operatorBootstrapDialURL(cfg *config.Config, endpoint string, httpPort int,
 // endpoint flag value. An http(s) scheme maps to ws(s); an endpoint port wins,
 // otherwise httpPort (or the Operator HTTP default when zero) is used.
 func OperatorBootstrapURL(endpoint string, httpPort int) string {
-	endpoint = strings.TrimSpace(endpoint)
-	if endpoint == "" {
-		return ""
-	}
-	var base string
-	switch {
-	case strings.HasPrefix(endpoint, "https://"):
-		base = "wss://" + strings.TrimPrefix(endpoint, "https://")
-	case strings.HasPrefix(endpoint, "http://"):
-		base = "ws://" + strings.TrimPrefix(endpoint, "http://")
-	case strings.Contains(endpoint, "://"):
-		base = endpoint
-	default:
-		if host, port, err := netutil.SplitEndpoint(endpoint); err == nil && port == 0 {
-			if httpPort == 0 {
-				httpPort = constants.Ports.OperatorHttp
-			}
-			endpoint = net.JoinHostPort(host, strconv.Itoa(httpPort))
-		}
-		base = "ws://" + endpoint
-	}
-	return strings.TrimRight(base, "/") + constants.APIPaths.AuthOperatorBootstrapWebSocket
+	return operatordeploy.OperatorBootstrapURL(endpoint, httpPort)
 }
 
 // buildOperatorCompletionTranscript constructs the canonical

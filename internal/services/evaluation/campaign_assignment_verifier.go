@@ -286,27 +286,25 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 		Binding:           req.Binding,
 		FormationStackSet: req.FormationStackSet,
 	}
-	if trace.CarriesModelIdentity() {
-		expected, _, err := modelInferenceRecordsFromAgentTrace(execReq, trace, func(string) string { return "" })
-		if err != nil {
-			return append(failures, "agent trace model inference records failed: "+err.Error())
-		}
-		if len(expected) != len(req.Result.GetModelInferences()) {
-			failures = append(failures, "result inference count does not match agent trace")
-		} else {
-			for i, record := range req.Result.GetModelInferences() {
-				if record == nil {
-					failures = append(failures, fmt.Sprintf("result inference %d is missing", i))
-					continue
-				}
-				// Record IDs and governed receipt references are assigned after
-				// import. The execution identity and telemetry must be reproducible.
-				actual := proto.Clone(record).(*evalv1.ModelInferenceRecord)
-				actual.InferenceRecordId = ""
-				actual.GovernedReceiptRef = nil
-				if !proto.Equal(actual, expected[i]) {
-					failures = append(failures, fmt.Sprintf("result inference %d does not match agent trace", i))
-				}
+	expected, _, err := modelInferenceRecordsFromAgentTrace(execReq, trace, func(string) string { return "" })
+	if err != nil {
+		return append(failures, "agent trace model inference records failed: "+err.Error())
+	}
+	if len(expected) != len(req.Result.GetModelInferences()) {
+		failures = append(failures, "result inference count does not match agent trace")
+	} else {
+		for i, record := range req.Result.GetModelInferences() {
+			if record == nil {
+				failures = append(failures, fmt.Sprintf("result inference %d is missing", i))
+				continue
+			}
+			// Record IDs and governed receipt references are assigned after
+			// import. The execution identity and telemetry must be reproducible.
+			actual := proto.Clone(record).(*evalv1.ModelInferenceRecord)
+			actual.InferenceRecordId = ""
+			actual.GovernedReceiptRef = nil
+			if !proto.Equal(actual, expected[i]) {
+				failures = append(failures, fmt.Sprintf("result inference %d does not match agent trace", i))
 			}
 		}
 	}
@@ -350,9 +348,8 @@ func (v *CampaignAssignmentVerifier) verifyHomogeneousAssignment(req CampaignAss
 	return failures
 }
 
-// verifyAssignmentTraceModels binds the signed identity of each v7 inference
-// to the assignment's frozen candidate or formation. A formation cannot use
-// older traces, which did not record independently verifiable per-call models.
+// verifyAssignmentTraceModels binds the signed identity of each inference
+// to the assignment's frozen candidate or formation.
 func verifyAssignmentTraceModels(req AssignmentExecutionRequest, trace *AgentTrace) error {
 	if trace == nil || req.Assignment == nil {
 		return constants.ErrMissingRequiredField
@@ -361,12 +358,6 @@ func verifyAssignmentTraceModels(req AssignmentExecutionRequest, trace *AgentTra
 		return constants.ErrEvaluationEvidenceTraceMismatch
 	}
 	system := IsHeterogeneousAssignment(req.Assignment)
-	if !trace.CarriesModelIdentity() {
-		if system {
-			return fmt.Errorf("formation requires per-call model evidence: %w", constants.ErrEvaluationEvidenceTraceMismatch)
-		}
-		return nil
-	}
 	var resolved map[evalv1.ModelCampaignRole]*evalv1.ModelVariant
 	if system || len(req.Binding.ModelVariants) > 0 {
 		var err error

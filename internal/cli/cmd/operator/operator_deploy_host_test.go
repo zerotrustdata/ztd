@@ -32,6 +32,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -47,7 +48,7 @@ func TestExecuteDeployHostPrepare(t *testing.T) {
 		relDir := filepath.Join(tempDir, "relative", "sub")
 		homeDir := "~/ztd-test-deploy"
 
-		resolved, err := ExecuteDeployHostPrepare(ctx, []string{relDir, homeDir})
+		resolved, err := operatordeploy.ExecuteDeployHostPrepare(ctx, []string{relDir, homeDir})
 		require.NoError(t, err)
 		require.Len(t, resolved, 2)
 
@@ -70,11 +71,11 @@ func TestExecuteDeployHostPrepare(t *testing.T) {
 	})
 
 	t.Run("empty dirs error", func(t *testing.T) {
-		_, err := ExecuteDeployHostPrepare(ctx, nil)
+		_, err := operatordeploy.ExecuteDeployHostPrepare(ctx, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "dirs list must not be empty")
 
-		_, err = ExecuteDeployHostPrepare(ctx, []string{})
+		_, err = operatordeploy.ExecuteDeployHostPrepare(ctx, []string{})
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "dirs list must not be empty")
 	})
@@ -82,7 +83,7 @@ func TestExecuteDeployHostPrepare(t *testing.T) {
 	t.Run("context cancelled", func(t *testing.T) {
 		cancelCtx, cancel := context.WithCancel(ctx)
 		cancel()
-		_, err := ExecuteDeployHostPrepare(cancelCtx, []string{testutil.TempDir(t)})
+		_, err := operatordeploy.ExecuteDeployHostPrepare(cancelCtx, []string{testutil.TempDir(t)})
 		require.ErrorIs(t, err, context.Canceled)
 	})
 }
@@ -99,7 +100,7 @@ func TestExecuteDeployHostInstall(t *testing.T) {
 		require.NoError(t, os.WriteFile(srcFile, content, 0o600))
 
 		targetFile := filepath.Join(destDir, "bin", "target-bin")
-		err := ExecuteDeployHostInstall(ctx, srcFile, targetFile)
+		err := operatordeploy.ExecuteDeployHostInstall(ctx, srcFile, targetFile)
 		require.NoError(t, err)
 
 		targetContent, err := os.ReadFile(targetFile)
@@ -113,21 +114,21 @@ func TestExecuteDeployHostInstall(t *testing.T) {
 
 	t.Run("missing source", func(t *testing.T) {
 		destDir := testutil.TempDir(t)
-		err := ExecuteDeployHostInstall(ctx, "", filepath.Join(destDir, "bin"))
+		err := operatordeploy.ExecuteDeployHostInstall(ctx, "", filepath.Join(destDir, "bin"))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "source path required")
 	})
 
 	t.Run("missing target", func(t *testing.T) {
 		srcDir := testutil.TempDir(t)
-		err := ExecuteDeployHostInstall(ctx, filepath.Join(srcDir, "bin"), "")
+		err := operatordeploy.ExecuteDeployHostInstall(ctx, filepath.Join(srcDir, "bin"), "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "target path required")
 	})
 
 	t.Run("source file does not exist", func(t *testing.T) {
 		tempDir := testutil.TempDir(t)
-		err := ExecuteDeployHostInstall(ctx, filepath.Join(tempDir, "nonexistent"), filepath.Join(tempDir, "target"))
+		err := operatordeploy.ExecuteDeployHostInstall(ctx, filepath.Join(tempDir, "nonexistent"), filepath.Join(tempDir, "target"))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "open source binary")
 	})
@@ -135,7 +136,7 @@ func TestExecuteDeployHostInstall(t *testing.T) {
 	t.Run("context cancelled", func(t *testing.T) {
 		cancelCtx, cancel := context.WithCancel(ctx)
 		cancel()
-		err := ExecuteDeployHostInstall(cancelCtx, "src", "target")
+		err := operatordeploy.ExecuteDeployHostInstall(cancelCtx, "src", "target")
 		require.ErrorIs(t, err, context.Canceled)
 	})
 }
@@ -152,7 +153,7 @@ func TestExecuteDeployHostLink(t *testing.T) {
 		srcBin := filepath.Join(binDir, "ztd")
 		require.NoError(t, os.WriteFile(srcBin, []byte("binary-payload"), constants.PermFileExecutable))
 
-		err := ExecuteDeployHostLink(ctx, binDir, destDir, "ztd")
+		err := operatordeploy.ExecuteDeployHostLink(ctx, binDir, destDir, "ztd")
 		require.NoError(t, err)
 
 		destBin := filepath.Join(destDir, "ztd")
@@ -172,7 +173,7 @@ func TestExecuteDeployHostLink(t *testing.T) {
 		srcBin := filepath.Join(binDir, "ztd")
 		require.NoError(t, os.WriteFile(srcBin, []byte("binary-payload"), constants.PermFileExecutable))
 
-		err := ExecuteDeployHostLink(ctx, binDir, destDir, "")
+		err := operatordeploy.ExecuteDeployHostLink(ctx, binDir, destDir, "")
 		require.NoError(t, err)
 
 		destBin := filepath.Join(destDir, "ztd")
@@ -184,20 +185,20 @@ func TestExecuteDeployHostLink(t *testing.T) {
 	})
 
 	t.Run("missing binary_dir", func(t *testing.T) {
-		err := ExecuteDeployHostLink(ctx, "", "dest", "ztd")
+		err := operatordeploy.ExecuteDeployHostLink(ctx, "", "dest", "ztd")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "binary_dir required")
 	})
 
 	t.Run("missing dest_dir", func(t *testing.T) {
-		err := ExecuteDeployHostLink(ctx, "bin", "", "ztd")
+		err := operatordeploy.ExecuteDeployHostLink(ctx, "bin", "", "ztd")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "dest_dir required")
 	})
 
 	t.Run("source binary not found", func(t *testing.T) {
 		tempDir := testutil.TempDir(t)
-		err := ExecuteDeployHostLink(ctx, tempDir, filepath.Join(tempDir, "dest"), "ztd")
+		err := operatordeploy.ExecuteDeployHostLink(ctx, tempDir, filepath.Join(tempDir, "dest"), "ztd")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not found")
 	})
@@ -205,7 +206,7 @@ func TestExecuteDeployHostLink(t *testing.T) {
 	t.Run("context cancelled", func(t *testing.T) {
 		cancelCtx, cancel := context.WithCancel(ctx)
 		cancel()
-		err := ExecuteDeployHostLink(cancelCtx, "bin", "dest", "ztd")
+		err := operatordeploy.ExecuteDeployHostLink(cancelCtx, "bin", "dest", "ztd")
 		require.ErrorIs(t, err, context.Canceled)
 	})
 }
@@ -233,14 +234,14 @@ func TestExecuteDeployHostStart(t *testing.T) {
 		t.Setenv("ZTD_STOP_TEST_WORKER", "1")
 
 		args := []string{"operator", "start", "--working-dir=" + workingDir}
-		pid, err := ExecuteDeployHostStart(ctx, workingDir, "ztd", args)
+		pid, err := operatordeploy.ExecuteDeployHostStart(ctx, workingDir, "ztd", args)
 		require.NoError(t, err)
 		require.Greater(t, pid, 1)
 
 		t.Cleanup(func() {
 			stopCtx, cancelStop := context.WithTimeout(context.Background(), 6*time.Second)
 			defer cancelStop()
-			if _, stopErr := ExecuteDeployHostStop(stopCtx, "", workingDir); stopErr != nil {
+			if _, stopErr := operatordeploy.ExecuteDeployHostStop(stopCtx, "", workingDir); stopErr != nil {
 				t.Errorf("stop test worker in %s during cleanup: %v", workingDir, stopErr)
 			}
 		})
@@ -257,7 +258,7 @@ func TestExecuteDeployHostStart(t *testing.T) {
 		require.NoError(t, err)
 
 		// Calling start again in same workingDir stops previous worker first
-		pid2, err := ExecuteDeployHostStart(ctx, workingDir, "ztd", args)
+		pid2, err := operatordeploy.ExecuteDeployHostStart(ctx, workingDir, "ztd", args)
 		require.NoError(t, err)
 		require.Greater(t, pid2, 1)
 		require.NotEqual(t, pid, pid2)
@@ -268,21 +269,21 @@ func TestExecuteDeployHostStart(t *testing.T) {
 	})
 
 	t.Run("missing working_dir", func(t *testing.T) {
-		_, err := ExecuteDeployHostStart(ctx, "", "ztd", nil)
+		_, err := operatordeploy.ExecuteDeployHostStart(ctx, "", "ztd", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "working_dir required")
 	})
 
 	t.Run("noncanonical worker binary name rejected", func(t *testing.T) {
 		tempDir := testutil.TempDir(t)
-		_, err := ExecuteDeployHostStart(ctx, tempDir, "custom-ztd", nil)
+		_, err := operatordeploy.ExecuteDeployHostStart(ctx, tempDir, "custom-ztd", nil)
 		require.ErrorIs(t, err, constants.ErrOperatorDeployFailed)
 		require.Contains(t, err.Error(), "must be named ztd")
 	})
 
 	t.Run("canonical binary missing", func(t *testing.T) {
 		tempDir := testutil.TempDir(t)
-		_, err := ExecuteDeployHostStart(ctx, tempDir, "ztd", nil)
+		_, err := operatordeploy.ExecuteDeployHostStart(ctx, tempDir, "ztd", nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "not found")
 	})
@@ -290,7 +291,7 @@ func TestExecuteDeployHostStart(t *testing.T) {
 	t.Run("context cancelled", func(t *testing.T) {
 		cancelCtx, cancel := context.WithCancel(ctx)
 		cancel()
-		_, err := ExecuteDeployHostStart(cancelCtx, testutil.TempDir(t), "ztd", nil)
+		_, err := operatordeploy.ExecuteDeployHostStart(cancelCtx, testutil.TempDir(t), "ztd", nil)
 		require.ErrorIs(t, err, context.Canceled)
 	})
 }
@@ -311,7 +312,7 @@ func TestExecuteDeployHostState(t *testing.T) {
 		statePath := filepath.Join(constants.DeploymentDirname, constants.DeploymentStateFileOperator)
 		require.NoError(t, fileSvc.WriteFile(ctx, statePath, []byte(stateJSON), constants.PermFilePrivate))
 
-		state, err := ExecuteDeployHostState(ctx, fileSvc)
+		state, err := operatordeploy.ReadOperatorDeploymentState(ctx, fileSvc)
 		require.NoError(t, err)
 		require.NotNil(t, state)
 		require.Equal(t, "launch-123", state.LaunchID)
@@ -323,7 +324,7 @@ func TestExecuteDeployHostState(t *testing.T) {
 
 	t.Run("file not found returns nil without error", func(t *testing.T) {
 		fileSvc, _ := cmdtest.NewCmdTestEnv(t)
-		state, err := ExecuteDeployHostState(ctx, fileSvc)
+		state, err := operatordeploy.ReadOperatorDeploymentState(ctx, fileSvc)
 		require.NoError(t, err)
 		require.Nil(t, state)
 	})
@@ -333,7 +334,7 @@ func TestExecuteDeployHostState(t *testing.T) {
 		statePath := filepath.Join(constants.DeploymentDirname, constants.DeploymentStateFileOperator)
 		require.NoError(t, fileSvc.WriteFile(ctx, statePath, []byte("invalid-json"), constants.PermFilePrivate))
 
-		state, err := ExecuteDeployHostState(ctx, fileSvc)
+		state, err := operatordeploy.ReadOperatorDeploymentState(ctx, fileSvc)
 		require.ErrorIs(t, err, constants.ErrOperatorDeployFailed)
 		require.Nil(t, state)
 	})
@@ -343,15 +344,16 @@ func TestExecuteDeployHostPreflight(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("invalid host fails validation", func(t *testing.T) {
-		err := ExecuteDeployHostPreflight(ctx, []string{"invalid$$host"})
+		err := operatordeploy.ExecuteDeployHostPreflight(ctx, []string{"invalid$$host"})
 		require.Error(t, err)
 		require.ErrorIs(t, err, constants.ErrPathValidation)
 	})
 
 	t.Run("no args fails validation", func(t *testing.T) {
-		err := ExecuteDeployHostPreflight(ctx, []string{})
+		err := operatordeploy.ExecuteDeployHostPreflight(ctx, []string{})
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "accepts 1 arg(s)")
+		require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+		require.Contains(t, err.Error(), "requires 1 argument")
 	})
 }
 
@@ -372,48 +374,48 @@ func TestExecuteDeployHostStop(t *testing.T) {
 		var signals1, signals2 []bool
 		closed3 := false
 
-		p1 := localOperatorProcess{
-			pid: 101,
-			dir: workingDir,
-			wait: func(time.Duration) (bool, error) {
+		p1 := operatordeploy.LocalOperatorProcess{
+			PID: 101,
+			Dir: workingDir,
+			Wait: func(time.Duration) (bool, error) {
 				return true, nil
 			},
-			signal: func(force bool) error {
+			Signal: func(force bool) error {
 				signals1 = append(signals1, force)
 				return nil
 			},
 		}
 
-		p2 := localOperatorProcess{
-			pid: 102,
-			dir: destDir,
-			wait: func(time.Duration) (bool, error) {
+		p2 := operatordeploy.LocalOperatorProcess{
+			PID: 102,
+			Dir: destDir,
+			Wait: func(time.Duration) (bool, error) {
 				// First check (TERM) returns false; second check (KILL) returns true
 				return len(signals2) > 1, nil
 			},
-			signal: func(force bool) error {
+			Signal: func(force bool) error {
 				signals2 = append(signals2, force)
 				return nil
 			},
 		}
 
-		p3 := localOperatorProcess{
-			pid: 103,
-			dir: otherDir,
-			close: func() {
+		p3 := operatordeploy.LocalOperatorProcess{
+			PID: 103,
+			Dir: otherDir,
+			Close: func() {
 				closed3 = true
 			},
 		}
 
-		origDiscoverer := defaultLocalOperatorDiscoverer
-		defaultLocalOperatorDiscoverer = func() ([]localOperatorProcess, error) {
-			return []localOperatorProcess{p1, p2, p3}, nil
+		origDiscoverer := operatordeploy.DefaultLocalOperatorDiscoverer
+		operatordeploy.DefaultLocalOperatorDiscoverer = func() ([]operatordeploy.LocalOperatorProcess, error) {
+			return []operatordeploy.LocalOperatorProcess{p1, p2, p3}, nil
 		}
 		t.Cleanup(func() {
-			defaultLocalOperatorDiscoverer = origDiscoverer
+			operatordeploy.DefaultLocalOperatorDiscoverer = origDiscoverer
 		})
 
-		pids, err := ExecuteDeployHostStop(ctx, destDir, "")
+		pids, err := operatordeploy.ExecuteDeployHostStop(ctx, destDir, "")
 		require.NoError(t, err)
 		require.Equal(t, []int{101, 102}, pids)
 		require.Equal(t, []bool{false}, signals1)       // TERM was sufficient
@@ -431,16 +433,16 @@ func TestExecuteDeployHostStop(t *testing.T) {
 		}
 		for _, tc := range []struct {
 			name     string
-			discover func() ([]localOperatorProcess, error)
+			discover func() ([]operatordeploy.LocalOperatorProcess, error)
 			wantErr  bool
 		}{
-			{name: "discovery error", discover: func() ([]localOperatorProcess, error) { return nil, errors.New("discovery unavailable") }, wantErr: true},
-			{name: "successful discovery with no matching worker", discover: func() ([]localOperatorProcess, error) { return nil, nil }},
+			{name: "discovery error", discover: func() ([]operatordeploy.LocalOperatorProcess, error) { return nil, errors.New("discovery unavailable") }, wantErr: true},
+			{name: "successful discovery with no matching worker", discover: func() ([]operatordeploy.LocalOperatorProcess, error) { return nil, nil }},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				origDiscoverer := defaultLocalOperatorDiscoverer
-				defaultLocalOperatorDiscoverer = tc.discover
-				t.Cleanup(func() { defaultLocalOperatorDiscoverer = origDiscoverer })
+				origDiscoverer := operatordeploy.DefaultLocalOperatorDiscoverer
+				operatordeploy.DefaultLocalOperatorDiscoverer = tc.discover
+				t.Cleanup(func() { operatordeploy.DefaultLocalOperatorDiscoverer = origDiscoverer })
 
 				tempDir := testutil.TempDir(t)
 				workerDir := filepath.Join(tempDir, "worker")
@@ -451,7 +453,7 @@ func TestExecuteDeployHostStop(t *testing.T) {
 				pidFile := filepath.Join(workerDir, constants.OperatorPIDFilename)
 				require.NoError(t, os.WriteFile(pidFile, []byte(strconv.Itoa(cmd.Process.Pid)+"\n"), constants.PermFilePrivate))
 
-				stopped, err := ExecuteDeployHostStop(ctx, tempDir, "")
+				stopped, err := operatordeploy.ExecuteDeployHostStop(ctx, tempDir, "")
 				if tc.wantErr {
 					require.Error(t, err)
 					require.Empty(t, stopped)
@@ -470,17 +472,19 @@ func TestExecuteDeployHostStop(t *testing.T) {
 		workerDir := testutil.TempDir(t)
 		for _, tc := range []struct {
 			name string
-			proc localOperatorProcess
+			proc operatordeploy.LocalOperatorProcess
 			want string
 		}{
-			{name: "signal", proc: localOperatorProcess{pid: 301, dir: workerDir, signal: func(bool) error { return errors.New("signal failed") }}, want: "send TERM"},
-			{name: "wait", proc: localOperatorProcess{pid: 302, dir: workerDir, signal: func(bool) error { return nil }, wait: func(time.Duration) (bool, error) { return false, errors.New("wait failed") }}, want: "wait for Operator PID"},
+			{name: "signal", proc: operatordeploy.LocalOperatorProcess{PID: 301, Dir: workerDir, Signal: func(bool) error { return errors.New("signal failed") }}, want: "send TERM"},
+			{name: "wait", proc: operatordeploy.LocalOperatorProcess{PID: 302, Dir: workerDir, Signal: func(bool) error { return nil }, Wait: func(time.Duration) (bool, error) { return false, errors.New("wait failed") }}, want: "wait for Operator PID"},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				origDiscoverer := defaultLocalOperatorDiscoverer
-				defaultLocalOperatorDiscoverer = func() ([]localOperatorProcess, error) { return []localOperatorProcess{tc.proc}, nil }
-				t.Cleanup(func() { defaultLocalOperatorDiscoverer = origDiscoverer })
-				pids, err := ExecuteDeployHostStop(ctx, "", workerDir)
+				origDiscoverer := operatordeploy.DefaultLocalOperatorDiscoverer
+				operatordeploy.DefaultLocalOperatorDiscoverer = func() ([]operatordeploy.LocalOperatorProcess, error) {
+					return []operatordeploy.LocalOperatorProcess{tc.proc}, nil
+				}
+				t.Cleanup(func() { operatordeploy.DefaultLocalOperatorDiscoverer = origDiscoverer })
+				pids, err := operatordeploy.ExecuteDeployHostStop(ctx, "", workerDir)
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.want)
 				require.Empty(t, pids)
@@ -490,22 +494,22 @@ func TestExecuteDeployHostStop(t *testing.T) {
 
 	t.Run("cancelled context stops before discovery", func(t *testing.T) {
 		called := false
-		origDiscoverer := defaultLocalOperatorDiscoverer
-		defaultLocalOperatorDiscoverer = func() ([]localOperatorProcess, error) {
+		origDiscoverer := operatordeploy.DefaultLocalOperatorDiscoverer
+		operatordeploy.DefaultLocalOperatorDiscoverer = func() ([]operatordeploy.LocalOperatorProcess, error) {
 			called = true
 			return nil, nil
 		}
-		t.Cleanup(func() { defaultLocalOperatorDiscoverer = origDiscoverer })
+		t.Cleanup(func() { operatordeploy.DefaultLocalOperatorDiscoverer = origDiscoverer })
 		cancelled, cancel := context.WithCancel(ctx)
 		cancel()
-		pids, err := ExecuteDeployHostStop(cancelled, "", testutil.TempDir(t))
+		pids, err := operatordeploy.ExecuteDeployHostStop(cancelled, "", testutil.TempDir(t))
 		require.ErrorIs(t, err, context.Canceled)
 		require.Empty(t, pids)
 		require.False(t, called)
 	})
 
 	t.Run("missing both dest_dir and working_dir returns error", func(t *testing.T) {
-		_, err := ExecuteDeployHostStop(ctx, "", "")
+		_, err := operatordeploy.ExecuteDeployHostStop(ctx, "", "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "dest_dir or working_dir required")
 	})
@@ -520,7 +524,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 			Action: models.DeployHostActionPrepare,
 			Dirs:   []string{filepath.Join(tempDir, "dir1")},
 		}
-		resp, err := ExecuteDeployHost(ctx, req, nil)
+		resp, err := operatordeploy.ExecuteDeployHost(ctx, req, nil)
 		require.NoError(t, err)
 		require.Len(t, resp.ResolvedDirs, 1)
 	})
@@ -536,7 +540,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 			Source: src,
 			Target: target,
 		}
-		_, err := ExecuteDeployHost(ctx, req, nil)
+		_, err := operatordeploy.ExecuteDeployHost(ctx, req, nil)
 		require.NoError(t, err)
 
 		_, err = os.Stat(target)
@@ -554,7 +558,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 			Source:  src,
 			DestDir: destDir,
 		}
-		_, err := ExecuteDeployHost(ctx, req, nil)
+		_, err := operatordeploy.ExecuteDeployHost(ctx, req, nil)
 		require.NoError(t, err)
 
 		expectedTarget := filepath.Join(destDir, constants.DeployBinDirname, "ztd")
@@ -576,7 +580,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 			DestDir:   destDir,
 			Binary:    "ztd",
 		}
-		_, err := ExecuteDeployHost(ctx, req, nil)
+		_, err := operatordeploy.ExecuteDeployHost(ctx, req, nil)
 		require.NoError(t, err)
 
 		_, err = os.Stat(filepath.Join(destDir, "ztd"))
@@ -602,26 +606,26 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 		factory := func(string, *slog.Logger) (fs.RuntimeFileService, error) {
 			return fileSvc, nil
 		}
-		resp, err := ExecuteDeployHost(ctx, req, factory)
+		resp, err := operatordeploy.ExecuteDeployHost(ctx, req, factory)
 		require.NoError(t, err)
 		require.NotNil(t, resp.State)
 		require.Equal(t, models.OperatorDeploymentPhaseReady, resp.State.Phase)
 	})
 
 	t.Run("dispatches stop action", func(t *testing.T) {
-		origDiscoverer := defaultLocalOperatorDiscoverer
-		defaultLocalOperatorDiscoverer = func() ([]localOperatorProcess, error) {
+		origDiscoverer := operatordeploy.DefaultLocalOperatorDiscoverer
+		operatordeploy.DefaultLocalOperatorDiscoverer = func() ([]operatordeploy.LocalOperatorProcess, error) {
 			return nil, nil
 		}
 		t.Cleanup(func() {
-			defaultLocalOperatorDiscoverer = origDiscoverer
+			operatordeploy.DefaultLocalOperatorDiscoverer = origDiscoverer
 		})
 
 		req := models.DeployHostRequest{
 			Action:     models.DeployHostActionStop,
 			WorkingDir: testutil.TempDir(t),
 		}
-		resp, err := ExecuteDeployHost(ctx, req, nil)
+		resp, err := operatordeploy.ExecuteDeployHost(ctx, req, nil)
 		require.NoError(t, err)
 		require.Equal(t, 0, resp.StoppedCount)
 	})
@@ -630,7 +634,7 @@ func TestExecuteDeployHost_Router(t *testing.T) {
 		req := models.DeployHostRequest{
 			Action: "invalid-action",
 		}
-		_, err := ExecuteDeployHost(ctx, req, nil)
+		_, err := operatordeploy.ExecuteDeployHost(ctx, req, nil)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "unknown deploy-host action")
 	})

@@ -1217,37 +1217,39 @@ func TestSSHModelsJSON(t *testing.T) {
 func TestOperatorModelsJSON(t *testing.T) {
 	t.Run("OperatorDeployRequest marshalling", func(t *testing.T) {
 		req := OperatorDeployRequest{
-			Hostnames:      []string{"host1", "host2"},
-			OperatorBinary: "/usr/local/bin/ztd-operator",
-			OperatorArgs:   []string{"--config", "/etc/ztd/config.yaml"},
-			Timeout:        300,
+			Hostnames: []string{"host1", "host2"},
 		}
 		data, err := json.Marshal(req)
 		require.NoError(t, err)
-		assert.Contains(t, string(data), `"hostnames":["host1","host2"]`)
-		assert.Contains(t, string(data), `"timeout":300`)
+		assert.JSONEq(t, `{"hostnames":["host1","host2"]}`, string(data))
 
-		// Test omitempty
-		req.Timeout = 0
-		data, err = json.Marshal(req)
-		require.NoError(t, err)
-		assert.NotContains(t, string(data), `"timeout"`)
+		var decoded OperatorDeployRequest
+		require.NoError(t, json.Unmarshal(data, &decoded))
+		assert.Equal(t, req, decoded)
 	})
 
 	t.Run("OperatorDeploymentResult marshalling", func(t *testing.T) {
 		res := OperatorDeploymentResult{
-			Hostname: "host1",
-			Success:  true,
-			Message:  "Deployed successfully",
-			Output:   "operator started",
+			Hostname:     "host1",
+			DeploymentID: "dep-1",
+			Phase:        "pending_approval",
+			RequestID:    "req-1",
+			WorkingDir:   "/home/ztd/op",
+			Success:      true,
+			Message:      "Deployed successfully",
 		}
 		data, err := json.Marshal(res)
 		require.NoError(t, err)
 		assert.Contains(t, string(data), `"hostname":"host1"`)
+		assert.Contains(t, string(data), `"deployment_id":"dep-1"`)
+		assert.Contains(t, string(data), `"phase":"pending_approval"`)
+		assert.Contains(t, string(data), `"request_id":"req-1"`)
+		assert.Contains(t, string(data), `"working_dir":"/home/ztd/op"`)
 		assert.Contains(t, string(data), `"success":true`)
 
 		// Test with error
 		res.Success = false
+		res.Phase = "failed"
 		res.Error = "connection failed"
 		data, err = json.Marshal(res)
 		require.NoError(t, err)
@@ -1258,6 +1260,10 @@ func TestOperatorModelsJSON(t *testing.T) {
 		err = json.Unmarshal(data, &decoded)
 		require.NoError(t, err)
 		assert.Equal(t, "host1", decoded.Hostname)
+		assert.Equal(t, "dep-1", decoded.DeploymentID)
+		assert.Equal(t, "failed", decoded.Phase)
+		assert.Equal(t, "req-1", decoded.RequestID)
+		assert.Equal(t, "/home/ztd/op", decoded.WorkingDir)
 		assert.False(t, decoded.Success)
 		assert.Equal(t, "connection failed", decoded.Error)
 	})

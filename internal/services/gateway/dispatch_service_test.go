@@ -31,6 +31,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/response"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -1170,5 +1171,12 @@ func TestResultDeadline(t *testing.T) {
 	t.Run("model pull without timeout waits for the pull default", func(t *testing.T) {
 		got := resultDeadline(constants.ActionTypeOllamaModelPull, pullPayload(t, 0))
 		assert.Equal(t, constants.ModelPullDefaultTimeout+DispatchTimeout, got)
+	})
+
+	t.Run("operator deploy waits for enroll timeout plus dispatch margin", func(t *testing.T) {
+		payload, err := proto.Marshal(&operatorv1.OperatorDeployRequested{ExecutionId: "exec-deploy", Hostnames: []string{"localhost"}})
+		require.NoError(t, err)
+		got := resultDeadline(constants.ActionTypeOperatorDeploy, payload)
+		assert.Equal(t, operatordeploy.DefaultEnrollTimeout+DispatchTimeout, got)
 	})
 }

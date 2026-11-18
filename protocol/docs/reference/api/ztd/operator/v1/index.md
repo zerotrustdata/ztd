@@ -126,6 +126,9 @@
     - [OllamaModelResidencyModel](#ztd-operator-v1-OllamaModelResidencyModel)
     - [OllamaModelResidencyRequested](#ztd-operator-v1-OllamaModelResidencyRequested)
     - [OllamaModelResidencyResult](#ztd-operator-v1-OllamaModelResidencyResult)
+    - [OperatorDeployRequested](#ztd-operator-v1-OperatorDeployRequested)
+    - [OperatorDeployResult](#ztd-operator-v1-OperatorDeployResult)
+    - [OperatorDeployedHost](#ztd-operator-v1-OperatorDeployedHost)
     - [OperatorDocument](#ztd-operator-v1-OperatorDocument)
     - [OperatorRuntimeConfig](#ztd-operator-v1-OperatorRuntimeConfig)
     - [PasskeyAuthChallengeRequested](#ztd-operator-v1-PasskeyAuthChallengeRequested)
@@ -2654,6 +2657,63 @@ platform default (constants.ModelPullDefaultTimeout).
 | models | [OllamaModelResidencyModel](#ztd-operator-v1-OllamaModelResidencyModel) | repeated |  |
 | error_message | [string](#string) |  |  |
 | error_type | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-OperatorDeployRequested"></a>
+
+### OperatorDeployRequested
+OperatorDeployRequested stages and starts an Operator on one or more target hosts.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| execution_id | [string](#string) |  |  |
+| hostnames | [string](#string) | repeated |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-OperatorDeployResult"></a>
+
+### OperatorDeployResult
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| execution_id | [string](#string) |  |  |
+| status | [ExecutionStatus](#ztd-operator-v1-ExecutionStatus) |  |  |
+| deployments | [OperatorDeployedHost](#ztd-operator-v1-OperatorDeployedHost) | repeated |  |
+| error_message | [string](#string) |  |  |
+| error_type | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-operator-v1-OperatorDeployedHost"></a>
+
+### OperatorDeployedHost
+
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| hostname | [string](#string) |  |  |
+| deployment_id | [string](#string) |  |  |
+| phase | [string](#string) |  |  |
+| request_id | [string](#string) |  |  |
+| working_dir | [string](#string) |  |  |
+| success | [bool](#bool) |  |  |
+| message | [string](#string) |  |  |
+| error | [string](#string) |  |  |
 
 
 

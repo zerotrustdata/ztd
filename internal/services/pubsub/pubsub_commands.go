@@ -30,6 +30,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/services/scrubbing"
 	storage "github.com/zerotrustdata/ztd/internal/services/storage"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -74,13 +75,14 @@ type OperatorPubSubService struct {
 	logger  *slog.Logger
 	results ResultsPublisher
 
-	heartbeat *HeartbeatService
-	commands  *CommandService
-	fileOps   *FileOpsService
-	ports     *PortService
-	ollama    *OllamaMaintenanceService
-	audit     *AuditService
-	history   *HistoryService
+	heartbeat      *HeartbeatService
+	commands       *CommandService
+	fileOps        *FileOpsService
+	ports          *PortService
+	ollama         *OllamaMaintenanceService
+	operatorDeploy *OperatorDeployService
+	audit          *AuditService
+	history        *HistoryService
 
 	// scrubbing scrubs free text that is written into signed or egressed records
 	// (blocked-transaction summaries). Nil or disabled means fixed text only.
@@ -185,6 +187,10 @@ type CommandServiceConfig struct {
 	// storage-side model file site. Nil when provenance attestation is disabled.
 	ModelProvenanceOperator *model_provenance.Handler
 
+	// OperatorDeploy configures target execution for OPERATOR_DEPLOY actions.
+	OperatorDeploy              config.OperatorDeployConfig
+	OperatorDeployRemoteFactory operatordeploy.RemoteDeployClientFactory
+
 	// Actuator configuration
 	ActuatorSigningKey ed25519.PrivateKey
 	ActuatorKeyID      string
@@ -254,6 +260,13 @@ func newOperatorPubSubServiceInternal(c CommandServiceConfig, core GovernanceCor
 		return nil, fmt.Errorf("pubsub: ollama maintenance: %w", err)
 	}
 	rs.ollama = ollama
+
+	operatorDeploy, err := NewOperatorDeployService(c.Config, c.Logger, c.ResultsService, c.OperatorDeploy, c.OperatorDeployRemoteFactory, c.EventsStore)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("pubsub: operator deploy: %w", err)
+	}
+	rs.operatorDeploy = operatorDeploy
 
 	rs.audit = NewAuditService(c.Config, c.Logger, c.EventsStore)
 	nativeOperatorID := ""
@@ -461,6 +474,7 @@ func (rs *OperatorPubSubService) buildHandlers() {
 		constants.ActionTypeFetchFileHistory:            rs.history.HandleFetchFileHistoryRequest,
 		constants.ActionTypeRestoreFile:                 rs.history.HandleRestoreFileRequest,
 		constants.ActionTypeFetchFileDiff:               rs.history.HandleFetchFileDiffRequest,
+		constants.ActionTypeOperatorDeploy:              rs.operatorDeploy.HandleDeployRequest,
 		constants.ActionTypeDocumentUpdate:              rs.handleDocumentUpdateSync,
 		constants.ActionTypeDocumentDelete:              rs.handleDocumentDeleteSync,
 		constants.ActionTypeEvalAnswer:                  rs.handleEvalAnswerRequestSync,

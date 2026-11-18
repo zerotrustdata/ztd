@@ -25,11 +25,10 @@ import (
 func TestScenarioObservationEvidenceRejectsFinalReadBeforeAgentActivity(t *testing.T) {
 	for _, finalFirst := range []bool{false, true} {
 		t.Run(map[bool]string{false: "final read after activity", true: "premature final read"}[finalFirst], func(t *testing.T) {
-			// Exercise the receipt/ledger verifier directly, with the established
-			// pre-identity fixture so this test isolates evidence chronology.
+			// Exercise the receipt/ledger verifier directly so this test isolates
+			// evidence chronology.
 			ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
 			trace := evidenceTrace(ledger.runtime(), ledger.runtime())
-			trace.Roster[0].Workspace = AgentTraceWorkspace{Root: "/work", OperatorWorkingDirectory: "/"}
 			trace.InvestigationID = "case-1"
 			before := ledger.executed("before", string(constants.ActionTypeFsRead))
 			args := `{"path":"/work/result"}`
@@ -40,20 +39,23 @@ func TestScenarioObservationEvidenceRejectsFinalReadBeforeAgentActivity(t *testi
 			hash, err := govhash.GenerateMessageID(envelope)
 			require.NoError(t, err)
 			envelope.TransactionHash, envelope.Id = hash, hash
+			result := buildModelTurnResult(t, trace, "attempt-agent-turn", "")
 			var final, model *operatorv1.EventReceipt
 			if finalFirst {
 				final = ledger.executed(hash, string(constants.ActionTypeMcpCall))
-				model = ledger.inference("agent-turn")
+				model = ledger.executed("agent-turn", string(constants.ActionTypeInference))
 			} else {
-				model = ledger.inference("agent-turn")
+				model = ledger.executed("agent-turn", string(constants.ActionTypeInference))
 				final = ledger.executed(hash, string(constants.ActionTypeMcpCall))
 			}
+			model.ResultSummary = result.GetResultDigest()
+			ledger.signer.Resign(t, model)
 			final.TransactionHash, final.ResultSummary = hash, `{"content":"healthy"}`
 			for _, stage := range final.DeterministicStageEvidence {
 				stage.TransactionHash = hash
 			}
 			ledger.signer.Resign(t, final)
-			trace.ModelCalls = []AgentModelCall{completedModelCall("agent-turn", model)}
+			trace.ModelCalls = []AgentModelCall{modelCallFromResult("agent-turn", 1, trace, result, model, 0, "")}
 			trace.Observations = []AgentScenarioObservation{{Kind: scenarioObservationFile, Call: AgentToolCall{
 				CallID: "final-read", GroupID: "final-read", TargetIndex: 1, ToolName: constants.MCPToolReadFile, ArgumentsJSON: args,
 				TransactionID: hash, ActionType: string(constants.ActionTypeMcpCall), PolicyDecision: agentPolicyDecisionAllow,

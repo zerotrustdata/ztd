@@ -8,37 +8,28 @@
 package mcp
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net"
-	"os"
-	"os/exec"
-	"path"
-	"path/filepath"
 	"strings"
-	"time"
-
-	"github.com/pkg/sftp"
-	sshlib "golang.org/x/crypto/ssh"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/pkg/ssh"
+	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// OperatorDeployTool deploys the ztd operator to remote hosts.
+// OperatorDeployTool deploys the ztd operator to target hostnames as the typed
+// OPERATOR_DEPLOY governed action.
 type OperatorDeployTool struct{}
 
 // Name returns the tool identifier.
 func (t *OperatorDeployTool) Name() string {
-	return "operator_deploy"
+	return constants.MCPToolOperatorDeploy
 }
 
 // Description returns a human-readable description.
 func (t *OperatorDeployTool) Description() string {
-	return "Deploys the ztd operator to a list of remote hosts via SSH."
+	return "Deploys and starts the ztd operator on one or more target hostnames as a governed action. " +
+		"Enrollment of deployed operators remains human-approved."
 }
 
 // InputSchema returns the JSON Schema for tool validation.
@@ -48,294 +39,46 @@ func (t *OperatorDeployTool) InputSchema() *InputSchema {
 		Properties: map[string]*PropertySchema{
 			"hostnames": {
 				Type:        "array",
-				Description: "List of hostnames to deploy the operator to",
-			},
-			"operator_binary": {
-				Type:        "string",
-				Description: "Path to the operator binary (optional, defaults to current ztd binary)",
-			},
-			"operator_args": {
-				Type:        "array",
-				Description: "Additional arguments to pass to the operator (optional)",
-			},
-			"timeout": {
-				Type:        "integer",
-				Description: "Timeout in seconds for deployment (default: 300, max: 600)",
+				Description: "List of target hostnames to deploy the ztd operator to",
 			},
 		},
 		Required: []string{"hostnames"},
 	}
 }
 
-// Execute implements the tool logic.
-func (t *OperatorDeployTool) Execute(ctx context.Context, args json.RawMessage) (CallToolResult, error) {
-	var req OperatorDeployRequest
-	if err := json.Unmarshal(args, &req); err != nil {
-		return CallToolResult{}, fmt.Errorf("operator_deploy: unmarshal arguments: %w", err)
-	}
+// ActionType returns the typed governed action produced by this tool.
+func (t *OperatorDeployTool) ActionType() constants.ActionType {
+	return constants.ActionTypeOperatorDeploy
+}
 
-	// Validate inputs
+// Execute fails closed: operator_deploy must be routed as a typed
+// OPERATOR_DEPLOY governed action, never as an MCP_CALL.
+func (t *OperatorDeployTool) Execute(context.Context, json.RawMessage) (CallToolResult, error) {
+	return governedActionOnly(t.Name())
+}
+
+// GovernedAction strictly decodes OperatorDeployRequest and builds the typed
+// OperatorDeployRequested governed action.
+func (t *OperatorDeployTool) GovernedAction(args json.RawMessage, binding GovernedActionBinding) (GovernedActionRequest, error) {
+	req, err := decodeGovernedToolArguments[OperatorDeployRequest](t.Name(), args)
+	if err != nil {
+		return GovernedActionRequest{}, err
+	}
 	if err := validateHostnames(req.Hostnames); err != nil {
-		return CallToolResult{}, fmt.Errorf("operator_deploy: %w", err)
+		return GovernedActionRequest{}, fmt.Errorf("%s: %w", t.Name(), err)
 	}
-	if err := validateOperatorBinaryPath(req.OperatorBinary); err != nil {
-		return CallToolResult{}, fmt.Errorf("operator_deploy: %w", err)
-	}
-	if err := validateOperatorArgs(req.OperatorArgs); err != nil {
-		return CallToolResult{}, fmt.Errorf("operator_deploy: %w", err)
-	}
-
-	// Determine operator binary path
-	operatorBinary := req.OperatorBinary
-	if operatorBinary == "" {
-		// Default to the current executable
-		execPath, err := os.Executable()
-		if err != nil {
-			return CallToolResult{}, fmt.Errorf("operator_deploy: get current executable: %w", err)
+	seen := make(map[string]struct{}, len(req.Hostnames))
+	for _, h := range req.Hostnames {
+		if strings.HasPrefix(h, "-") {
+			return GovernedActionRequest{}, fmt.Errorf("%s: hostname %q must not start with '-': %w", t.Name(), h, constants.ErrGatewayInvalidToolArguments)
 		}
-		operatorBinary = execPath
-	}
-
-	// Validate operator binary exists.
-	// operatorBinary is validated by validateOperatorBinaryPath to satisfy CodeQL uncontrolled-data-in-path-expression rule.
-	if _, err := os.Stat(operatorBinary); err != nil {
-		return CallToolResult{}, fmt.Errorf("operator_deploy: operator binary not found: %w", err)
-	}
-
-	// Set timeout
-	timeout := 300 * time.Second
-	if req.Timeout > 0 {
-		if req.Timeout > 600 {
-			return CallToolResult{}, fmt.Errorf("operator_deploy: timeout cannot exceed 600 seconds")
+		if _, dup := seen[h]; dup {
+			return GovernedActionRequest{}, fmt.Errorf("%s: duplicate hostname %q: %w", t.Name(), h, constants.ErrGatewayInvalidToolArguments)
 		}
-		timeout = time.Duration(req.Timeout) * time.Second
+		seen[h] = struct{}{}
 	}
-
-	// Build operator arguments
-	operatorArgs := req.OperatorArgs
-	if operatorArgs == nil {
-		operatorArgs = []string{}
-	}
-
-	// Deploy to each host
-	var deployments []OperatorDeploymentResult
-	for _, hostname := range req.Hostnames {
-		result := t.deployToHost(ctx, hostname, operatorBinary, operatorArgs, timeout)
-		deployments = append(deployments, result)
-	}
-
-	result := OperatorDeployResult{
-		Deployments: deployments,
-	}
-
-	resultJSON, err := json.Marshal(result)
-	if err != nil {
-		return CallToolResult{}, fmt.Errorf("operator_deploy: marshal result: %w", err)
-	}
-
-	return CallToolResult{
-		Content: []TextContent{
-			{
-				Type: "text",
-				Text: string(resultJSON),
-			},
-		},
-	}, nil
-}
-
-// deployToHost deploys the operator to a specific host.
-func (t *OperatorDeployTool) deployToHost(ctx context.Context, hostname, operatorBinary string, operatorArgs []string, timeout time.Duration) OperatorDeploymentResult {
-	// Local deployment
-	if hostname == "localhost" || hostname == "127.0.0.1" {
-		return t.deployLocally(ctx, hostname, operatorBinary, operatorArgs, timeout)
-	}
-
-	// Remote deployment via SSH
-	return t.deployViaSSH(ctx, hostname, operatorBinary, operatorArgs, timeout)
-}
-
-// deployLocally deploys the operator on the local machine.
-func (t *OperatorDeployTool) deployLocally(ctx context.Context, hostname, operatorBinary string, operatorArgs []string, timeout time.Duration) OperatorDeploymentResult {
-	result := OperatorDeploymentResult{
-		Hostname: hostname,
-		Success:  false,
-	}
-
-	// Create command context with timeout
-	cmdCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	// Build command with separate args to prevent shell injection.
-	// operatorBinary is validated by validateOperatorBinaryPath, operatorArgs by validateOperatorArgs.
-	cmd := exec.CommandContext(cmdCtx, operatorBinary, operatorArgs...)
-
-	// Execute command
-	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-
-	err := cmd.Run()
-
-	result.Output = stdoutBuf.String()
-	result.Message = "Local deployment completed"
-
-	if err != nil {
-		result.Error = err.Error()
-		result.Message = fmt.Sprintf("Local deployment failed: %s", stderrBuf.String())
-		return result
-	}
-
-	result.Success = true
-	result.Message = "Operator deployed successfully"
-	return result
-}
-
-// deployViaSSH deploys the operator to a remote host via SSH.
-func (t *OperatorDeployTool) deployViaSSH(ctx context.Context, hostname, operatorBinary string, operatorArgs []string, timeout time.Duration) OperatorDeploymentResult {
-	result := OperatorDeploymentResult{
-		Hostname: hostname,
-		Success:  false,
-	}
-
-	// Resolve SSH connection parameters
-	r, err := ssh.ResolveHost(hostname, "", "", "", "")
-	if err != nil {
-		result.Error = fmt.Sprintf("resolve host: %v", err)
-		result.Message = "Failed to resolve SSH host"
-		return result
-	}
-	if r.Hostname == "" {
-		result.Error = "failed to resolve hostname"
-		result.Message = "Failed to resolve SSH host"
-		return result
-	}
-
-	// Build auth methods
-	authMethods, err := ssh.BuildAuthMethods(r, "", "")
-	if err != nil {
-		result.Error = fmt.Sprintf("build auth methods: %v", err)
-		result.Message = "Failed to build SSH authentication"
-		return result
-	}
-	if len(authMethods) == 0 {
-		result.Error = "no SSH auth methods available"
-		result.Message = "No SSH authentication methods available"
-		return result
-	}
-
-	// Build host key callback
-	hostKeyCallback, err := ssh.BuildHostKeyCallback("")
-	if err != nil {
-		result.Error = fmt.Sprintf("host key verification: %v", err)
-		result.Message = "Failed to verify host key"
-		return result
-	}
-
-	// Create SSH client config
-	clientConfig := &sshlib.ClientConfig{
-		User:            r.User,
-		Auth:            authMethods,
-		HostKeyCallback: hostKeyCallback,
-		Timeout:         timeout,
-	}
-
-	// Connect to SSH server
-	addr := net.JoinHostPort(r.Hostname, r.Port)
-	client, err := ssh.DialSSH(ctx, r, clientConfig, addr)
-	if err != nil {
-		result.Error = fmt.Sprintf("SSH dial failed: %v", err)
-		result.Message = "Failed to connect via SSH"
-		return result
-	}
-	defer client.Close()
-
-	// Create session
-	session, err := client.NewSession()
-	if err != nil {
-		result.Error = fmt.Sprintf("SSH session creation failed: %v", err)
-		result.Message = "Failed to create SSH session"
-		return result
-	}
-	defer session.Close()
-
-	// Determine if we need to transfer the binary
-	// For now, we'll assume the operator is already present on the remote host
-	// or we'll try to execute it directly if it's a local path that can be transferred
-
-	// Check if operator binary is a local file that needs to be transferred
-	if filepath.IsAbs(operatorBinary) || !strings.Contains(operatorBinary, "/") {
-		// Transfer the binary to the remote host
-		remotePath, err := t.transferBinaryViaSCP(client, operatorBinary)
-		if err != nil {
-			result.Error = fmt.Sprintf("transfer binary: %v", err)
-			result.Message = fmt.Sprintf("Failed to transfer operator binary: %v", err)
-			return result
-		}
-		operatorBinary = remotePath
-	}
-
-	// Build command with proper shell quoting
-	fullCmd := shellQuoteCommand(operatorBinary, operatorArgs)
-
-	// Execute command with timeout and separate stdout/stderr.
-	// fullCmd is built by shellQuoteCommand which properly quotes arguments to prevent shell injection.
-	var stdoutBuf, stderrBuf bytes.Buffer
-	session.Stdout = &stdoutBuf
-	session.Stderr = &stderrBuf
-	err = session.Run(fullCmd)
-
-	result.Output = stdoutBuf.String()
-
-	if err != nil {
-		result.Error = err.Error()
-		result.Message = fmt.Sprintf("Remote deployment failed: %s", stderrBuf.String())
-		return result
-	}
-
-	result.Success = true
-	result.Message = "Operator deployed successfully via SSH"
-	return result
-}
-
-// transferBinaryViaSCP stages a local binary in the remote runtime scratch
-// dir via SFTP and returns its remote path.
-func (t *OperatorDeployTool) transferBinaryViaSCP(client *sshlib.Client, localPath string) (string, error) {
-	// Create SFTP client
-	sftpClient, err := sftp.NewClient(client)
-	if err != nil {
-		return "", fmt.Errorf("create SFTP client: %w", err)
-	}
-	defer sftpClient.Close()
-
-	scratchDir, err := ssh.MkdirRemoteScratch(sftpClient)
-	if err != nil {
-		return "", err
-	}
-	remotePath := path.Join(scratchDir, constants.OperatorBinaryFilename)
-
-	// Open local file
-	srcFile, err := os.Open(filepath.Clean(localPath))
-	if err != nil {
-		return "", fmt.Errorf("open local file: %w", err)
-	}
-	defer srcFile.Close()
-
-	// Create remote file
-	dstFile, err := sftpClient.Create(remotePath)
-	if err != nil {
-		return "", fmt.Errorf("create remote file: %w", err)
-	}
-	defer dstFile.Close()
-
-	// Copy file contents
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return "", fmt.Errorf("copy file contents: %w", err)
-	}
-
-	// Make the file executable
-	if err := sftpClient.Chmod(remotePath, constants.PermFileExecutable); err != nil {
-		return "", fmt.Errorf("chmod file: %w", err)
-	}
-
-	return remotePath, nil
+	return governedActionRequest(t.ActionType(), strings.Join(req.Hostnames, ","), &operatorv1.OperatorDeployRequested{
+		ExecutionId: binding.ExecutionID,
+		Hostnames:   req.Hostnames,
+	})
 }

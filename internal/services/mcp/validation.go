@@ -20,11 +20,10 @@ import (
 )
 
 var (
-	semicolonPattern                 = regexp.MustCompile(`;\s*$`)
-	validRefPattern                  = regexp.MustCompile(`^[a-zA-Z0-9_\-./~]+$`)
-	k8sNamePattern                   = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
-	dangerousShellChars              = []string{";", "&", "|", "$", "`", "(", ")", "<", ">", "\n", "\r"}
-	dangerousShellCharsWithBackslash = []string{"$", "`", "\\", ";", "&", "|", "(", ")", "<", ">", "\n", "\r"}
+	semicolonPattern    = regexp.MustCompile(`;\s*$`)
+	validRefPattern     = regexp.MustCompile(`^[a-zA-Z0-9_\-./~]+$`)
+	k8sNamePattern      = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+	dangerousShellChars = []string{";", "&", "|", "$", "`", "(", ")", "<", ">", "\n", "\r"}
 )
 
 // privateIPAllowlist holds CIDR ranges that are permitted for internal HTTP
@@ -298,33 +297,6 @@ func validateHostnames(hostnames []string) error {
 	for _, hostname := range hostnames {
 		if err := validateHostname(hostname); err != nil {
 			return fmt.Errorf("mcp: validate hostnames: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func validateOperatorBinaryPath(path string) error {
-	if path == "" {
-		return nil
-	}
-	return validateFilePath(path)
-}
-
-func validateOperatorArgs(args []string) error {
-	if args == nil {
-		return nil
-	}
-
-	for _, arg := range args {
-		if strings.ContainsAny(arg, "\x00") {
-			return fmt.Errorf("mcp: validate operator args: %w", constants.ErrMCPValidateOperatorArgsNullBytes)
-		}
-
-		for _, char := range dangerousShellCharsWithBackslash {
-			if strings.Contains(arg, char) {
-				return fmt.Errorf("mcp: validate operator args: %w: %q", constants.ErrMCPValidateOperatorArgsDangerousChar, char)
-			}
 		}
 	}
 

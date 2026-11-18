@@ -33,7 +33,6 @@ import (
 	"time"
 
 	"github.com/pkg/sftp"
-	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	sshlib "golang.org/x/crypto/ssh"
@@ -41,6 +40,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -173,7 +173,7 @@ func runDeployHostExec(command string, stdin []byte, stdout, stderr io.Writer) u
 		_, _ = io.WriteString(stderr, "decode deploy-host request: "+err.Error())
 		return 1
 	}
-	resp, err := ExecuteDeployHost(context.Background(), req, fs.NewRuntimeFileService)
+	resp, err := operatordeploy.ExecuteDeployHost(context.Background(), req, fs.NewRuntimeFileService)
 	if err != nil {
 		_, _ = io.WriteString(stderr, err.Error())
 		return 1
@@ -188,7 +188,7 @@ func runDeployHostExec(command string, stdin []byte, stdout, stderr io.Writer) u
 
 // dialDeploySSHClient builds the production remote client shape over an
 // in-process connection. The caller owns Close.
-func dialDeploySSHClient(t *testing.T, addr string, hostKey sshlib.PublicKey) *sshRemoteDeployClient {
+func dialDeploySSHClient(t *testing.T, addr string, hostKey sshlib.PublicKey) operatordeploy.RemoteDeployClient {
 	t.Helper()
 	clientConfig := &sshlib.ClientConfig{
 		User:            "deploy-test",
@@ -198,21 +198,12 @@ func dialDeploySSHClient(t *testing.T, addr string, hostKey sshlib.PublicKey) *s
 	client, err := sshlib.Dial("tcp", addr, clientConfig)
 	require.NoError(t, err)
 
-	sftpClient, err := sftp.NewClient(client)
+	rc, err := operatordeploy.NewSSHRemoteDeployClient(client, addr)
 	if err != nil {
 		_ = client.Close()
 		require.NoError(t, err)
 	}
-	wd, err := sftpClient.Getwd()
-	require.NoError(t, err)
-
-	return &sshRemoteDeployClient{
-		client:     client,
-		sftpClient: sftpClient,
-		host:       addr,
-		isWSL:      isWindowsPath(wd),
-		workingDir: wd,
-	}
+	return rc
 }
 
 func writeDeploySourceBinary(t *testing.T) (string, []byte) {
@@ -306,22 +297,23 @@ func TestDeploySSH_ExecuteDeploySSHUploadsThroughFactory(t *testing.T) {
 	src, content := writeDeploySourceBinary(t)
 	remoteDir := testutil.TempDir(t)
 
-	factory := func(context.Context, string, int, string) (remoteDeployClient, error) {
+	factory := func(context.Context, string, int, string) (operatordeploy.RemoteDeployClient, error) {
 		return client, nil
 	}
 	var out bytes.Buffer
-	cmd := &cobra.Command{}
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
 
-	deployed, failed, cleanup, err := executeDeploySSH(
-		ctx, cmd, []string{"deploy-test-host"}, 0, "",
-		remoteDir, src, nil, operatorDeployOptions{}, 1, factory, nil,
-	)
+	outcome, cleanup, err := operatordeploy.ExecuteDeploy(ctx, operatordeploy.DeployRequest{
+		HostList:      []string{"deploy-test-host"},
+		RemoteDir:     remoteDir,
+		SourceBinary:  src,
+		Parallel:      1,
+		RemoteFactory: factory,
+		Output:        &out,
+	})
 	t.Cleanup(cleanup)
 	require.NoError(t, err)
-	assert.Empty(t, deployed)
-	assert.Empty(t, failed)
+	assert.Len(t, outcome.Deployed, 1)
+	assert.Empty(t, outcome.Failed)
 
 	got, err := os.ReadFile(filepath.Join(remoteDir, constants.DeployBinDirname, "ztd"))
 	require.NoError(t, err)

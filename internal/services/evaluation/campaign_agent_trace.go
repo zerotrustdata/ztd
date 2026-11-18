@@ -30,38 +30,19 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// agentTraceSchemaVersion is the version every new trace is sealed with. v14
-// replaces the single Data runtime, workspace and ledger bracket with the
-// frozen harness roster: one member per Data Operator the run addressed, each
-// with its own workspace and bracket, and records each tool dispatch's roster
-// target and fan-out group. It is the only version that verifies. v13
-// records retried provider attempts: a call that retries an attempt the
-// provider asked to retry later carries retry_of, the attempt it supersedes;
-// v12 records a content judgment the pinned judge failed to decide, with its
-// typed failure, so the trace persists when grading fails; v11
-// records the frozen persona (ID, version, digest) the designated role ran
-// under; v10 records each pinned-judge verdict on a judged content criterion with its
-// dispatched prompt and signed inference result; v9
-// separates harness seed and final-state observations from model tool calls; v8
-// records the Tribunal-approved arguments a run_shell_command call executed; v7
-// carries each complete signed inference result and its per-call model identity;
-// v6 binds scored investigation identity and authoritative context retrievals; v5
-// added the held context a repetition continued; v4 added the exact model
-// input, per-turn thinking, and provider tool-call IDs. v4 and v3 traces
-// remain valid evidence; a v3 trace's model input was not captured and is
-// never reconstructed.
+// agentTraceSchemaVersion is the version every new trace is sealed with and
+// the only version that verifies. v14 replaces the single Data runtime,
+// workspace and ledger bracket with the frozen harness roster: one member per
+// Data Operator the run addressed, each with its own workspace and bracket, and
+// records each tool dispatch's roster target and fan-out group.
 const (
 	agentTraceSchemaVersion    = "agent-trace.v14"
-	agentTraceSchemaVersionV13 = "agent-trace.v13"
 	agentTraceSchemaVersionV12 = "agent-trace.v12"
-	agentTraceSchemaVersionV11 = "agent-trace.v11"
 	agentTraceSchemaVersionV10 = "agent-trace.v10"
 	agentTraceSchemaVersionV9  = "agent-trace.v9"
 	agentTraceSchemaVersionV8  = "agent-trace.v8"
 	agentTraceSchemaVersionV7  = "agent-trace.v7"
 	agentTraceSchemaVersionV6  = "agent-trace.v6"
-	agentTraceSchemaVersionV5  = "agent-trace.v5"
-	agentTraceSchemaVersionV4  = "agent-trace.v4"
 	agentTraceSchemaVersionV3  = "agent-trace.v3"
 )
 
@@ -318,8 +299,9 @@ type AgentTrace struct {
 	// its ledger bracket. When one Operator holds both capabilities, Inference
 	// names a roster member's runtime, whose bracket must then account for
 	// both roles' executions.
-	Inference AgentTraceRuntime        `json:"inference"`
-	Roster    []AgentTraceRosterMember `json:"roster"`
+	Inference   AgentTraceRuntime        `json:"inference"`
+	Roster      []AgentTraceRosterMember `json:"roster"`
+	RosterJoins []AgentTraceRosterJoin   `json:"roster_joins,omitempty"`
 	// HeldContext is the previous repetition's conversation this repetition
 	// continued, when its campaign holds context. The model received these
 	// messages ahead of Input on every turn.
@@ -513,10 +495,16 @@ func (t *AgentTrace) Conversation() ([]AgentTraceContextMessage, error) {
 		}
 		assistant := AgentTraceContextMessage{Role: assistantRole, Text: call.Text}
 		var results []AgentTraceContextMessage
+		turnCallIDs := make(map[string]bool)
 		for _, group := range toolCallGroups(t.ToolCalls) {
 			tool := group[0]
 			if tool.ModelCallID != call.ProviderAttemptID {
 				continue
+			}
+			for _, dispatched := range group {
+				if dispatched.CallID != "" {
+					turnCallIDs[dispatched.CallID] = true
+				}
 			}
 			// One model tool call is one assistant call and one tool result,
 			// however many roster targets it fanned out to.
@@ -537,6 +525,19 @@ func (t *AgentTrace) Conversation() ([]AgentTraceContextMessage, error) {
 		}
 		messages = append(messages, assistant)
 		messages = append(messages, results...)
+		for _, join := range t.RosterJoins {
+			if !turnCallIDs[join.JoinedAfterCall] {
+				continue
+			}
+			member, err := t.Member(join.Index)
+			if err != nil {
+				return nil, fmt.Errorf("evaluation: agent trace conversation: %w", err)
+			}
+			messages = append(messages, AgentTraceContextMessage{
+				Role: userRole,
+				Text: renderRosterUpdateMessage(member),
+			})
+		}
 	}
 	return messages, nil
 }
@@ -658,43 +659,6 @@ func (t *AgentTrace) interrogationAt(loopTurn int) (AgentModelCall, bool) {
 		}
 	}
 	return AgentModelCall{}, false
-}
-
-// CarriesModelIdentity reports whether the trace's schema seals each model
-// call's signed inference result and model identity (v7 and later).
-func (t *AgentTrace) CarriesModelIdentity() bool {
-	return t != nil && (t.carriesObservationEvidence() || t.SchemaVersion == agentTraceSchemaVersionV8 || t.SchemaVersion == agentTraceSchemaVersionV7)
-}
-
-// carriesObservationEvidence reports whether the trace's schema records
-// harness observations and native tool request evidence (v9 and later).
-func (t *AgentTrace) carriesObservationEvidence() bool {
-	return t != nil && (t.carriesContentJudgments() || t.SchemaVersion == agentTraceSchemaVersionV9)
-}
-
-// carriesContentJudgments reports whether the trace's schema records pinned
-// judge verdicts (v10 and later).
-func (t *AgentTrace) carriesContentJudgments() bool {
-	return t != nil && (t.carriesPersona() || t.SchemaVersion == agentTraceSchemaVersionV10)
-}
-
-// carriesPersona reports whether the trace's schema records the frozen
-// persona the designated role ran under and the Interrogator's exact input
-// (v11 and later).
-func (t *AgentTrace) carriesPersona() bool {
-	return t != nil && (t.carriesFailedJudgments() || t.SchemaVersion == agentTraceSchemaVersionV11)
-}
-
-// carriesFailedJudgments reports whether the trace's schema records a content
-// judgment the pinned judge failed to decide (v12 and later).
-func (t *AgentTrace) carriesFailedJudgments() bool {
-	return t != nil && (t.carriesRetries() || t.SchemaVersion == agentTraceSchemaVersionV12)
-}
-
-// carriesRetries reports whether the trace's schema records retried provider
-// attempts (v13 and later).
-func (t *AgentTrace) carriesRetries() bool {
-	return t != nil && t.SchemaVersion == agentTraceSchemaVersion
 }
 
 // SharedRuntime reports whether both roles executed on one runtime.
@@ -870,6 +834,30 @@ func (s *AgentTraceSteps) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// AgentTraceRosterJoin records one Data Operator that joined the roster mid-run
+// after an executed operator_deploy tool call.
+type AgentTraceRosterJoin struct {
+	Index           int               `json:"index"`
+	Runtime         AgentTraceRuntime `json:"runtime"`
+	JoinedAfterCall string            `json:"joined_after_call"`
+}
+
+// InitialRoster returns the prefix of the trace roster present before any
+// RosterJoins occurred.
+func (t *AgentTrace) InitialRoster() []AgentTraceRosterMember {
+	if t == nil {
+		return nil
+	}
+	if len(t.RosterJoins) == 0 {
+		return t.Roster
+	}
+	initialCount := len(t.Roster) - len(t.RosterJoins)
+	if initialCount <= 0 {
+		return nil
+	}
+	return t.Roster[:initialCount]
+}
+
 // AgentTraceBracket is the pair of harness sentinels around the attempt.
 // validateAgentTraceRoster requires a non-empty roster whose members sit at
 // their 1-based positions and name distinct runtimes. Each member's workspace
@@ -892,6 +880,54 @@ func validateAgentTraceRoster(roster []AgentTraceRosterMember) error {
 		seen[member.Runtime.OperatorID] = true
 	}
 	return nil
+}
+
+// validateAgentTraceRosterJoins checks that every RosterJoin sits at a
+// contiguous index [len(InitialRoster)+1 .. len(Roster)], matches the runtime
+// recorded on Roster[join.Index-1], and references an executed operator_deploy
+// call in trace.ToolCalls.
+func validateAgentTraceRosterJoins(trace *AgentTrace) error {
+	if trace == nil || len(trace.RosterJoins) == 0 {
+		return nil
+	}
+	initial := trace.InitialRoster()
+	if len(initial) == 0 {
+		return fmt.Errorf("roster joins %d leave no initial roster in %d member(s): %w", len(trace.RosterJoins), len(trace.Roster), constants.ErrHarnessRosterMismatch)
+	}
+	calls := make(map[string]AgentToolCall, len(trace.ToolCalls))
+	for _, call := range trace.ToolCalls {
+		if call.CallID != "" {
+			calls[call.CallID] = call
+		}
+	}
+	for i, join := range trace.RosterJoins {
+		wantIndex := len(initial) + i + 1
+		if join.Index != wantIndex {
+			return fmt.Errorf("roster join %d records index %d, want %d: %w", i, join.Index, wantIndex, constants.ErrHarnessRosterMismatch)
+		}
+		member := trace.Roster[join.Index-1]
+		if !equalAgentTraceRuntime(join.Runtime, member.Runtime) {
+			return fmt.Errorf("roster join [%d] runtime differs from roster member: %w", join.Index, constants.ErrHarnessRosterMismatch)
+		}
+		if join.JoinedAfterCall == "" {
+			return fmt.Errorf("roster join [%d] joined_after_call: %w", join.Index, constants.ErrMissingRequiredField)
+		}
+		call, ok := calls[join.JoinedAfterCall]
+		if !ok || call.ToolName != constants.MCPToolOperatorDeploy || !call.Success {
+			return fmt.Errorf("roster join [%d] joined_after_call %q does not name an executed %s call: %w", join.Index, join.JoinedAfterCall, constants.MCPToolOperatorDeploy, constants.ErrHarnessRosterMismatch)
+		}
+	}
+	return nil
+}
+
+func equalAgentTraceRuntime(a, b AgentTraceRuntime) bool {
+	if a.OperatorID != b.OperatorID || a.SessionID != b.SessionID {
+		return false
+	}
+	if a.Anchor == nil || b.Anchor == nil {
+		return a.Anchor == nil && b.Anchor == nil
+	}
+	return proto.Equal(a.Anchor.ConformanceAnchor, b.Anchor.ConformanceAnchor)
 }
 
 // AgentTraceRosterMember is one Data Operator in the frozen harness roster:
@@ -1068,58 +1104,16 @@ func validateAgentTraceRules(trace *AgentTrace) error {
 	if err := validateAgentTraceRoster(trace.Roster); err != nil {
 		return fmt.Errorf("evaluation: validate agent trace: %w", err)
 	}
-	// A v11 or later trace without a persona is rejected as evidence by verifyTracePersona.
-	if !trace.carriesPersona() && trace.Persona != nil {
-		return fmt.Errorf("evaluation: validate agent trace: historical trace carries a persona: %w", constants.ErrEvidenceArtifactMalformed)
+	if err := validateAgentTraceRosterJoins(trace); err != nil {
+		return fmt.Errorf("evaluation: validate agent trace: %w", err)
 	}
 	for _, call := range trace.ModelCalls {
-		if (call.Purpose == agentModelCallPurposeInterrogation) != (len(call.Input) > 0) || (!trace.carriesPersona() && len(call.Input) > 0) {
+		if (call.Purpose == agentModelCallPurposeInterrogation) != (len(call.Input) > 0) {
 			return fmt.Errorf("evaluation: validate agent trace: model call %q input: %w", call.ProviderAttemptID, constants.ErrEvidenceArtifactMalformed)
 		}
-		if !trace.carriesRetries() && (call.RetryOf != "" || call.RetryCount != 0) {
-			return fmt.Errorf("evaluation: validate agent trace: historical trace carries a retried model call %q: %w", call.ProviderAttemptID, constants.ErrEvidenceArtifactMalformed)
-		}
 	}
-	if !trace.carriesRetries() {
-		for _, tool := range trace.ToolCalls {
-			for _, vote := range tool.ConsensusInferences {
-				if vote.GetRetryCount() != 0 || len(vote.GetSupersededAttempts()) > 0 {
-					return fmt.Errorf("evaluation: validate agent trace: historical trace carries a retried L2 vote %q: %w", vote.GetProviderAttemptId(), constants.ErrEvidenceArtifactMalformed)
-				}
-			}
-		}
-	}
-	if !trace.carriesContentJudgments() && len(trace.ContentJudgments) > 0 {
-		return fmt.Errorf("evaluation: validate agent trace: historical trace carries content judgments: %w", constants.ErrEvidenceArtifactMalformed)
-	}
-	for _, judgment := range trace.ContentJudgments {
-		if judgment.Failure != "" && !trace.carriesFailedJudgments() {
-			return fmt.Errorf("evaluation: validate agent trace: historical trace carries a failed content judgment: %w", constants.ErrEvidenceArtifactMalformed)
-		}
-		if !trace.carriesRetries() && (judgment.RetryCount != 0 || len(judgment.SupersededAttempts) > 0) {
-			return fmt.Errorf("evaluation: validate agent trace: historical trace carries a retried content judgment %q: %w", judgment.CriterionID, constants.ErrEvidenceArtifactMalformed)
-		}
-	}
-	if !trace.carriesObservationEvidence() && len(trace.Observations) > 0 {
-		return fmt.Errorf("evaluation: validate agent trace: historical trace carries scenario observations: %w", constants.ErrEvidenceArtifactMalformed)
-	}
-	if !trace.carriesObservationEvidence() {
-		for _, call := range trace.ToolCalls {
-			if call.RequestEnvelope != nil || call.IngressRefusalCode != operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNSPECIFIED {
-				return fmt.Errorf("evaluation: validate agent trace: historical trace carries v9 tool evidence: %w", constants.ErrEvidenceArtifactMalformed)
-			}
-		}
-	}
-	if trace.carriesObservationEvidence() || trace.SchemaVersion == agentTraceSchemaVersionV8 {
-		if err := rejectShellTextSteps(trace.Steps); err != nil {
-			return fmt.Errorf("evaluation: validate agent trace: %w", err)
-		}
-	} else {
-		for _, call := range trace.ToolCalls {
-			if call.ApprovedArgumentsJSON != "" {
-				return fmt.Errorf("evaluation: validate agent trace: %s carries approved arguments: %w", trace.SchemaVersion, constants.ErrEvidenceArtifactMalformed)
-			}
-		}
+	if err := rejectShellTextSteps(trace.Steps); err != nil {
+		return fmt.Errorf("evaluation: validate agent trace: %w", err)
 	}
 	return nil
 }

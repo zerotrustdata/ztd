@@ -834,6 +834,51 @@
       "persistence": "ephemeral",
       "reserved": true
     },
+    "OperatorDeployCompleted": {
+      "_go_const": "EventOperatorDeployCompleted",
+      "value": "ztd.v1.operator.deploy.completed",
+      "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorDeployFailed": {
+      "_go_const": "EventOperatorDeployFailed",
+      "value": "ztd.v1.operator.deploy.failed",
+      "kind": "outcome",
+      "transport": [
+        "pubsub"
+      ],
+      "producers": [
+        "operator"
+      ],
+      "persistence": "ephemeral"
+    },
+    "OperatorDeployRequested": {
+      "_go_const": "EventOperatorDeployRequested",
+      "value": "ztd.v1.operator.deploy.requested",
+      "kind": "request",
+      "transport": [
+        "governed"
+      ],
+      "governance": {
+        "action_type": "OPERATOR_DEPLOY",
+        "payload": "ztd.operator.v1.OperatorDeployRequested"
+      },
+      "producers": [
+        "cli",
+        "mcp"
+      ],
+      "persistence": "ephemeral",
+      "outcomes": [
+        "OperatorDeployCompleted",
+        "OperatorDeployFailed"
+      ]
+    },
     "OperatorDeviceRegistered": {
       "_go_const": "EventOperatorDeviceRegistered",
       "value": "ztd.v1.operator.device.registered",

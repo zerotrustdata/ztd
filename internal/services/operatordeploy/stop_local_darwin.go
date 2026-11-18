@@ -7,7 +7,7 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-package operatorcmd
+package operatordeploy
 
 import (
 	"bytes"
@@ -19,17 +19,14 @@ import (
 	"sync"
 
 	"github.com/ebitengine/purego"
-	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/pkg/processwatch"
 	"golang.org/x/sys/unix"
 )
 
 const (
 	libSystemPath = "/usr/lib/libSystem.B.dylib"
 
-	// <sys/proc_info.h>: PROC_PIDVNODEPATHINFO returns struct
-	// proc_vnodepathinfo, two vnode_info_path records (cwd, then root), each a
-	// 152-byte vnode_info followed by a MAXPATHLEN path.
 	procPIDVnodePathInfo    = 9
 	procVnodeInfoSize       = 152
 	procVnodePathInfoSize   = 2 * (procVnodeInfoSize + unix.PathMax)
@@ -37,7 +34,6 @@ const (
 	procArgsArgcFieldLength = 4
 )
 
-// libprocAPI is the libproc surface discovery needs, bound at runtime without cgo.
 type libprocAPI struct {
 	pidPath func(pid int32, buffer *byte, size uint32) int32
 	pidInfo func(pid int32, flavor int32, arg uint64, buffer *byte, size int32) int32
@@ -59,11 +55,8 @@ var loadLibproc = sync.OnceValues(func() (*libprocAPI, error) {
 	return api, nil
 })
 
-// Open an exit watch before confirming identity, so a PID reused between listing
-// and opening is detected by its start time, and a recorded exit stops any later
-// signal. Inspect argv tokens, never a substring of a shell command or a parent
-// PID.
-func discoverLocalOperators() ([]localOperatorProcess, error) {
+// DiscoverLocalOperators discovers running local Operator processes via sysctl and libproc.
+func DiscoverLocalOperators() ([]LocalOperatorProcess, error) {
 	api, err := loadLibproc()
 	if err != nil {
 		return nil, err
@@ -72,19 +65,19 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 	if err != nil {
 		return nil, fmt.Errorf("operator stop: discover local Operators: %w", err)
 	}
-	var processes []localOperatorProcess
+	var processes []LocalOperatorProcess
 	for i := range procs {
 		pid := int(procs[i].Proc.P_pid)
 		if pid <= 1 || pid == os.Getpid() {
 			continue
 		}
-		if args, err := processArgs(pid); err != nil || !isLocalOperatorArgv(args) {
+		if args, err := processArgs(pid); err != nil || !IsLocalOperatorArgv(args) {
 			continue
 		}
 		p, ok, err := watchLocalOperator(api, pid, procs[i].Proc.P_starttime)
 		if err != nil {
 			for _, p := range processes {
-				p.close()
+				p.Close()
 			}
 			return nil, err
 		}
@@ -95,32 +88,30 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 	return processes, nil
 }
 
-func watchLocalOperator(api *libprocAPI, pid int, started unix.Timeval) (localOperatorProcess, bool, error) {
-	watch, err := platform.WatchProcessExit(pid)
+func watchLocalOperator(api *libprocAPI, pid int, started unix.Timeval) (LocalOperatorProcess, bool, error) {
+	watch, err := processwatch.WatchProcessExit(pid)
 	if errors.Is(err, constants.ErrProcessNotFound) {
-		return localOperatorProcess{}, false, nil
+		return LocalOperatorProcess{}, false, nil
 	}
 	if err != nil {
-		return localOperatorProcess{}, false, fmt.Errorf("operator stop: watch PID %d: %w", pid, err)
+		return LocalOperatorProcess{}, false, fmt.Errorf("operator stop: watch PID %d: %w", pid, err)
 	}
 	info, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
 	args, argsErr := processArgs(pid)
 	executable, exeErr := processPath(api, pid)
 	if err != nil || argsErr != nil || exeErr != nil || info.Proc.P_starttime != started ||
-		!isLocalOperatorArgv(args) || !isZtdExecutable(filepath.Base(executable)) {
+		!IsLocalOperatorArgv(args) || !IsZtdExecutable(filepath.Base(executable)) {
 		_ = watch.Close()
-		return localOperatorProcess{}, false, nil
+		return LocalOperatorProcess{}, false, nil
 	}
 	cwd, _ := processCwd(api, pid)
-	dir := localOperatorDir(args, cwd)
+	dir := LocalOperatorDir(args, cwd)
 
-	wait := exitWait(watch)
-	return localOperatorProcess{
-		pid: pid, dir: dir, sessionID: localOperatorSessionID(dir),
-		close: func() { _ = watch.Close() },
-		signal: func(force bool) error {
-			// Never signal a PID whose watched process already exited: the
-			// number may belong to another process by now.
+	wait := ExitWait(watch)
+	return LocalOperatorProcess{
+		PID: pid, Dir: dir, SessionID: LocalOperatorSessionID(dir),
+		Close: func() { _ = watch.Close() },
+		Signal: func(force bool) error {
 			if done, err := wait(0); err != nil || done {
 				return err
 			}
@@ -133,12 +124,10 @@ func watchLocalOperator(api *libprocAPI, pid int, started unix.Timeval) (localOp
 			}
 			return nil
 		},
-		wait: wait,
+		Wait: wait,
 	}, true, nil
 }
 
-// processArgs reads argv from kern.procargs2: a native int argc, the exec path,
-// NUL padding, then argc NUL-terminated arguments.
 func processArgs(pid int) ([]string, error) {
 	raw, err := unix.SysctlRaw("kern.procargs2", pid)
 	if err != nil {

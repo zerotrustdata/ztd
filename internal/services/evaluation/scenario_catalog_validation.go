@@ -596,6 +596,15 @@ func validateHintArgumentSource(blueprint ScenarioBlueprint, argument ScenarioHi
 		if argument.Value == "" {
 			return scenarioUnanswerableError(blueprint, "%q.%q is sourced from the workspace but names no workspace path", argument.ToolName, argument.Name)
 		}
+		if argument.ToolName == constants.MCPToolOperatorDeploy && argument.Name == "hostnames" {
+			readable := slices.Contains(blueprint.AllowedTools, constants.MCPToolReadFile)
+			if !readable || !slices.ContainsFunc(blueprint.Input.WorkspaceFiles, func(file ScenarioWorkspaceFile) bool {
+				return !file.Decoy && strings.Contains(file.Content, argument.Value)
+			}) {
+				return scenarioUnanswerableError(blueprint, "%q.%q workspace value %q is not readable from a workspace file", argument.ToolName, argument.Name, argument.Value)
+			}
+			return nil
+		}
 		if !strings.HasPrefix(argument.Value, ScenarioWorkspaceToken) {
 			return scenarioUnanswerableError(blueprint, "%q.%q workspace value %q is not under the workspace", argument.ToolName, argument.Name, argument.Value)
 		}
@@ -765,15 +774,19 @@ func validateGoldEvidenceReferences(blueprint ScenarioBlueprint) error {
 }
 
 // validateFleet checks a scenario's harness roster requirement: every roster
-// position its workspace files, seeds, and file states name lies in
-// [1, Fleet.MinOperators], and a scenario that names positions declares a
-// fleet. Positions are listed once each.
+// position its workspace files and seeds name lies in [1, Fleet.MinOperators],
+// file states lie in [1, Fleet.MinOperators + Fleet.DeployTargets], and a
+// scenario that names positions declares a fleet. Positions are listed once each.
 func validateFleet(blueprint ScenarioBlueprint) error {
 	need := blueprint.Input.Fleet.MinOperators
+	deploy := blueprint.Input.Fleet.DeployTargets
 	if need < 0 || need == 1 {
 		return scenarioContractError(blueprint, "fleet min_operators %d: a fleet holds at least two Operators; omit it for any roster", need)
 	}
-	check := func(what string, operators []int) error {
+	if deploy < 0 {
+		return scenarioContractError(blueprint, "fleet deploy_targets %d: must not be negative", deploy)
+	}
+	check := func(what string, operators []int, maxIndex int) error {
 		if len(operators) == 0 {
 			return nil
 		}
@@ -782,25 +795,25 @@ func validateFleet(blueprint ScenarioBlueprint) error {
 		}
 		seen := make(map[int]bool, len(operators))
 		for _, index := range operators {
-			if index < 1 || index > need || seen[index] {
-				return scenarioContractError(blueprint, "%s names roster position %d outside [1, %d] or twice", what, index, need)
+			if index < 1 || index > maxIndex || seen[index] {
+				return scenarioContractError(blueprint, "%s names roster position %d outside [1, %d] or twice", what, index, maxIndex)
 			}
 			seen[index] = true
 		}
 		return nil
 	}
 	for _, file := range blueprint.Input.WorkspaceFiles {
-		if err := check("workspace file "+file.RelPath, file.Operators); err != nil {
+		if err := check("workspace file "+file.RelPath, file.Operators, need); err != nil {
 			return err
 		}
 	}
 	for _, seed := range blueprint.Input.Seed.ToolCalls {
-		if err := check("seed "+seed.ToolName, seed.Operators); err != nil {
+		if err := check("seed "+seed.ToolName, seed.Operators, need); err != nil {
 			return err
 		}
 	}
 	for _, state := range blueprint.Gold.FileState {
-		if err := check("file state "+state.Path, state.Operators); err != nil {
+		if err := check("file state "+state.Path, state.Operators, need+deploy); err != nil {
 			return err
 		}
 	}

@@ -95,6 +95,8 @@ func typedPayload(t *testing.T, actionType constants.ActionType) []byte {
 		msg = &operatorv1.FetchFileHistoryRequested{FilePath: constants.TestPathShortData, ExecutionId: "exec-1"}
 	case constants.ActionTypeRestoreFile:
 		msg = &operatorv1.RestoreFileRequested{FilePath: constants.TestPathShortData, ExecutionId: "exec-1"}
+	case constants.ActionTypeOperatorDeploy:
+		msg = &operatorv1.OperatorDeployRequested{ExecutionId: "exec-1", Hostnames: []string{"localhost"}}
 	case constants.ActionTypeFetchFileDiff:
 		msg = &operatorv1.FetchFileDiffRequested{FilePath: constants.TestPathShortData, ExecutionId: "exec-1"}
 	case constants.ActionTypeShutdown:

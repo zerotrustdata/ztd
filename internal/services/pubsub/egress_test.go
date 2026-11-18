@@ -117,6 +117,7 @@ func TestEgressFailureEvent_CoversContentPayloads(t *testing.T) {
 	assert.Equal(t, constants.Event.Operator.FetchFileDiff.Failed, egressFailureEvent(constants.Event.Operator.FetchFileDiff.Completed, &operatorv1.FetchFileDiffResult{}))
 	assert.Equal(t, constants.Event.Operator.FsRead.Failed, egressFailureEvent(constants.Event.Operator.FsRead.Completed, &operatorv1.FsReadResult{}))
 	assert.Equal(t, constants.Event.Operator.Command.Failed, egressFailureEvent(constants.Event.Operator.Command.Completed, &operatorv1.CommandResult{}))
+	assert.Equal(t, constants.EventOperatorDeployFailed, egressFailureEvent(constants.EventOperatorDeployCompleted, &operatorv1.OperatorDeployResult{}))
 	assert.Equal(t, constants.EventType(""), egressFailureEvent(constants.Event.Operator.Heartbeat, &operatorv1.HeartbeatResult{}))
 }
 
@@ -183,6 +184,7 @@ func egressResultPayloadTypes() map[string]struct {
 		"FetchHistoryResult":                   {&operatorv1.FetchHistoryResult{}, egressContent},
 		"FetchFileHistoryResult":               {&operatorv1.FetchFileHistoryResult{}, egressContent},
 		"RestoreFileResult":                    {&operatorv1.RestoreFileResult{}, egressContent},
+		"OperatorDeployResult":                 {&operatorv1.OperatorDeployResult{}, egressContent},
 		"ShutdownRequested":                    {&operatorv1.ShutdownRequested{}, egressContent},
 		"InferenceProgressEvent":               {&operatorv1.InferenceProgressEvent{}, egressDigestBound},
 		"HeartbeatResult":                      {&operatorv1.HeartbeatResult{}, egressNoContent},
@@ -249,6 +251,36 @@ func TestEgressScrubbed_ScrubsFileHistoryAndRestoreResults(t *testing.T) {
 	assert.Equal(t, "def456", scrubbedRestore.CommitHash)
 
 	_, err = egressScrubbed(context.Background(), restore, nil)
+	require.ErrorIs(t, err, constants.ErrEgressScrubberUnavailable)
+
+	deploy := &operatorv1.OperatorDeployResult{
+		ExecutionId:  "exec-deploy",
+		ErrorMessage: "deploy failed for " + egressSecretEmail,
+		Deployments: []*operatorv1.OperatorDeployedHost{
+			{
+				Hostname:     "worker-" + egressSecretEmail,
+				DeploymentId: "dep-uuid-1",
+				Phase:        "pending_approval",
+				RequestId:    "req-1",
+				WorkingDir:   "/home/" + egressSecretEmail + "/op",
+				Success:      true,
+				Message:      "staged for " + egressSecretEmail,
+				Error:        "warn " + egressSecretEmail,
+			},
+		},
+	}
+	out, err = egressScrubbed(context.Background(), deploy, s)
+	require.NoError(t, err)
+	scrubbedDeploy := out.(*operatorv1.OperatorDeployResult)
+	assert.NotContains(t, scrubbedDeploy.ErrorMessage, egressSecretEmail)
+	assert.NotContains(t, scrubbedDeploy.Deployments[0].Hostname, egressSecretEmail)
+	assert.NotContains(t, scrubbedDeploy.Deployments[0].WorkingDir, egressSecretEmail)
+	assert.NotContains(t, scrubbedDeploy.Deployments[0].Message, egressSecretEmail)
+	assert.NotContains(t, scrubbedDeploy.Deployments[0].Error, egressSecretEmail)
+	assert.Equal(t, "dep-uuid-1", scrubbedDeploy.Deployments[0].DeploymentId)
+	assert.Equal(t, "pending_approval", scrubbedDeploy.Deployments[0].Phase)
+	assert.Equal(t, "req-1", scrubbedDeploy.Deployments[0].RequestId)
+	_, err = egressScrubbed(context.Background(), deploy, nil)
 	require.ErrorIs(t, err, constants.ErrEgressScrubberUnavailable)
 }
 

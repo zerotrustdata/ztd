@@ -23,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -35,7 +36,7 @@ func TestDeploymentReadsPendingRequestWithoutLogs(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.DeploymentDirname, constants.DeploymentStateFileOperator), data, constants.PermFilePrivate))
-	state, err := (deploySSH{local: true}).readDeploymentState(context.Background(), dir)
+	state, err := (operatordeploy.HostTransport{Local: true}).ReadDeploymentState(context.Background(), dir)
 	require.NoError(t, err)
 	require.Equal(t, "resumed-request", state.RequestID)
 }
@@ -49,7 +50,7 @@ func TestDeploymentRejectsPreviousLaunchProgress(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.DeploymentDirname, constants.DeploymentStateFileOperator), data, constants.PermFilePrivate))
-	state, err := (deploySSH{local: true, launchID: "current"}).readDeploymentState(context.Background(), dir)
+	state, err := (operatordeploy.HostTransport{Local: true, LaunchID: "current"}).ReadDeploymentState(context.Background(), dir)
 	require.NoError(t, err)
 	require.Nil(t, state)
 }
@@ -65,12 +66,12 @@ func TestDeploymentReadsSessionAndFailureWithoutLogs(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.DeploymentDirname, constants.DeploymentStateFileOperator), data, constants.PermFilePrivate))
-			target := deploySSH{local: true, launchID: "current"}
+			target := operatordeploy.HostTransport{Local: true, LaunchID: "current"}
 
-			state, err := target.readDeploymentState(context.Background(), dir)
+			state, err := target.ReadDeploymentState(context.Background(), dir)
 			require.NoError(t, err)
 			require.Equal(t, phase, state.Phase)
-			waitErr := explainDeployWait(target, dir, fmt.Errorf("%w: wait ended", constants.ErrOperatorDeployFailed))
+			waitErr := operatordeploy.ExplainDeployWait(target, dir, fmt.Errorf("%w: wait ended", constants.ErrOperatorDeployFailed))
 			require.ErrorIs(t, waitErr, constants.ErrOperatorDeployFailed)
 			if phase == models.OperatorDeploymentPhaseFailed {
 				require.ErrorContains(t, waitErr, "startup failed")
@@ -82,25 +83,25 @@ func TestDeploymentReadsSessionAndFailureWithoutLogs(t *testing.T) {
 }
 
 func TestEnrollDeployedOperatorsReportsEachWorkersAnnouncedSession(t *testing.T) {
-	events := newDeploymentEvents()
-	ready, unannounced := events.watch("req-ready"), events.watch("req-unannounced")
+	events := operatordeploy.NewDeploymentEvents()
+	ready, unannounced := events.Watch("req-ready"), events.Watch("req-unannounced")
 	pending, err := json.Marshal(models.PlatformEnrollmentPendingResponse{Requests: []models.PlatformEnrollmentPendingRequest{
 		{RequestID: "req-ready", Fingerprints: testWorkerFingerprints},
 		{RequestID: "req-unannounced", Fingerprints: testWorkerFingerprints},
 	}})
 	require.NoError(t, err)
-	target := deploySSH{local: true}
+	target := operatordeploy.HostTransport{Local: true}
 
-	gateway := &windowedGateway{MockAPIClient: &cmdtest.MockAPIClient{}, pending: pending, watches: map[string]*deploymentWatch{"req-ready": ready}}
-	ops := []deployedOperator{{target: target, Dir: testutil.TempDir(t), RequestID: "req-ready", Fingerprints: testWorkerFingerprints, watch: ready}}
-	require.NoError(t, enrollDeployedOperators(context.Background(), gateway, ops, operatorDeployApprovalWindow, io.Discard))
+	gateway := &windowedGateway{MockAPIClient: &cmdtest.MockAPIClient{}, pending: pending, watches: map[string]*operatordeploy.DeploymentWatch{"req-ready": ready}}
+	ops := []operatordeploy.DeployedOperator{{Target: target, Dir: testutil.TempDir(t), RequestID: "req-ready", Fingerprints: testWorkerFingerprints, Watch: ready}}
+	require.NoError(t, enrollDeployedOperators(context.Background(), gateway, ops, operatordeploy.ApprovalWindow, io.Discard))
 	require.Equal(t, "session-req-ready", ops[0].SessionID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 	silent := &silentGateway{MockAPIClient: &cmdtest.MockAPIClient{}, pending: pending}
-	ops = []deployedOperator{{target: target, Dir: testutil.TempDir(t), RequestID: "req-unannounced", Fingerprints: testWorkerFingerprints, watch: unannounced}}
-	require.ErrorIs(t, enrollDeployedOperators(ctx, silent, ops, operatorDeployApprovalWindow, io.Discard), constants.ErrOperatorDeployFailed)
+	ops = []operatordeploy.DeployedOperator{{Target: target, Dir: testutil.TempDir(t), RequestID: "req-unannounced", Fingerprints: testWorkerFingerprints, Watch: unannounced}}
+	require.ErrorIs(t, enrollDeployedOperators(ctx, silent, ops, operatordeploy.ApprovalWindow, io.Discard), constants.ErrOperatorDeployFailed)
 }
 
 // silentGateway approves every staged request but never announces readiness.

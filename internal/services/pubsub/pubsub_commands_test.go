@@ -50,7 +50,7 @@ func TestOperatorPubSubService_HandlerDecodeFailuresReachActuator(t *testing.T) 
 		constants.ActionTypeFsList, constants.ActionTypeFsRead, constants.ActionTypeFsGrep,
 		constants.ActionTypePortCheck, constants.ActionTypeOllamaModelInventory, constants.ActionTypeOllamaModelResidency,
 		constants.ActionTypeOllamaModelRelease, constants.ActionTypeFetchLogs, constants.ActionTypeFetchHistory, constants.ActionTypeFetchFileHistory,
-		constants.ActionTypeRestoreFile, constants.ActionTypeFetchFileDiff,
+		constants.ActionTypeRestoreFile, constants.ActionTypeFetchFileDiff, constants.ActionTypeOperatorDeploy,
 	} {
 		t.Run(string(action), func(t *testing.T) {
 			handler, ok := fixture.Svc.actionHandlers[action]

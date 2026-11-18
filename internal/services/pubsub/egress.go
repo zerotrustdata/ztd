@@ -171,6 +171,12 @@ func egressContentFields(payload proto.Message) (fields []*string, class egressC
 		return append(fields, &p.Error), egressContent, nil
 	case *operatorv1.RestoreFileResult:
 		return []*string{&p.FilePath, &p.Error}, egressContent, nil
+	case *operatorv1.OperatorDeployResult:
+		fields = nil
+		for _, d := range p.Deployments {
+			fields = append(fields, &d.Hostname, &d.WorkingDir, &d.Message, &d.Error)
+		}
+		return append(fields, &p.ErrorMessage, &p.ErrorType), egressContent, nil
 	case *operatorv1.InferenceProgressEvent:
 		// Scrubbed at the source: the Operator inference stream buffers deltas and scrubs each
 		// emitted segment before it is published, so the progress parts already equal the scrubbed
@@ -248,6 +254,8 @@ func egressFailureEvent(outcome constants.EventType, payload proto.Message) cons
 		return constants.Event.Operator.OllamaModelPull.Failed
 	case *operatorv1.OllamaModelCopyResult:
 		return constants.Event.Operator.OllamaModelCopy.Failed
+	case *operatorv1.OperatorDeployResult:
+		return constants.EventOperatorDeployFailed
 	default:
 		return ""
 	}

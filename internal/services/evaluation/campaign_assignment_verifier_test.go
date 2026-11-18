@@ -81,7 +81,7 @@ func TestVerifyAssignmentTraceModels_HeterogeneousLiteTraceVerifies(t *testing.T
 	assert.ErrorIs(t, verifyAssignmentTraceModels(req, trace), constants.ErrFormationRegistryBinding)
 }
 
-func TestVerifyAssignmentTraceModels_TribunalStagesUseFormationSlotsAndPreserveV10(t *testing.T) {
+func TestVerifyAssignmentTraceModels_TribunalStagesUseFormationSlots(t *testing.T) {
 	req := heterogeneousLiteRequest(t)
 	resolved, err := ResolveAssignmentModels(req)
 	require.NoError(t, err)
@@ -97,9 +97,6 @@ func TestVerifyAssignmentTraceModels_TribunalStagesUseFormationSlotsAndPreserveV
 	}
 	require.NoError(t, verifyAssignmentTraceModels(req, trace))
 
-	// v10 formation evidence predates the per-stage split and all Tribunal
-	// stages were dispatched to the Lite slot.
-	trace.SchemaVersion = agentTraceSchemaVersionV10
 	for i := range trace.ModelCalls {
 		variant := resolved[evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE]
 		liteRole, err := tribunal.InferenceRoleForTier(evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE)
@@ -109,7 +106,7 @@ func TestVerifyAssignmentTraceModels_TribunalStagesUseFormationSlotsAndPreserveV
 		trace.ModelCalls[i].ServedModelTag = variant.GetServedModelTag()
 		trace.ModelCalls[i].ModelDigest = variant.GetModelDigest()
 	}
-	require.NoError(t, verifyAssignmentTraceModels(req, trace))
+	assert.ErrorIs(t, verifyAssignmentTraceModels(req, trace), constants.ErrFormationRegistryBinding)
 }
 
 func TestCampaignAssignmentVerifier_FailsClosedOnModelRoleAssignment(t *testing.T) {

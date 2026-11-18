@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -302,19 +303,30 @@ func (v *L1Doctrine) ValidatePayload(msg proto.Message) []string {
 		if fd.Kind() != protoreflect.StringKind {
 			continue
 		}
-		strVal := val.String()
+		var strVals []string
+		if fd.IsList() {
+			list := val.List()
+			strVals = make([]string, list.Len())
+			for j := 0; j < list.Len(); j++ {
+				strVals[j] = list.Get(j).String()
+			}
+		} else {
+			strVals = []string{val.String()}
+		}
 		for _, p := range strings.Split(patternsStr, ",") {
 			p = strings.TrimSpace(p)
 			if p == "" {
 				continue
 			}
-			matched, err := regexp.MatchString(p, strVal)
+			re, err := regexp.Compile(p)
 			if err != nil {
 				violations = append(violations, fmt.Sprintf("field %s has invalid forbidden pattern %s: %v", fd.Name(), p, err))
 				continue
 			}
-			if matched {
-				violations = append(violations, fmt.Sprintf("field %s violates pattern %s", fd.Name(), p))
+			for _, strVal := range strVals {
+				if re.MatchString(strVal) {
+					violations = append(violations, fmt.Sprintf("field %s violates pattern %s", fd.Name(), p))
+				}
 			}
 		}
 	}
@@ -386,6 +398,31 @@ func (v *L1Doctrine) ValidatePayload(msg proto.Message) []string {
 		}
 		if security.IsProtectedRuntimePath(payload.FilePath) {
 			violations = append(violations, fmt.Sprintf("attempted file restore of protected runtime state: %s", payload.FilePath))
+		}
+
+	case *operatorv1.OperatorDeployRequested:
+		for _, h := range payload.Hostnames {
+			if h == "" {
+				violations = append(violations, "operator deploy hostname must not be empty")
+				continue
+			}
+			if strings.ContainsFunc(h, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
+				violations = append(violations, fmt.Sprintf("operator deploy hostname %q contains whitespace or control characters", h))
+			}
+			if strings.HasPrefix(h, "-") {
+				violations = append(violations, fmt.Sprintf("operator deploy hostname %q must not start with '-'", h))
+			}
+			if strings.Contains(h, "..") {
+				violations = append(violations, fmt.Sprintf("operator deploy hostname %q contains parent directory traversal", h))
+			}
+			if strings.ContainsAny(h, ";&|$`()<>\\{}'\"*?!") {
+				violations = append(violations, fmt.Sprintf("operator deploy hostname %q contains shell metacharacters", h))
+			}
+			for _, sig := range v.AnalyzeCommand(h) {
+				if sig.BlockRecommended {
+					violations = append(violations, fmt.Sprintf("operator deploy hostname threat detected: %s (category: %s, MITRE: %s)", sig.Indicator, sig.Category, sig.MitreAttack))
+				}
+			}
 		}
 	}
 

@@ -2322,6 +2322,14 @@ func TestCallToolRoutesGovernedActionToolsToTheirTypedAction(t *testing.T) {
 	assert.Equal(t, envelope.GetOperatorSessionId(), restore.GetOperatorSessionId())
 	assert.Equal(t, "session-verified", restore.GetOperatorSessionId())
 
+	envelope = call(t, `{"name":"operator_deploy","arguments":{"hostnames":["host1"]},"execution_id":"exec-deploy","investigation_id":"inv-1"}`)
+	assert.Equal(t, string(constants.ActionTypeOperatorDeploy), envelope.GetActionType())
+	assert.Equal(t, "host1", envelope.GetTargetResource())
+	deploy := &operatorv1.OperatorDeployRequested{}
+	require.NoError(t, proto.Unmarshal(envelope.GetPayload(), deploy))
+	assert.Equal(t, []string{"host1"}, deploy.GetHostnames())
+	assert.Equal(t, "exec-deploy", deploy.GetExecutionId())
+
 	g := newTestGatewayService(t, withEnvProc(&fakeEnvelopeProcessor{receipt: receipt}))
 	_, err := g.callTool(ctx, httptest.NewRequest(http.MethodPost, "/mcp", nil),
 		json.RawMessage(`{"name":"restore_file","arguments":{"file_path":"/srv/app/config.yaml","commit_hash":"abc123","operator_session_id":"session-other"},"execution_id":"exec-x","investigation_id":"inv-1"}`))

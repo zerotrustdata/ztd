@@ -32,6 +32,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -198,9 +199,9 @@ func deployTestRoot(t *testing.T) string {
 	return "fleet"
 }
 
-func defaultTestRemoteFactory(t *testing.T, customMock ...*mockRemoteDeployClient) remoteDeployClientFactory {
+func defaultTestRemoteFactory(t *testing.T, customMock ...*mockRemoteDeployClient) operatordeploy.RemoteDeployClientFactory {
 	t.Helper()
-	return func(ctx context.Context, host string, port int, identityFile string) (remoteDeployClient, error) {
+	return func(ctx context.Context, host string, port int, identityFile string) (operatordeploy.RemoteDeployClient, error) {
 		if len(customMock) > 0 && customMock[0] != nil {
 			m := customMock[0]
 			m.host = host
@@ -228,7 +229,7 @@ func runOperatorDeployWith(t *testing.T, client authcmd.APIClient, connect deplo
 	return runOperatorDeployWithFactory(t, client, connect, defaultTestRemoteFactory(t), args...)
 }
 
-func runOperatorDeployWithFactory(t *testing.T, client authcmd.APIClient, connect deploymentEventsConnector, remoteFactory remoteDeployClientFactory, args ...string) (string, error) {
+func runOperatorDeployWithFactory(t *testing.T, client authcmd.APIClient, connect deploymentEventsConnector, remoteFactory operatordeploy.RemoteDeployClientFactory, args ...string) (string, error) {
 	t.Helper()
 	fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
 	saveTestCredentials(t, fileSvc, cfg, "user-001")
@@ -266,7 +267,7 @@ func TestOperatorDeployDirs(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, operatorDeployDirs(tt.remoteDir, tt.count))
+			assert.Equal(t, tt.want, operatordeploy.OperatorDeployDirs(tt.remoteDir, tt.count))
 		})
 	}
 }
@@ -313,7 +314,7 @@ func TestOperatorDeployInstallsBinaryWithoutStartingIt(t *testing.T) {
 
 func TestOperatorDeployStagesFleetBeforeOneApprovalAndReportsSessions(t *testing.T) {
 	remoteDir := deployTestRoot(t)
-	dirs := operatorDeployDirs(remoteDir, 2)
+	dirs := operatordeploy.OperatorDeployDirs(remoteDir, 2)
 
 	pending := models.PlatformEnrollmentPendingResponse{}
 	response := models.PlatformEnrollmentBatchDecisionResponse{ReceiptID: "batch-receipt"}
@@ -353,7 +354,7 @@ func TestOperatorDeployFailsClosedWhenAWorkerIsReadyWithoutARequest(t *testing.T
 		"--hosts", "host", "--dest-dir", remoteDir, "--background", "--endpoint", "localhost", "--operator-endpoint", "192.168.1.50", "--approve", "--trust-bundle", testTrustBundle)
 	require.ErrorIs(t, err, constants.ErrOperatorDeployFailed, out)
 
-	assert.Less(t, time.Since(start), operatorDeployEnrollTimeout, "must not wait out the enrollment timeout")
+	assert.Less(t, time.Since(start), operatordeploy.DefaultEnrollTimeout, "must not wait out the enrollment timeout")
 	assert.Contains(t, err.Error()+out, "without an enrollment request")
 	assert.Empty(t, client.PostCalls, "nothing is approved without a request")
 }
@@ -361,9 +362,9 @@ func TestOperatorDeployFailsClosedWhenAWorkerIsReadyWithoutARequest(t *testing.T
 func TestOperatorDeployFailsWhenAWorkerIsNeverAnnouncedAndNamesItsOwnFailure(t *testing.T) {
 	remoteDir := deployTestRoot(t)
 	client := &cmdtest.MockAPIClient{}
-	previous := operatorDeployEnrollTimeout
-	operatorDeployEnrollTimeout = 200 * time.Millisecond
-	t.Cleanup(func() { operatorDeployEnrollTimeout = previous })
+	previous := operatordeploy.DefaultEnrollTimeout
+	operatordeploy.DefaultEnrollTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { operatordeploy.DefaultEnrollTimeout = previous })
 
 	mock := &mockRemoteDeployClient{
 		state: &models.OperatorDeploymentState{
@@ -447,7 +448,7 @@ func TestOperatorDeployLocalBatchSharesBinaryAndPreservesEarlierBatch(t *testing
 	}
 	first, err := os.Stat(filepath.Join(root, "op-00001", binaryName))
 	require.NoError(t, err)
-	for _, dir := range operatorDeployDirs(root, 10) {
+	for _, dir := range operatordeploy.OperatorDeployDirs(root, 10) {
 		info, err := os.Stat(filepath.Join(dir, binaryName))
 		require.NoError(t, err)
 		assert.True(t, os.SameFile(first, info), "binaries must share one inode")
@@ -462,7 +463,7 @@ func TestOperatorDeployLocalBatchSharesBinaryAndPreservesEarlierBatch(t *testing
 	out, err = runOperatorDeploy(t, client, "--local", "--dest-dir", root, "--start-index", "5000")
 	require.NoError(t, err, out)
 	require.FileExists(t, filepath.Join(root, "op-05000", binaryName))
-	dirs := operatorDeployDirs(root, 5000)
+	dirs := operatordeploy.OperatorDeployDirs(root, 5000)
 	require.Len(t, dirs, 5000)
 	assert.Equal(t, filepath.ToSlash(filepath.Join(root, "op-05000")), filepath.ToSlash(dirs[4999]))
 }
@@ -509,13 +510,13 @@ func TestOperatorDeployRoleFlagsReachWorkerWithoutShellExpansion(t *testing.T) {
 
 func TestOperatorDeployRoleIdentities(t *testing.T) {
 	args := []string{"--capabilities=provenance", "--model-storage-root={dir}/models"}
-	first := operatorDeployArgsForDir(args, "host", "/fleet/op-00001")
-	again := operatorDeployArgsForDir(args, "host", "/fleet/op-00001")
-	other := operatorDeployArgsForDir(args, "host", "/fleet/op-00002")
+	first := operatordeploy.OperatorDeployArgsForDir(args, "host", "/fleet/op-00001")
+	again := operatordeploy.OperatorDeployArgsForDir(args, "host", "/fleet/op-00001")
+	other := operatordeploy.OperatorDeployArgsForDir(args, "host", "/fleet/op-00002")
 	assert.Equal(t, first, again)
 	assert.NotEqual(t, first[len(first)-1], other[len(other)-1])
 	assert.Contains(t, first, "--model-storage-root=/fleet/op-00001/models")
-	explicit := operatorDeployArgsForDir(append(args, "--provenance-operator-id={host}-{name}"), "host", "/fleet/op-00001")
+	explicit := operatordeploy.OperatorDeployArgsForDir(append(args, "--provenance-operator-id={host}-{name}"), "host", "/fleet/op-00001")
 	assert.Contains(t, explicit, "--provenance-operator-id=host-op-00001")
 	assert.Len(t, explicit, 3)
 }
@@ -685,7 +686,7 @@ func TestOperatorDeployParallelEnrollmentApprovesOnlyOwnRequests(t *testing.T) {
 type windowedGateway struct {
 	*cmdtest.MockAPIClient
 	pending  []byte
-	watches  map[string]*deploymentWatch
+	watches  map[string]*operatordeploy.DeploymentWatch
 	mu       sync.Mutex
 	inFlight int
 	peak     int
@@ -710,7 +711,7 @@ func (g *windowedGateway) Post(_ string, body interface{}) ([]byte, error) {
 			g.mu.Lock()
 			g.inFlight--
 			g.mu.Unlock()
-			g.watches[id].setReadiness("session-"+id, constants.OperatorStatusActive)
+			g.watches[id].SetReadiness("session-"+id, constants.OperatorStatusActive)
 		}()
 	}
 	return approvedDecision(req)
@@ -737,18 +738,18 @@ func approvedDecision(req models.PlatformEnrollmentBatchDecisionRequest) ([]byte
 
 func TestEnrollDeployedOperatorsApprovesThroughAReadinessDrivenWindow(t *testing.T) {
 	const workers, window = 10, 4
-	events := newDeploymentEvents()
-	gateway := &windowedGateway{MockAPIClient: &cmdtest.MockAPIClient{}, watches: make(map[string]*deploymentWatch)}
+	events := operatordeploy.NewDeploymentEvents()
+	gateway := &windowedGateway{MockAPIClient: &cmdtest.MockAPIClient{}, watches: make(map[string]*operatordeploy.DeploymentWatch)}
 	var pending models.PlatformEnrollmentPendingResponse
-	var ops []deployedOperator
+	var ops []operatordeploy.DeployedOperator
 	var staged []string
 	for i := 1; i <= workers; i++ {
 		id := fmt.Sprintf("req-%d", i)
-		watch := events.watch(id)
+		watch := events.Watch(id)
 		gateway.watches[id] = watch
 		staged = append(staged, id)
 		pending.Requests = append(pending.Requests, models.PlatformEnrollmentPendingRequest{RequestID: id, Fingerprints: testWorkerFingerprints})
-		ops = append(ops, deployedOperator{target: deploySSH{local: true}, Dir: id, RequestID: id, Fingerprints: testWorkerFingerprints, watch: watch})
+		ops = append(ops, operatordeploy.DeployedOperator{Target: operatordeploy.HostTransport{Local: true}, Dir: id, RequestID: id, Fingerprints: testWorkerFingerprints, Watch: watch})
 	}
 	var err error
 	gateway.pending, err = json.Marshal(pending)
@@ -795,12 +796,12 @@ func (g *l3SuspendingGateway) Post(string, interface{}) ([]byte, error) {
 }
 
 func TestEnrollDeployedOperatorsSurfacesL3SuspensionWithoutCountingItApproved(t *testing.T) {
-	events := newDeploymentEvents()
+	events := operatordeploy.NewDeploymentEvents()
 	var pending models.PlatformEnrollmentPendingResponse
-	var ops []deployedOperator
+	var ops []operatordeploy.DeployedOperator
 	for _, id := range []string{"req-1", "req-2"} {
 		pending.Requests = append(pending.Requests, models.PlatformEnrollmentPendingRequest{RequestID: id, Fingerprints: testWorkerFingerprints})
-		ops = append(ops, deployedOperator{target: deploySSH{local: true}, Dir: testutil.TempDir(t), RequestID: id, Fingerprints: testWorkerFingerprints, watch: events.watch(id)})
+		ops = append(ops, operatordeploy.DeployedOperator{Target: operatordeploy.HostTransport{Local: true}, Dir: testutil.TempDir(t), RequestID: id, Fingerprints: testWorkerFingerprints, Watch: events.Watch(id)})
 	}
 	body, err := json.Marshal(pending)
 	require.NoError(t, err)
@@ -843,7 +844,7 @@ func TestIsWindowsPath_WSLDetection(t *testing.T) {
 		`path\with\backslashes`,
 	}
 	for _, p := range windowsPaths {
-		assert.True(t, isWindowsPath(p), "expected %q to be recognized as Windows path", p)
+		assert.True(t, operatordeploy.IsWindowsPath(p), "expected %q to be recognized as Windows path", p)
 	}
 
 	posixPaths := []string{
@@ -855,13 +856,13 @@ func TestIsWindowsPath_WSLDetection(t *testing.T) {
 		" ",
 	}
 	for _, p := range posixPaths {
-		assert.False(t, isWindowsPath(p), "expected %q NOT to be recognized as Windows path", p)
+		assert.False(t, operatordeploy.IsWindowsPath(p), "expected %q NOT to be recognized as Windows path", p)
 	}
 
-	assert.Equal(t, "C:/fleet", toWindowsFilePath("/C:/fleet"))
-	assert.Equal(t, "c:/Users/admin/app", toWindowsFilePath("/c:/Users/admin/app"))
-	assert.Equal(t, "C:\\Users", toWindowsFilePath("C:\\Users"))
-	assert.Equal(t, "/home/user", toWindowsFilePath("/home/user"))
+	assert.Equal(t, "C:/fleet", operatordeploy.ToWindowsFilePath("/C:/fleet"))
+	assert.Equal(t, "c:/Users/admin/app", operatordeploy.ToWindowsFilePath("/c:/Users/admin/app"))
+	assert.Equal(t, "C:\\Users", operatordeploy.ToWindowsFilePath("C:\\Users"))
+	assert.Equal(t, "/home/user", operatordeploy.ToWindowsFilePath("/home/user"))
 }
 
 func TestValidateOperatorDeployFlags_TargetResolution(t *testing.T) {
@@ -907,13 +908,13 @@ func TestValidateOperatorDeployFlags_TargetResolution(t *testing.T) {
 	})
 
 	t.Run("localhost and 127.0.0.1 recognized as local targets", func(t *testing.T) {
-		assert.True(t, isLocalTarget("local"))
-		assert.True(t, isLocalTarget("localhost"))
-		assert.True(t, isLocalTarget("127.0.0.1"))
-		assert.False(t, isLocalTarget("remote.example.com"))
-		assert.False(t, isLocalTarget("192.168.1.100"))
-		assert.False(t, isRemoteTarget("localhost"))
-		assert.True(t, isRemoteTarget("remote.example.com"))
+		assert.True(t, operatordeploy.IsLocalTarget("local"))
+		assert.True(t, operatordeploy.IsLocalTarget("localhost"))
+		assert.True(t, operatordeploy.IsLocalTarget("127.0.0.1"))
+		assert.False(t, operatordeploy.IsLocalTarget("remote.example.com"))
+		assert.False(t, operatordeploy.IsLocalTarget("192.168.1.100"))
+		assert.False(t, operatordeploy.IsRemoteTarget("localhost"))
+		assert.True(t, operatordeploy.IsRemoteTarget("remote.example.com"))
 	})
 }
 

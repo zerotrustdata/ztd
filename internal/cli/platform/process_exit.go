@@ -9,22 +9,19 @@ package platform
 
 import (
 	"context"
-	"errors"
 
-	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/pkg/processwatch"
 )
 
-// WaitForProcessExit blocks until the process with pid has exited and returns
-// nil. It returns ctx.Err() when ctx ends first, and an error when the exit
-// cannot be observed. A process that is already gone returns nil at once.
+// ProcessExitWatch observes one process exit without polling.
+type ProcessExitWatch = processwatch.ProcessExitWatch
+
+// WatchProcessExit opens an exit watch on pid.
+func WatchProcessExit(pid int) (*ProcessExitWatch, error) {
+	return processwatch.WatchProcessExit(pid)
+}
+
+// WaitForProcessExit blocks until the process with pid has exited and returns nil.
 func WaitForProcessExit(ctx context.Context, pid int) error {
-	watch, err := WatchProcessExit(pid)
-	if errors.Is(err, constants.ErrProcessNotFound) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	defer func() { _ = watch.Close() }()
-	return watch.Wait(ctx)
+	return processwatch.WaitForProcessExit(ctx, pid)
 }

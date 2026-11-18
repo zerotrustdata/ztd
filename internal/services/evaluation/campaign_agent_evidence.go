@@ -51,6 +51,9 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 	if err := validateAgentTraceRoster(trace.Roster); err != nil {
 		return agentEvidenceError(agentEvidenceStageRuntime, "roster", err)
 	}
+	if err := validateAgentTraceRosterJoins(trace); err != nil {
+		return agentEvidenceError(agentEvidenceStageRuntime, "roster joins", err)
+	}
 	if err := verifyRosterPrompt(trace); err != nil {
 		return agentEvidenceError(agentEvidenceStageRuntime, "roster prompt", err)
 	}
@@ -97,13 +100,11 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 	if err := verifyRetryChains(trace); err != nil {
 		return agentEvidenceError(agentEvidenceStageModelCall, "retry chain", err)
 	}
-	if trace.CarriesModelIdentity() {
-		if err := verifyV7EpisodeOutputs(trace); err != nil {
-			return agentEvidenceError(agentEvidenceStageModelCall, "episode output", err)
-		}
+	if err := verifyV7EpisodeOutputs(trace); err != nil {
+		return agentEvidenceError(agentEvidenceStageModelCall, "episode output", err)
 	}
 	for _, call := range trace.ToolCalls {
-		if trace.carriesObservationEvidence() && call.Receipt != nil && !call.IsDenied() {
+		if call.Receipt != nil && !call.IsDenied() {
 			if err := verifyNativeToolCallRequest(trace, call); err != nil {
 				return agentEvidenceError(agentEvidenceStageToolCall, "tool call "+call.CallID+" request", err)
 			}
@@ -170,11 +171,11 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 // roster the model read is the roster its calls resolved against. A held
 // repetition's system prompt sits in its held context, verified with it.
 func verifyRosterPrompt(trace *AgentTrace) error {
-	if trace.SchemaVersion != agentTraceSchemaVersion || trace.HeldContext != nil || trace.Input == nil || len(trace.Input.Tools) == 0 {
+	if trace.HeldContext != nil || trace.Input == nil || len(trace.Input.Tools) == 0 {
 		return nil
 	}
 	system := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM.String()
-	if len(trace.Input.Messages) == 0 || trace.Input.Messages[0].Role != system || !strings.Contains(trace.Input.Messages[0].Text, renderRosterPrompt(trace.Roster)) {
+	if len(trace.Input.Messages) == 0 || trace.Input.Messages[0].Role != system || !strings.Contains(trace.Input.Messages[0].Text, renderRosterPrompt(trace.InitialRoster())) {
 		return constants.ErrHarnessRosterMismatch
 	}
 	return nil
@@ -360,9 +361,41 @@ func verifyV7EpisodeOutputs(trace *AgentTrace) error {
 			specs[declaration.Name] = spec
 		}
 	}
+	if err := validateAgentTraceRosterJoins(trace); err != nil {
+		return err
+	}
+	activeCount := len(trace.InitialRoster())
+	pendingCount := activeCount
+	currentModelCallID := ""
+	activatedJoins := make([]bool, len(trace.RosterJoins))
 	for _, group := range toolCallGroups(trace.ToolCalls) {
-		if err := verifyFanOutGroup(trace, turns, specs, group); err != nil {
+		modelCallID := group[0].ModelCallID
+		if currentModelCallID != "" && modelCallID != currentModelCallID {
+			activeCount = pendingCount
+		}
+		currentModelCallID = modelCallID
+		if err := verifyFanOutGroup(trace.Roster[:activeCount], turns, specs, group); err != nil {
 			return err
+		}
+		for _, call := range group {
+			for j, join := range trace.RosterJoins {
+				if join.JoinedAfterCall != call.CallID {
+					continue
+				}
+				if call.ToolName != constants.MCPToolOperatorDeploy || !call.Success {
+					return fmt.Errorf("roster join [%d] references call %q which is not a successful %s: %w", join.Index, call.CallID, constants.MCPToolOperatorDeploy, constants.ErrHarnessRosterMismatch)
+				}
+				if join.Index != pendingCount+1 {
+					return fmt.Errorf("roster join [%d] activated out of order (expected [%d]): %w", join.Index, pendingCount+1, constants.ErrHarnessRosterMismatch)
+				}
+				pendingCount++
+				activatedJoins[j] = true
+			}
+		}
+	}
+	for j, activated := range activatedJoins {
+		if !activated {
+			return fmt.Errorf("roster join [%d] after call %q was never activated: %w", trace.RosterJoins[j].Index, trace.RosterJoins[j].JoinedAfterCall, constants.ErrHarnessRosterMismatch)
 		}
 	}
 	for _, tool := range trace.ToolCalls {
@@ -509,10 +542,8 @@ func verifyModelCallEvidence(anchors *oracle.AnchorSet, trace *AgentTrace, call 
 	if call.TransactionID == "" || receipt.GetTransactionId() != call.TransactionID {
 		return oracle.Outcome{}, fmt.Errorf("receipt transaction %q is not the call transaction %q: %w", receipt.GetTransactionId(), call.TransactionID, constants.ErrEvaluationEvidenceTraceMismatch)
 	}
-	if trace.CarriesModelIdentity() {
-		if err := verifyV7ModelCallIdentity(trace, call, outcome); err != nil {
-			return oracle.Outcome{}, err
-		}
+	if err := verifyV7ModelCallIdentity(trace, call, outcome); err != nil {
+		return oracle.Outcome{}, err
 	}
 	switch {
 	case call.Completed():

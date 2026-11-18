@@ -7,7 +7,7 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-package operatorcmd
+package operatordeploy
 
 import (
 	"fmt"
@@ -15,6 +15,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 )
 
-func discoverLocalOperators() ([]localOperatorProcess, error) {
+// DiscoverLocalOperators fails closed on unsupported platforms.
+func DiscoverLocalOperators() ([]LocalOperatorProcess, error) {
 	return nil, fmt.Errorf("operator stop: discover local Operators: %w", constants.ErrUnsupportedPlatform)
 }

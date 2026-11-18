@@ -25,6 +25,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -33,24 +34,24 @@ import (
 // Deployments in tests run one worker at a time, so the numbering follows the
 // directory order.
 type scriptedDeploymentEvents struct {
-	events *deploymentEvents
+	events *operatordeploy.DeploymentEvents
 	staged bool
 	ready  constants.OperatorStatus
 	mu     sync.Mutex
 	n      int
 }
 
-func (s *scriptedDeploymentEvents) watch(launchID string) *deploymentWatch {
-	w := s.events.watch(launchID)
+func (s *scriptedDeploymentEvents) Watch(launchID string) *operatordeploy.DeploymentWatch {
+	w := s.events.Watch(launchID)
 	s.mu.Lock()
 	s.n++
 	n := s.n
 	s.mu.Unlock()
 	if s.staged {
-		w.setRequest(fmt.Sprintf("req-%d", n))
+		w.SetRequest(fmt.Sprintf("req-%d", n))
 	}
 	if s.ready != "" {
-		w.setReadiness(fmt.Sprintf("session-%d", n), s.ready)
+		w.SetReadiness(fmt.Sprintf("session-%d", n), s.ready)
 	}
 	return w
 }
@@ -58,8 +59,8 @@ func (s *scriptedDeploymentEvents) watch(launchID string) *deploymentWatch {
 // scriptedConnector connects every deploy to events that announce staging and
 // readiness as the given options say.
 func scriptedConnector(staged bool, ready constants.OperatorStatus) deploymentEventsConnector {
-	return func(context.Context, fs.RuntimeFileService, *config.Config) (deploymentWatcher, func(), error) {
-		return &scriptedDeploymentEvents{events: newDeploymentEvents(), staged: staged, ready: ready}, func() {}, nil
+	return func(context.Context, fs.RuntimeFileService, *config.Config) (operatordeploy.DeploymentWatcher, func(), error) {
+		return &scriptedDeploymentEvents{events: operatordeploy.NewDeploymentEvents(), staged: staged, ready: ready}, func() {}, nil
 	}
 }
 
@@ -75,83 +76,83 @@ func pushFrame(t *testing.T, eventType string, data any) string {
 }
 
 func TestDeploymentEventsRouteByLaunchID(t *testing.T) {
-	events := newDeploymentEvents()
-	mine := events.watch("launch-mine")
-	other := events.watch("launch-other")
+	events := operatordeploy.NewDeploymentEvents()
+	mine := events.Watch("launch-mine")
+	other := events.Watch("launch-other")
 
-	events.handle("", pushFrame(t, string(constants.EventPlatformApprovalsChanged),
+	events.Handle("", pushFrame(t, string(constants.EventPlatformApprovalsChanged),
 		models.ApprovalsChangedPayload{Subject: models.ApprovalsChangedEnrollments, DeploymentID: "launch-mine", RequestID: "req-mine"}))
-	events.handle("", pushFrame(t, string(constants.EventOperatorStatusUpdatedActive),
+	events.Handle("", pushFrame(t, string(constants.EventOperatorStatusUpdatedActive),
 		models.OperatorStatusUpdatedPayload{OperatorID: "op-1", Status: constants.OperatorStatusActive, DeploymentID: "launch-mine", OperatorSessionID: "session-mine"}))
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	requestID, err := mine.awaitStaged(ctx)
+	requestID, err := mine.AwaitStaged(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "req-mine", requestID)
-	sessionID, err := mine.awaitReady(ctx)
+	sessionID, err := mine.AwaitReady(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "session-mine", sessionID)
 
 	short, shortCancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer shortCancel()
-	_, err = other.awaitStaged(short)
+	_, err = other.AwaitStaged(short)
 	assert.ErrorIs(t, err, constants.ErrOperatorDeployFailed, "an event for another launch must not stage this one")
 }
 
 func TestDeploymentEventsIgnoreAnnouncementsWithoutALaunchID(t *testing.T) {
-	events := newDeploymentEvents()
-	w := events.watch("launch-1")
+	events := operatordeploy.NewDeploymentEvents()
+	w := events.Watch("launch-1")
 
-	events.handle("", pushFrame(t, string(constants.EventPlatformApprovalsChanged),
+	events.Handle("", pushFrame(t, string(constants.EventPlatformApprovalsChanged),
 		models.ApprovalsChangedPayload{Subject: models.ApprovalsChangedEnrollments}))
-	events.handle("", pushFrame(t, string(constants.EventOperatorStatusUpdatedActive),
+	events.Handle("", pushFrame(t, string(constants.EventOperatorStatusUpdatedActive),
 		models.OperatorStatusUpdatedPayload{OperatorID: "op-1", Status: constants.OperatorStatusActive}))
-	events.handle("", "not json")
+	events.Handle("", "not json")
 
 	short, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	_, err := w.awaitReady(short)
+	_, err := w.AwaitReady(short)
 	assert.ErrorIs(t, err, constants.ErrOperatorDeployFailed)
 }
 
 func TestDeploymentWatchReadyBeforeRequestFailsClosed(t *testing.T) {
-	events := newDeploymentEvents()
-	w := events.watch("launch-1")
-	events.handle("", pushFrame(t, string(constants.EventOperatorStatusUpdatedActive),
+	events := operatordeploy.NewDeploymentEvents()
+	w := events.Watch("launch-1")
+	events.Handle("", pushFrame(t, string(constants.EventOperatorStatusUpdatedActive),
 		models.OperatorStatusUpdatedPayload{OperatorID: "op-1", Status: constants.OperatorStatusActive, DeploymentID: "launch-1", OperatorSessionID: "session-1"}))
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	requestID, err := w.awaitStaged(ctx)
+	requestID, err := w.AwaitStaged(ctx)
 	require.ErrorIs(t, err, constants.ErrOperatorDeployFailed, "memory-only identity: every launch requests enrollment")
 	assert.Empty(t, requestID)
 }
 
 func TestDeploymentWatchNonActiveSubscriptionIsNotReadiness(t *testing.T) {
-	events := newDeploymentEvents()
-	w := events.watch("launch-1")
-	events.handle("", pushFrame(t, string(constants.EventOperatorStatusUpdatedStopped),
+	events := operatordeploy.NewDeploymentEvents()
+	w := events.Watch("launch-1")
+	events.Handle("", pushFrame(t, string(constants.EventOperatorStatusUpdatedStopped),
 		models.OperatorStatusUpdatedPayload{OperatorID: "op-1", Status: constants.OperatorStatusStopped, DeploymentID: "launch-1", OperatorSessionID: "session-1"}))
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	_, err := w.awaitReady(ctx)
+	_, err := w.AwaitReady(ctx)
 	require.ErrorIs(t, err, constants.ErrOperatorDeployFailed)
 	assert.Contains(t, err.Error(), "stopped")
 }
 
 func TestDeploymentWatchActiveIsNotRegressedByALaterAnnouncement(t *testing.T) {
-	events := newDeploymentEvents()
-	w := events.watch("launch-1")
+	events := operatordeploy.NewDeploymentEvents()
+	w := events.Watch("launch-1")
 	for _, status := range []constants.OperatorStatus{constants.OperatorStatusActive, constants.OperatorStatusStale} {
-		events.handle("", pushFrame(t, "ztd.v1.operator.status.updated."+string(status),
+		events.Handle("", pushFrame(t, "ztd.v1.operator.status.updated."+string(status),
 			models.OperatorStatusUpdatedPayload{OperatorID: "op-1", Status: status, DeploymentID: "launch-1", OperatorSessionID: "session-1"}))
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	sessionID, err := w.awaitReady(ctx)
+	sessionID, err := w.AwaitReady(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "session-1", sessionID)
 }
@@ -166,7 +167,7 @@ func TestExplainDeployWaitNamesTheWorkersOwnFailure(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fileSvc.WriteFile(context.Background(), filepath.Join(constants.DeploymentDirname, constants.DeploymentStateFileOperator), data, constants.PermFilePrivate))
 
-	err = explainDeployWait(deploySSH{local: true, launchID: "launch-1"}, dir, fmt.Errorf("%w: wait ended", constants.ErrOperatorDeployFailed))
+	err = operatordeploy.ExplainDeployWait(operatordeploy.HostTransport{Local: true, LaunchID: "launch-1"}, dir, fmt.Errorf("%w: wait ended", constants.ErrOperatorDeployFailed))
 	require.ErrorIs(t, err, constants.ErrOperatorDeployFailed)
 	assert.Contains(t, err.Error(), "HTTP 429")
 }
@@ -175,6 +176,6 @@ func TestExplainDeployWaitKeepsTheWaitErrorWhenTheWorkerRecordedNothing(t *testi
 	dir := testutil.TempDir(t)
 	waitErr := fmt.Errorf("%w: wait ended", constants.ErrOperatorDeployFailed)
 
-	err := explainDeployWait(deploySSH{local: true, launchID: "launch-1"}, dir, waitErr)
+	err := operatordeploy.ExplainDeployWait(operatordeploy.HostTransport{Local: true, LaunchID: "launch-1"}, dir, waitErr)
 	assert.Equal(t, waitErr, err)
 }

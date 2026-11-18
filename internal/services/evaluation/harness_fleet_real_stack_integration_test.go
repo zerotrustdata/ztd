@@ -262,3 +262,84 @@ func TestFleetHarnessIntegration_MissingTargetsRejectsBeforeDispatch(t *testing.
 	require.Len(t, toolErrors, 1)
 	assert.Contains(t, toolErrors[0], constants.ErrHarnessTargetRequired.Error(), "the model receives the target validation failure")
 }
+
+// verifyFleetDeployThenUse runs fleet-deploy-then-use under the given posture:
+// starts with 2 Data Operators, deploys app-03 via operator_deploy, observes the
+// `<operator_roster_update>` message for member [3], rolls app/config.yaml out to
+// all 3 Operators, verifies per-member brackets on [1, 2, 3], trace validation,
+// conversation reconstruction, and deterministic file-state PASS grades.
+func verifyFleetDeployThenUse(t *testing.T, suffix string, posture constants.Posture) {
+	t.Helper()
+	ctx := t.Context()
+	var (
+		initialRosterSeen string
+		rosterUpdateSeen  string
+	)
+	replies := []fixtures.OllamaReply{
+		{Respond: func(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
+			for _, message := range request.Messages {
+				if strings.Contains(message.Content, "<operator_roster>") {
+					initialRosterSeen = message.Content
+				}
+			}
+			return toolReply(constants.MCPToolReadFile, json.RawMessage(`{"path":"./inventory/pending.yaml","target_operators":["1"]}`))
+		}},
+		toolReply(constants.MCPToolOperatorDeploy, json.RawMessage(`{"hostnames":["app-03"],"target_operators":["1"]}`)),
+		{Respond: func(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
+			for _, message := range request.Messages {
+				if strings.Contains(message.Content, "<operator_roster_update>") {
+					rosterUpdateSeen = message.Content
+				}
+			}
+			return toolReply(constants.MCPToolFileEdit, fleetRolloutArguments())
+		}},
+		{Content: "Deployed app-03 and rolled out log_level: info to app-01, app-02, and app-03."},
+	}
+	env := newRealStackAgentRun(t, realStackOptions{
+		suffix: suffix, posture: posture, replies: replies, singleRole: true,
+		dataOperators: 2, deployTargetHostname: "app-03",
+		catalog: evaluation.LoadDevOpsFleetScenarioCatalog, scenarioID: "fleet-deploy-then-use",
+	})
+	require.Len(t, env.topology.Fleet, 2)
+	require.NotNil(t, env.stack.DeployHost)
+
+	result := env.executeNext(t)
+	assert.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, result.GetLifecycleStatus(), "invalid evidence: %s", result.GetInvalidEvidenceDetail())
+	assert.Contains(t, initialRosterSeen, "Operators: 2 bound.")
+	assert.Contains(t, rosterUpdateSeen, "<operator_roster_update>")
+	assert.Contains(t, rosterUpdateSeen, "[3]")
+
+	trace, err := env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, result.GetAssignmentId())
+	require.NoError(t, err)
+	require.Len(t, trace.Roster, 3)
+	require.Len(t, trace.RosterJoins, 1)
+	assert.Equal(t, 3, trace.RosterJoins[0].Index)
+	require.Len(t, trace.ToolCalls, 5, "one read, one deploy, and three fan-out edits")
+	assert.Equal(t, constants.MCPToolReadFile, trace.ToolCalls[0].ToolName)
+	assert.Equal(t, constants.MCPToolOperatorDeploy, trace.ToolCalls[1].ToolName)
+	assert.Equal(t, trace.ToolCalls[1].CallID, trace.RosterJoins[0].JoinedAfterCall)
+	assert.True(t, trace.ToolCalls[1].Success, "operator_deploy failed: %s", trace.ToolCalls[1].Error)
+	for _, call := range trace.ToolCalls[2:] {
+		assert.Equal(t, constants.MCPToolFileEdit, call.ToolName)
+		assert.True(t, call.Success, "roster [%d]: %s", call.TargetIndex, call.Error)
+		require.NotNil(t, call.Receipt)
+	}
+	for _, member := range trace.Roster {
+		require.NotNil(t, member.Bracket, "roster [%d] is bracketed", member.Index)
+	}
+	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
+	_, err = trace.Conversation()
+	require.NoError(t, err)
+
+	for _, grade := range result.GetDeterministicGrades() {
+		assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, grade.GetStatus(), "%s: %s", grade.GetCriterionId(), grade.GetDetail())
+	}
+}
+
+func TestFleetHarnessIntegration_DeployThenUse(t *testing.T) {
+	verifyFleetDeployThenUse(t, "fleet-deploy", constants.PostureDoctrine)
+}
+
+func TestFleetHarnessIntegration_DeployThenUseNotary(t *testing.T) {
+	verifyFleetDeployThenUse(t, "fleet-deploy-notary", constants.PostureNotary)
+}

@@ -189,11 +189,18 @@ func toolArgumentValue(call AgentToolCall, name string, raw json.RawMessage) (st
 		}
 		return request.CommandLine(), nil
 	}
-	var value string
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return "", fmt.Errorf("argument %q is not a string", name)
+	if isJSONNull(raw) {
+		return "", fmt.Errorf("argument %q is null", name)
 	}
-	return value, nil
+	var value string
+	if err := json.Unmarshal(raw, &value); err == nil {
+		return value, nil
+	}
+	var items []string
+	if err := json.Unmarshal(raw, &items); err == nil && items != nil {
+		return strings.Join(items, " "), nil
+	}
+	return "", fmt.Errorf("argument %q is not a string or string array", name)
 }
 
 // toolArgumentFailure is the typed reason a tool call broke an argument

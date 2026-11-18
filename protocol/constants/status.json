@@ -213,6 +213,12 @@
         "_go_const": "ActionTypeOllamaModelResidency",
         "value": "OLLAMA_MODEL_RESIDENCY"
       },
+      "OPERATOR_DEPLOY": {
+        "_go_const": "ActionTypeOperatorDeploy",
+        "_mutation": true,
+        "_state_change": true,
+        "value": "OPERATOR_DEPLOY"
+      },
       "OLLAMA_MODEL_RELEASE": {
         "_go_const": "ActionTypeOllamaModelRelease",
         "_mutation": true,

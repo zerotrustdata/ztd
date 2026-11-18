@@ -78,6 +78,9 @@ const EventOperatorCommandStatusUpdatedFailed EventType = "ztd.v1.operator.comma
 const EventOperatorCommandStatusUpdatedQueued EventType = "ztd.v1.operator.command.status.updated.queued"
 const EventOperatorCommandStatusUpdatedRunning EventType = "ztd.v1.operator.command.status.updated.running"
 const EventOperatorContextChanged EventType = "ztd.v1.operator.context.changed"
+const EventOperatorDeployCompleted EventType = "ztd.v1.operator.deploy.completed"
+const EventOperatorDeployFailed EventType = "ztd.v1.operator.deploy.failed"
+const EventOperatorDeployRequested EventType = "ztd.v1.operator.deploy.requested"
 const EventOperatorDeviceRegistered EventType = "ztd.v1.operator.device.registered"
 const EventOperatorEvalAnswerRequested EventType = "ztd.v1.operator.eval.answer.requested"
 const EventOperatorEvalWorkspaceSeedCompleted EventType = "ztd.v1.operator.eval.workspace.seed.completed"
@@ -793,6 +796,30 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Producers:   []string{"operator"},
 		Persistence: "ephemeral",
 		Reserved:    true,
+	},
+	EventOperatorDeployCompleted: {
+		Key:         "OperatorDeployCompleted",
+		Kind:        EventKindOutcome,
+		Transport:   []string{"pubsub"},
+		Producers:   []string{"operator"},
+		Persistence: "ephemeral",
+	},
+	EventOperatorDeployFailed: {
+		Key:         "OperatorDeployFailed",
+		Kind:        EventKindOutcome,
+		Transport:   []string{"pubsub"},
+		Producers:   []string{"operator"},
+		Persistence: "ephemeral",
+	},
+	EventOperatorDeployRequested: {
+		Key:               "OperatorDeployRequested",
+		Kind:              EventKindRequest,
+		Transport:         []string{"governed"},
+		Producers:         []string{"cli", "mcp"},
+		Persistence:       "ephemeral",
+		GovernanceAction:  ActionTypeOperatorDeploy,
+		GovernancePayload: "ztd.operator.v1.OperatorDeployRequested",
+		Outcomes:          []string{"OperatorDeployCompleted", "OperatorDeployFailed"},
 	},
 	EventOperatorDeviceRegistered: {
 		Key:         "OperatorDeviceRegistered",
@@ -2226,6 +2253,9 @@ var EventTransportRegistry = map[EventType][]string{
 	EventOperatorCommandStatusUpdatedQueued:              []string{"pubsub"},
 	EventOperatorCommandStatusUpdatedRunning:             []string{"pubsub"},
 	EventOperatorContextChanged:                          []string{"pubsub"},
+	EventOperatorDeployCompleted:                         []string{"pubsub"},
+	EventOperatorDeployFailed:                            []string{"pubsub"},
+	EventOperatorDeployRequested:                         []string{"governed"},
 	EventOperatorDeviceRegistered:                        []string{"pubsub"},
 	EventOperatorEvalAnswerRequested:                     []string{"governed"},
 	EventOperatorEvalWorkspaceSeedCompleted:              []string{"pubsub"},

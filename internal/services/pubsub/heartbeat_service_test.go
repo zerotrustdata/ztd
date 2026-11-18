@@ -47,6 +47,8 @@ type mockResultsPublisher struct {
 
 	inferenceCompletions   []*operatorv1.InferenceCompletion
 	inferenceCompletionErr error
+	operatorDeployResults  []*operatorv1.OperatorDeployResult
+	operatorDeployErr      error
 }
 
 func (m *mockResultsPublisher) PublishExecutionResult(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error {
@@ -63,6 +65,11 @@ func (m *mockResultsPublisher) PublishFileEditResult(ctx context.Context, result
 
 func (m *mockResultsPublisher) PublishEvaluationWorkspaceSeedResult(ctx context.Context, result *operatorv1.EvaluationWorkspaceSeedResult, originalMsg *PubSubCommandMessage) error {
 	return nil
+}
+
+func (m *mockResultsPublisher) PublishOperatorDeployResult(ctx context.Context, result *operatorv1.OperatorDeployResult, originalMsg *PubSubCommandMessage) error {
+	m.operatorDeployResults = append(m.operatorDeployResults, result)
+	return m.operatorDeployErr
 }
 
 func (m *mockResultsPublisher) PublishFsListResult(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error {

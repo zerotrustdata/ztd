@@ -347,7 +347,7 @@ func TestRealStackHeldRepetition_ContinuesThePreviousInvestigation(t *testing.T)
 		assert.Equal(t, message.Text, repTwoFirst.Messages[i].Content, "held message %d reaches the wire verbatim", i)
 	}
 	assert.Equal(t, "HEALTHY", repTwoFirst.Messages[len(held)-1].Content, "the previous final answer precedes the new prompt")
-	assert.Contains(t, repTwoFirst.Messages[len(held)].Content, firstTrace.Roster[0].Workspace.Root+"/bin/healthcheck.sh", "the prompt renders against the held workspace")
+	assert.Contains(t, repTwoFirst.Messages[len(held)].Content, "./bin/healthcheck.sh", "the prompt renders with the workspace-relative path")
 
 	require.NotNil(t, secondTrace.HeldContext)
 	assert.Equal(t, first.GetAssignmentId(), secondTrace.HeldContext.AssignmentID, "the held context names repetition 1")

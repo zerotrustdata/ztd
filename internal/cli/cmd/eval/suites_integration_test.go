@@ -38,6 +38,7 @@ func TestSuitesList_ShowsBuiltinSuites(t *testing.T) {
 	assert.Equal(t, evaluation.InvestigationsSuiteID, payload.Suites[2].ID)
 	assert.Equal(t, evaluation.QuickstartSuiteID, payload.Suites[3].ID)
 	assert.Equal(t, evaluation.DevOpsFleetSuiteID, payload.Suites[4].ID)
+	assert.Equal(t, evaluation.DevOpsFleetSuiteVersion, payload.Suites[4].Version)
 	assert.True(t, payload.Suites[4].Builtin)
 	assert.Equal(t, evaluation.DevOpsFleetScenarioCount, payload.Suites[4].ScenarioCount)
 	assert.True(t, payload.Suites[0].Builtin)

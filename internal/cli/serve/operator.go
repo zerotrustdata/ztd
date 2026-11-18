@@ -32,6 +32,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keyring"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 )
 
 // ServeOperatorOptions holds the configuration for running the operator in standalone mode.
@@ -69,6 +70,8 @@ type ServeOperatorOptions struct {
 	ProvenanceOperatorID                 string
 	ProvenanceOperatorModelStorageRoot   string
 	ProvenanceOperatorModelStorageFormat string
+
+	OperatorDeployOverrides map[string]operatordeploy.LocalTargetOverride
 }
 
 // resolveOperatorGateway splits the --endpoint value (host or host:port,
@@ -123,18 +126,22 @@ func buildOperatorLoadOptions(opts ServeOperatorOptions, operatorEndpoint, effec
 		OperatorEndpoint:     operatorEndpoint,
 		HTTPPort:             opts.HTTPPort,
 		HTTPSPort:            opts.HTTPSPort,
-		CloudMode:            opts.CloudMode,
-		CloudProvider:        opts.CloudProvider,
-		LogLevel:             opts.LogLevel,
-		WorkDir:              effectiveWorkDir,
-		PKIDir:               "",
-		SecretsDir:           "",
-		HeartbeatInterval:    opts.HeartbeatInterval,
-		Keyring:              opts.Keyring,
-		Shell:                os.Getenv(string(constants.EnvVar.Shell)),
-		Lang:                 os.Getenv(string(constants.EnvVar.Lang)),
-		Term:                 os.Getenv(string(constants.EnvVar.Term)),
-		TZ:                   os.Getenv(string(constants.EnvVar.TZ)),
+		TrustBundlePath:      opts.TrustBundlePath,
+		OperatorDeploy: config.OperatorDeployConfig{
+			LocalOverrides: opts.OperatorDeployOverrides,
+		},
+		CloudMode:         opts.CloudMode,
+		CloudProvider:     opts.CloudProvider,
+		LogLevel:          opts.LogLevel,
+		WorkDir:           effectiveWorkDir,
+		PKIDir:            "",
+		SecretsDir:        "",
+		HeartbeatInterval: opts.HeartbeatInterval,
+		Keyring:           opts.Keyring,
+		Shell:             os.Getenv(string(constants.EnvVar.Shell)),
+		Lang:              os.Getenv(string(constants.EnvVar.Lang)),
+		Term:              os.Getenv(string(constants.EnvVar.Term)),
+		TZ:                os.Getenv(string(constants.EnvVar.TZ)),
 
 		InferenceOllamaEndpoint:      opts.InferenceOllamaEndpoint,
 		InferenceLlamaCppEndpoint:    opts.InferenceLlamaCppEndpoint,

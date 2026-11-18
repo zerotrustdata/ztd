@@ -19,19 +19,35 @@ import (
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/paths"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keyring"
 )
 
+// OperatorDeployConfig configures target execution for governed OPERATOR_DEPLOY
+// commands handled by an Operator.
+type OperatorDeployConfig struct {
+	Endpoint        string
+	HTTPPort        int
+	HTTPSPort       int
+	TrustBundlePath string
+	Capabilities    constants.OperatorCapabilities
+	RemoteDir       string
+	SourceBinary    string
+	LocalOverrides  map[string]models.OperatorDeployLocalOverride
+}
+
 // LoadOptions contains all configuration values passed explicitly from main
 type LoadOptions struct {
 	OperatorCapabilities constants.OperatorCapabilities
 
-	// Required
+	// OperatorEndpoint is required
 	OperatorEndpoint string
 	HTTPPort         int // HTTP port to dial on Operator for bootstrap and trust bundle fetch (default: from paths.json)
 	HTTPSPort        int // HTTPS port to dial on Operator for auth proxy (default: from paths.json)
+	TrustBundlePath  string
+	OperatorDeploy   OperatorDeployConfig
 
 	// Cloud Operator mode
 	CloudMode     bool
@@ -270,9 +286,11 @@ type Config struct {
 	TLSServerName string
 
 	// Operator connection ports (operator dials these on the remote host)
-	PubSubURL string // WebSocket base URL for Operator pub/sub (e.g., wss://192.168.1.10:443) - no path; client appends /ws/pubsub
-	HTTPPort  int    // HTTP port for bootstrap and trust bundle fetch (default: from paths.json)
-	HTTPSPort int    // HTTPS port for auth/bootstrap requests via Operator proxy (default: from paths.json)
+	PubSubURL       string // WebSocket base URL for Operator pub/sub (e.g., wss://192.168.1.10:443) - no path; client appends /ws/pubsub
+	HTTPPort        int    // HTTP port for bootstrap and trust bundle fetch (default: from paths.json)
+	HTTPSPort       int    // HTTPS port for auth/bootstrap requests via Operator proxy (default: from paths.json)
+	TrustBundlePath string
+	OperatorDeploy  OperatorDeployConfig
 
 	// Logging
 	LogLevel string // Active log level (info, debug, error)
@@ -682,11 +700,13 @@ func Load(opts LoadOptions) (*Config, error) {
 		Endpoint:  opts.OperatorEndpoint,
 		PubSubURL: buildPubSubURL(opts.OperatorEndpoint, opts.HTTPSPort),
 
-		HTTPPort:      httpPortOrDefault(opts.HTTPPort),
-		HTTPSPort:     httpsPortOrDefault(opts.HTTPSPort),
-		LogLevel:      opts.LogLevel,
-		TLSServerName: tlsServerName,
-		ProjectID:     "ztd",
+		HTTPPort:        httpPortOrDefault(opts.HTTPPort),
+		HTTPSPort:       httpsPortOrDefault(opts.HTTPSPort),
+		TrustBundlePath: opts.TrustBundlePath,
+		OperatorDeploy:  opts.OperatorDeploy,
+		LogLevel:        opts.LogLevel,
+		TLSServerName:   tlsServerName,
+		ProjectID:       "ztd",
 
 		// Fixed defaults
 		ComponentName:      constants.ComponentNameZTDO,

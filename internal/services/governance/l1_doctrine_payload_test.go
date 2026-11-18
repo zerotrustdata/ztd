@@ -161,3 +161,42 @@ func TestL1Doctrine_ValidatePayload_A2ACallRequested(t *testing.T) {
 		})
 	}
 }
+
+func TestL1Doctrine_ValidatePayload_OperatorDeployRequested(t *testing.T) {
+	doctrine := NewL1Doctrine()
+
+	tests := []struct {
+		name       string
+		hostnames  []string
+		shouldFail bool
+	}{
+		{"valid_localhost", []string{"localhost"}, false},
+		{"valid_hosts", []string{"worker-1.internal", "10.0.0.12"}, false},
+		{"empty_hostname", []string{"localhost", ""}, true},
+		{"leading_dash", []string{"-oProxyCommand=evil"}, true},
+		{"whitespace", []string{"host 1"}, true},
+		{"control_char", []string{"host\x00name"}, true},
+		{"newline", []string{"host\nname"}, true},
+		{"parent_traversal", []string{"../etc/passwd"}, true},
+		{"shell_semicolon", []string{"host1;id"}, true},
+		{"shell_subshell", []string{"$(whoami)"}, true},
+		{"shell_backtick", []string{"`id`"}, true},
+		{"shell_pipe", []string{"host1|cat"}, true},
+		{"second_element_blocked", []string{"localhost", "host2;rm -rf /"}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			payload := &operatorv1.OperatorDeployRequested{
+				ExecutionId: "exec-deploy-1",
+				Hostnames:   tt.hostnames,
+			}
+			violations := doctrine.ValidatePayload(payload)
+			if tt.shouldFail {
+				assert.NotEmpty(t, violations, "expected violations for hostnames %v", tt.hostnames)
+			} else {
+				assert.Empty(t, violations, "expected no violations for hostnames %v", tt.hostnames)
+			}
+		})
+	}
+}

@@ -22,6 +22,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -41,22 +42,22 @@ func TestLocalOperatorDiscoveryAndTerminateWindows(t *testing.T) {
 		return err == nil
 	}, 10*time.Second, 25*time.Millisecond)
 
-	processes, err := discoverLocalOperators()
+	processes, err := operatordeploy.DiscoverLocalOperators()
 	require.NoError(t, err)
 	defer func() {
 		for _, p := range processes {
-			p.close()
+			p.Close()
 		}
 	}()
-	var found *localOperatorProcess
+	var found *operatordeploy.LocalOperatorProcess
 	for i := range processes {
-		if processes[i].pid == child.Process.Pid {
+		if processes[i].PID == child.Process.Pid {
 			found = &processes[i]
 			break
 		}
 	}
 	require.NotNil(t, found, "worker PID %d not discovered", child.Process.Pid)
-	require.Equal(t, filepath.Clean(dir), found.dir)
+	require.Equal(t, filepath.Clean(dir), found.Dir)
 
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.Background())
@@ -69,10 +70,10 @@ func TestLocalOperatorDiscoveryAndTerminateWindows(t *testing.T) {
 }
 
 func TestLocalOperatorArgvWindows(t *testing.T) {
-	require.True(t, isLocalOperatorArgv([]string{`D:\ztd\ztd.exe`, "operator", "start"}))
-	require.True(t, isLocalOperatorArgv([]string{"./ztd", "operator", "start"}))
-	require.True(t, isLocalOperatorArgv([]string{`.\ZTD.EXE`, "operators", "start"}))
+	require.True(t, operatordeploy.IsLocalOperatorArgv([]string{`D:\ztd\ztd.exe`, "operator", "start"}))
+	require.True(t, operatordeploy.IsLocalOperatorArgv([]string{"./ztd", "operator", "start"}))
+	require.True(t, operatordeploy.IsLocalOperatorArgv([]string{`.\ZTD.EXE`, "operators", "start"}))
 	for _, args := range [][]string{{"ztd.exe", "gw", "start"}, {"ztdx.exe", "operator", "start"}, {"cmd.exe", "/c", "ztd operator start"}} {
-		require.False(t, isLocalOperatorArgv(args))
+		require.False(t, operatordeploy.IsLocalOperatorArgv(args))
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -262,10 +263,10 @@ func TestOperatorDeployCmd(t *testing.T) {
 
 func TestOperatorDeployRemoteDirPattern(t *testing.T) {
 	for _, valid := range []string{"~", "~/ztd", "/srv/sandbox/op-00001", "/opt/ztd/", "rel/dir"} {
-		assert.True(t, operatorDeployRemoteDirPattern.MatchString(valid), valid)
+		assert.True(t, operatordeploy.RemoteDirPattern.MatchString(valid), valid)
 	}
 	for _, invalid := range []string{"", "/tmp/a b", "/tmp/a;rm -rf /", "$(id)", "/tmp/`id`", "~user/x y", "a&b"} {
-		assert.False(t, operatorDeployRemoteDirPattern.MatchString(invalid), invalid)
+		assert.False(t, operatordeploy.RemoteDirPattern.MatchString(invalid), invalid)
 	}
 }
 

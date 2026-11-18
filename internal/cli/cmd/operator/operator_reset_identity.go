@@ -17,13 +17,14 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	"github.com/zerotrustdata/ztd/internal/cli/identityreset"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 )
 
 func operatorResetIdentityCmd() *cobra.Command {
-	return operatorResetIdentityCmdWithDiscovery(discoverLocalOperators)
+	return operatorResetIdentityCmdWithDiscovery(operatordeploy.DiscoverLocalOperators)
 }
 
-func operatorResetIdentityCmdWithDiscovery(discover func() ([]localOperatorProcess, error)) *cobra.Command {
+func operatorResetIdentityCmdWithDiscovery(discover func() ([]operatordeploy.LocalOperatorProcess, error)) *cobra.Command {
 	var directory string
 	var yes bool
 	cmd := &cobra.Command{
@@ -53,13 +54,15 @@ func operatorResetIdentityCmdWithDiscovery(discover func() ([]localOperatorProce
 			}
 			defer func() {
 				for _, worker := range workers {
-					worker.close()
+					if worker.Close != nil {
+						worker.Close()
+					}
 				}
 			}()
 			for _, worker := range workers {
 				// dir is canonical; a worker started through a symlinked path
 				// (macOS /var is /private/var) names the same directory.
-				workerDir := worker.dir
+				workerDir := worker.Dir
 				if resolved, err := filepath.EvalSymlinks(workerDir); err == nil {
 					workerDir = resolved
 				}

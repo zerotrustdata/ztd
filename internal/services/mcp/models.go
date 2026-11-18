@@ -752,10 +752,7 @@ type SSHKnownHost struct {
 
 // OperatorDeployRequest is the params for the "operator_deploy" tool.
 type OperatorDeployRequest struct {
-	Hostnames      []string `json:"hostnames"`
-	OperatorBinary string   `json:"operator_binary,omitempty"`
-	OperatorArgs   []string `json:"operator_args,omitempty"`
-	Timeout        int      `json:"timeout,omitempty"`
+	Hostnames []string `json:"hostnames"`
 }
 
 // OperatorDeployResult is the result for the "operator_deploy" tool.
@@ -765,11 +762,14 @@ type OperatorDeployResult struct {
 
 // OperatorDeploymentResult represents the deployment result for a single host.
 type OperatorDeploymentResult struct {
-	Hostname string `json:"hostname"`
-	Success  bool   `json:"success"`
-	Message  string `json:"message"`
-	Error    string `json:"error,omitempty"`
-	Output   string `json:"output,omitempty"`
+	Hostname     string `json:"hostname"`
+	DeploymentID string `json:"deployment_id,omitempty"`
+	Phase        string `json:"phase,omitempty"`
+	RequestID    string `json:"request_id,omitempty"`
+	WorkingDir   string `json:"working_dir,omitempty"`
+	Success      bool   `json:"success"`
+	Message      string `json:"message"`
+	Error        string `json:"error,omitempty"`
 }
 
 // SysServiceStatusRequest is the params for the "sys_service_status" tool.

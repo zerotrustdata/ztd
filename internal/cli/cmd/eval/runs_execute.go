@@ -613,7 +613,38 @@ func newProductionCampaignAgentExecutor(in campaignAgentExecutorInputs) (evaluat
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: initialize ledger sentinel: %w", err)
 	}
-	return evaluation.NewCampaignAgentExecutor(&governedInferenceDispatcher{client: appClient, cliSessionID: persona.CLISessionID}, in.Residency, evaluation.NewCommandLane(gatewayClient, persona), sentinel, in.Store, in.Deps.now, adaptNewID(in.Deps.newID))
+	executor, err := evaluation.NewCampaignAgentExecutor(&governedInferenceDispatcher{client: appClient, cliSessionID: persona.CLISessionID}, in.Residency, evaluation.NewCommandLane(gatewayClient, persona), sentinel, in.Store, in.Deps.now, adaptNewID(in.Deps.newID))
+	if err != nil {
+		return nil, err
+	}
+	executor.WithDeployJoinerFactory(func(ctx context.Context) (evaluation.RosterDeployJoiner, error) {
+		return newProductionDeployJoiner(ctx, in, gatewayClient)
+	})
+	return executor, nil
+}
+
+func newProductionDeployJoiner(ctx context.Context, in campaignAgentExecutorInputs, gatewayClient *harnessclient.Client) (evaluation.RosterDeployJoiner, error) {
+	httpClient, err := auth.BuildMTLSClient(in.FileSvc, in.Config, 0)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: build deploy events mTLS client: %w", err)
+	}
+	bindClient := defaultEvalBindClient(in.Config)
+	if in.Deps.bindClientFactory != nil {
+		bindClient = in.Deps.bindClientFactory(in.Config)
+	}
+	return evaluation.NewGatewayDeployJoiner(ctx, evaluation.GatewayDeployJoinerConfig{
+		HTTPClient:    httpClient,
+		BaseURL:       in.Config.OperatorPublicURL(),
+		CLISessionID:  in.AuthContext.CLISessionID,
+		GatewayClient: gatewayClient,
+		BoundSessions: func(ctx context.Context) ([]string, error) {
+			return evalBoundSessionIDs(ctx, bindClient, in.FileSvc)
+		},
+		BindSessions: func(ctx context.Context, sessionIDs []string) error {
+			_, err := bindClient.Bind(ctx, in.FileSvc, sessionIDs)
+			return err
+		},
+	})
 }
 
 // reconcileStopRequest reads the run's lease and marks the watcher requested when

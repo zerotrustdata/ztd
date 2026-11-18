@@ -83,11 +83,7 @@ func formationTribunalRoleForPurpose(purpose string) evalv1.ModelCampaignRole {
 	}
 }
 
-func formationTribunalRoleForTrace(trace *AgentTrace, purpose string) evalv1.ModelCampaignRole {
-	if trace != nil && !trace.carriesPersona() {
-		// v7-v10 recorded every formation Tribunal stage on the Lite slot.
-		return formationTribunalMemberRole
-	}
+func formationTribunalRoleForTrace(_ *AgentTrace, purpose string) evalv1.ModelCampaignRole {
 	return formationTribunalRoleForPurpose(purpose)
 }
 

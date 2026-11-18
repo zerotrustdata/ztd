@@ -21,6 +21,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/certs"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
@@ -59,6 +60,11 @@ type OperatorProcessOptions struct {
 	// ProvenanceModelStorageRoot is the model store an Operator with the
 	// provenance capability attests. The capability requires it.
 	ProvenanceModelStorageRoot string
+	// DeploymentID records the deployment launch ID for staged Operators.
+	DeploymentID string
+	// OperatorDeployOverrides redirects named deploy target hosts to local
+	// directories and in-process starters for test fixtures without SSH.
+	OperatorDeployOverrides map[string]models.OperatorDeployLocalOverride
 }
 
 // OperatorHeartbeat is one heartbeat the Gateway received from an Operator.
@@ -128,11 +134,13 @@ func (w *OperatorWireWitness) LaunchOperator(t *testing.T, host *OperatorHost, o
 		HTTPPort:                           w.PlainPort(),
 		HTTPSPort:                          w.TLSPort(),
 		WorkingDir:                         host.WorkingDir,
+		DeploymentID:                       opts.DeploymentID,
 		LaunchDir:                          host.WorkingDir,
 		HeartbeatInterval:                  opts.HeartbeatInterval,
 		Keyring:                            host.Keyring,
 		InferenceOllamaEndpoint:            opts.InferenceOllamaEndpoint,
 		ProvenanceOperatorModelStorageRoot: opts.ProvenanceModelStorageRoot,
+		OperatorDeployOverrides:            opts.OperatorDeployOverrides,
 	}
 	deps := serve.OperatorRuntimeDeps{Logger: testutil.NewTestLogger(), ClientIdentity: identity}
 

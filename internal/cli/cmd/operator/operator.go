@@ -33,6 +33,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/keystore"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 )
 
 type operatorListEntry struct {
@@ -180,7 +181,7 @@ func resolveOperatorWorkingDir(dir string) (string, error) {
 	if strings.TrimSpace(dir) == "" {
 		return "", nil
 	}
-	expanded, err := resolveHomePath(dir)
+	expanded, err := operatordeploy.ResolveHomePath(dir)
 	if err != nil {
 		return "", err
 	}
@@ -231,10 +232,10 @@ The first start that creates a master key prints a recovery key once and stores 
 			if err := validateHeartbeatInterval(heartbeatInterval); err != nil {
 				return err
 			}
-			if err := validateGatewayPort("gateway-http-port", gatewayHTTPPort); err != nil {
+			if err := operatordeploy.ValidateGatewayPort("gateway-http-port", gatewayHTTPPort); err != nil {
 				return err
 			}
-			if err := validateGatewayPort("gateway-https-port", gatewayHTTPSPort); err != nil {
+			if err := operatordeploy.ValidateGatewayPort("gateway-https-port", gatewayHTTPSPort); err != nil {
 				return err
 			}
 			workingDir, err := resolveOperatorWorkingDir(workingDir)
@@ -325,13 +326,6 @@ func validateHeartbeatInterval(seconds int) error {
 	if interval < 0 || interval > constants.OperatorHeartbeatMaxInterval {
 		return fmt.Errorf("%w: %s is outside 0 (default) to %s",
 			constants.ErrOperatorHeartbeatIntervalInvalid, interval, constants.OperatorHeartbeatMaxInterval)
-	}
-	return nil
-}
-
-func validateGatewayPort(flag string, port int) error {
-	if port < 0 || port > 65535 {
-		return fmt.Errorf("--%s %d: %w", flag, port, constants.ErrOperatorGatewayPortInvalid)
 	}
 	return nil
 }

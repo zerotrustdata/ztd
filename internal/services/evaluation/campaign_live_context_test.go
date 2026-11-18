@@ -19,12 +19,12 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-func TestCampaignLiveContext_V6StillRequiresCompletedQueryEvidence(t *testing.T) {
+func TestCampaignLiveContext_RequiresCompletedQueryEvidence(t *testing.T) {
 	call := AgentToolCall{
 		ToolName: agentToolInvestigationCtx,
 		Receipt:  &AgentTraceReceipt{EventReceipt: &operatorv1.EventReceipt{Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}},
 	}
-	require.ErrorIs(t, verifyContextRetrieval(&AgentTrace{SchemaVersion: agentTraceSchemaVersionV6}, call), constants.ErrEvaluationEvidenceTraceMismatch)
+	require.ErrorIs(t, verifyContextRetrieval(&AgentTrace{SchemaVersion: agentTraceSchemaVersion}, call), constants.ErrEvaluationEvidenceTraceMismatch)
 }
 
 // The investigation identity decision is the executor's investigationID: a fresh

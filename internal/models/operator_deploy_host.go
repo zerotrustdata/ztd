@@ -7,6 +7,15 @@
 
 package models
 
+import "context"
+
+// OperatorDeployLocalOverride redirects a named target host to a local
+// directory and optional in-process starter (used by test fixtures without SSH).
+type OperatorDeployLocalOverride struct {
+	DestDir   string
+	StartFunc func(ctx context.Context, dir, binary string, args []string) (int, error)
+}
+
 // DeployHostAction represents an action requested from the remote host agent.
 type DeployHostAction string
 

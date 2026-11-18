@@ -22,6 +22,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 )
 
 func TestConnectDeploymentEventsReturnsOnceTheStreamIsEstablishedAndDeliversEvents(t *testing.T) {
@@ -46,13 +47,13 @@ func TestConnectDeploymentEventsReturnsOnceTheStreamIsEstablishedAndDeliversEven
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	events, stop, err := connectDeploymentEvents(ctx, server.Client(), server.URL, "cli-1")
+	events, stop, err := operatordeploy.ConnectDeploymentEvents(ctx, server.Client(), server.URL, "cli-1")
 	require.NoError(t, err)
 	defer stop()
 
-	w := events.watch("launch-1")
+	w := events.Watch("launch-1")
 	close(release)
-	requestID, err := w.awaitStaged(ctx)
+	requestID, err := w.AwaitStaged(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "req-1", requestID)
 }
@@ -65,6 +66,6 @@ func TestConnectDeploymentEventsFailsWhenTheGatewayRejectsTheCLISession(t *testi
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, _, err := connectDeploymentEvents(ctx, server.Client(), server.URL, "cli-1")
+	_, _, err := operatordeploy.ConnectDeploymentEvents(ctx, server.Client(), server.URL, "cli-1")
 	require.ErrorIs(t, err, constants.ErrOperatorDeployFailed)
 }

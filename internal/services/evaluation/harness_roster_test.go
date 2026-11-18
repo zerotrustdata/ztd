@@ -11,17 +11,23 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle/oracletest"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
+	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
+	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
+	tribunalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/tribunal/v1"
 )
 
 // fleetRoster is a three-member roster whose first two members share a
@@ -255,16 +261,19 @@ func fleetEvidenceTrace(t *testing.T) (*AgentTrace, *evidenceLedger, *operatorv1
 	first := newRuntimeLedger(t, oracletest.NewSigner(t), "operator-data-a", "session-a")
 	second := newRuntimeLedger(t, oracletest.NewSigner(t), "operator-data-b", "session-b")
 	inference := newRuntimeLedger(t, oracletest.NewSigner(t), evidenceInferenceOperatorID, evidenceInferenceSessionID)
-	model := inference.inference("tx-m1")
-	beforeA := first.executed("tx-a-before", string(constants.ActionTypeFsRead))
-	executed := first.executed("tx-1", string(constants.ActionTypeExecuteBash))
-	afterA := first.executed("tx-a-after", string(constants.ActionTypeFsRead))
-	beforeB := second.executed("tx-b-before", string(constants.ActionTypeFsRead))
 	trace := evidenceTrace(inference.runtime(), first.runtime())
 	trace.Roster = append(trace.Roster, AgentTraceRosterMember{Index: 2, Runtime: second.runtime()})
+	trace.Input = testAgentTraceInput()
+	withRosterPrompt(trace)
+	req1, call1 := prepareShellToolCall(t, trace, "tx-m1", "call-1", "echo")
+	m1 := sealModelTurn(t, inference, trace, "tx-m1", 1, req1)
+	beforeA := first.executed("tx-a-before", string(constants.ActionTypeFsRead))
+	call1 = commitShellToolCall(t, first, call1, "tx-1")
+	afterA := first.executed("tx-a-after", string(constants.ActionTypeFsRead))
+	beforeB := second.executed("tx-b-before", string(constants.ActionTypeFsRead))
 	trace.Roster[0].Bracket = bracketOf(beforeA, afterA)
-	trace.ModelCalls = []AgentModelCall{completedModelCall("tx-m1", model)}
-	trace.ToolCalls = []AgentToolCall{allowedToolCall("tx-1", executed)}
+	trace.ModelCalls = []AgentModelCall{m1}
+	trace.ToolCalls = []AgentToolCall{call1}
 	return trace, second, beforeB
 }
 
@@ -291,5 +300,424 @@ func TestVerifyAgentTraceEvidence_FleetBracketsEveryMember(t *testing.T) {
 		trace.ToolCalls[0].TargetIndex = 2
 		err := VerifyAgentTraceEvidence(trace)
 		require.ErrorIs(t, err, constants.ErrCampaignToolEvidenceInvalid)
+	})
+}
+
+func TestRenderRosterUpdateMessage(t *testing.T) {
+	msg := renderRosterUpdateMessage(AgentTraceRosterMember{
+		Index:        3,
+		Runtime:      AgentTraceRuntime{OperatorID: "op-c", SessionID: "op-c-session"},
+		Hostname:     "app-03",
+		OS:           "linux",
+		Architecture: "amd64",
+		Workspace:    AgentTraceWorkspace{Root: "/srv/op-c/workspaces/ws-1"},
+	})
+	want := "<operator_roster_update>\n" +
+		"Added Operator [3] operator_id=op-c hostname=app-03 os=linux arch=amd64 workspace=/srv/op-c/workspaces/ws-1\n" +
+		"Use target_operators (roster indexes, Operator IDs, hostnames, or [\"all\"]) to target it.\n" +
+		"</operator_roster_update>\n"
+	assert.Equal(t, want, msg)
+}
+
+func TestAgentTrace_InitialRosterJoinsAndConversation(t *testing.T) {
+	roster := fleetRoster()
+	joined := roster[2]
+	trace := &AgentTrace{
+		Roster: roster,
+		RosterJoins: []AgentTraceRosterJoin{{
+			Index:           3,
+			Runtime:         joined.Runtime,
+			JoinedAfterCall: "tc-deploy",
+		}},
+		Input: &AgentTraceInput{
+			Messages: []AgentTraceMessage{
+				{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM.String(), Text: renderRosterPrompt(roster[:2])},
+				{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String(), Text: "Deploy app-03 and read it."},
+			},
+		},
+		ModelCalls: []AgentModelCall{
+			{
+				ProviderAttemptID: "m-1",
+				TransactionID:     "tx-m1",
+				Purpose:           agentModelCallPurposeTurn,
+				LoopTurn:          1,
+				ToolCallCount:     1,
+				Text:              "Deploying app-03.",
+			},
+			{
+				ProviderAttemptID: "m-2",
+				TransactionID:     "tx-m2",
+				Purpose:           agentModelCallPurposeTurn,
+				LoopTurn:          2,
+				ToolCallCount:     0,
+				Text:              "Done.",
+			},
+		},
+		ToolCalls: []AgentToolCall{
+			{
+				CallID:          "tc-deploy",
+				GroupID:         "tc-deploy",
+				ModelCallID:     "m-1",
+				ProviderCallID:  "call-1",
+				ToolName:        constants.MCPToolOperatorDeploy,
+				TargetOperators: []string{"1"},
+				TargetIndex:     1,
+				ArgumentsJSON:   `{"hostnames":["app-03"]}`,
+				ResultJSON:      `{"execution_id":"tc-deploy","status":"EXECUTION_STATUS_COMPLETED","deployments":[{"hostname":"app-03","deployment_id":"dep-1","success":true}]}`,
+				Success:         true,
+				LoopTurn:        1,
+			},
+		},
+	}
+
+	assert.Len(t, trace.InitialRoster(), 2)
+	assert.Equal(t, []AgentTraceRosterMember{roster[0], roster[1]}, trace.InitialRoster())
+	require.NoError(t, validateAgentTraceRosterJoins(trace))
+
+	conv, err := trace.Conversation()
+	require.NoError(t, err)
+	require.Len(t, conv, 6)
+	assert.Equal(t, operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT.String(), conv[2].Role)
+	assert.Equal(t, operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_TOOL.String(), conv[3].Role)
+	assert.Equal(t, operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String(), conv[4].Role)
+	assert.Equal(t, renderRosterUpdateMessage(joined), conv[4].Text)
+	assert.Equal(t, "Done.", conv[5].Text)
+
+	t.Run("rejects non-contiguous index", func(t *testing.T) {
+		bad := *trace
+		bad.RosterJoins = []AgentTraceRosterJoin{{Index: 4, Runtime: joined.Runtime, JoinedAfterCall: "tc-deploy"}}
+		require.ErrorIs(t, validateAgentTraceRosterJoins(&bad), constants.ErrHarnessRosterMismatch)
+	})
+	t.Run("rejects runtime mismatch", func(t *testing.T) {
+		bad := *trace
+		bad.RosterJoins = []AgentTraceRosterJoin{{Index: 3, Runtime: AgentTraceRuntime{OperatorID: "other", SessionID: "s"}, JoinedAfterCall: "tc-deploy"}}
+		require.ErrorIs(t, validateAgentTraceRosterJoins(&bad), constants.ErrHarnessRosterMismatch)
+	})
+	t.Run("rejects empty joined_after_call", func(t *testing.T) {
+		bad := *trace
+		bad.RosterJoins = []AgentTraceRosterJoin{{Index: 3, Runtime: joined.Runtime, JoinedAfterCall: ""}}
+		require.ErrorIs(t, validateAgentTraceRosterJoins(&bad), constants.ErrMissingRequiredField)
+	})
+	t.Run("rejects non-deploy or failed call", func(t *testing.T) {
+		bad := *trace
+		bad.ToolCalls = []AgentToolCall{{CallID: "tc-deploy", ToolName: constants.MCPToolReadFile, Success: true}}
+		require.ErrorIs(t, validateAgentTraceRosterJoins(&bad), constants.ErrHarnessRosterMismatch)
+
+		bad.ToolCalls = []AgentToolCall{{CallID: "tc-deploy", ToolName: constants.MCPToolOperatorDeploy, Success: false}}
+		require.ErrorIs(t, validateAgentTraceRosterJoins(&bad), constants.ErrHarnessRosterMismatch)
+	})
+}
+
+type fakeDeployJoiner struct {
+	mu       sync.Mutex
+	watched  []string
+	awaited  []string
+	closed   bool
+	operator CampaignDataOperator
+	events   *[]string
+}
+
+func (f *fakeDeployJoiner) WatchDeployment(_ context.Context, deploymentID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.watched = append(f.watched, deploymentID)
+	if f.events != nil {
+		*f.events = append(*f.events, "watch:"+deploymentID)
+	}
+	return nil
+}
+
+func (f *fakeDeployJoiner) AwaitJoinedOperator(_ context.Context, deploymentID, hostname string) (CampaignDataOperator, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.awaited = append(f.awaited, deploymentID+":"+hostname)
+	if f.events != nil {
+		*f.events = append(*f.events, "await:"+deploymentID)
+	}
+	return f.operator, nil
+}
+
+func (f *fakeDeployJoiner) Close() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closed = true
+}
+
+type deployJoinTestInference struct {
+	mu       sync.Mutex
+	turn     int
+	requests [][]string
+}
+
+func (d *deployJoinTestInference) DispatchIntent(_ context.Context, _ *tribunalv1.TribunalIntentRequest) (*tribunalv1.TribunalIntentResult, error) {
+	return nil, nil
+}
+
+func (d *deployJoinTestInference) DispatchInference(_ context.Context, req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.turn++
+	var msgs []string
+	for _, m := range req.GetMessages() {
+		var text strings.Builder
+		for _, p := range m.GetParts() {
+			text.WriteString(p.GetText())
+		}
+		msgs = append(msgs, m.GetRole().String()+":"+text.String())
+	}
+	d.requests = append(d.requests, msgs)
+
+	var result *operatorv1.InferenceResult
+	switch d.turn {
+	case 1:
+		result = &operatorv1.InferenceResult{
+			ProviderAttemptId:    req.GetProviderAttemptId(),
+			CampaignId:           req.GetCampaignId(),
+			RunId:                req.GetRunId(),
+			AssignmentId:         req.GetAssignmentId(),
+			EvaluationAttemptId:  req.GetEvaluationAttemptId(),
+			ScenarioId:           req.GetScenarioId(),
+			ModelRegistryDigest:  req.GetModelRegistryDigest(),
+			RequestedModel:       req.GetModel(),
+			Model:                req.GetModel(),
+			RequestedModelDigest: req.GetModelDigest(),
+			ServedModelDigest:    req.GetModelDigest(),
+			FinishReason:         "tool_calls",
+			Parts: []*operatorv1.InferenceResponsePart{{
+				Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
+					CallId:        "call-deploy",
+					Name:          constants.MCPToolOperatorDeploy,
+					ArgumentsJson: `{"hostnames":["app-03"],"target_operators":["1"]}`,
+				}},
+			}},
+		}
+	case 2:
+		result = &operatorv1.InferenceResult{
+			ProviderAttemptId:    req.GetProviderAttemptId(),
+			CampaignId:           req.GetCampaignId(),
+			RunId:                req.GetRunId(),
+			AssignmentId:         req.GetAssignmentId(),
+			EvaluationAttemptId:  req.GetEvaluationAttemptId(),
+			ScenarioId:           req.GetScenarioId(),
+			ModelRegistryDigest:  req.GetModelRegistryDigest(),
+			RequestedModel:       req.GetModel(),
+			Model:                req.GetModel(),
+			RequestedModelDigest: req.GetModelDigest(),
+			ServedModelDigest:    req.GetModelDigest(),
+			FinishReason:         "tool_calls",
+			Parts: []*operatorv1.InferenceResponsePart{{
+				Part: &operatorv1.InferenceResponsePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
+					CallId:        "call-read-joined",
+					Name:          constants.MCPToolReadFile,
+					ArgumentsJson: `{"path":"./app/config.yaml","target_operators":["3"]}`,
+				}},
+			}},
+		}
+	default:
+		result = &operatorv1.InferenceResult{
+			ProviderAttemptId:    req.GetProviderAttemptId(),
+			CampaignId:           req.GetCampaignId(),
+			RunId:                req.GetRunId(),
+			AssignmentId:         req.GetAssignmentId(),
+			EvaluationAttemptId:  req.GetEvaluationAttemptId(),
+			ScenarioId:           req.GetScenarioId(),
+			ModelRegistryDigest:  req.GetModelRegistryDigest(),
+			RequestedModel:       req.GetModel(),
+			Model:                req.GetModel(),
+			RequestedModelDigest: req.GetModelDigest(),
+			ServedModelDigest:    req.GetModelDigest(),
+			FinishReason:         "stop",
+			Parts: []*operatorv1.InferenceResponsePart{{
+				Part: &operatorv1.InferenceResponsePart_Text{Text: "Deployed app-03 and verified config."},
+			}},
+		}
+	}
+	digest, err := models.ComputeInferenceResultDigest(result)
+	if err != nil {
+		return nil, err
+	}
+	result.ResultDigest = digest
+	return &operatorv1.InferenceDispatchResponse{
+		TransactionId: "tx-inf-" + req.GetProviderAttemptId(),
+		Receipt:       &operatorv1.EventReceipt{TransactionId: "tx-inf-" + req.GetProviderAttemptId(), Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, ResultSummary: digest},
+		Result:        result,
+	}, nil
+}
+
+type deployJoinTestTools struct {
+	mu           sync.Mutex
+	writtenFiles []string
+	dispatched   []string
+	events       *[]string
+	deployCallID string
+}
+
+func (t *deployJoinTestTools) WriteWorkspaceFile(_ context.Context, target Target, _, _, _, path, _ string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.writtenFiles = append(t.writtenFiles, target.OperatorID+":"+path)
+	return nil
+}
+
+func (t *deployJoinTestTools) DispatchAgentTool(_ context.Context, target Target, _, _, _, _ string, action constants.ActionType, _ string, payload []byte) (GovernedToolDispatch, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.dispatched = append(t.dispatched, target.OperatorID+":"+string(action))
+	if action == constants.ActionTypeOperatorDeploy {
+		var req operatorv1.OperatorDeployRequested
+		if err := proto.Unmarshal(payload, &req); err != nil {
+			return GovernedToolDispatch{}, err
+		}
+		t.deployCallID = req.GetExecutionId()
+		if t.events != nil {
+			*t.events = append(*t.events, "dispatch:"+req.GetExecutionId())
+		}
+		depID := operatordeploy.DeploymentIDForExecution(req.GetExecutionId(), 0)
+		summaryBytes, err := (protojson.MarshalOptions{UseProtoNames: true}).Marshal(&operatorv1.OperatorDeployResult{
+			ExecutionId: req.GetExecutionId(),
+			Status:      operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+			Deployments: []*operatorv1.OperatorDeployedHost{{
+				Hostname:     "app-03",
+				DeploymentId: depID,
+				Phase:        string(models.OperatorDeploymentPhasePendingApproval),
+				WorkingDir:   "/srv/op-c",
+				Success:      true,
+			}},
+		})
+		if err != nil {
+			return GovernedToolDispatch{}, err
+		}
+		receipt := &operatorv1.EventReceipt{
+			TransactionId: "tx-deploy",
+			ActionType:    string(constants.ActionTypeOperatorDeploy),
+			Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+			ResultSummary: string(summaryBytes),
+		}
+		return GovernedToolDispatch{
+			TransactionID: "tx-deploy",
+			Outcome: &client.GovernedOutcome{
+				Observation: &evalv1.ConformanceObservation{
+					Kind:    evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
+					Receipt: receipt,
+				},
+				Dispatch: &operatorv1.GovernedDispatchResult{TransactionId: "tx-deploy", Receipt: receipt},
+			},
+		}, nil
+	}
+	receipt := &operatorv1.EventReceipt{
+		TransactionId: "tx-read",
+		ActionType:    string(constants.ActionTypeFsRead),
+		Status:        operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED,
+		ResultSummary: `{"path":"/srv/op-c/app/config.yaml","content":"log_level: debug\n"}`,
+	}
+	return GovernedToolDispatch{
+		TransactionID: "tx-read",
+		Outcome: &client.GovernedOutcome{
+			Observation: &evalv1.ConformanceObservation{
+				Kind:    evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT,
+				Receipt: receipt,
+			},
+			Dispatch: &operatorv1.GovernedDispatchResult{TransactionId: "tx-read", Receipt: receipt},
+		},
+	}, nil
+}
+
+type deployJoinTestSentinel struct {
+	mu    sync.Mutex
+	reads []string
+}
+
+func (s *deployJoinTestSentinel) ReadSession(_ context.Context, operatorID, sessionID, readAbs string) (*operatorv1.EventReceipt, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.reads = append(s.reads, operatorID+":"+sessionID+":"+readAbs)
+	return &operatorv1.EventReceipt{TransactionId: "tx-sentinel-" + operatorID, Status: operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED}, nil
+}
+
+func TestExecutor_DeployJoinerJoinsAndMaterializesOperator(t *testing.T) {
+	var events []string
+	joiner := &fakeDeployJoiner{
+		events: &events,
+		operator: CampaignDataOperator{
+			CampaignOperatorRuntime: CampaignOperatorRuntime{OperatorID: "op-c", OperatorSessionID: "op-c-session"},
+			WorkingDirectory:        "/srv/op-c",
+			Hostname:                "app-03",
+			OS:                      "linux",
+			Architecture:            "amd64",
+		},
+	}
+	tools := &deployJoinTestTools{events: &events}
+	sentinel := &deployJoinTestSentinel{}
+	inference := &deployJoinTestInference{}
+	ids := 0
+	exec, err := NewCampaignAgentExecutor(inference, &recordingModelResidency{}, tools, sentinel, unusedTraceStore{}, nil, func(prefix string) string {
+		ids++
+		return prefix + "-" + string(rune('a'+ids-1))
+	})
+	require.NoError(t, err)
+	exec.WithDeployJoinerFactory(func(context.Context) (RosterDeployJoiner, error) {
+		return joiner, nil
+	})
+
+	run := newTribunalAuthoringRun(t, false, &tribunalAuthoringInference{}, &tribunalAuthoringTools{})
+	run.executor = exec
+	run.tools, err = exec.catalog.Scope(ScenarioToolExpectations{
+		AllowedTools: []string{constants.MCPToolOperatorDeploy, constants.MCPToolReadFile},
+	})
+	require.NoError(t, err)
+	run.req.ScenarioInput = ScenarioInputFixture{
+		UserPrompt: "Deploy app-03 and read config.",
+		WorkspaceFiles: []ScenarioWorkspaceFile{
+			workspaceFile("app-config", "app/config.yaml", "log_level: debug\n", false),
+			onMembers(workspaceFile("pending", "inventory/pending.yaml", "host: app-03\n", false), 1, 2),
+		},
+	}
+	run.trace.Roster = fleetRoster()[:2]
+
+	require.NoError(t, run.loop(t.Context()))
+	assert.True(t, joiner.closed)
+	require.Len(t, run.trace.Roster, 3)
+	require.Len(t, run.trace.RosterJoins, 1)
+	assert.Equal(t, 3, run.trace.RosterJoins[0].Index)
+	assert.Equal(t, "op-c", run.trace.RosterJoins[0].Runtime.OperatorID)
+	assert.Equal(t, tools.deployCallID, run.trace.RosterJoins[0].JoinedAfterCall)
+
+	expectedDepID := operatordeploy.DeploymentIDForExecution(tools.deployCallID, 0)
+	require.Equal(t, []string{"watch:" + expectedDepID, "dispatch:" + tools.deployCallID, "await:" + expectedDepID}, events, "WatchDeployment must run before DispatchAgentTool")
+	assert.Contains(t, tools.dispatched, "op-c:"+string(constants.ActionTypeMcpCall))
+	assert.Contains(t, sentinel.reads, "op-c:op-c-session:"+run.trace.Roster[2].ScenarioWorkspace().SentinelPath())
+
+	var joinedConfigWritten, joinedPendingWritten bool
+	for _, w := range tools.writtenFiles {
+		if strings.HasPrefix(w, "op-c:") && strings.HasSuffix(w, "/app/config.yaml") {
+			joinedConfigWritten = true
+		}
+		if strings.HasPrefix(w, "op-c:") && strings.HasSuffix(w, "/inventory/pending.yaml") {
+			joinedPendingWritten = true
+		}
+	}
+	assert.True(t, joinedConfigWritten, "shared workspace file should materialize on joined member [3]")
+	assert.False(t, joinedPendingWritten, "member [1,2]-only file must not materialize on [3]")
+
+	require.GreaterOrEqual(t, len(inference.requests), 2)
+	assert.Contains(t, inference.requests[1], operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String()+":"+renderRosterUpdateMessage(run.trace.Roster[2]))
+
+	t.Run("nil joiner fails closed when operator_deploy returns pending deployments", func(t *testing.T) {
+		nilJoinerTools := &deployJoinTestTools{}
+		nilJoinerInf := &deployJoinTestInference{}
+		nilExec, err := NewCampaignAgentExecutor(nilJoinerInf, &recordingModelResidency{}, nilJoinerTools, &deployJoinTestSentinel{}, unusedTraceStore{}, nil, func(prefix string) string {
+			ids++
+			return prefix + "-" + string(rune('a'+ids-1))
+		})
+		require.NoError(t, err)
+		nilRun := newTribunalAuthoringRun(t, false, &tribunalAuthoringInference{}, &tribunalAuthoringTools{})
+		nilRun.executor = nilExec
+		nilRun.tools, err = nilExec.catalog.Scope(ScenarioToolExpectations{AllowedTools: []string{constants.MCPToolOperatorDeploy}})
+		require.NoError(t, err)
+		nilRun.req.ScenarioInput = ScenarioInputFixture{UserPrompt: "Deploy app-03."}
+		nilRun.trace.Roster = fleetRoster()[:2]
+
+		err = nilRun.loop(t.Context())
+		require.ErrorIs(t, err, constants.ErrEvaluationAssignmentExecutionFailed)
 	})
 }

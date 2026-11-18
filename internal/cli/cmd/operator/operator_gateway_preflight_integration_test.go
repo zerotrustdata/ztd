@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 )
 
 // preflightGateway serves the Operator bootstrap websocket and listens on an
@@ -95,13 +96,13 @@ func unusedPort(t *testing.T) int {
 
 func TestGatewayPreflightOpensTheBootstrapWebsocketWithoutEnrolling(t *testing.T) {
 	gw := startPreflightGateway(t)
-	require.NoError(t, runGatewayPreflight(context.Background(), constants.LocalhostIP, gw.httpPort, gw.httpsPort))
+	require.NoError(t, operatordeploy.RunGatewayPreflight(context.Background(), constants.LocalhostIP, gw.httpPort, gw.httpsPort))
 	assert.Zero(t, <-gw.bootstrapFrames, "preflight must not send a bootstrap request frame")
 }
 
 func TestGatewayPreflightFailsWhenTheBootstrapWebsocketIsUnreachable(t *testing.T) {
 	gw := startPreflightGateway(t)
-	err := runGatewayPreflight(context.Background(), constants.LocalhostIP, unusedPort(t), gw.httpsPort)
+	err := operatordeploy.RunGatewayPreflight(context.Background(), constants.LocalhostIP, unusedPort(t), gw.httpsPort)
 	require.ErrorIs(t, err, constants.ErrGatewayNotReachable)
 	assert.Contains(t, err.Error(), "bootstrap websocket")
 }
@@ -110,14 +111,14 @@ func TestGatewayPreflightFailsWhenTheHTTPPortServesNoBootstrapWebsocket(t *testi
 	gw := startPreflightGateway(t)
 	plain := httptest.NewServer(http.NotFoundHandler())
 	t.Cleanup(plain.Close)
-	err := runGatewayPreflight(context.Background(), constants.LocalhostIP, listenerPort(t, plain.Listener), gw.httpsPort)
+	err := operatordeploy.RunGatewayPreflight(context.Background(), constants.LocalhostIP, listenerPort(t, plain.Listener), gw.httpsPort)
 	require.ErrorIs(t, err, constants.ErrGatewayNotReachable)
 	assert.ErrorIs(t, err, websocket.ErrBadHandshake)
 }
 
 func TestGatewayPreflightFailsWhenTheMTLSPortIsUnreachable(t *testing.T) {
 	gw := startPreflightGateway(t)
-	err := runGatewayPreflight(context.Background(), constants.LocalhostIP, gw.httpPort, unusedPort(t))
+	err := operatordeploy.RunGatewayPreflight(context.Background(), constants.LocalhostIP, gw.httpPort, unusedPort(t))
 	require.ErrorIs(t, err, constants.ErrGatewayNotReachable)
 	assert.Contains(t, err.Error(), "mTLS port")
 }

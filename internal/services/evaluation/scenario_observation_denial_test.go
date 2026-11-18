@@ -48,9 +48,9 @@ func TestScenarioObservationEvidence_GovernanceDenialVerifiesFromItsSignedReceip
 	ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
 	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
 	before := ledger.executed("before", string(constants.ActionTypeFsRead))
-	model := ledger.inference("agent-turn")
+	m1 := sealModelTurn(t, ledger, trace, "agent-turn", 1)
 	denied := ledger.rejected("probe-tx", string(constants.ActionTypeMcpCall))
-	trace.ModelCalls = []AgentModelCall{completedModelCall("agent-turn", model)}
+	trace.ModelCalls = []AgentModelCall{m1}
 	trace.Observations = []AgentScenarioObservation{deniedProbeObservation(t, denied)}
 	trace.Roster[0].Bracket = bracketOf(before, ledger.executed("after", string(constants.ActionTypeFsRead)))
 

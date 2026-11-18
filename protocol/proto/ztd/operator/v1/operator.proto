@@ -205,6 +205,12 @@ message RestoreFileRequested {
   string operator_session_id = 4;
 }
 
+// OperatorDeployRequested stages and starts an Operator on one or more target hosts.
+message OperatorDeployRequested {
+  string execution_id = 1;
+  repeated string hostnames = 2 [(ztd.common.v1.forbidden_patterns) = "(^-|[;&|`$()])|\\$\\(|\\.\\./"];
+}
+
 message DirectCommandAuditRequested {
   string command = 1;
   string execution_id = 2;
@@ -1055,6 +1061,25 @@ message FileEditResult {
   int32 stderr_size = 13;
   reserved 8;
   reserved "backup_path";
+}
+
+message OperatorDeployedHost {
+  string hostname = 1;
+  string deployment_id = 2;
+  string phase = 3;
+  string request_id = 4;
+  string working_dir = 5;
+  bool success = 6;
+  string message = 7;
+  string error = 8;
+}
+
+message OperatorDeployResult {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  repeated OperatorDeployedHost deployments = 3;
+  string error_message = 4;
+  string error_type = 5;
 }
 
 message ExecutionStatusUpdate {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 )
 
 func TestDeploymentStateRejectsIncompleteOrUnknownProgress(t *testing.T) {
@@ -24,17 +25,17 @@ func TestDeploymentStateRejectsIncompleteOrUnknownProgress(t *testing.T) {
 		`{"phase":"requesting","fingerprints":{"operator":"op-fp"},"updated_at":"2026-10-08T00:00:00Z"}`,
 	} {
 		t.Run(data, func(t *testing.T) {
-			_, err := decodeOperatorDeploymentState([]byte(data))
+			_, err := operatordeploy.DecodeOperatorDeploymentState([]byte(data))
 			require.ErrorIs(t, err, constants.ErrOperatorDeployFailed)
 		})
 	}
-	state, err := decodeOperatorDeploymentState([]byte("null"))
+	state, err := operatordeploy.DecodeOperatorDeploymentState([]byte("null"))
 	require.NoError(t, err)
 	require.Nil(t, state)
 }
 
 func TestDeploymentStateAcceptsARequestingWorkerWithBothFingerprints(t *testing.T) {
-	state, err := decodeOperatorDeploymentState([]byte(`{"phase":"requesting","fingerprints":{"operator":"op-fp","cli":"cli-fp"},"updated_at":"2026-10-08T00:00:00Z"}`))
+	state, err := operatordeploy.DecodeOperatorDeploymentState([]byte(`{"phase":"requesting","fingerprints":{"operator":"op-fp","cli":"cli-fp"},"updated_at":"2026-10-08T00:00:00Z"}`))
 	require.NoError(t, err)
 	require.Equal(t, models.OperatorDeploymentPhaseRequesting, state.Phase)
 	require.Equal(t, models.PlatformEnrollmentCSRFingerprints{Operator: "op-fp", CLI: "cli-fp"}, state.Fingerprints)

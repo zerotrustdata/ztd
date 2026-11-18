@@ -24,6 +24,7 @@ import (
 	cliop "github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
 
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -34,6 +35,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	inferencedispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/mcp"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
@@ -77,25 +79,44 @@ type AgentToolDispatcher interface {
 	DispatchAgentTool(ctx context.Context, target Target, runID, assignmentID, investigationID, attemptID string, action constants.ActionType, targetResource string, payload []byte) (GovernedToolDispatch, error)
 }
 
+// RosterDeployJoiner watches operator_deploy launches and awaits newly enrolled
+// Data Operators joining the active roster mid-run.
+type RosterDeployJoiner interface {
+	WatchDeployment(ctx context.Context, deploymentID string) error
+	AwaitJoinedOperator(ctx context.Context, deploymentID, hostname string) (CampaignDataOperator, error)
+	Close()
+}
+
+// DeployJoinerFactory constructs a RosterDeployJoiner scoped to one run loop.
+type DeployJoinerFactory func(ctx context.Context) (RosterDeployJoiner, error)
+
 // CampaignAgentExecutor runs model-role and formation assignments through the
 // governed Inference Operator; every tool call runs as a governed action on
 // the bound Data Operator. The provider holds one phase's models at a time:
 // the assignment's models while it executes, then only the judge.
 type CampaignAgentExecutor struct {
-	inference  AgentInferenceDispatcher
-	residency  ModelResidencyReleaser
-	tools      AgentToolDispatcher
-	sentinel   RosterSentinel
-	traceStore AgentTraceStore
-	catalog    *agentToolCatalog
-	now        func() time.Time
-	newID      func(string) string
+	inference           AgentInferenceDispatcher
+	residency           ModelResidencyReleaser
+	tools               AgentToolDispatcher
+	sentinel            RosterSentinel
+	traceStore          AgentTraceStore
+	catalog             *agentToolCatalog
+	now                 func() time.Time
+	newID               func(string) string
+	deployJoinerFactory DeployJoinerFactory
 	// retry is the policy an inference attempt the provider asked to retry
 	// later is retried under.
 	retry inferencedispatch.TransientRetry
 	// logger records harness lifecycle facts: IDs, counts, durations, and
 	// error kinds, never execution content (INV-STOR-LOG-01).
 	logger *slog.Logger
+}
+
+// WithDeployJoinerFactory configures how the executor watches and joins newly
+// deployed Data Operators into the active roster during an assignment run.
+func (e *CampaignAgentExecutor) WithDeployJoinerFactory(factory DeployJoinerFactory) *CampaignAgentExecutor {
+	e.deployJoinerFactory = factory
+	return e
 }
 
 // NewCampaignAgentExecutor constructs the homogeneous agent executor. The
@@ -175,6 +196,8 @@ type agentRun struct {
 	// budget is the scenario's wall-clock budget, when it has one; a retry
 	// wait is credited to it.
 	budget *scenarioBudget
+	// joiner watches operator_deploy launches and awaits enrolled Data Operators.
+	joiner RosterDeployJoiner
 }
 
 // ExecuteAssignment runs one homogeneous assignment to a terminal result. A
@@ -705,6 +728,12 @@ func (r *agentRun) loop(ctx context.Context) error {
 		turnLimit = int(budget.ToolTurnLimit)
 	}
 	usedFollowUps := make(map[string]bool)
+	defer func() {
+		if r.joiner != nil {
+			r.joiner.Close()
+			r.joiner = nil
+		}
+	}()
 	for turn := 1; turn <= turnLimit; turn++ {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -816,9 +845,31 @@ func (r *agentRun) loop(ctx context.Context) error {
 		}
 		executedArgs := make([]string, 0, len(toolCalls))
 		results := make([]*operatorv1.InferenceMessage, 0, len(toolCalls))
+		var (
+			pendingMembers []AgentTraceRosterMember
+			pendingJoins   []AgentTraceRosterJoin
+			rosterUpdates  []*operatorv1.InferenceMessage
+		)
+		flushPendingJoins := func() {
+			if len(pendingMembers) > 0 {
+				r.trace.Roster = append(r.trace.Roster, pendingMembers...)
+				r.trace.RosterJoins = append(r.trace.RosterJoins, pendingJoins...)
+				pendingMembers = nil
+				pendingJoins = nil
+			}
+		}
 		for _, toolCall := range toolCalls {
 			if err := ctx.Err(); err != nil {
 				return err
+			}
+			if toolCall.GetName() == constants.MCPToolOperatorDeploy && r.joiner == nil && r.executor.deployJoinerFactory != nil {
+				if _, declared := r.tools.Spec(constants.MCPToolOperatorDeploy); declared {
+					joiner, joinerErr := r.executor.deployJoinerFactory(ctx)
+					if joinerErr != nil {
+						return assignmentExecutionError("evaluation: initialize deploy joiner", joinerErr)
+					}
+					r.joiner = joiner
+				}
 			}
 			callCtx, cancel := agentCallContext(ctx)
 			group, err := r.runTool(callCtx, turn, modelCallID, toolCall)
@@ -838,11 +889,13 @@ func (r *agentRun) loop(ctx context.Context) error {
 				return err
 			}
 			if r.trace.TerminalClassification == AgentTerminalClassificationPolicyDenial {
+				flushPendingJoins()
 				return nil
 			}
 			if r.trace.ProviderFailure != "" {
 				// A Tribunal inference inside the tool call failed; like a
 				// failed turn, it ends the loop.
+				flushPendingJoins()
 				r.trace.TerminalClassification = AgentTerminalClassificationHarnessFailure
 				return nil
 			}
@@ -857,9 +910,20 @@ func (r *agentRun) loop(ctx context.Context) error {
 					CallId: toolCall.GetCallId(), Name: toolCall.GetName(), ResultJson: resultJSON,
 				}}}},
 			})
+			if group[0].ToolName == constants.MCPToolOperatorDeploy && group[0].Success {
+				members, joins, updates, joinErr := r.joinDeployedOperators(ctx, group, len(pendingMembers))
+				if joinErr != nil {
+					return joinErr
+				}
+				pendingMembers = append(pendingMembers, members...)
+				pendingJoins = append(pendingJoins, joins...)
+				rosterUpdates = append(rosterUpdates, updates...)
+			}
 		}
+		flushPendingJoins()
 		messages = append(messages, agentAssistantMessage(result, text, toolCalls, executedArgs))
 		messages = append(messages, results...)
+		messages = append(messages, rosterUpdates...)
 		if len(messages) > agentMaxMessages {
 			break
 		}
@@ -867,6 +931,97 @@ func (r *agentRun) loop(ctx context.Context) error {
 	r.trace.ToolTurnLimitReached = true
 	r.trace.TerminalClassification = AgentTerminalClassificationBudgetExhaustion
 	return nil
+}
+
+// joinDeployedOperators awaits newly enrolled Data Operators from a successful
+// operator_deploy result, provisions and brackets each member's workspace, and
+// returns the roster additions and user-role update messages to append after
+// the turn finishes.
+func (r *agentRun) joinDeployedOperators(ctx context.Context, group []AgentToolCall, pendingCount int) ([]AgentTraceRosterMember, []AgentTraceRosterJoin, []*operatorv1.InferenceMessage, error) {
+	var deployResult operatorv1.OperatorDeployResult
+	if err := protojson.Unmarshal([]byte(group[0].ResultJSON), &deployResult); err != nil {
+		return nil, nil, nil, assignmentExecutionError("evaluation: decode operator_deploy result", err)
+	}
+	var pending []*operatorv1.OperatorDeployedHost
+	for _, d := range deployResult.GetDeployments() {
+		if d.GetSuccess() && d.GetDeploymentId() != "" {
+			pending = append(pending, d)
+		}
+	}
+	if len(pending) == 0 {
+		return nil, nil, nil, nil
+	}
+	if r.joiner == nil {
+		return nil, nil, nil, assignmentExecutionError("evaluation: operator_deploy returned pending deployments without a deploy joiner", constants.ErrOperatorDeployFailed)
+	}
+	assignment := r.req.Assignment
+	runID, scenarioID, attemptID := assignment.GetRunId(), assignment.GetScenarioId(), r.req.AttemptID
+	joinedAfterCall := group[len(group)-1].CallID
+
+	members := make([]AgentTraceRosterMember, 0, len(pending))
+	joins := make([]AgentTraceRosterJoin, 0, len(pending))
+	updates := make([]*operatorv1.InferenceMessage, 0, len(pending))
+	for _, d := range pending {
+		op, err := r.joiner.AwaitJoinedOperator(ctx, d.GetDeploymentId(), d.GetHostname())
+		if err != nil {
+			return nil, nil, nil, assignmentExecutionError(fmt.Sprintf("evaluation: await joined operator %s (%s)", d.GetHostname(), d.GetDeploymentId()), err)
+		}
+		if op.WorkingDirectory == "" {
+			op.WorkingDirectory = d.GetWorkingDir()
+		}
+		if op.Hostname == "" {
+			op.Hostname = d.GetHostname()
+		}
+		for _, existing := range r.trace.Roster {
+			if existing.Runtime.OperatorID == op.OperatorID {
+				return nil, nil, nil, assignmentExecutionError("evaluation: joined operator already in roster", fmt.Errorf("%w: %s", constants.ErrHarnessRosterDuplicate, op.OperatorID))
+			}
+		}
+		for _, existing := range members {
+			if existing.Runtime.OperatorID == op.OperatorID {
+				return nil, nil, nil, assignmentExecutionError("evaluation: joined operator already in roster", fmt.Errorf("%w: %s", constants.ErrHarnessRosterDuplicate, op.OperatorID))
+			}
+		}
+		newIndex := len(r.trace.Roster) + pendingCount + len(members) + 1
+		workspace, err := NewScenarioWorkspace(op.WorkingDirectory, runID, attemptID)
+		if err != nil {
+			return nil, nil, nil, assignmentExecutionError(fmt.Sprintf("evaluation: joined roster [%d] %s: workspace", newIndex, op.OperatorID), err)
+		}
+		newMember := AgentTraceRosterMember{
+			Index:        newIndex,
+			Runtime:      agentTraceRuntime(op.CampaignOperatorRuntime),
+			Hostname:     op.Hostname,
+			OS:           op.OS,
+			Architecture: op.Architecture,
+			Workspace:    AgentTraceWorkspace(workspace),
+		}
+		target, memberWS := memberTarget(newMember), newMember.ScenarioWorkspace()
+		if err := r.executor.tools.WriteWorkspaceFile(ctx, target, runID, scenarioID, attemptID, memberWS.SentinelPath(), attemptID); err != nil {
+			return nil, nil, nil, assignmentExecutionError(fmt.Sprintf("evaluation: joined roster [%d]: write ledger sentinel file", newIndex), err)
+		}
+		if r.req.HeldContext == nil {
+			files := workspaceFilesFor(r.req.ScenarioInput.WorkspaceFiles, newIndex)
+			if err := materializeScenarioWorkspace(ctx, r.executor.tools, target, runID, scenarioID, attemptID, memberWS, files); err != nil {
+				return nil, nil, nil, assignmentExecutionError(fmt.Sprintf("evaluation: joined roster [%d]: materialize workspace", newIndex), err)
+			}
+		}
+		if err := r.materializeCaseMemory(ctx, newMember); err != nil {
+			return nil, nil, nil, assignmentExecutionError(fmt.Sprintf("evaluation: joined roster [%d]: materialize investigation memory", newIndex), err)
+		}
+		receipt, err := r.executor.sentinel.ReadSession(ctx, newMember.Runtime.OperatorID, newMember.Runtime.SessionID, memberWS.SentinelPath())
+		if err != nil {
+			return nil, nil, nil, assignmentExecutionError(fmt.Sprintf("evaluation: joined roster [%d]: read opening ledger sentinel", newIndex), err)
+		}
+		newMember.Bracket = &AgentTraceBracket{Before: AgentTraceReceipt{EventReceipt: receipt}}
+		members = append(members, newMember)
+		joins = append(joins, AgentTraceRosterJoin{
+			Index:           newIndex,
+			Runtime:         agentTraceRuntime(op.CampaignOperatorRuntime),
+			JoinedAfterCall: joinedAfterCall,
+		})
+		updates = append(updates, agentTextMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, renderRosterUpdateMessage(newMember)))
+	}
+	return members, joins, updates, nil
 }
 
 // agentAssistantMessage builds the live continuation after every tool call has
@@ -1550,9 +1705,10 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, m
 		return AgentToolCall{}, 0, fmt.Errorf("evaluation: look up %s: %w", tool, err)
 	}
 	var (
-		action   constants.ActionType
-		resource string
-		payload  []byte
+		action    constants.ActionType
+		resource  string
+		payload   []byte
+		deployReq *operatorv1.OperatorDeployRequested
 	)
 	if isGoverned {
 		request, encoded, err := governedToolAction(governed, argsJSON, target.SessionID, record.CallID)
@@ -1564,6 +1720,9 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, m
 			return record, 0, err
 		}
 		action, resource, payload = request.ActionType, request.TargetResource, encoded
+		if req, ok := request.Payload.(*operatorv1.OperatorDeployRequested); ok {
+			deployReq = req
+		}
 	} else {
 		encoded, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: tool, ArgumentsJson: argsJSON, ExecutionId: record.CallID})
 		if err != nil {
@@ -1572,6 +1731,13 @@ func (r *agentRun) runNativeMCPTool(ctx context.Context, record AgentToolCall, m
 		action, resource, payload = constants.ActionTypeMcpCall, tool, encoded
 	}
 	record.ActionType = string(action)
+	if tool == constants.MCPToolOperatorDeploy && r.joiner != nil && deployReq != nil {
+		for i := range deployReq.GetHostnames() {
+			if err := r.joiner.WatchDeployment(ctx, operatordeploy.DeploymentIDForExecution(record.CallID, i)); err != nil {
+				return AgentToolCall{}, 0, fmt.Errorf("evaluation: watch operator deployment: %w", err)
+			}
+		}
+	}
 	dispatched, wait, denied, err := r.dispatch(ctx, &record, target, action, resource, payload)
 	if err != nil || denied {
 		return record, wait, err

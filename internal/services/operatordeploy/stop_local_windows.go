@@ -7,7 +7,7 @@
 // As of the Change Date listed in the LICENSE file, this software is
 // released under the Apache License, Version 2.0.
 
-package operatorcmd
+package operatordeploy
 
 import (
 	"errors"
@@ -17,21 +17,16 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/pkg/processwatch"
 	"golang.org/x/sys/windows"
 )
 
-// localOperatorProcessAccess is the handle the stop path inspects identity
-// through and terminates with. Exit waits go through the platform watch.
 const localOperatorProcessAccess = windows.PROCESS_QUERY_LIMITED_INFORMATION | windows.PROCESS_VM_READ |
 	windows.PROCESS_TERMINATE
 
-// Hold a process handle before inspecting identity so PID reuse cannot
-// redirect termination. Inspect argv tokens, never a substring of a shell
-// command or a parent PID. Processes owned by another user, or whose memory
-// this process cannot read (another bitness, elevated), are skipped.
-func discoverLocalOperators() ([]localOperatorProcess, error) {
+// DiscoverLocalOperators discovers running local Operator processes via process snapshot and PEB inspection.
+func DiscoverLocalOperators() ([]LocalOperatorProcess, error) {
 	self, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {
 		return nil, fmt.Errorf("operator stop: read current user: %w", err)
@@ -42,19 +37,19 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 	}
 	defer func() { _ = windows.CloseHandle(snapshot) }()
 
-	var processes []localOperatorProcess
+	var processes []LocalOperatorProcess
 	var entry windows.ProcessEntry32
 	entry.Size = uint32(unsafe.Sizeof(entry))
 	for err = windows.Process32First(snapshot, &entry); err == nil; err = windows.Process32Next(snapshot, &entry) {
 		pid := int(entry.ProcessID)
-		if pid == os.Getpid() || !isZtdExecutable(windows.UTF16ToString(entry.ExeFile[:])) {
+		if pid == os.Getpid() || !IsZtdExecutable(windows.UTF16ToString(entry.ExeFile[:])) {
 			continue
 		}
 		handle, openErr := windows.OpenProcess(localOperatorProcessAccess, false, entry.ProcessID)
 		if openErr != nil {
 			continue
 		}
-		watch, watchErr := platform.WatchProcessExit(pid)
+		watch, watchErr := processwatch.WatchProcessExit(pid)
 		if errors.Is(watchErr, constants.ErrProcessNotFound) {
 			_ = windows.CloseHandle(handle)
 			continue
@@ -62,7 +57,7 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 		if watchErr != nil {
 			_ = windows.CloseHandle(handle)
 			for _, p := range processes {
-				p.close()
+				p.Close()
 			}
 			return nil, fmt.Errorf("operator stop: watch PID %d: %w", pid, watchErr)
 		}
@@ -76,49 +71,44 @@ func discoverLocalOperators() ([]localOperatorProcess, error) {
 	}
 	if !errors.Is(err, windows.ERROR_NO_MORE_FILES) {
 		for _, p := range processes {
-			p.close()
+			p.Close()
 		}
 		return nil, fmt.Errorf("operator stop: discover local Operators: %w", err)
 	}
 	return processes, nil
 }
 
-func inspectLocalOperator(handle windows.Handle, watch *platform.ProcessExitWatch, pid int, owner *windows.SID) (localOperatorProcess, bool) {
+func inspectLocalOperator(handle windows.Handle, watch *processwatch.ProcessExitWatch, pid int, owner *windows.SID) (LocalOperatorProcess, bool) {
 	if !processOwnedBy(handle, owner) {
-		return localOperatorProcess{}, false
+		return LocalOperatorProcess{}, false
 	}
-	// A rebuild while the worker runs renames its busy image aside (Git for
-	// Windows cp leaves ztd.exe~), the counterpart of Linux " (deleted)".
 	image, err := processImagePath(handle)
 	if err != nil || !strings.HasPrefix(strings.ToLower(filepath.Base(image)), "ztd.exe") {
-		return localOperatorProcess{}, false
+		return LocalOperatorProcess{}, false
 	}
 	commandLine, cwd, err := processCommandLineAndDir(handle)
 	if err != nil {
-		return localOperatorProcess{}, false
+		return LocalOperatorProcess{}, false
 	}
 	args, err := windows.DecomposeCommandLine(commandLine)
-	if err != nil || !isLocalOperatorArgv(args) {
-		return localOperatorProcess{}, false
+	if err != nil || !IsLocalOperatorArgv(args) {
+		return LocalOperatorProcess{}, false
 	}
-	dir := localOperatorDir(args, cwd)
-	wait := exitWait(watch)
-	return localOperatorProcess{
-		pid: pid, dir: dir, sessionID: localOperatorSessionID(dir),
-		close: func() {
+	dir := LocalOperatorDir(args, cwd)
+	wait := ExitWait(watch)
+	return LocalOperatorProcess{
+		PID: pid, Dir: dir, SessionID: LocalOperatorSessionID(dir),
+		Close: func() {
 			_ = windows.CloseHandle(handle)
 			_ = watch.Close()
 		},
-		// Windows has no catchable TERM for a process outside this console. The
-		// governed shutdown request is the graceful path, so both escalation
-		// steps terminate the process through the held handle.
-		signal: func(bool) error {
+		Signal: func(bool) error {
 			if exited, err := wait(0); err == nil && exited {
 				return nil
 			}
 			return windows.TerminateProcess(handle, 1)
 		},
-		wait: wait,
+		Wait: wait,
 	}, true
 }
 
@@ -141,8 +131,6 @@ func processImagePath(handle windows.Handle) (string, error) {
 	return windows.UTF16ToString(buf[:size]), nil
 }
 
-// processCommandLineAndDir reads the command line and current directory from
-// the process environment block of the process behind handle.
 func processCommandLineAndDir(handle windows.Handle) (string, string, error) {
 	var info windows.PROCESS_BASIC_INFORMATION
 	if err := windows.NtQueryInformationProcess(handle, windows.ProcessBasicInformation, unsafe.Pointer(&info), uint32(unsafe.Sizeof(info)), nil); err != nil {
@@ -158,7 +146,6 @@ func processCommandLineAndDir(handle windows.Handle) (string, string, error) {
 	if peb.ProcessParameters == nil {
 		return "", "", windows.ERROR_INVALID_DATA
 	}
-	// Read only through CommandLine; later fields vary across Windows releases.
 	var params windows.RTL_USER_PROCESS_PARAMETERS
 	if err := readProcessMemory(handle, uintptr(unsafe.Pointer(peb.ProcessParameters)), unsafe.Pointer(&params), unsafe.Offsetof(params.Environment)); err != nil {
 		return "", "", err

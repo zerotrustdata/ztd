@@ -208,10 +208,11 @@ type ScenarioInputFixture struct {
 }
 
 // ScenarioFleet is a scenario's harness roster requirement. Roster positions
-// a scenario names (workspace files, seeds, file states) are 1-based and must
-// not exceed MinOperators.
+// a scenario names (workspace files, seeds) are 1-based and must not exceed
+// MinOperators; Gold.FileState positions may reach MinOperators + DeployTargets.
 type ScenarioFleet struct {
-	MinOperators int `json:"min_operators,omitempty"`
+	MinOperators  int `json:"min_operators,omitempty"`
+	DeployTargets int `json:"deploy_targets,omitempty"`
 }
 
 // ScenarioCriterion describes one responsibility-specific scoring criterion.

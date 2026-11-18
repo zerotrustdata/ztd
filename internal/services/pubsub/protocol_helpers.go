@@ -55,6 +55,8 @@ func mapProtoToPayloadType(msg proto.Message) string {
 		return "ollama_model_pull_result"
 	case *operatorv1.OllamaModelCopyResult:
 		return "ollama_model_copy_result"
+	case *operatorv1.OperatorDeployResult:
+		return "operator_deploy_result"
 	case *operatorv1.FetchLogsResult:
 		if m.Error != "" {
 			return "fetch_logs_error"
@@ -247,6 +249,8 @@ func unmarshalPayload(eventType constants.EventType, payload []byte) (proto.Mess
 		m = &operatorv1.FetchFileHistoryRequested{}
 	case constants.Event.Operator.RestoreFile.Requested:
 		m = &operatorv1.RestoreFileRequested{}
+	case constants.EventOperatorDeployRequested:
+		m = &operatorv1.OperatorDeployRequested{}
 	case constants.Event.Operator.ShutdownRequested:
 		m = &operatorv1.ShutdownRequested{}
 	case constants.Event.Operator.Audit.UserMsg, constants.Event.Operator.Audit.AIMsg:

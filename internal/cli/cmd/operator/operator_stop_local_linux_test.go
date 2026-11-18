@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -57,22 +58,22 @@ func TestLocalOperatorDiscoveryAndKill(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("worker did not start")
 	}
-	processes, err := discoverLocalOperators()
+	processes, err := operatordeploy.DiscoverLocalOperators()
 	require.NoError(t, err)
 	defer func() {
 		for _, p := range processes {
-			p.close()
+			p.Close()
 		}
 	}()
-	var worker *localOperatorProcess
+	var worker *operatordeploy.LocalOperatorProcess
 	for i := range processes {
-		if processes[i].pid == child.Process.Pid {
+		if processes[i].PID == child.Process.Pid {
 			worker = &processes[i]
 			break
 		}
 	}
 	require.NotNil(t, worker)
-	require.Equal(t, "/tmp/ztd-stop-test", worker.dir)
+	require.Equal(t, "/tmp/ztd-stop-test", worker.Dir)
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.Background())
 	result := stopLocalOperator(cmd, *worker, models.StopOperatorResponse{Success: true}, nil, 10*time.Millisecond)
@@ -81,10 +82,10 @@ func TestLocalOperatorDiscoveryAndKill(t *testing.T) {
 }
 
 func TestLocalOperatorArgv(t *testing.T) {
-	require.True(t, isLocalOperatorArgv([]string{"/opt/ztd/ztd", "operator", "start"}))
-	require.True(t, isLocalOperatorArgv([]string{"ztd", "operators", "start"}))
+	require.True(t, operatordeploy.IsLocalOperatorArgv([]string{"/opt/ztd/ztd", "operator", "start"}))
+	require.True(t, operatordeploy.IsLocalOperatorArgv([]string{"ztd", "operators", "start"}))
 	for _, args := range [][]string{{"sh", "-c", "ztd operator start"}, {"ztd", "gw", "start"}, {"ztd", "operator", "stop"}, {"language_server", "operator", "start"}} {
-		require.False(t, isLocalOperatorArgv(args))
+		require.False(t, operatordeploy.IsLocalOperatorArgv(args))
 	}
-	require.Equal(t, "/tmp/foo", operatorArgValue([]string{"ztd", "operator", "start", "--working-dir", "/tmp/foo"}, "--working-dir"))
+	require.Equal(t, "/tmp/foo", operatordeploy.OperatorArgValue([]string{"ztd", "operator", "start", "--working-dir", "/tmp/foo"}, "--working-dir"))
 }

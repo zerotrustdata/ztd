@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -67,27 +68,27 @@ func startStopTestWorker(t *testing.T, dir string, args ...string) *exec.Cmd {
 	return child
 }
 
-func discoverStopTestWorker(t *testing.T, pid int) localOperatorProcess {
+func discoverStopTestWorker(t *testing.T, pid int) operatordeploy.LocalOperatorProcess {
 	t.Helper()
-	processes, err := discoverLocalOperators()
+	processes, err := operatordeploy.DiscoverLocalOperators()
 	require.NoError(t, err)
-	var worker *localOperatorProcess
+	var worker *operatordeploy.LocalOperatorProcess
 	for i := range processes {
-		if processes[i].pid == pid {
+		if processes[i].PID == pid {
 			worker = &processes[i]
 			continue
 		}
-		processes[i].close()
+		processes[i].Close()
 	}
 	require.NotNil(t, worker)
-	t.Cleanup(worker.close)
+	t.Cleanup(worker.Close)
 	return *worker
 }
 
 func TestLocalOperatorDiscoveryAndKill(t *testing.T) {
 	child := startStopTestWorker(t, testutil.TempDir(t), "--working-dir=/tmp/ztd-stop-test")
 	worker := discoverStopTestWorker(t, child.Process.Pid)
-	require.Equal(t, "/tmp/ztd-stop-test", worker.dir)
+	require.Equal(t, "/tmp/ztd-stop-test", worker.Dir)
 	cmd := &cobra.Command{}
 	cmd.SetContext(context.Background())
 	result := stopLocalOperator(cmd, worker, models.StopOperatorResponse{Success: true}, nil, 10*time.Millisecond)
@@ -103,17 +104,17 @@ func TestLocalOperatorDiscoveryUsesWorkerCwd(t *testing.T) {
 	require.NoError(t, err)
 	child := startStopTestWorker(t, dir)
 	worker := discoverStopTestWorker(t, child.Process.Pid)
-	require.Equal(t, dir, worker.dir)
-	exited, err := worker.wait(0)
+	require.Equal(t, dir, worker.Dir)
+	exited, err := worker.Wait(0)
 	require.NoError(t, err)
 	require.False(t, exited)
 }
 
 func TestLocalOperatorArgv(t *testing.T) {
-	require.True(t, isLocalOperatorArgv([]string{"/opt/ztd/ztd", "operator", "start"}))
-	require.True(t, isLocalOperatorArgv([]string{"ztd", "operators", "start"}))
+	require.True(t, operatordeploy.IsLocalOperatorArgv([]string{"/opt/ztd/ztd", "operator", "start"}))
+	require.True(t, operatordeploy.IsLocalOperatorArgv([]string{"ztd", "operators", "start"}))
 	for _, args := range [][]string{{"sh", "-c", "ztd operator start"}, {"ztd", "gw", "start"}, {"ztd", "operator", "stop"}, {"language_server", "operator", "start"}} {
-		require.False(t, isLocalOperatorArgv(args))
+		require.False(t, operatordeploy.IsLocalOperatorArgv(args))
 	}
-	require.Equal(t, "/tmp/foo", operatorArgValue([]string{"ztd", "operator", "start", "--working-dir", "/tmp/foo"}, "--working-dir"))
+	require.Equal(t, "/tmp/foo", operatordeploy.OperatorArgValue([]string{"ztd", "operator", "start", "--working-dir", "/tmp/foo"}, "--working-dir"))
 }

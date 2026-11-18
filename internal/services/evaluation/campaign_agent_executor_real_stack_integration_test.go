@@ -260,10 +260,10 @@ func TestCampaignAgentExecutorIntegration_RunShellCommandDispatchesModelWrittenA
 	assert.True(t, call.Success)
 	assert.Equal(t, constants.MCPToolRunShellCommand, call.ToolName)
 	assert.Equal(t, string(constants.ActionTypeMcpCall), call.ActionType)
-	healthPath := trace.Roster[0].Workspace.Root + "/bin/healthcheck.sh"
+	healthPath := "./bin/healthcheck.sh"
 	assert.JSONEq(t, string(realStackShellArguments("sh", healthPath)), call.ArgumentsJSON, "the dispatched arguments are the model's arguments, verbatim")
-	// sh runs the absolute path the prompt rendered, so the result is the
-	// workspace fixture's own output as the Data Operator returned it.
+	// sh runs in the attempt workspace (working_dir defaults to workspace.Root),
+	// so the relative path resolves to the workspace fixture's own output.
 	assert.Contains(t, call.ResultJSON, "HEALTHY")
 	require.NotNil(t, call.Receipt, "the executed MCP_CALL keeps its signed receipt")
 	assert.Equal(t, call.TransactionID, call.Receipt.GetTransactionId())

@@ -199,6 +199,9 @@ type realStackOptions struct {
 	// dataOperators is the Data fleet size; the run freezes every member as
 	// its harness roster. Zero or one keeps the single Data Operator.
 	dataOperators int
+	// deployTargetHostname configures a local deploy target on EvalStack for
+	// operator_deploy tests without SSH.
+	deployTargetHostname string
 }
 
 // realStackAgentRun is a campaign initialized on the real eval stack, with the
@@ -245,7 +248,7 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	stack := fixtures.NewEvalStack(t, fixtures.EvalStackOptions{
 		Posture: opts.posture, Replies: opts.replies, SharedRuntime: opts.shared,
 		Provenance: true, ModelTags: opts.modelTags, BindConsensus: opts.bindConsensus,
-		DataOperators: opts.dataOperators,
+		DataOperators: opts.dataOperators, DeployTargetHostname: opts.deployTargetHostname,
 	})
 
 	logger := testutil.NewTestLogger()
@@ -368,15 +371,45 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	}
 	store := evaluation.NewStore(evidenceFiles)
 	persona := harnessclient.Persona{ID: realStackPersonaID, CLISessionID: authContext.CLISessionID, UserID: authContext.UserID}
-	sentinel, err := drive.NewSentinel(gateway, persona, map[cases.Executor]cliop.Target{
-		cases.ExecutorOutbound: {OperatorID: dataWorkload.OperatorID, OperatorSessionID: dataWorkload.OperatorSessionID},
-	})
+	sentinel, err := drive.NewTargetSentinel(gateway, persona)
 	require.NoError(t, err)
 	inference := realStackInference{client: appClient, cliSessionID: persona.CLISessionID}
 	residency := newRealStackModelResidency(t, gateway, persona, inferenceWorkload.OperatorSessionID)
 	executor, err := evaluation.NewCampaignAgentExecutor(
 		inference, residency, evaluation.NewCommandLane(gateway, persona), sentinel, store, clock, newID)
 	require.NoError(t, err)
+	if opts.deployTargetHostname != "" {
+		bindClient := auth.NewEnrollmentClient(cfg, nil)
+		executor.WithDeployJoinerFactory(func(joinCtx context.Context) (evaluation.RosterDeployJoiner, error) {
+			httpClient, err := auth.BuildMTLSClient(fileSvc, cfg, 0)
+			if err != nil {
+				return nil, err
+			}
+			return evaluation.NewGatewayDeployJoiner(joinCtx, evaluation.GatewayDeployJoinerConfig{
+				HTTPClient:    httpClient,
+				BaseURL:       cfg.OperatorPublicURL(),
+				CLISessionID:  authContext.CLISessionID,
+				GatewayClient: gateway,
+				BoundSessions: func(ctx context.Context) ([]string, error) {
+					info, err := bindClient.SessionInfo(ctx, fileSvc)
+					if err != nil {
+						return nil, err
+					}
+					if len(info.BoundOperatorSessionIDs) > 0 {
+						return info.BoundOperatorSessionIDs, nil
+					}
+					if info.OperatorSessionID != "" {
+						return []string{info.OperatorSessionID}, nil
+					}
+					return nil, nil
+				},
+				BindSessions: func(ctx context.Context, sessionIDs []string) error {
+					_, err := bindClient.Bind(ctx, fileSvc, sessionIDs)
+					return err
+				},
+			})
+		})
+	}
 	controller := evaluation.NewCampaignController(store, executor, clock, newID)
 
 	env := &realStackAgentRun{

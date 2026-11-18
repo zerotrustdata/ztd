@@ -19,6 +19,7 @@ import (
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
@@ -30,10 +31,10 @@ func TestResetIdentityStopsOnlySelectedDirectory(t *testing.T) {
 	path := constants.CliKeyFilename
 	require.NoError(t, fileSvc.WriteFile(context.Background(), path, []byte("old-key"), constants.PermFilePrivate))
 	selectedSignals, otherSignals, closed := 0, 0, 0
-	cmd := operatorResetIdentityCmdWithDiscovery(func() ([]localOperatorProcess, error) {
-		return []localOperatorProcess{
-			{pid: 123, dir: dir, close: func() { closed++ }, wait: func(time.Duration) (bool, error) { return selectedSignals > 0, nil }, signal: func(bool) error { selectedSignals++; return nil }},
-			{pid: 456, dir: testutil.TempDir(t), close: func() { closed++ }, wait: func(time.Duration) (bool, error) { t.Fatal("unrelated worker waited on"); return false, nil }, signal: func(bool) error { otherSignals++; return nil }},
+	cmd := operatorResetIdentityCmdWithDiscovery(func() ([]operatordeploy.LocalOperatorProcess, error) {
+		return []operatordeploy.LocalOperatorProcess{
+			{PID: 123, Dir: dir, Close: func() { closed++ }, Wait: func(time.Duration) (bool, error) { return selectedSignals > 0, nil }, Signal: func(bool) error { selectedSignals++; return nil }},
+			{PID: 456, Dir: testutil.TempDir(t), Close: func() { closed++ }, Wait: func(time.Duration) (bool, error) { t.Fatal("unrelated worker waited on"); return false, nil }, Signal: func(bool) error { otherSignals++; return nil }},
 		}, nil
 	})
 	cmd.SetArgs([]string{"--working-dir", dir, "--yes"})
@@ -49,7 +50,7 @@ func TestResetIdentityStopsOnlySelectedDirectory(t *testing.T) {
 
 func TestResetIdentityDeclinedDoesNotDiscoverOrDelete(t *testing.T) {
 	dir := testutil.TempDir(t)
-	cmd := operatorResetIdentityCmdWithDiscovery(func() ([]localOperatorProcess, error) {
+	cmd := operatorResetIdentityCmdWithDiscovery(func() ([]operatordeploy.LocalOperatorProcess, error) {
 		t.Fatal("discovery before confirmation")
 		return nil, nil
 	})

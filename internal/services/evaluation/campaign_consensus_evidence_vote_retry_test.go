@@ -30,10 +30,12 @@ import (
 func retriedVoteTrace(t *testing.T, retries int) (*AgentTrace, oracletest.Signer) {
 	t.Helper()
 	ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
+	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
+	reqTool, toolCall := prepareShellToolCall(t, trace, "turn", "call-tool", "echo")
+	hash := toolCall.RequestEnvelope.GetTransactionHash()
 	before := ledger.executed("before", string(constants.ActionTypeFsRead))
-	model := ledger.inference("turn")
+	m1 := sealModelTurn(t, ledger, trace, "turn", 1, reqTool)
 	members := constants.TribunalConsensusMemberAppIDs()
-	const hash = "hash-tool"
 	actAs := func(receipt *operatorv1.EventReceipt, member string) *operatorv1.EventReceipt {
 		for _, stage := range receipt.DeterministicStageEvidence {
 			stage.ActingAppId = member
@@ -66,15 +68,12 @@ func retriedVoteTrace(t *testing.T, retries int) (*AgentTrace, oracletest.Signer
 	completed.ResultSummary = digest
 	actAs(completed, members[0])
 	failed := actAs(ledger.inferenceFailed("vote-failed"), members[1])
-	tool := ledger.executed("tool", string(constants.ActionTypeMcpCall))
-	tool.TransactionHash = hash
-	ledger.signer.Resign(t, tool)
+	toolCall = commitShellToolCall(t, ledger, toolCall, "tool")
 	after := ledger.executed("after", string(constants.ActionTypeFsRead))
 
-	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
 	trace.Roster[0].Bracket = bracketOf(before, after)
-	trace.ModelCalls = []AgentModelCall{completedModelCall("turn", model)}
-	trace.ToolCalls = []AgentToolCall{allowedToolCall("tool", tool)}
+	trace.ModelCalls = []AgentModelCall{m1}
+	trace.ToolCalls = []AgentToolCall{toolCall}
 	trace.ToolCalls[0].ConsensusInferences = governance.WrapConsensusInferences([]*operatorv1.ConsensusVoteInference{
 		{SubjectTransactionId: "tool", SubjectTransactionHash: hash, MemberAppId: members[0], ProviderAttemptId: result.ProviderAttemptId, RetryCount: uint32(retries),
 			TransactionId: "vote-completed", Receipt: completed, Result: result, SupersededAttempts: superseded},

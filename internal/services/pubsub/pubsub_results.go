@@ -106,6 +106,20 @@ func (rr *PubSubResultsService) PublishEvaluationWorkspaceSeedResult(ctx context
 	return nil
 }
 
+// PublishOperatorDeployResult publishes an operator deployment result via Operator pub/sub.
+func (rr *PubSubResultsService) PublishOperatorDeployResult(ctx context.Context, result *operatorv1.OperatorDeployResult, originalMsg *PubSubCommandMessage) error {
+	eventType := rr.determineEventStatus(result, constants.EventOperatorDeployCompleted, constants.EventOperatorDeployFailed)
+
+	if err := rr.publishResultEnvelopeUniversal(ctx, eventType, originalMsg.CaseID, originalMsg.TaskID, originalMsg.InvestigationID, originalMsg, result); err != nil {
+		return fmt.Errorf("pubsub: publish operator deploy result: %w", err)
+	}
+
+	rr.logger.Info("Operator deploy result transmitted to ztd",
+		"operator_session_id", rr.config.OperatorSessionId,
+		"event_type", eventType)
+	return nil
+}
+
 // PublishFsListResult publishes file system list result via Operator pub/sub.
 func (rr *PubSubResultsService) PublishFsListResult(ctx context.Context, result proto.Message, originalMsg *PubSubCommandMessage) error {
 	eventType := rr.determineEventStatus(result, constants.Event.Operator.FsList.Completed, constants.Event.Operator.FsList.Failed)
