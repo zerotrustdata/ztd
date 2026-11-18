@@ -443,7 +443,7 @@ identities, including IPv6 localhost when available.
 On Linux, an existing ssh-agent-sealed vault is checked before startup. If its
 key is missing, the CLI prints copy-and-paste commands to load that key, and
 names 'gw recover' when the original key is gone. In a terminal it can ask to
-load the matching local key into the current agent for 8 hours; OpenSSH handles
+load the matching local key into the current agent for 24 hours; OpenSSH handles
 the SSH key passphrase. Loading that key never replaces the vault key.
 'gw recover' installs a saved recovery key and re-seals it under the key the
 agent holds now.

@@ -638,6 +638,7 @@ func TestClassifyExecutionFailure_MapsSentinelsToClosedClasses(t *testing.T) {
 		{name: "canceled", err: fmt.Errorf("wait: %w", context.Canceled), want: ExecutionFailureCanceled},
 		{name: "missing field", err: fmt.Errorf("build: %w", constants.ErrMissingRequiredField), want: ExecutionFailureInvalidInput},
 		{name: "frozen persona mismatch", err: assignmentExecutionError("persona", constants.ErrPersonaDigestMismatch), want: ExecutionFailureInvalidInput},
+		{name: "platform release mismatch", err: fmt.Errorf("start run: %w", constants.ErrEvaluationPlatformReleaseMismatch), want: ExecutionFailureInvalidInput},
 		{name: "dispatch", err: fmt.Errorf("send: %w", constants.ErrEvaluationDispatchFailed), want: ExecutionFailureDispatch},
 		{name: "target", err: fmt.Errorf("resolve: %w", constants.ErrEvaluationTargetUnavailable), want: ExecutionFailureTarget},
 		{name: "posture", err: fmt.Errorf("posture: %w", constants.ErrEvaluationPostureUnsupported), want: ExecutionFailurePosture},

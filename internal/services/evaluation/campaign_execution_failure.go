@@ -71,7 +71,7 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 		return ExecutionFailureTimeout
 	case errors.Is(err, context.Canceled):
 		return ExecutionFailureCanceled
-	case errors.Is(err, constants.ErrMissingRequiredField), errors.Is(err, constants.ErrPersonaDigestMismatch):
+	case errors.Is(err, constants.ErrMissingRequiredField), errors.Is(err, constants.ErrPersonaDigestMismatch), errors.Is(err, constants.ErrEvaluationPlatformReleaseMismatch):
 		return ExecutionFailureInvalidInput
 	case errors.Is(err, constants.ErrEvaluationDispatchFailed):
 		return ExecutionFailureDispatch

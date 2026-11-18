@@ -138,6 +138,11 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}
+	// Checked before the dry-run return as well, so plan validation (including a
+	// rollout's whole remaining sequence) rejects a campaign StartRun would.
+	if err := evaluation.ValidateCampaignPlatformRelease(spec, platformIdentity(cmd).Release); err != nil {
+		return nil, fmt.Errorf("evaluation: runs start: %w", err)
+	}
 	laneName, stacks, err := campaignLane(cmd.Context(), store, opts.CampaignID)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
