@@ -98,15 +98,14 @@ func renderRosterPrompt(roster []AgentTraceRosterMember) string {
 // returns the remaining arguments, the selectors, and whether the argument was
 // present. An explicit null is absent. problem is the model-visible reason a
 // present value is not an array of non-empty strings. Arguments that are not
-// a JSON object are returned unchanged for the contract decoder to reject.
+// exactly one JSON object are returned unchanged for the contract decoder
+// to reject.
 func splitTargetOperators(raw string) (rest string, selectors []string, present bool, problem string) {
 	if strings.TrimSpace(raw) == "" {
 		return raw, nil, false, ""
 	}
-	decoder := json.NewDecoder(strings.NewReader(raw))
-	decoder.UseNumber()
 	values := map[string]json.RawMessage{}
-	if err := decoder.Decode(&values); err != nil || values == nil {
+	if err := json.Unmarshal([]byte(raw), &values); err != nil || values == nil {
 		return raw, nil, false, ""
 	}
 	value, ok := values[harnessTargetOperatorsArgument]

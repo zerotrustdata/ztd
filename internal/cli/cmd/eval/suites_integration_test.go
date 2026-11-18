@@ -28,14 +28,18 @@ func TestSuitesList_ShowsBuiltinSuites(t *testing.T) {
 	out := env.mustRun(t, "suites", "list")
 	assert.Contains(t, out, evaluation.DefaultSuiteID)
 	assert.Contains(t, out, evaluation.SmokeSuiteID)
+	assert.Contains(t, out, evaluation.DevOpsFleetSuiteID)
 	assert.Contains(t, out, "built-in")
 
 	var payload suiteListJSON
 	require.NoError(t, env.runJSON(t, &payload, "suites", "list"))
-	require.Len(t, payload.Suites, 4)
+	require.Len(t, payload.Suites, 5)
 	assert.Equal(t, evaluation.DefaultSuiteID, payload.Suites[0].ID)
 	assert.Equal(t, evaluation.InvestigationsSuiteID, payload.Suites[2].ID)
 	assert.Equal(t, evaluation.QuickstartSuiteID, payload.Suites[3].ID)
+	assert.Equal(t, evaluation.DevOpsFleetSuiteID, payload.Suites[4].ID)
+	assert.True(t, payload.Suites[4].Builtin)
+	assert.Equal(t, evaluation.DevOpsFleetScenarioCount, payload.Suites[4].ScenarioCount)
 	assert.True(t, payload.Suites[0].Builtin)
 	assert.Equal(t, evaluation.DefaultSuiteScenarioCount, payload.Suites[0].ScenarioCount)
 }

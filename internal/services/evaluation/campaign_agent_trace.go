@@ -898,7 +898,8 @@ func validateAgentTraceRoster(roster []AgentTraceRosterMember) error {
 // the runtime and host identity the model saw at roster position Index, the
 // attempt workspace on that Operator, and the harness sentinel receipts read
 // on its ledger before and after the attempt. Every member is bracketed,
-// targeted or not, so the bracket proves an untargeted member ran nothing.
+// targeted or not, so verification can reject unclaimed executions even on
+// a member with no model tool calls.
 type AgentTraceRosterMember struct {
 	Index        int                 `json:"index"`
 	Runtime      AgentTraceRuntime   `json:"runtime"`

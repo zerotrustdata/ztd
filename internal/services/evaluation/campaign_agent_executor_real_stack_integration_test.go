@@ -1009,18 +1009,27 @@ func TestCampaignAgentExecutorIntegration_RunShellCommandWorkingDirIsTheAttemptW
 	}
 }
 
-// investigationWorkspaceFromPrompt reads the attempt workspace the system
-// prompt names, the only directory a model is told about.
+// investigationWorkspaceFromPrompt reads the first roster member's absolute
+// workspace from the system prompt. The scenario's own workspace label is
+// relative, so it cannot identify the parent directories this test rejects.
 func investigationWorkspaceFromPrompt(t *testing.T, request fixtures.OllamaChatRequest) string {
 	t.Helper()
-	const label = "Investigation workspace: "
 	for _, message := range request.Messages {
-		if _, rest, ok := strings.Cut(message.Content, label); ok {
-			root, _, _ := strings.Cut(rest, "\n")
-			return root
+		_, roster, ok := strings.Cut(message.Content, "<operator_roster>\n")
+		if !ok {
+			continue
+		}
+		roster, _, _ = strings.Cut(roster, "</operator_roster>")
+		for _, line := range strings.Split(roster, "\n") {
+			if strings.HasPrefix(line, "[1] ") {
+				_, root, ok := strings.Cut(line, " workspace=")
+				require.True(t, ok, "the roster member names its workspace")
+				require.True(t, path.IsAbs(root), "the roster workspace is absolute")
+				return root
+			}
 		}
 	}
-	t.Fatal("system prompt names no investigation workspace")
+	t.Fatal("system prompt names no first roster member")
 	return ""
 }
 

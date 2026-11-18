@@ -54,9 +54,9 @@ const (
 	realStackModelTag   = "qwen3:4b"
 )
 
-// realStackRenderedHealthPath matches the absolute health-check script path the
-// scenario prompt renders for one attempt's workspace.
-var realStackRenderedHealthPath = regexp.MustCompile(`/\S+?/workspaces/ws-[0-9a-f]{16}/bin/healthcheck\.sh`)
+// realStackRenderedHealthPath matches the relative health-check script path the
+// scenario prompt renders. The harness resolves it in the target's workspace.
+var realStackRenderedHealthPath = regexp.MustCompile(`\./bin/healthcheck\.sh\b`)
 
 // realStackShellArguments is the run_shell_command argument body for one command
 // and its arguments. A struct of strings cannot fail to marshal.
@@ -65,9 +65,9 @@ func realStackShellArguments(command string, args ...string) json.RawMessage {
 	return body
 }
 
-// realStackHealthCheckReply runs the health check at the absolute path the
-// decoded request's prompt names. The path is the one the Data Operator
-// materialized for this attempt, so the shell reads the real workspace file.
+// realStackHealthCheckReply runs the health check at the relative path the
+// decoded request's prompt names. The target's working directory is its
+// attempt workspace, so the shell reads the real materialized fixture.
 func realStackHealthCheckReply(request fixtures.OllamaChatRequest) fixtures.OllamaReply {
 	for _, message := range request.Messages {
 		if path := realStackRenderedHealthPath.FindString(message.Content); path != "" {

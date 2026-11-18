@@ -128,8 +128,9 @@ func (r *agentRun) log() *slog.Logger {
 
 // readBrackets reads the harness ledger sentinel on every roster member, the
 // opening read before the attempt acts and the closing read after its final
-// observations. Every member is bracketed, targeted or not: an untargeted
-// member's bracket proves it executed nothing for the attempt.
+// observations. Every member is bracketed, targeted or not, so verification
+// can account for all executions, including harness observations and shared
+// Inference work, and reject any unclaimed execution.
 func (r *agentRun) readBrackets(ctx context.Context, opening bool) error {
 	phase := "closing"
 	if opening {

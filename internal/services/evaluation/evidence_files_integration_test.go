@@ -408,6 +408,7 @@ func TestEvalWriters_PersistNoContentInPlaintext(t *testing.T) {
 	trace := &AgentTrace{
 		RunID: req.RunID, AssignmentID: completed.GetAssignmentId(), EvaluationAttemptID: "attempt-1", CampaignID: campaignID,
 		ScenarioID: "scenario-1", DesignatedRole: "primary", ServedModelTag: "qwen3:4b", Input: testAgentTraceInput(),
+		Roster:     []AgentTraceRosterMember{{Index: 1, Runtime: AgentTraceRuntime{OperatorID: "data-operator", SessionID: "data-session"}}},
 		ModelCalls: []AgentModelCall{{ProviderAttemptID: "pa-1", TransactionID: "tx-1", Purpose: agentModelCallPurposeTurn, LoopTurn: 1, Text: "thinking about " + evidenceMarker}},
 		ToolCalls: []AgentToolCall{{
 			CallID: "tx-2", ModelCallID: "pa-1", ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: `{"command":"cat","args":["public-synthetic.txt"]}`,

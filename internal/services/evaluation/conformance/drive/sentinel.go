@@ -40,7 +40,7 @@ func NewSentinel(c *client.Client, p client.Persona, targets map[cases.Executor]
 	return &Sentinel{client: c, persona: p, targets: targets}, nil
 }
 
-// NewTargetSentinel returns a sentinel that reads only through ReadTarget: a
+// NewTargetSentinel returns a sentinel that reads only through ReadSession: a
 // campaign brackets each member of its harness roster by session.
 func NewTargetSentinel(c *client.Client, p client.Persona) (*Sentinel, error) {
 	if c == nil {

@@ -38,8 +38,8 @@ const agentReceiptSchemaRef = "ztd.operator.v1.EventReceipt"
 // every governed tool dispatch by a receipt its roster target signed, and that
 // each roster member's ledger between its two sentinels holds exactly the
 // executions the trace claims on that member. Each member is bracketed
-// whether or not a call targeted it, so a member the model never targeted
-// must show an empty bracket. When one Operator holds both capabilities its
+// whether or not a call targeted it, so executions outside the claimed work
+// cannot go unnoticed. When one Operator holds both capabilities its
 // ledger also records every inference, so that member's bracket claims the
 // model calls as well as its tool dispatches, in ledger order. An observer on
 // a roster member commits its BEGIN and FINALIZE there too, and that member's

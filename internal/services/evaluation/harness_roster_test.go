@@ -115,6 +115,19 @@ func TestDecodeAgentToolRequest_RoutesTargetsOutsideTheToolContract(t *testing.T
 	assert.Contains(t, request.Failure.Error, harnessTargetOperatorsArgument)
 }
 
+func TestDecodeAgentToolRequest_RejectsTrailingJSONAfterTargets(t *testing.T) {
+	spec, err := catalogToolSpec(constants.MCPToolReadFile)
+	require.NoError(t, err)
+	for _, trailing := range []string{`{}`, `null`, `true`, `invalid`} {
+		t.Run(trailing, func(t *testing.T) {
+			request := decodeAgentToolRequest(spec, true, `{"path":"app/config.yaml","target_operators":["all"]} `+trailing)
+			require.NotNil(t, request.Failure, "removing routing arguments must not hide malformed JSON")
+			assert.Equal(t, agentToolErrorExecution, request.Failure.ErrorType)
+			assert.Contains(t, request.Failure.Error, "Invalid JSON object")
+		})
+	}
+}
+
 func TestFanOutResultJSON(t *testing.T) {
 	roster := fleetRoster()
 	single := []AgentToolCall{{TargetIndex: 2, ResultJSON: `{"ok":true}`}}

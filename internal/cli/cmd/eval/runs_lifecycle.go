@@ -330,9 +330,11 @@ resumable (ztd eval runs resume) and cancellable (ztd eval runs cancel).
 Verification runs after execution by default; use --verify=false to skip it.
 
 Operator sessions are resolved from the active Inference Operator and the
-campaign's Data Operator. A persistent campaign resolves its frozen Data
-Operator ID to the current active session on every run. The selected Data
-Operator session is bound to the CLI session unless --no-auto-bind is set.
+run's Data Operator roster. --data-operators selects Operator IDs in roster
+order, or all active Data Operators. Without it, the run uses the campaign's
+pinned Data Operator, every active Data Operator when a scenario requires a
+fleet, or the default Data Operator. Each selected Data Operator session is
+bound to the CLI session unless --no-auto-bind is set.
 
 Examples:
   ztd eval runs start eval-qwen
@@ -382,7 +384,7 @@ Examples:
 	cmd.Flags().BoolVar(&requireWitness, "require-witness", false, "Require provider-boundary observation and model-provenance witness evidence (implies --verify)")
 	cmd.Flags().BoolVar(&opts.RequireProvenance, "require-provenance", false, "Fail verification when model provenance attestation windows are missing")
 	cmd.Flags().BoolVar(&opts.RequireObservation, "require-observation", false, "Fail verification when provider-boundary observation windows are missing")
-	cmd.Flags().BoolVar(&opts.NoAutoBind, "no-auto-bind", false, "Do not bind the data-operator to the CLI session when it is not bound")
+	cmd.Flags().BoolVar(&opts.NoAutoBind, "no-auto-bind", false, "Do not bind unbound Data Operator roster members to the CLI session")
 	cmd.Flags().StringSliceVar(&opts.DataOperators, "data-operators", nil, "Harness roster: Data Operator IDs in roster order, or 'all' for every active Data Operator (default: the campaign's pinned Data Operator, every active one when a scenario needs a fleet, else the default Data Operator)")
 	cmd.Flags().DurationVar(&opts.AssignmentTimeout, "assignment-timeout", 0, "Optional per-assignment wall-clock limit (0 adds no assignment deadline)")
 	return cmd
@@ -518,7 +520,7 @@ Verification runs after execution by default; use --verify=false to skip it.`,
 	cmd.Flags().BoolVar(&daemon, "daemon", false, "Run continuously until the queued matrix is exhausted")
 	cmd.Flags().BoolVar(&verify, "verify", true, "Verify the run after execution")
 	cmd.Flags().BoolVar(&publish, "publish", false, "Publish assignment lifecycle and terminal result projections to the public mirror")
-	cmd.Flags().BoolVar(&noAutoBind, "no-auto-bind", false, "Do not bind the data-operator to the CLI session when it is not bound")
+	cmd.Flags().BoolVar(&noAutoBind, "no-auto-bind", false, "Do not bind unbound Data Operator roster members to the CLI session")
 	cmd.Flags().DurationVar(&assignmentTimeout, "assignment-timeout", 0, "Optional per-assignment wall-clock limit (0 adds no assignment deadline)")
 	return cmd
 }

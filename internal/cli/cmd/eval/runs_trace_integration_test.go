@@ -32,6 +32,10 @@ func TestRunsTrace_ShowsHeldContextThinkingAndFinalOutputOfSealedTraces(t *testi
 
 	seal := func(assignmentID string, trace *evaluation.AgentTrace) {
 		trace.RunID, trace.AssignmentID, trace.EvaluationAttemptID = "run-a-1", assignmentID, "attempt-"+assignmentID
+		trace.Roster = []evaluation.AgentTraceRosterMember{{
+			Index:   1,
+			Runtime: evaluation.AgentTraceRuntime{OperatorID: "data-operator", SessionID: "data-session"},
+		}}
 		body, err := evaluation.SealAgentTrace(trace)
 		require.NoError(t, err)
 		require.NoError(t, store.SaveAssignmentAgentTrace(ctx, "run-a-1", assignmentID, body))
