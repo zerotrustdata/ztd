@@ -141,7 +141,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### github.com/aws/aws-sdk-go-v2 v1.47.6
+### github.com/aws/aws-sdk-go-v2 v1.48.0
 
 #### LICENSE.txt
 
@@ -358,7 +358,7 @@ Copyright 2015 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 Copyright 2014-2015 Stripe, Inc.
 ```
 
-### github.com/aws/smithy-go v1.28.8
+### github.com/aws/smithy-go v1.28.9
 
 #### LICENSE
 
@@ -1783,7 +1783,7 @@ SOFTWARE.
 <http://www.opensource.org/licenses/mit-license.php>
 ```
 
-### github.com/ebitengine/purego v0.11.2
+### github.com/ebitengine/purego v0.11.3
 
 #### LICENSE
 
@@ -4409,7 +4409,7 @@ limitations under the License.
       of your accepting any such warranty or additional liability.
 ```
 
-### github.com/spf13/pflag v1.0.10
+### github.com/spf13/pflag v1.1.0
 
 #### LICENSE
 
@@ -4826,7 +4826,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### golang.org/x/crypto v0.58.0
+### golang.org/x/crypto v0.59.0
 
 #### LICENSE
 
@@ -4894,7 +4894,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### golang.org/x/sys v0.49.0
+### golang.org/x/sys v0.50.0
 
 #### LICENSE
 
@@ -4928,7 +4928,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### golang.org/x/text v0.43.0
+### golang.org/x/text v0.44.0
 
 #### LICENSE
 
