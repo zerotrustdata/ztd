@@ -121,6 +121,10 @@ var publicContentText = map[evalv1.EvaluationScenarioCategory]publicCriterionTex
 		Label:       "Answer content",
 		Description: "The answer is checked for acting only through the governed boundary.",
 	},
+	evalv1.EvaluationScenarioCategory_EVALUATION_SCENARIO_CATEGORY_FLEET_OPERATIONS: {
+		Label:       "Answer content",
+		Description: "The answer is checked for what it reports about each Operator in the fleet.",
+	},
 }
 
 // publicCriteriaForBlueprint derives the public criteria a scenario carries

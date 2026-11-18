@@ -55,7 +55,7 @@ func eventReceiptListRequest(t *testing.T, raw string) agentToolRequest {
 // context decode would reject as out of scope, so no schema-valid model request
 // can reach that decode and fail the assignment.
 func TestEventReceiptListScopeFailure_MatchesAuthoritativeContextScope(t *testing.T) {
-	trace := &AgentTrace{InvestigationID: scopeTestInvestigationID}
+	trace := &AgentTrace{InvestigationID: scopeTestInvestigationID, Roster: rosterOfOne(AgentTraceRuntime{}, AgentTraceWorkspace{})}
 	receipt := &AgentTraceReceipt{EventReceipt: &operatorv1.EventReceipt{}}
 	for _, tt := range eventReceiptListScopeCases {
 		t.Run(tt.name, func(t *testing.T) {
@@ -65,7 +65,7 @@ func TestEventReceiptListScopeFailure_MatchesAuthoritativeContextScope(t *testin
 			args.SetEventReceiptListDefaults(scopeTestInvestigationID)
 			query, ok := args.EventReceiptList()
 			require.True(t, ok)
-			_, _, decodeErr := decodeInvestigationReceipts(trace, query, receipt)
+			_, _, decodeErr := decodeInvestigationReceipts(trace, trace.Roster[0], query, receipt)
 
 			if tt.inScope {
 				assert.Nil(t, failure)
@@ -86,19 +86,24 @@ func TestEventReceiptListScopeFailure_MatchesAuthoritativeContextScope(t *testin
 // An out-of-scope query is a model-visible tool failure recorded before any
 // governed dispatch: the run has no executor here, so reaching dispatch panics.
 func TestRunNativeMCPTool_RejectsOutOfScopeEventReceiptListBeforeDispatch(t *testing.T) {
-	run := &agentRun{trace: &AgentTrace{InvestigationID: scopeTestInvestigationID}}
+	run := &agentRun{trace: &AgentTrace{InvestigationID: scopeTestInvestigationID,
+		Roster: rosterOfOne(AgentTraceRuntime{OperatorID: "data-1", SessionID: "session-1"}, AgentTraceWorkspace{Root: "/work/case", OperatorWorkingDirectory: "/work"})}}
+	spec, err := catalogToolSpec(constants.MCPToolEventReceiptList)
+	require.NoError(t, err)
 	for _, tt := range eventReceiptListScopeCases {
 		if tt.inScope {
 			continue
 		}
 		t.Run(tt.name, func(t *testing.T) {
 			request := eventReceiptListRequest(t, tt.args)
-			record := AgentToolCall{ToolName: constants.MCPToolEventReceiptList, ArgumentsJSON: request.ArgumentsJSON}
+			record := onTarget(AgentToolCall{ToolName: constants.MCPToolEventReceiptList, ArgumentsJSON: request.ArgumentsJSON})
 
 			var completed AgentToolCall
-			var err error
 			require.NotPanics(t, func() {
-				completed, err = run.runNativeMCPTool(context.Background(), record, request)
+				// The pre-dispatch scope check runs in the target's dispatch
+				// arguments, before any governed dispatch.
+				target := run.runOnTarget(context.Background(), spec, request, record)
+				completed, err = target.record, target.err
 			})
 			require.NoError(t, err)
 			assert.False(t, completed.Success)

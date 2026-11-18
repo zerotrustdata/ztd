@@ -30,7 +30,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	cliconfig "github.com/zerotrustdata/ztd/internal/cli/config"
-	cliop "github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	compliancereport "github.com/zerotrustdata/ztd/internal/services/compliance/report"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
@@ -146,7 +145,7 @@ func newComplianceRealRun(t *testing.T) *complianceRealRun {
 	require.NoError(t, err)
 	operators, _, err := gateway.ListOperators(ctx)
 	require.NoError(t, err)
-	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, inferenceWorkload.OperatorSessionID, dataWorkload.OperatorID, nil)
+	topology, err := evaluation.ResolveCampaignOperatorTopology(operators, inferenceWorkload.OperatorSessionID, evaluation.DataFleetSelection{OperatorIDs: []string{dataWorkload.OperatorID}}, nil)
 	require.NoError(t, err)
 	topology, err = topology.WithAnchors(operators)
 	require.NoError(t, err)
@@ -192,7 +191,7 @@ func newComplianceRealRun(t *testing.T) *complianceRealRun {
 		ScenarioArtifacts:          artifacts,
 		RepetitionCount:            1,
 		InferenceOperatorSessionID: inferenceWorkload.OperatorSessionID,
-		DataOperatorSessionID:      dataWorkload.OperatorSessionID,
+		DataRoster:                 []*evalv1.EvaluationRosterMember{{Index: 1, OperatorId: dataWorkload.OperatorID, OperatorSessionId: dataWorkload.OperatorSessionID}},
 		Judge:                      &evalv1.ModelVariant{VariantId: "gemma4-e4b", ProviderClass: "ollama", ServedModelTag: evaluation.DefaultJudgeServedModelTag, ModelDigest: fixtures.ScriptedModelDigest(t, evaluation.DefaultJudgeServedModelTag)},
 	}
 	binding := evaluation.CampaignExecutionBinding{
@@ -209,9 +208,7 @@ func newComplianceRealRun(t *testing.T) *complianceRealRun {
 	}
 	store := evaluation.NewStore(evidence)
 	persona := harnessclient.Persona{ID: complianceRealPersonaID, CLISessionID: authContext.CLISessionID, UserID: authContext.UserID}
-	sentinel, err := drive.NewSentinel(gateway, persona, map[cases.Executor]cliop.Target{
-		cases.ExecutorOutbound: {OperatorID: dataWorkload.OperatorID, OperatorSessionID: dataWorkload.OperatorSessionID},
-	})
+	sentinel, err := drive.NewTargetSentinel(gateway, persona)
 	require.NoError(t, err)
 	residencyDispatcher, err := evaluation.NewGovernedOllamaModelCommandDispatcher(gateway, persona)
 	require.NoError(t, err)

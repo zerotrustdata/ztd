@@ -145,7 +145,7 @@ func TestCampaignControllerStartRunBindsANewRunToAnExistingCampaign(t *testing.T
 		CampaignID:                 f.req.CampaignID,
 		RunID:                      "run-c",
 		InferenceOperatorSessionID: "inf-2",
-		DataOperatorSessionID:      "data-2",
+		DataRoster:                 []*evalv1.EvaluationRosterMember{{Index: 1, OperatorId: "data-op", OperatorSessionId: "data-2"}},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "run-c", run.GetRunId())

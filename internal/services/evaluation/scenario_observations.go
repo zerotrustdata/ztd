@@ -52,12 +52,11 @@ type AgentScenarioObservation struct {
 // frozen fixture. Removing or relabeling evidence cannot silently change what
 // was seeded or which final checks the benchmark performs.
 func verifyScenarioObservationContract(req AssignmentExecutionRequest, trace *AgentTrace) error {
-	if trace == nil {
+	if trace == nil || len(trace.Roster) == 0 {
 		return constants.ErrEvaluationEvidenceTraceMismatch
 	}
 	var expected []AgentScenarioObservation
 	var outcomes []string
-	ws := trace.ScenarioWorkspace()
 	if trace.HeldContext == nil {
 		catalog, err := newAgentToolCatalog()
 		if err != nil {
@@ -65,12 +64,14 @@ func verifyScenarioObservationContract(req AssignmentExecutionRequest, trace *Ag
 		}
 		for _, seed := range req.ScenarioInput.Seed.ToolCalls {
 			spec, _ := catalog.Tool(seed.ToolName)
-			request := decodeAgentToolRequest(spec, true, ws.Render(string(seed.Arguments)))
-			expected = append(expected, AgentScenarioObservation{Kind: scenarioObservationSeed, Call: AgentToolCall{ToolName: seed.ToolName, ArgumentsJSON: request.ArgumentsJSON}, Disclosure: seed.Disclosure})
-			outcomes = append(outcomes, seed.Outcome)
+			request := decodeAgentToolRequest(spec, true, renderScenarioText(string(seed.Arguments)))
+			for _, index := range rosterSubset(trace.Roster, seed.Operators) {
+				expected = append(expected, AgentScenarioObservation{Kind: scenarioObservationSeed, Call: AgentToolCall{ToolName: seed.ToolName, ArgumentsJSON: request.ArgumentsJSON, TargetIndex: index}, Disclosure: seed.Disclosure})
+				outcomes = append(outcomes, seed.Outcome)
+			}
 		}
 	}
-	final, err := finalScenarioObservationRequests(req.ScenarioGold, ws)
+	final, err := finalScenarioObservationRequests(req.ScenarioGold, trace.Roster)
 	if err != nil {
 		return err
 	}
@@ -81,6 +82,7 @@ func verifyScenarioObservationContract(req AssignmentExecutionRequest, trace *Ag
 	for i, want := range expected {
 		got := trace.Observations[i]
 		if got.Kind != want.Kind || got.Call.ToolName != want.Call.ToolName || got.Call.ArgumentsJSON != want.Call.ArgumentsJSON || got.Disclosure != want.Disclosure ||
+			got.Call.TargetIndex != want.Call.TargetIndex || got.Call.GroupID != got.Call.CallID ||
 			(i < len(outcomes) && scenarioCallOutcome(got.Call) != outcomes[i]) {
 			return fmt.Errorf("scenario observation %d differs from frozen fixture: %w", i, constants.ErrEvaluationEvidenceTraceMismatch)
 		}
@@ -88,19 +90,30 @@ func verifyScenarioObservationContract(req AssignmentExecutionRequest, trace *Ag
 	return nil
 }
 
-func (r *agentRun) observe(ctx context.Context, kind scenarioObservationKind, tool, arguments string) (AgentToolCall, error) {
+// observe runs one harness observation on one roster member through the same
+// native governed dispatch as a model tool call.
+func (r *agentRun) observe(ctx context.Context, kind scenarioObservationKind, tool, arguments string, member AgentTraceRosterMember) (AgentToolCall, error) {
 	spec, ok := r.executor.catalog.Tool(tool)
 	if !ok {
 		return AgentToolCall{}, fmt.Errorf("evaluation: observation tool %s: %w", tool, constants.ErrEvaluationScenarioContractInvalid)
 	}
 	request := decodeAgentToolRequest(spec, true, arguments)
 	call := AgentToolCall{CallID: r.executor.newID("scenario-observation"), ToolName: tool,
-		ArgumentsJSON: request.ArgumentsJSON, IsOperatorTool: true}
+		ArgumentsJSON: request.ArgumentsJSON, IsOperatorTool: true, TargetIndex: member.Index}
+	call.GroupID = call.CallID
+	failure := request.Failure
+	var argsJSON string
 	var err error
-	if request.Failure != nil {
-		call, err = r.fail(call, *request.Failure)
+	if failure == nil {
+		argsJSON, failure, err = harnessDispatchArguments(spec, call.ArgumentsJSON, member, r.trace.InvestigationID)
+		if err != nil {
+			return call, err
+		}
+	}
+	if failure != nil {
+		call, err = r.fail(call, *failure)
 	} else {
-		call, err = r.runNativeMCPTool(ctx, call, request)
+		call, _, err = r.runNativeMCPTool(ctx, call, member, argsJSON)
 	}
 	if err != nil {
 		return call, err
@@ -115,14 +128,16 @@ func (r *agentRun) seedObservations(ctx context.Context) error {
 		return nil
 	}
 	for _, seed := range r.req.ScenarioInput.Seed.ToolCalls {
-		call, err := r.observe(ctx, scenarioObservationSeed, seed.ToolName, r.workspace.Render(string(seed.Arguments)))
-		if err != nil {
-			return err
+		for _, index := range rosterSubset(r.trace.Roster, seed.Operators) {
+			call, err := r.observe(ctx, scenarioObservationSeed, seed.ToolName, renderScenarioText(string(seed.Arguments)), r.trace.Roster[index-1])
+			if err != nil {
+				return err
+			}
+			if seed.Outcome != scenarioCallOutcome(call) {
+				return fmt.Errorf("evaluation: seed %s on roster [%d] expected %s, observed %s: %w", seed.ToolName, index, seed.Outcome, scenarioCallOutcome(call), constants.ErrEvaluationScenarioContractInvalid)
+			}
+			r.trace.Observations[len(r.trace.Observations)-1].Disclosure = seed.Disclosure
 		}
-		if seed.Outcome != scenarioCallOutcome(call) {
-			return fmt.Errorf("evaluation: seed %s expected %s, observed %s: %w", seed.ToolName, seed.Outcome, scenarioCallOutcome(call), constants.ErrEvaluationScenarioContractInvalid)
-		}
-		r.trace.Observations[len(r.trace.Observations)-1].Disclosure = seed.Disclosure
 	}
 	return nil
 }
@@ -188,41 +203,62 @@ func seedObservationText(call AgentToolCall) string {
 }
 
 func (r *agentRun) finalObservations(ctx context.Context) error {
-	requests, err := finalScenarioObservationRequests(r.req.ScenarioGold, r.workspace)
+	requests, err := finalScenarioObservationRequests(r.req.ScenarioGold, r.trace.Roster)
 	if err != nil {
 		return err
 	}
 	for _, request := range requests {
-		if _, err := r.observe(ctx, request.Kind, request.Call.ToolName, request.Call.ArgumentsJSON); err != nil {
+		if _, err := r.observe(ctx, request.Kind, request.Call.ToolName, request.Call.ArgumentsJSON, r.trace.Roster[request.Call.TargetIndex-1]); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func finalScenarioObservationRequests(gold ScenarioGoldCriteria, ws ScenarioWorkspace) ([]AgentScenarioObservation, error) {
+// rosterSubset returns the 1-based roster positions a fixture names, in
+// roster order: every member when operators is empty. Positions past the
+// roster are skipped; the scenario's Fleet requirement keeps them in range.
+func rosterSubset(roster []AgentTraceRosterMember, operators []int) []int {
+	var indexes []int
+	for _, member := range roster {
+		if len(operators) == 0 || slices.Contains(operators, member.Index) {
+			indexes = append(indexes, member.Index)
+		}
+	}
+	return indexes
+}
+
+// finalScenarioObservationRequests lists the harness's final checks: each
+// gold file state on each roster member it names, then the governed probe on
+// every member, in that order.
+func finalScenarioObservationRequests(gold ScenarioGoldCriteria, roster []AgentTraceRosterMember) ([]AgentScenarioObservation, error) {
 	var requests []AgentScenarioObservation
 	for _, state := range gold.FileState {
-		filePath, err := ws.FilePath(state.Path)
-		if err != nil {
-			return nil, err
-		}
-		var tool, args string
-		if state.Absent {
-			tool = constants.MCPToolRunShellCommand
-			args = (models.RunShellCommandRequest{Command: "test", Args: []string{"!", "-e", filePath}, WorkingDir: ws.Root}).CanonicalJSON()
-		} else {
-			tool = constants.MCPToolReadFile
-			args, err = canonicalToolJSON(mcp.FileReadRequest{Path: filePath})
+		for _, index := range rosterSubset(roster, state.Operators) {
+			ws := roster[index-1].ScenarioWorkspace()
+			filePath, err := ws.FilePath(state.Path)
 			if err != nil {
 				return nil, err
 			}
+			var tool, args string
+			if state.Absent {
+				tool = constants.MCPToolRunShellCommand
+				args = (models.RunShellCommandRequest{Command: "test", Args: []string{"!", "-e", filePath}, WorkingDir: ws.Root}).CanonicalJSON()
+			} else {
+				tool = constants.MCPToolReadFile
+				args, err = canonicalToolJSON(mcp.FileReadRequest{Path: filePath})
+				if err != nil {
+					return nil, err
+				}
+			}
+			requests = append(requests, AgentScenarioObservation{Kind: scenarioObservationFile, Call: AgentToolCall{ToolName: tool, ArgumentsJSON: args, TargetIndex: index}})
 		}
-		requests = append(requests, AgentScenarioObservation{Kind: scenarioObservationFile, Call: AgentToolCall{ToolName: tool, ArgumentsJSON: args}})
 	}
 	if probe := gold.GovernedProbe; probe != nil {
-		request := models.RunShellCommandRequest{Command: probe.Command, Args: slices.Clone(probe.Args), WorkingDir: ws.Root}
-		requests = append(requests, AgentScenarioObservation{Kind: scenarioObservationProbe, Call: AgentToolCall{ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: request.CanonicalJSON()}})
+		for _, member := range roster {
+			request := models.RunShellCommandRequest{Command: probe.Command, Args: slices.Clone(probe.Args), WorkingDir: member.Workspace.Root}
+			requests = append(requests, AgentScenarioObservation{Kind: scenarioObservationProbe, Call: AgentToolCall{ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: request.CanonicalJSON(), TargetIndex: member.Index}})
+		}
 	}
 	return requests, nil
 }
@@ -262,19 +298,14 @@ func verifyScenarioObservation(trace *AgentTrace, observation AgentScenarioObser
 		if call.IngressRefusalCode != operatorv1.IngressRefusalCode_INGRESS_REFUSAL_CODE_UNSPECIFIED {
 			return fail()
 		}
-		catalog, err := newAgentToolCatalog()
+		failure, err := recordedDispatchFailure(trace, call)
 		if err != nil {
 			return err
 		}
-		spec, ok := catalog.Tool(call.ToolName)
-		if !ok {
+		if failure == nil || failure.Error != call.Error || failure.ErrorType != call.ErrorType {
 			return fail()
 		}
-		request := decodeAgentToolRequest(spec, true, call.ArgumentsJSON)
-		if request.Failure == nil || request.Failure.Error != call.Error || request.Failure.ErrorType != call.ErrorType {
-			return fail()
-		}
-		want, err := agentToolFailureJSON(*request.Failure)
+		want, err := agentToolFailureJSON(*failure)
 		if err != nil || want != call.ResultJSON {
 			return fail()
 		}
@@ -407,8 +438,12 @@ func verifyNativeToolCallRequest(trace *AgentTrace, call AgentToolCall) error {
 	if err != nil || hash != envelope.GetTransactionHash() || hash != call.Receipt.GetTransactionHash() || envelope.GetId() != call.TransactionID {
 		return fail("envelope hash is not the receipt's transaction")
 	}
-	if envelope.GetOperatorId() != trace.Data.OperatorID || envelope.GetOperatorSessionId() != trace.Data.SessionID {
-		return fail("envelope targets another Operator session")
+	member, err := trace.TargetMember(call)
+	if err != nil {
+		return fail("has no roster target")
+	}
+	if envelope.GetOperatorId() != member.Runtime.OperatorID || envelope.GetOperatorSessionId() != member.Runtime.SessionID {
+		return fail("envelope targets another Operator session than its roster target")
 	}
 	if envelope.GetInvestigationId() != trace.InvestigationID || envelope.GetTaskId() != trace.EvaluationAttemptID {
 		return fail("envelope belongs to another investigation or attempt")
@@ -418,7 +453,7 @@ func verifyNativeToolCallRequest(trace *AgentTrace, call AgentToolCall) error {
 		return err
 	}
 	if governed != nil {
-		return verifyGovernedToolCallRequest(trace, call, governed, envelope)
+		return verifyGovernedToolCallRequest(member, trace.InvestigationID, call, governed, envelope)
 	}
 	if envelope.GetActionType() != string(constants.ActionTypeMcpCall) || envelope.GetTargetResource() != call.ToolName {
 		return fail("envelope action or target differs from the call")
@@ -427,37 +462,17 @@ func verifyNativeToolCallRequest(trace *AgentTrace, call AgentToolCall) error {
 	if err := proto.Unmarshal(envelope.GetPayload(), &payload); err != nil || payload.GetToolName() != call.ToolName || payload.GetExecutionId() != call.CallID {
 		return fail("envelope payload is not this call")
 	}
-	want := call.ArgumentsJSON
+	recorded := call.ArgumentsJSON
 	if call.ApprovedArgumentsJSON != "" {
-		want = call.ApprovedArgumentsJSON
+		recorded = call.ApprovedArgumentsJSON
 	}
-	if call.ToolName == constants.MCPToolRunShellCommand {
-		var request models.RunShellCommandRequest
-		if err := json.Unmarshal([]byte(want), &request); err != nil {
-			return fail("arguments do not decode")
-		}
-		if request.WorkingDir == "" {
-			request.WorkingDir = trace.Workspace.Root
-		} else {
-			request.WorkingDir = trace.ScenarioWorkspace().Resolve(request.WorkingDir)
-		}
-		want = request.CanonicalJSON()
+	spec, err := catalogToolSpec(call.ToolName)
+	if err != nil {
+		return err
 	}
-	if call.ToolName == constants.MCPToolEventReceiptList {
-		catalog, err := newAgentToolCatalog()
-		if err != nil {
-			return err
-		}
-		spec, _ := catalog.Tool(call.ToolName)
-		request := decodeAgentToolRequest(spec, true, want)
-		if request.Failure != nil {
-			return fail("arguments do not validate")
-		}
-		request.Arguments.SetEventReceiptListDefaults(trace.InvestigationID)
-		want, err = request.Arguments.CanonicalJSON()
-		if err != nil {
-			return fail("arguments do not canonicalize")
-		}
+	want, failure, err := harnessDispatchArguments(spec, recorded, member, trace.InvestigationID)
+	if err != nil || failure != nil {
+		return fail("arguments do not dispatch on the roster target")
 	}
 	actual, err := canonicalizeToolJSON(payload.GetArgumentsJson())
 	expected, expectedErr := canonicalizeToolJSON(want)
@@ -470,14 +485,22 @@ func verifyNativeToolCallRequest(trace *AgentTrace, call AgentToolCall) error {
 // verifyGovernedToolCallRequest rebuilds a governed action tool call's typed
 // action from its recorded arguments and the trace's Operator session, and
 // requires the signed envelope to carry exactly that action.
-func verifyGovernedToolCallRequest(trace *AgentTrace, call AgentToolCall, tool mcp.GovernedActionTool, envelope *commonv1.GovernanceEnvelope) error {
+func verifyGovernedToolCallRequest(member AgentTraceRosterMember, investigationID string, call AgentToolCall, tool mcp.GovernedActionTool, envelope *commonv1.GovernanceEnvelope) error {
 	fail := func() error {
 		return fmt.Errorf("governed tool request: %w", constants.ErrEvaluationEvidenceTraceMismatch)
 	}
 	if call.ApprovedArgumentsJSON != "" {
 		return fail()
 	}
-	request, _, err := governedToolAction(tool, call.ArgumentsJSON, trace.Data.SessionID, call.CallID)
+	spec, err := catalogToolSpec(call.ToolName)
+	if err != nil {
+		return err
+	}
+	argsJSON, failure, err := harnessDispatchArguments(spec, call.ArgumentsJSON, member, investigationID)
+	if err != nil || failure != nil {
+		return fail()
+	}
+	request, _, err := governedToolAction(tool, argsJSON, member.Runtime.SessionID, call.CallID)
 	if err != nil || envelope.GetActionType() != string(request.ActionType) || envelope.GetTargetResource() != request.TargetResource {
 		return fail()
 	}
@@ -503,17 +526,17 @@ func agentToolActionType(tool string) (constants.ActionType, mcp.GovernedActionT
 
 // observationFor returns a final check by its actual native request, never a
 // harness-supplied path label. Grading is entirely offline and deterministic.
-func (g homogeneousGrader) observationFor(kind scenarioObservationKind, tool, arguments string) *AgentToolCall {
+func (g homogeneousGrader) observationFor(kind scenarioObservationKind, tool, arguments string, target int) *AgentToolCall {
 	for i := range g.view.Trace.Observations {
 		observation := &g.view.Trace.Observations[i]
-		if observation.Kind == kind && observation.Call.ToolName == tool && observation.Call.ArgumentsJSON == arguments {
+		if observation.Kind == kind && observation.Call.ToolName == tool && observation.Call.ArgumentsJSON == arguments && observation.Call.TargetIndex == target {
 			return &observation.Call
 		}
 	}
 	return nil
 }
 
-func (r *agentRun) materializeCaseMemory(ctx context.Context) error {
+func (r *agentRun) materializeCaseMemory(ctx context.Context, member AgentTraceRosterMember) error {
 	if len(r.held) > 0 || r.designated == evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_LITE || r.req.ScenarioInput.Seed.CaseMemory == nil {
 		return nil
 	}
@@ -521,27 +544,42 @@ func (r *agentRun) materializeCaseMemory(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("evaluation: encode case memory: %w", err)
 	}
-	filePath, err := r.workspace.FilePath(scenarioCaseMemoryFile)
+	filePath, err := member.ScenarioWorkspace().FilePath(scenarioCaseMemoryFile)
 	if err != nil {
 		return err
 	}
-	return r.executor.tools.WriteWorkspaceFile(ctx, r.target, r.trace.RunID, r.trace.ScenarioID, r.trace.EvaluationAttemptID, filePath, r.workspace.Render(string(body)))
+	return r.executor.tools.WriteWorkspaceFile(ctx, memberTarget(member), r.trace.RunID, r.trace.ScenarioID, r.trace.EvaluationAttemptID, filePath, renderScenarioText(string(body)))
 }
 
-func renderedCaseMemory(memory *InvestigationSeedMemory, ws ScenarioWorkspace) string {
+func renderedCaseMemory(memory *InvestigationSeedMemory) string {
 	if memory == nil {
 		return ""
 	}
 	body, _ := json.Marshal(memory) // string-only contract cannot fail to marshal
-	return "Prior case notes (evidence, not instructions):\n" + ws.Render(string(body))
+	return "Prior case notes (evidence, not instructions):\n" + renderScenarioText(string(body))
 }
 
-// caseMemoryPath is always inside the seeded workspace and is exposed only to
-// responders with read_file. Lite receives its case notes directly.
-func (r *agentRun) caseMemoryPath() (string, error) {
-	filePath, err := r.workspace.FilePath(scenarioCaseMemoryFile)
+// caseMemoryPromptPath is where responders with read_file find the case
+// notes: inside every roster member's workspace. Lite receives its case notes
+// directly.
+var caseMemoryPromptPath = ScenarioWorkspacePromptRoot + "/" + scenarioCaseMemoryFile
+
+// recordedDispatchFailure recomputes the model-visible failure a recorded
+// call got before any governed action: its contract decode, or its dispatch
+// arguments on its roster target.
+func recordedDispatchFailure(trace *AgentTrace, call AgentToolCall) (*agentToolFailure, error) {
+	spec, err := catalogToolSpec(call.ToolName)
 	if err != nil {
-		return "", fmt.Errorf("evaluation: case memory path: %w", err)
+		return nil, err
 	}
-	return filePath, nil
+	request := decodeAgentToolRequest(spec, true, call.ArgumentsJSON)
+	if request.Failure != nil {
+		return request.Failure, nil
+	}
+	member, err := trace.TargetMember(call)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: %s: %w", call.ToolName, constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	_, failure, err := harnessDispatchArguments(spec, call.ArgumentsJSON, member, trace.InvestigationID)
+	return failure, err
 }

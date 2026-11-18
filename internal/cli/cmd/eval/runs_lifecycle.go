@@ -11,6 +11,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +43,10 @@ type runStartFlowOptions struct {
 	RequireProvenance  bool
 	NoAutoBind         bool
 	JSONOutput         bool
+	// DataOperators names the run's harness roster: Operator IDs in roster
+	// order, or "all" for every active Data Operator. Empty selects the
+	// campaign's default (runStartFleet).
+	DataOperators []string
 	// ProviderFailureLimit bounds consecutive generation failures in rollout
 	// runs. Zero keeps explicit campaign runs exhaustive.
 	ProviderFailureLimit int
@@ -71,7 +77,7 @@ type runStartPlanJSON struct {
 	CellCount           uint64   `json:"cell_count"`
 	SessionsResolved    bool     `json:"sessions_resolved"`
 	InferenceSession    string   `json:"inference_session,omitempty"`
-	DataSession         string   `json:"data_session,omitempty"`
+	DataRoster          []string `json:"data_roster,omitempty"`
 }
 
 type runStartResultJSON struct {
@@ -95,7 +101,7 @@ func runStartPlan(result *runStartFlowResult, digest string) runStartPlanJSON {
 		CellCount:           result.Cells,
 		SessionsResolved:    result.SessionsResolved,
 		InferenceSession:    result.Topology.Inference.OperatorSessionID,
-		DataSession:         result.Topology.Data.OperatorSessionID,
+		DataRoster:          rosterSessions(result.Topology),
 	}
 }
 
@@ -112,7 +118,7 @@ func writeRunStartPlan(cmd *cobra.Command, plan runStartPlanJSON, jsonOutput boo
 	if err != nil || !plan.SessionsResolved {
 		return err
 	}
-	_, err = fmt.Fprintf(cmd.OutOrStdout(), "Inference session: %s\nData session: %s\n", plan.InferenceSession, plan.DataSession)
+	_, err = fmt.Fprintf(cmd.OutOrStdout(), "Inference session: %s\nData roster: %s\n", plan.InferenceSession, strings.Join(plan.DataRoster, ", "))
 	return err
 }
 
@@ -181,8 +187,15 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		if governance, err = evalPreflightGatewayGovernance(cmd, gatewayDeps, gatewayCfg, gatewayAuth, spec, nil); err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
 		}
-		topology, err = resolveOperatorTopologyForDataOperator(cmd, deps, investigation.GetDataOperatorId(), evaluation.HostedProviderClasses(spec.GetModelRegistry(), spec.GetJudgeVariant()))
+		fleet, err := runStartFleet(opts.DataOperators, investigation, catalog)
 		if err != nil {
+			return nil, fmt.Errorf("evaluation: runs start: %w", err)
+		}
+		topology, err = resolveOperatorTopology(cmd, deps, fleet, evaluation.HostedProviderClasses(spec.GetModelRegistry(), spec.GetJudgeVariant()))
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: runs start: %w", err)
+		}
+		if err := evaluation.ValidateRosterForCatalog(topology, catalog); err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
 		}
 	}
@@ -226,7 +239,7 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		CampaignID:                 opts.CampaignID,
 		RunID:                      runID,
 		InferenceOperatorSessionID: topology.Inference.OperatorSessionID,
-		DataOperatorSessionID:      topology.Data.OperatorSessionID,
+		DataRoster:                 topology.RosterBinding(),
 		Deployment:                 nativeEvalDeployment(cfg, authContext, runID, ""),
 		Lane:                       runLane,
 		PlatformRelease:            platformIdentity(cmd).Release,
@@ -370,6 +383,7 @@ Examples:
 	cmd.Flags().BoolVar(&opts.RequireProvenance, "require-provenance", false, "Fail verification when model provenance attestation windows are missing")
 	cmd.Flags().BoolVar(&opts.RequireObservation, "require-observation", false, "Fail verification when provider-boundary observation windows are missing")
 	cmd.Flags().BoolVar(&opts.NoAutoBind, "no-auto-bind", false, "Do not bind the data-operator to the CLI session when it is not bound")
+	cmd.Flags().StringSliceVar(&opts.DataOperators, "data-operators", nil, "Harness roster: Data Operator IDs in roster order, or 'all' for every active Data Operator (default: the campaign's pinned Data Operator, every active one when a scenario needs a fleet, else the default Data Operator)")
 	cmd.Flags().DurationVar(&opts.AssignmentTimeout, "assignment-timeout", 0, "Optional per-assignment wall-clock limit (0 adds no assignment deadline)")
 	return cmd
 }
@@ -795,4 +809,39 @@ func settleRunLease(ctx context.Context, store *evaluation.Store, live evaluatio
 // status it reports comes after it has released the lease.
 func runStatusSettled(status models.RunLifecycleStatus) bool {
 	return status != models.RunLifecycleStatusQueued && status != models.RunLifecycleStatusRunning
+}
+
+// runStartFleet is the harness roster selection a new run freezes. Named
+// Operators or "all" win. Otherwise a persistent investigation keeps its
+// pinned Data Operator, a catalog with a scenario that needs a fleet takes
+// every active Data Operator, and any other run takes the default one.
+func runStartFleet(flag []string, investigation *evalv1.EvaluationInvestigation, catalog *evalv1.EvaluationScenarioCatalog) (evaluation.DataFleetSelection, error) {
+	if len(flag) == 1 && strings.EqualFold(flag[0], "all") {
+		return evaluation.DataFleetSelection{All: true}, nil
+	}
+	if len(flag) > 0 {
+		if slices.ContainsFunc(flag, func(id string) bool { return strings.EqualFold(id, "all") }) {
+			return evaluation.DataFleetSelection{}, constants.ErrHarnessFleetSelectionConflict
+		}
+		if pinned := investigation.GetDataOperatorId(); pinned != "" && !slices.Contains(flag, pinned) {
+			return evaluation.DataFleetSelection{}, fmt.Errorf("persistent investigation Data Operator %s is not in --data-operators: %w", pinned, constants.ErrEvaluationInvestigationInvalid)
+		}
+		return evaluation.DataFleetSelection{OperatorIDs: flag}, nil
+	}
+	if pinned := investigation.GetDataOperatorId(); pinned != "" {
+		return evaluation.DataFleetSelection{OperatorIDs: []string{pinned}}, nil
+	}
+	if evaluation.CatalogNeedsFleet(catalog) {
+		return evaluation.DataFleetSelection{All: true}, nil
+	}
+	return evaluation.DataFleetSelection{}, nil
+}
+
+// rosterSessions lists the fleet's Data sessions in roster order.
+func rosterSessions(topology evaluation.CampaignOperatorTopology) []string {
+	sessions := make([]string, 0, len(topology.Fleet))
+	for _, member := range topology.Fleet {
+		sessions = append(sessions, member.OperatorSessionID)
+	}
+	return sessions
 }

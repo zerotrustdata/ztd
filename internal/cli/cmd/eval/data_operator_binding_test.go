@@ -113,7 +113,7 @@ func TestChatEvalBindDataOperator(t *testing.T) {
 			cmd.SetContext(testVersionContext())
 			authContext := &auth.ClientAuthContext{CLISessionID: "cli-1", UserID: "user-1", ClientCert: "cert", ClientKey: "key"}
 
-			got, err := evalBindDataOperator(cmd, deps, cfg, fileSvc, authContext, operators, dataSession, tt.autoBind)
+			got, err := evalBindDataOperator(cmd, deps, cfg, fileSvc, authContext, operators, []string{dataSession}, tt.autoBind)
 
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)

@@ -32,7 +32,8 @@ func TestAssignmentPublicationIncludesPersistedAgentTranscript(t *testing.T) {
 	assignments, err := store.ListAssignments(ctx, run.GetRunId())
 	require.NoError(t, err)
 	assignment := assignments[0]
-	trace := &AgentTrace{RunID: run.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Input: testAgentTraceInput(), FinalOutput: "Checkout failures are caused by upstream payment timeouts.", ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, LoopTurn: 1, Text: "I will inspect the evidence.", FinishReason: "tool_call"}, {Purpose: agentModelCallPurposeTurn, LoopTurn: 2, Text: "Checkout failures are caused by upstream payment timeouts.", FinishReason: "stop"}}, ToolCalls: []AgentToolCall{{ToolName: "inspect", ArgumentsJSON: `{"target":"checkout"}`, ResultJSON: `{"timeout_rate":18}`, Success: true, LoopTurn: 1}}}
+	trace := &AgentTrace{RunID: run.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Roster: rosterOfOne(AgentTraceRuntime{OperatorID: "data-op", SessionID: "data-session"}, AgentTraceWorkspace{}), Input: testAgentTraceInput(), FinalOutput: "Checkout failures are caused by upstream payment timeouts.", ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, LoopTurn: 1, Text: "I will inspect the evidence.", FinishReason: "tool_call"}, {Purpose: agentModelCallPurposeTurn, LoopTurn: 2, Text: "Checkout failures are caused by upstream payment timeouts.", FinishReason: "stop"}}, ToolCalls: []AgentToolCall{{ToolName: "inspect", ArgumentsJSON: `{"target":"checkout"}`, ResultJSON: `{"timeout_rate":18}`, Success: true, LoopTurn: 1}}}
+	withRosterPrompt(trace)
 	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 	require.NoError(t, store.SaveAssignmentAgentTrace(ctx, run.GetRunId(), assignment.GetAssignmentId(), body))
@@ -81,7 +82,8 @@ func TestPublicAssignmentTranscriptFailsClosed(t *testing.T) {
 			store := NewStore(newCampaignRuntimeFileService(t))
 			assignment := &evalv1.EvaluationAssignment{RunId: "run-transcript", AssignmentId: "assignment-transcript"}
 			result := &evalv1.EvaluationAssignmentResult{RunId: assignment.GetRunId(), AssignmentId: assignment.GetAssignmentId()}
-			trace := &AgentTrace{RunID: assignment.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-transcript", DesignatedRole: "primary", FinalOutput: tc.response, Input: testAgentTraceInput()}
+			trace := &AgentTrace{RunID: assignment.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-transcript", DesignatedRole: "primary", FinalOutput: tc.response, Roster: rosterOfOne(AgentTraceRuntime{OperatorID: "data-op", SessionID: "data-session"}, AgentTraceWorkspace{}), Input: testAgentTraceInput()}
+			withRosterPrompt(trace)
 			body, err := SealAgentTrace(trace)
 			require.NoError(t, err)
 			if tc.tamper {
@@ -127,7 +129,8 @@ func TestAssignmentPublicationOmitsOversizedTranscript(t *testing.T) {
 			assignments, err := store.ListAssignments(ctx, run.GetRunId())
 			require.NoError(t, err)
 			assignment := assignments[0]
-			trace := &AgentTrace{RunID: run.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Input: testAgentTraceInput(), FinalOutput: tc.response, ToolCalls: tc.calls}
+			trace := &AgentTrace{RunID: run.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Roster: rosterOfOne(AgentTraceRuntime{OperatorID: "data-op", SessionID: "data-session"}, AgentTraceWorkspace{}), Input: testAgentTraceInput(), FinalOutput: tc.response, ToolCalls: tc.calls}
+			withRosterPrompt(trace)
 			body, err := SealAgentTrace(trace)
 			require.NoError(t, err)
 			require.NoError(t, store.SaveAssignmentAgentTrace(ctx, run.GetRunId(), assignment.GetAssignmentId(), body))
@@ -152,7 +155,8 @@ func TestPublicAssignmentTranscriptPublishesModelAndToolTextVerbatim(t *testing.
 	result := &evalv1.EvaluationAssignmentResult{RunId: assignment.GetRunId(), AssignmentId: assignment.GetAssignmentId()}
 	response := "The workload identity is spiffe://ztd.local/operator/x."
 	toolResult := `{"stdout":"-----BEGIN PRIVATE KEY-----\nMIIfixture\n-----END PRIVATE KEY-----"}`
-	trace := &AgentTrace{RunID: assignment.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-transcript", DesignatedRole: "primary", Input: testAgentTraceInput(), FinalOutput: response, ToolCalls: []AgentToolCall{{ToolName: "inspect", ArgumentsJSON: `{"path":"key.pem"}`, ResultJSON: toolResult, Success: true, LoopTurn: 1}}}
+	trace := &AgentTrace{RunID: assignment.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-transcript", DesignatedRole: "primary", Roster: rosterOfOne(AgentTraceRuntime{OperatorID: "data-op", SessionID: "data-session"}, AgentTraceWorkspace{}), Input: testAgentTraceInput(), FinalOutput: response, ToolCalls: []AgentToolCall{{ToolName: "inspect", ArgumentsJSON: `{"path":"key.pem"}`, ResultJSON: toolResult, Success: true, LoopTurn: 1}}}
+	withRosterPrompt(trace)
 	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 	require.NoError(t, store.SaveAssignmentAgentTrace(ctx, assignment.GetRunId(), assignment.GetAssignmentId(), body))

@@ -48,16 +48,24 @@ type EvalStackOptions struct {
 	// Operator enrolls. Outbound Operators receive the binding's L2 trust only
 	// in their enrollment and renewal bundles.
 	BindConsensus func(t *testing.T, gateway *GatewayFixture, identity *ClientIdentity)
+	// DataOperators is the size of the Data fleet, the harness roster a run
+	// may freeze. Zero or one launches only Data. Every further member is a
+	// separately rooted Data-only Operator on its own host directory.
+	DataOperators int
 }
 
 // EvalStack holds the real Gateway and outbound Operators used by eval
 // integration tests. Only the model provider is scripted.
 type EvalStack struct {
-	Gateway       *GatewayFixture
-	Identity      *ClientIdentity
-	Owner         *OwnerConsole
-	Witness       *OperatorWireWitness
-	Data          *OperatorProcess
+	Gateway  *GatewayFixture
+	Identity *ClientIdentity
+	Owner    *OwnerConsole
+	Witness  *OperatorWireWitness
+	Data     *OperatorProcess
+	// Fleet is every Data Operator in launch order; Fleet[0] is Data.
+	Fleet []*OperatorProcess
+	// FleetHosts are the Fleet's host directories, in the same order.
+	FleetHosts    []*OperatorHost
 	Inference     *OperatorProcess
 	DataHost      *OperatorHost
 	InferenceHost *OperatorHost
@@ -125,6 +133,14 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 			InferenceOllamaEndpoint: provider.Endpoint(),
 		})
 	}
+	fleet, fleetHosts := []*OperatorProcess{data}, []*OperatorHost{dataHost}
+	for len(fleet) < opts.DataOperators {
+		host := NewOperatorHost(t)
+		fleet = append(fleet, witness.LaunchOperator(t, host, OperatorProcessOptions{
+			Capabilities: constants.OperatorCapabilities{constants.OperatorCapabilityData},
+		}))
+		fleetHosts = append(fleetHosts, host)
+	}
 	var provenance *OperatorProcess
 	if opts.Provenance {
 		tags := append([]string{evalModelTag}, opts.ModelTags...)
@@ -142,6 +158,11 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 	require.NoError(t, data.AwaitStarted(ctx))
 	_, err := data.AwaitHeartbeat(ctx)
 	require.NoError(t, err)
+	for _, member := range fleet[1:] {
+		require.NoError(t, member.AwaitStarted(ctx))
+		_, err = member.AwaitHeartbeat(ctx)
+		require.NoError(t, err)
+	}
 	if inference != data {
 		require.NoError(t, inference.AwaitStarted(ctx))
 		_, err = inference.AwaitHeartbeat(ctx)
@@ -155,7 +176,7 @@ func NewEvalStack(t *testing.T, opts EvalStackOptions) *EvalStack {
 
 	return &EvalStack{
 		Gateway: gateway, Identity: identity, Owner: owner, Witness: witness,
-		Data: data, Inference: inference, DataHost: dataHost,
+		Data: data, Fleet: fleet, FleetHosts: fleetHosts, Inference: inference, DataHost: dataHost,
 		InferenceHost: inferenceHost, Provider: provider,
 		Provenance: provenance, Posture: posture,
 	}

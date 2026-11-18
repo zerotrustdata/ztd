@@ -93,6 +93,9 @@ type FileState struct {
 	NotContains []string `json:"not_contains,omitempty"`
 	NotMatches  []string `json:"not_matches,omitempty"` // RE2; Validate rejects an expression that does not compile
 	Absent      bool     `json:"absent,omitempty"`      // the file must not exist
+	// Operators are the 1-based harness roster members whose workspace the
+	// state is checked on. Empty means every member.
+	Operators []int `json:"operators,omitempty"`
 }
 
 // Check lists the file_state checks that content violates. found is false when the file is missing.
@@ -299,7 +302,7 @@ func ValidateFileStates(states []FileState) (map[string]bool, error) {
 		if err := state.validate(i); err != nil {
 			return nil, err
 		}
-		if paths[state.Path] {
+		if paths[state.Path] && overlappingOperators(states[:i], state) {
 			return nil, invalid("objective.file_state[%d].path %q is duplicated", i, state.Path)
 		}
 		paths[state.Path] = true
@@ -418,4 +421,24 @@ func blank(s string) bool {
 
 func invalid(format string, args ...any) error {
 	return fmt.Errorf("investigation scenario: %s: %w", fmt.Sprintf(format, args...), constants.ErrInvestigationScenarioInvalid)
+}
+
+// overlappingOperators reports whether an earlier state checks the same path on
+// a roster member state also names. Empty Operators names every member, so one
+// path may be checked twice only on disjoint, explicit members.
+func overlappingOperators(earlier []FileState, state FileState) bool {
+	for _, prior := range earlier {
+		if prior.Path != state.Path {
+			continue
+		}
+		if len(prior.Operators) == 0 || len(state.Operators) == 0 {
+			return true
+		}
+		for _, index := range state.Operators {
+			if slices.Contains(prior.Operators, index) {
+				return true
+			}
+		}
+	}
+	return false
 }

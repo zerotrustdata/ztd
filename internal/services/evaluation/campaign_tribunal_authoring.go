@@ -123,14 +123,11 @@ func formationSupportCallRole(trace *AgentTrace, purpose string) evalv1.ModelCam
 // and is not a failure: only the last attempt of a chain is. The Gateway's
 // retry waits are the provider's time, so the scenario budget is held while
 // the Gateway deliberates and credited for the waits afterwards.
-func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, proposal models.RunShellCommandRequest) (AgentToolCall, error) {
+func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, proposal models.RunShellCommandRequest, member AgentTraceRosterMember) (AgentToolCall, error) {
 	if len(proposal.Hostnames) > 0 {
 		return r.fail(record, agentToolFailure{ErrorType: agentToolErrorExecution, Error: "run_shell_command Tribunal authoring does not accept hostnames"})
 	}
-	workingDir, failure, err := r.shellWorkingDir(proposal.WorkingDir)
-	if err != nil {
-		return AgentToolCall{}, err
-	}
+	workingDir, failure := memberShellWorkingDir(member.ScenarioWorkspace(), proposal.WorkingDir)
 	if failure != nil {
 		return r.fail(record, *failure)
 	}
@@ -162,7 +159,7 @@ func (r *agentRun) runTribunal(ctx context.Context, record AgentToolCall, propos
 		Guidelines:              "The agent proposed this run_shell_command call. Preserve its goal using one executable and argv; shell pipelines, redirects, glob expansion, and substitutions are unavailable. Preserve literal utility arguments, including regex patterns and find -exec terminators.",
 		WorkingDirectory:        workingDir,
 		TimeoutSeconds:          constants.DefaultShellCommandTimeout,
-		TargetOperatorSessionId: r.target.SessionID,
+		TargetOperatorSessionId: member.Runtime.SessionID,
 		InvestigationId:         r.trace.InvestigationID,
 		TaskId:                  r.req.AttemptID,
 		ExecutionId:             record.CallID,

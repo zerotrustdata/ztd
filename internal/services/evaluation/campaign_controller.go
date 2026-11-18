@@ -35,11 +35,12 @@ type CampaignInitRequest struct {
 	Platform                   PlatformIdentity
 	Investigation              *evalv1.EvaluationInvestigation
 	InferenceOperatorSessionID string
-	DataOperatorSessionID      string
-	Deployment                 *evalv1.EvaluationDeploymentIdentity
-	Lane                       evalv1.EvaluationLane
-	FormationStackSet          *HeterogeneousStackSet
-	Governance                 RunGovernance
+	// DataRoster is the harness roster the run freezes (topology.RosterBinding).
+	DataRoster        []*evalv1.EvaluationRosterMember
+	Deployment        *evalv1.EvaluationDeploymentIdentity
+	Lane              evalv1.EvaluationLane
+	FormationStackSet *HeterogeneousStackSet
+	Governance        RunGovernance
 	// Judge is the campaign's pinned judge; see CampaignCreateRequest.Judge.
 	Judge *evalv1.ModelVariant
 }
@@ -143,11 +144,12 @@ type RunStartRequest struct {
 	CampaignID                 string
 	RunID                      string
 	InferenceOperatorSessionID string
-	DataOperatorSessionID      string
-	Deployment                 *evalv1.EvaluationDeploymentIdentity
-	Lane                       evalv1.EvaluationLane
-	ProviderObservationPolicy  evalv1.EvaluationWitnessPolicy
-	ModelProvenancePolicy      evalv1.EvaluationWitnessPolicy
+	// DataRoster is the harness roster the run freezes (topology.RosterBinding).
+	DataRoster                []*evalv1.EvaluationRosterMember
+	Deployment                *evalv1.EvaluationDeploymentIdentity
+	Lane                      evalv1.EvaluationLane
+	ProviderObservationPolicy evalv1.EvaluationWitnessPolicy
+	ModelProvenancePolicy     evalv1.EvaluationWitnessPolicy
 	// PlatformRelease is the executing build's release. It must equal the
 	// release the campaign recorded when it froze.
 	PlatformRelease string
@@ -342,7 +344,7 @@ func (c *CampaignController) StartRun(ctx context.Context, req RunStartRequest) 
 			CatalogDigest:              catalog.GetCatalogDigest(),
 			ModelRegistryDigest:        spec.GetModelRegistryDigest(),
 			InferenceOperatorSessionId: req.InferenceOperatorSessionID,
-			DataOperatorSessionId:      req.DataOperatorSessionID,
+			DataRoster:                 req.DataRoster,
 		},
 	}
 	if err := c.store.SaveRun(ctx, run); err != nil {
@@ -378,7 +380,7 @@ func (c *CampaignController) InitializeCampaign(ctx context.Context, req Campaig
 		CampaignID:                 req.CampaignID,
 		RunID:                      req.RunID,
 		InferenceOperatorSessionID: req.InferenceOperatorSessionID,
-		DataOperatorSessionID:      req.DataOperatorSessionID,
+		DataRoster:                 req.DataRoster,
 		Deployment:                 req.Deployment,
 		Lane:                       req.Lane,
 		PlatformRelease:            req.Platform.Release,

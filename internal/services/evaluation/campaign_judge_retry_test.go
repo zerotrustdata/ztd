@@ -589,6 +589,7 @@ func TestValidateAgentTraceRules_VoteRetriesBelongToTheCurrentTrace(t *testing.T
 	trace := func(version string, vote *operatorv1.ConsensusVoteInference) *AgentTrace {
 		return &AgentTrace{
 			SchemaVersion: version, EvidenceDigest: "digest",
+			Roster:    rosterOfOne(AgentTraceRuntime{OperatorID: "data-op", SessionID: "data-session"}, AgentTraceWorkspace{}),
 			Input:     &AgentTraceInput{Messages: []AgentTraceMessage{{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String(), Text: "hi"}}},
 			ToolCalls: []AgentToolCall{{ConsensusInferences: []governance.ConsensusInference{{ConsensusVoteInference: vote}}}},
 		}
@@ -602,7 +603,7 @@ func TestValidateAgentTraceRules_VoteRetriesBelongToTheCurrentTrace(t *testing.T
 
 	require.ErrorIs(t, validateAgentTraceRules(trace(agentTraceSchemaVersionV12, retried)), constants.ErrEvidenceArtifactMalformed, "a retry_count")
 	require.ErrorIs(t, validateAgentTraceRules(trace(agentTraceSchemaVersionV12, superseded)), constants.ErrEvidenceArtifactMalformed, "superseded attempts")
-	require.NoError(t, validateAgentTraceRules(trace(agentTraceSchemaVersionV12, plain)), "an unretried vote is fine on a historical trace")
+	require.NoError(t, validateAgentTraceRules(trace(agentTraceSchemaVersion, plain)), "an unretried vote is fine on the current trace")
 	require.NoError(t, validateAgentTraceRules(trace(agentTraceSchemaVersion, retried)))
 	require.NoError(t, validateAgentTraceRules(trace(agentTraceSchemaVersion, superseded)))
 }

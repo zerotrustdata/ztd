@@ -36,7 +36,8 @@ func v7EvidenceTrace(t *testing.T) (*AgentTrace, oracletest.Signer) {
 	trace.ModelDigest = strings.Repeat("a", 64)
 	trace.ModelRegistryDigest = strings.Repeat("b", 64)
 	trace.FinalOutput = "answer"
-	trace.Bracket = bracketOf(before, after)
+	trace.Roster[0].Bracket = bracketOf(before, after)
+	withRosterPrompt(trace)
 
 	result := &operatorv1.InferenceResult{
 		PromptTokens:         2,
@@ -92,14 +93,21 @@ func v7EvidenceTraceWithToolCalls(t *testing.T) *AgentTrace {
 	t.Helper()
 	trace, _ := v7EvidenceTrace(t)
 	legacy, _ := validEvidenceTrace(t)
-	trace.Data = legacy.Data
-	trace.Bracket = legacy.Bracket
+	trace.Roster = legacy.Roster
 	trace.ToolCalls = legacy.ToolCalls
+	trace.Input = testAgentTraceInput()
+	withRosterPrompt(trace)
 	return trace
 }
 
+// resealV7Trace seals trace and checks it verifies. It first ensures the
+// system message carries the roster block of the trace's current roster, since
+// callers may have changed the roster or the message since it was built.
 func resealV7Trace(t *testing.T, trace *AgentTrace) {
 	t.Helper()
+	if !strings.Contains(trace.Input.Messages[0].Text, renderRosterPrompt(trace.Roster)) {
+		withRosterPrompt(trace)
+	}
 	_, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 	require.NoError(t, ValidateAgentTraceDigest(trace))
@@ -224,33 +232,6 @@ func TestVerifyAgentTraceEvidenceV7_RejectsResealedModelIdentityAndResultTamperi
 	}
 }
 
-func TestValidateAgentTraceDigest_PreservesV6AndEarlierSchemaVersions(t *testing.T) {
-	for _, version := range []string{agentTraceSchemaVersionV7, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4} {
-		t.Run(version, func(t *testing.T) {
-			trace, _ := v7EvidenceTrace(t)
-			trace.SchemaVersion = version
-			trace.ModelCalls[0].ModelVariantID = ""
-			trace.ModelCalls[0].ModelRole = ""
-			trace.ModelCalls[0].ServedModelTag = ""
-			trace.ModelCalls[0].ModelDigest = ""
-			trace.ModelCalls[0].InferenceResult = nil
-			trace.EvidenceDigest = ""
-			digest, err := ComputeAgentTraceDigest(trace)
-			require.NoError(t, err)
-			trace.EvidenceDigest = digest
-			require.NoError(t, ValidateAgentTraceDigest(trace))
-		})
-	}
-	trace, _ := v7EvidenceTrace(t)
-	trace.SchemaVersion = agentTraceSchemaVersionV3
-	trace.Input = nil
-	trace.EvidenceDigest = ""
-	digest, err := ComputeAgentTraceDigest(trace)
-	require.NoError(t, err)
-	trace.EvidenceDigest = digest
-	require.NoError(t, ValidateAgentTraceDigest(trace))
-}
-
 // relabelV7 restamps trace as a v7 history trace, which SealAgentTrace refuses
 // to produce.
 func relabelV7(t *testing.T, trace *AgentTrace) {
@@ -260,19 +241,6 @@ func relabelV7(t *testing.T, trace *AgentTrace) {
 	digest, err := ComputeAgentTraceDigest(trace)
 	require.NoError(t, err)
 	trace.EvidenceDigest = digest
-}
-
-func TestVerifyAgentTraceEvidence_PreservesV7HistoryTraces(t *testing.T) {
-	trace, _ := v7EvidenceTrace(t)
-	relabelV7(t, trace)
-
-	require.NoError(t, ValidateAgentTraceDigest(trace))
-	require.NoError(t, VerifyAgentTraceEvidence(trace))
-	assert.True(t, trace.CarriesModelIdentity())
-
-	trace.ModelCalls[0].ModelVariantID = ""
-	relabelV7(t, trace)
-	assert.Error(t, VerifyAgentTraceEvidence(trace), "v7 history still binds per-call model identity")
 }
 
 func TestValidateAgentTraceDigest_RejectsApprovedArgumentsBeforeV8(t *testing.T) {
@@ -289,21 +257,6 @@ func TestValidateAgentTraceDigest_RejectsApprovedArgumentsBeforeV8(t *testing.T)
 // v1.2.0 sealed into agent-trace.v7 before typed run_shell_command arguments.
 const v1ShellTextSteps = `[{"index":2,"role":"AGENT_ROLE_CANDIDATE_GENERATOR","candidate":{"command":"cat app/service.conf"}},` +
 	`{"index":5,"role":"AGENT_ROLE_REVIEWER","review":{"verdict":"AGENT_REVIEW_VERDICT_APPROVE","command":"cat app/service.conf"}}]`
-
-func TestVerifyAgentTraceEvidence_DecodesV7ShellTextTribunalSteps(t *testing.T) {
-	trace, _ := v7EvidenceTrace(t)
-	require.NoError(t, json.Unmarshal([]byte(v1ShellTextSteps), &trace.Steps))
-	relabelV7(t, trace)
-	body, err := json.Marshal(trace)
-	require.NoError(t, err)
-	require.Contains(t, string(body), `"candidate":{"command":"cat app/service.conf"}`)
-
-	var decoded AgentTrace
-	require.NoError(t, json.Unmarshal(body, &decoded))
-	require.NoError(t, ValidateAgentTraceDigest(&decoded))
-	require.NoError(t, VerifyAgentTraceEvidence(&decoded))
-	assert.Equal(t, "cat app/service.conf", decoded.Steps[1].GetReview().GetCommand())
-}
 
 func TestValidateAgentTraceDigest_RejectsShellTextStepsInV8(t *testing.T) {
 	trace, _ := v7EvidenceTrace(t)

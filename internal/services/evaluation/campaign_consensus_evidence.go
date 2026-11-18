@@ -21,8 +21,8 @@ import (
 // vote needed: every attempt, the superseded ones a provider's transient
 // failure retried as well as the final one, is an execution on its Operator's
 // ledger, so each is verified and claimed.
-func verifyConsensusInferenceEvidence(anchors *oracle.AnchorSet, trace *AgentTrace, tool AgentToolCall) ([]oracle.Outcome, error) {
-	var claims []oracle.Outcome
+func verifyConsensusInferenceEvidence(anchors *oracle.AnchorSet, trace *AgentTrace, tool AgentToolCall) ([]rosterClaim, error) {
+	var claims []rosterClaim
 	seen := make(map[string]bool)
 	finalSubjectFound := tool.Receipt == nil || len(tool.ConsensusInferences) == 0
 	for _, evidence := range tool.ConsensusInferences {
@@ -54,30 +54,31 @@ func verifyConsensusInferenceEvidence(anchors *oracle.AnchorSet, trace *AgentTra
 
 // verifyConsensusAttemptEvidence verifies one vote attempt's receipt and
 // observation receipts against the pinned keys and returns the ledger
-// commitments it claims on the Data runtime.
-func verifyConsensusAttemptEvidence(anchors *oracle.AnchorSet, trace *AgentTrace, call *operatorv1.ConsensusVoteInference) ([]oracle.Outcome, error) {
-	var claims []oracle.Outcome
+// commitments it claims on roster members.
+func verifyConsensusAttemptEvidence(anchors *oracle.AnchorSet, trace *AgentTrace, call *operatorv1.ConsensusVoteInference) ([]rosterClaim, error) {
+	var claims []rosterClaim
 	if receipt := call.GetReceipt(); receipt != nil {
-		// The trace pins its Inference and Data execution boundaries. A decision
-		// provider may be a third runtime; its receipts are retained, but its
-		// separate ledger is outside this bracket, just as remote observations are.
-		var runtime *AgentTraceRuntime
-		switch receipt.GetSignerKeyId() {
-		case trace.Data.Anchor.GetKeyId():
-			runtime = &trace.Data
-		case trace.Inference.Anchor.GetKeyId():
-			runtime = &trace.Inference
-		}
-		if runtime != nil {
-			outcome, err := verifiedOutcome(anchors, runtime.OperatorID, receipt)
+		// The trace pins its Inference runtime and every roster member. A
+		// decision provider is a separate runtime by design (consensus provider
+		// isolation); its receipts are retained, but its ledger is outside
+		// every bracket, just as remote observations are.
+		if member, ok := rosterSigner(trace.Roster, receipt.GetSignerKeyId()); ok {
+			outcome, err := verifiedOutcome(anchors, member.Runtime.OperatorID, receipt)
 			if err != nil {
 				return nil, err
 			}
-			if err := verifyReceiptSession(receipt, runtime.SessionID); err != nil {
+			if err := verifyReceiptSession(receipt, member.Runtime.SessionID); err != nil {
 				return nil, err
 			}
-			if runtime == &trace.Data && outcome.Commitment != nil {
-				claims = append(claims, outcome)
+			if outcome.Commitment != nil {
+				claims = append(claims, rosterClaim{index: member.Index, outcome: outcome})
+			}
+		} else if receipt.GetSignerKeyId() == trace.Inference.Anchor.GetKeyId() {
+			if _, err := verifiedOutcome(anchors, trace.Inference.OperatorID, receipt); err != nil {
+				return nil, err
+			}
+			if err := verifyReceiptSession(receipt, trace.Inference.SessionID); err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -85,7 +86,7 @@ func verifyConsensusAttemptEvidence(anchors *oracle.AnchorSet, trace *AgentTrace
 	for _, receipt := range call.GetObservationReceipts() {
 		observed.ObservationReceipts = append(observed.ObservationReceipts, AgentTraceReceipt{EventReceipt: receipt})
 	}
-	observations, err := verifyObservationEvidence(anchors, trace.Data, observed)
+	observations, err := verifyObservationEvidence(anchors, trace.Roster, observed)
 	if err != nil {
 		return nil, err
 	}

@@ -30,7 +30,11 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// agentTraceSchemaVersion is the version every new trace is sealed with. v13
+// agentTraceSchemaVersion is the version every new trace is sealed with. v14
+// replaces the single Data runtime, workspace and ledger bracket with the
+// frozen harness roster: one member per Data Operator the run addressed, each
+// with its own workspace and bracket, and records each tool dispatch's roster
+// target and fan-out group. It is the only version that verifies. v13
 // records retried provider attempts: a call that retries an attempt the
 // provider asked to retry later carries retry_of, the attempt it supersedes;
 // v12 records a content judgment the pinned judge failed to decide, with its
@@ -47,7 +51,8 @@ import (
 // remain valid evidence; a v3 trace's model input was not captured and is
 // never reconstructed.
 const (
-	agentTraceSchemaVersion    = "agent-trace.v13"
+	agentTraceSchemaVersion    = "agent-trace.v14"
+	agentTraceSchemaVersionV13 = "agent-trace.v13"
 	agentTraceSchemaVersionV12 = "agent-trace.v12"
 	agentTraceSchemaVersionV11 = "agent-trace.v11"
 	agentTraceSchemaVersionV10 = "agent-trace.v10"
@@ -239,8 +244,18 @@ type AgentToolCall struct {
 	ProviderCallID string `json:"provider_call_id,omitempty"`
 	// ProviderSignature is the opaque signature a hosted provider issued with
 	// the call; the next turn's assistant message returns it verbatim.
-	ProviderSignature     string `json:"provider_signature,omitempty"`
-	ToolName              string `json:"tool_name"`
+	ProviderSignature string `json:"provider_signature,omitempty"`
+	ToolName          string `json:"tool_name"`
+	// GroupID is the CallID of the first dispatch of the model tool call this
+	// record belongs to. A call fanned out to N roster members records N
+	// dispatches sharing one GroupID, in roster order; the model receives one
+	// tool result for the group (fanOutResultJSON).
+	GroupID string `json:"group_id"`
+	// TargetOperators are the roster selectors the model sent, as sent.
+	TargetOperators []string `json:"target_operators,omitempty"`
+	// TargetIndex is the 1-based roster member this dispatch ran on; zero
+	// when the call failed before any target resolved.
+	TargetIndex           int    `json:"target_index,omitempty"`
 	ArgumentsJSON         string `json:"arguments_json"`
 	ApprovedArgumentsJSON string `json:"approved_arguments_json,omitempty"`
 	Command               string `json:"command,omitempty"`
@@ -297,12 +312,14 @@ type AgentTrace struct {
 	ServedModelTag      string             `json:"served_model_tag"`
 	ModelDigest         string             `json:"model_digest"`
 	ModelRegistryDigest string             `json:"model_registry_digest"`
-	// Inference and Data are the runtimes the roles executed on. When one
-	// Operator holds both capabilities they name the same runtime, whose
-	// ledger bracket must then account for both roles' executions.
-	Inference AgentTraceRuntime   `json:"inference"`
-	Data      AgentTraceRuntime   `json:"data"`
-	Workspace AgentTraceWorkspace `json:"workspace"`
+	// Inference is the runtime model turns executed on. Roster is the frozen
+	// harness roster in roster order: every Data Operator the run addressed,
+	// with the host identity the model was shown, its attempt workspace, and
+	// its ledger bracket. When one Operator holds both capabilities, Inference
+	// names a roster member's runtime, whose bracket must then account for
+	// both roles' executions.
+	Inference AgentTraceRuntime        `json:"inference"`
+	Roster    []AgentTraceRosterMember `json:"roster"`
 	// HeldContext is the previous repetition's conversation this repetition
 	// continued, when its campaign holds context. The model received these
 	// messages ahead of Input on every turn.
@@ -323,11 +340,8 @@ type AgentTrace struct {
 	// ProviderFailureClass is the inference attempt failure class
 	// (capability_unsupported, backend_timeout, ...) when the provider
 	// classified the failure. Traces sealed before it existed omit it.
-	ProviderFailureClass string `json:"provider_failure_class,omitempty"`
-	// Bracket holds the harness sentinel receipts read on the Data runtime
-	// before and after the attempt. Import fails closed when it is missing.
-	Bracket *AgentTraceBracket `json:"bracket,omitempty"`
-	Steps   AgentTraceSteps    `json:"steps,omitempty"`
+	ProviderFailureClass string          `json:"provider_failure_class,omitempty"`
+	Steps                AgentTraceSteps `json:"steps,omitempty"`
 	// Observations are harness-owned governed calls, excluded from model tool
 	// scores and conversation continuation. Their receipts join the ledger bracket.
 	Observations []AgentScenarioObservation `json:"observations,omitempty"`
@@ -409,11 +423,13 @@ type AgentTraceTool struct {
 // workspace, which the continuing repetition reuses so every path in the held
 // conversation still names the same files.
 type AgentTraceHeldContext struct {
-	AssignmentID   string                     `json:"assignment_id"`
-	Repetition     uint32                     `json:"repetition"`
-	EvidenceDigest string                     `json:"evidence_digest"`
-	Workspace      AgentTraceWorkspace        `json:"workspace"`
-	Messages       []AgentTraceContextMessage `json:"messages"`
+	AssignmentID   string `json:"assignment_id"`
+	Repetition     uint32 `json:"repetition"`
+	EvidenceDigest string `json:"evidence_digest"`
+	// Workspaces are the held repetition's member workspaces in roster
+	// order; this repetition continues in exactly these.
+	Workspaces []AgentTraceWorkspace      `json:"workspaces"`
+	Messages   []AgentTraceContextMessage `json:"messages"`
 }
 
 // AgentTraceContextMessage is one message of a held conversation. Role is the
@@ -497,12 +513,19 @@ func (t *AgentTrace) Conversation() ([]AgentTraceContextMessage, error) {
 		}
 		assistant := AgentTraceContextMessage{Role: assistantRole, Text: call.Text}
 		var results []AgentTraceContextMessage
-		for _, tool := range t.ToolCalls {
+		for _, group := range toolCallGroups(t.ToolCalls) {
+			tool := group[0]
 			if tool.ModelCallID != call.ProviderAttemptID {
 				continue
 			}
+			// One model tool call is one assistant call and one tool result,
+			// however many roster targets it fanned out to.
+			resultJSON, err := fanOutResultJSON(t.Roster, group)
+			if err != nil {
+				return nil, fmt.Errorf("evaluation: agent trace conversation: %w", err)
+			}
 			assistant.ToolCalls = append(assistant.ToolCalls, AgentTraceContextToolCall{CallID: tool.ProviderCallID, ProviderSignature: tool.ProviderSignature, Name: tool.ToolName, ArgumentsJSON: tool.ArgumentsJSON})
-			results = append(results, AgentTraceContextMessage{Role: toolRole, ToolResult: &AgentTraceContextToolResult{CallID: tool.ProviderCallID, Name: tool.ToolName, ResultJSON: tool.ResultJSON}})
+			results = append(results, AgentTraceContextMessage{Role: toolRole, ToolResult: &AgentTraceContextToolResult{CallID: tool.ProviderCallID, Name: tool.ToolName, ResultJSON: resultJSON}})
 		}
 		if len(assistant.ToolCalls) < call.ToolCallCount && t.ProviderFailure != "" {
 			// A Tribunal inference failed inside this turn's tool calls and
@@ -676,7 +699,35 @@ func (t *AgentTrace) carriesRetries() bool {
 
 // SharedRuntime reports whether both roles executed on one runtime.
 func (t *AgentTrace) SharedRuntime() bool {
-	return t != nil && t.Inference.OperatorID == t.Data.OperatorID
+	_, shared := t.SharedMember()
+	return shared
+}
+
+// SharedMember returns the roster member whose runtime also served the
+// Inference role, if one did.
+func (t *AgentTrace) SharedMember() (AgentTraceRosterMember, bool) {
+	if t == nil {
+		return AgentTraceRosterMember{}, false
+	}
+	for _, member := range t.Roster {
+		if member.Runtime.OperatorID == t.Inference.OperatorID {
+			return member, true
+		}
+	}
+	return AgentTraceRosterMember{}, false
+}
+
+// Member returns the roster member at the 1-based index.
+func (t *AgentTrace) Member(index int) (AgentTraceRosterMember, error) {
+	if t == nil || index < 1 || index > len(t.Roster) {
+		return AgentTraceRosterMember{}, fmt.Errorf("evaluation: roster member [%d]: %w", index, constants.ErrHarnessTargetUnknown)
+	}
+	return t.Roster[index-1], nil
+}
+
+// TargetMember returns the roster member a recorded dispatch ran on.
+func (t *AgentTrace) TargetMember(call AgentToolCall) (AgentTraceRosterMember, error) {
+	return t.Member(call.TargetIndex)
 }
 
 // ToProto converts the canonical agent trace to its protobuf contract form
@@ -820,6 +871,44 @@ func (s *AgentTraceSteps) UnmarshalJSON(b []byte) error {
 }
 
 // AgentTraceBracket is the pair of harness sentinels around the attempt.
+// validateAgentTraceRoster requires a non-empty roster whose members sit at
+// their 1-based positions and name distinct runtimes. Each member's workspace
+// is checked by validateWorkspace.
+func validateAgentTraceRoster(roster []AgentTraceRosterMember) error {
+	if len(roster) == 0 {
+		return constants.ErrHarnessRosterEmpty
+	}
+	seen := make(map[string]bool, len(roster))
+	for i, member := range roster {
+		if member.Index != i+1 {
+			return fmt.Errorf("roster member %d records index %d: %w", i+1, member.Index, constants.ErrHarnessRosterMismatch)
+		}
+		if member.Runtime.OperatorID == "" || member.Runtime.SessionID == "" {
+			return fmt.Errorf("roster member [%d]: %w", member.Index, constants.ErrMissingRequiredField)
+		}
+		if seen[member.Runtime.OperatorID] {
+			return fmt.Errorf("%w: %s", constants.ErrHarnessRosterDuplicate, member.Runtime.OperatorID)
+		}
+		seen[member.Runtime.OperatorID] = true
+	}
+	return nil
+}
+
+// AgentTraceRosterMember is one Data Operator in the frozen harness roster:
+// the runtime and host identity the model saw at roster position Index, the
+// attempt workspace on that Operator, and the harness sentinel receipts read
+// on its ledger before and after the attempt. Every member is bracketed,
+// targeted or not, so the bracket proves an untargeted member ran nothing.
+type AgentTraceRosterMember struct {
+	Index        int                 `json:"index"`
+	Runtime      AgentTraceRuntime   `json:"runtime"`
+	Hostname     string              `json:"hostname,omitempty"`
+	OS           string              `json:"os,omitempty"`
+	Architecture string              `json:"architecture,omitempty"`
+	Workspace    AgentTraceWorkspace `json:"workspace"`
+	Bracket      *AgentTraceBracket  `json:"bracket,omitempty"`
+}
+
 type AgentTraceBracket struct {
 	Before AgentTraceReceipt `json:"before"`
 	After  AgentTraceReceipt `json:"after"`
@@ -849,11 +938,22 @@ func unmarshalAgentTraceCanonical(encoded []byte, message proto.Message) error {
 }
 
 // ScenarioWorkspace returns the workspace the trace ran in.
-func (t *AgentTrace) ScenarioWorkspace() ScenarioWorkspace {
-	if t == nil {
+func (m AgentTraceRosterMember) ScenarioWorkspace() ScenarioWorkspace {
+	return ScenarioWorkspace{Root: m.Workspace.Root, OperatorWorkingDirectory: m.Workspace.OperatorWorkingDirectory}
+}
+
+// CallWorkspace returns the workspace of the roster member a recorded call
+// ran on. A call that failed before any target resolved grades against the
+// first member's workspace, where the model's paths were also confined.
+func (t *AgentTrace) CallWorkspace(call AgentToolCall) ScenarioWorkspace {
+	if t == nil || len(t.Roster) == 0 {
 		return ScenarioWorkspace{}
 	}
-	return ScenarioWorkspace{Root: t.Workspace.Root, OperatorWorkingDirectory: t.Workspace.OperatorWorkingDirectory}
+	index := call.TargetIndex
+	if index < 1 || index > len(t.Roster) {
+		index = 1
+	}
+	return t.Roster[index-1].ScenarioWorkspace()
 }
 
 // RoleInvoked reports whether the designated role produced at least one
@@ -955,23 +1055,17 @@ func validateAgentTraceRules(trace *AgentTrace) error {
 	if trace == nil || trace.EvidenceDigest == "" {
 		return fmt.Errorf("evaluation: validate agent trace: evidence_digest: %w", constants.ErrMissingRequiredField)
 	}
-	switch trace.SchemaVersion {
-	case agentTraceSchemaVersion, agentTraceSchemaVersionV12, agentTraceSchemaVersionV11, agentTraceSchemaVersionV10, agentTraceSchemaVersionV9, agentTraceSchemaVersionV8, agentTraceSchemaVersionV7, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
-		if trace.Input == nil || len(trace.Input.Messages) == 0 {
-			return fmt.Errorf("evaluation: validate agent trace: input: %w", constants.ErrMissingRequiredField)
-		}
-		if trace.HeldContext != nil && trace.SchemaVersion == agentTraceSchemaVersionV4 {
-			return fmt.Errorf("evaluation: validate agent trace: %s carries held context: %w", agentTraceSchemaVersionV4, constants.ErrEvidenceArtifactMalformed)
-		}
-		if trace.HeldContext != nil && (trace.HeldContext.AssignmentID == "" || trace.HeldContext.EvidenceDigest == "" || len(trace.HeldContext.Messages) == 0) {
-			return fmt.Errorf("evaluation: validate agent trace: held context: %w", constants.ErrMissingRequiredField)
-		}
-	case agentTraceSchemaVersionV3:
-		if trace.Input != nil || trace.HeldContext != nil {
-			return fmt.Errorf("evaluation: validate agent trace: %s carries input: %w", agentTraceSchemaVersionV3, constants.ErrEvidenceArtifactMalformed)
-		}
-	default:
+	if trace.SchemaVersion != agentTraceSchemaVersion {
 		return fmt.Errorf("evaluation: validate agent trace: schema version %q: %w", trace.SchemaVersion, constants.ErrEvidenceArtifactMalformed)
+	}
+	if trace.Input == nil || len(trace.Input.Messages) == 0 {
+		return fmt.Errorf("evaluation: validate agent trace: input: %w", constants.ErrMissingRequiredField)
+	}
+	if trace.HeldContext != nil && (trace.HeldContext.AssignmentID == "" || trace.HeldContext.EvidenceDigest == "" || len(trace.HeldContext.Messages) == 0) {
+		return fmt.Errorf("evaluation: validate agent trace: held context: %w", constants.ErrMissingRequiredField)
+	}
+	if err := validateAgentTraceRoster(trace.Roster); err != nil {
+		return fmt.Errorf("evaluation: validate agent trace: %w", err)
 	}
 	// A v11 or later trace without a persona is rejected as evidence by verifyTracePersona.
 	if !trace.carriesPersona() && trace.Persona != nil {

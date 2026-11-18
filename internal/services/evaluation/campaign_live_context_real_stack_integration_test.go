@@ -74,7 +74,7 @@ func TestRealStackLiveContext_ReturnsJustExecutedCommandAndExcludesSetup(t *test
 	require.NotNil(t, trace.ToolCalls[1].Retrieval)
 	require.Len(t, trace.ToolCalls[1].Retrieval.Receipts, 1, "only the shell command this investigation ran")
 	assert.Equal(t, trace.InvestigationID, trace.ToolCalls[1].Retrieval.Query.InvestigationID)
-	assert.Equal(t, env.dataOperatorID, trace.Data.OperatorID, "context must come from the Data Operator's ledger")
+	assert.Equal(t, env.dataOperatorID, trace.Roster[0].Runtime.OperatorID, "context must come from the Data Operator's ledger")
 	require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 
 	for _, mutation := range []struct {

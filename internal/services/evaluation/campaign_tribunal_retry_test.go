@@ -166,7 +166,7 @@ func TestRunTribunal_MalformedMemberRetryChainFailsTheDispatch(t *testing.T) {
 			}}
 			run := newTribunalAuthoringRun(t, true, intent, &tribunalAuthoringTools{})
 
-			_, err := run.runTribunal(context.Background(), AgentToolCall{CallID: "tool-1", ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: `{"command":"pwd"}`}, models.RunShellCommandRequest{Command: "pwd"})
+			_, err := run.runTribunal(context.Background(), AgentToolCall{CallID: "tool-1", ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: `{"command":"pwd"}`}, models.RunShellCommandRequest{Command: "pwd"}, run.trace.Roster[0])
 
 			require.ErrorIs(t, err, constants.ErrEvaluationDispatchFailed)
 			assert.Empty(t, run.trace.ProviderFailure, "a malformed answer is not a model outcome")
@@ -182,7 +182,7 @@ func TestRunTribunal_RecordsRetriedChainAndKeepsTheTemplateRetryFree(t *testing.
 	}}
 	run := newTribunalAuthoringRun(t, true, intent, &tribunalAuthoringTools{})
 
-	call, err := run.runTribunal(context.Background(), AgentToolCall{CallID: "tool-1", ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: `{"command":"pwd"}`}, models.RunShellCommandRequest{Command: "pwd"})
+	call, err := run.runTribunal(context.Background(), AgentToolCall{CallID: "tool-1", ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: `{"command":"pwd"}`}, models.RunShellCommandRequest{Command: "pwd"}, run.trace.Roster[0])
 
 	require.NoError(t, err)
 	assert.False(t, call.Success)
@@ -471,7 +471,7 @@ func TestRunTribunal_HoldsTheScenarioBudgetAndCreditsTheGatewaysRetryWaits(t *te
 			budget.expire()
 		}
 
-		_, err := run.runTribunal(context.Background(), record, proposal)
+		_, err := run.runTribunal(context.Background(), record, proposal, run.trace.Roster[0])
 
 		require.NoError(t, err)
 		assert.Equal(t, 1, held, "the budget is held while the Gateway deliberates")
@@ -489,7 +489,7 @@ func TestRunTribunal_HoldsTheScenarioBudgetAndCreditsTheGatewaysRetryWaits(t *te
 		run.budget = budget
 		intent.during = func() { setBudgetDeadline(budget, time.Now().Add(-time.Minute)) }
 
-		_, err := run.runTribunal(context.Background(), record, proposal)
+		_, err := run.runTribunal(context.Background(), record, proposal, run.trace.Roster[0])
 
 		require.NoError(t, err)
 		assert.Equal(t, context.DeadlineExceeded, budget.Err(), "the model's own time ran out")
@@ -505,7 +505,7 @@ func TestRunTribunal_HoldsTheScenarioBudgetAndCreditsTheGatewaysRetryWaits(t *te
 		run.budget = budget
 		before, _ := budget.Deadline()
 
-		_, err := run.runTribunal(context.Background(), record, proposal)
+		_, err := run.runTribunal(context.Background(), record, proposal, run.trace.Roster[0])
 
 		require.NoError(t, err)
 		after, _ := budget.Deadline()
@@ -519,7 +519,7 @@ func TestRunTribunal_HoldsTheScenarioBudgetAndCreditsTheGatewaysRetryWaits(t *te
 		run.budget = budget
 		intent.during = func() { setBudgetDeadline(budget, time.Now().Add(-time.Second)) }
 
-		_, err := run.runTribunal(context.Background(), record, proposal)
+		_, err := run.runTribunal(context.Background(), record, proposal, run.trace.Roster[0])
 
 		require.ErrorIs(t, err, constants.ErrEvaluationDispatchFailed)
 		assert.Zero(t, budgetHolds(budget), "every path releases")
@@ -534,7 +534,7 @@ func TestRunTribunal_HoldsTheScenarioBudgetAndCreditsTheGatewaysRetryWaits(t *te
 		run.executor.inference = intent
 		run.budget = budget
 
-		_, err := run.runTribunal(context.Background(), record, proposal)
+		_, err := run.runTribunal(context.Background(), record, proposal, run.trace.Roster[0])
 
 		require.ErrorIs(t, err, constants.ErrEvaluationDispatchFailed)
 		assert.Zero(t, budgetHolds(budget))

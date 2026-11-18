@@ -66,7 +66,7 @@ func testCampaignInitRequest(t *testing.T) CampaignInitRequest {
 		ScenarioArtifacts:          artifacts,
 		RepetitionCount:            1,
 		InferenceOperatorSessionID: "inf-session",
-		DataOperatorSessionID:      "data-session",
+		DataRoster:                 []*evalv1.EvaluationRosterMember{{Index: 1, OperatorId: "data-op", OperatorSessionId: "data-session"}},
 		Judge:                      testJudgeRegistryVariant("gemma4-e4b", DefaultJudgeServedModelTag),
 	}
 }

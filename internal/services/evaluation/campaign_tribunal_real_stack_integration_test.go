@@ -184,7 +184,7 @@ func tribunalExpectedApprovedArguments(trace *evaluation.AgentTrace) string {
 	return (models.RunShellCommandRequest{
 		Command: "echo", Args: []string{"HEALTHY"},
 		Timeout:    constants.DefaultShellCommandTimeout,
-		WorkingDir: trace.Workspace.Root,
+		WorkingDir: trace.Roster[0].Workspace.Root,
 	}).CanonicalJSON()
 }
 

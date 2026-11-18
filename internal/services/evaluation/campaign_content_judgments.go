@@ -60,7 +60,7 @@ func contentJudgeObjective(input ScenarioInputFixture, trace *AgentTrace, check 
 // seed is absent unless the role retrieved its receipt, exactly as for the role.
 func contentJudgeTypedObjective(req AssignmentExecutionRequest, trace *AgentTrace) judge.Objective {
 	input := req.ScenarioInput
-	ws := trace.ScenarioWorkspace()
+	ws := renderWorkspace
 	objective := judge.Objective{Task: ws.Render(input.UserPrompt)}
 	for _, turn := range input.Seed.Turns {
 		objective.Conversation = append(objective.Conversation, judge.ObjectiveTurn{Sender: turn.Sender, Text: ws.Render(turn.Content)})

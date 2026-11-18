@@ -301,6 +301,7 @@ func materializeScenarioBlueprint(suiteID string, blueprint ScenarioBlueprint, c
 		TrajectoryPolicy:          blueprint.TrajectoryPolicy,
 		TribunalCommands:          blueprint.TribunalCommands,
 		ExcludeWhenL2Enforced:     scenarioRequiresL2(blueprint),
+		FleetMinOperators:         uint32(blueprint.Input.Fleet.MinOperators),
 		PromptHint:                publicPromptHint(blueprint.Gold.PromptHint),
 		PublicCriteria:            publicCriteria,
 		PublicToolScoreDimensions: publicToolScoreDimensionsForBlueprint(blueprint),
@@ -394,6 +395,31 @@ func validateDefaultSuiteCategoryCounts(scenarios []*evalv1.EvaluationScenarioDe
 		if counts[category] != want {
 			return fmt.Errorf("evaluation: validate scenario catalog: %w: category %s expected %d scenarios, got %d", constants.ErrEvaluationScenarioContractInvalid, category.String(), want, counts[category])
 		}
+	}
+	return nil
+}
+
+// CatalogFleetSize is the largest harness roster any scenario in the catalog
+// needs: zero when every scenario runs on any roster.
+func CatalogFleetSize(catalog *evalv1.EvaluationScenarioCatalog) int {
+	size := 0
+	for _, scenario := range catalog.GetScenarios() {
+		size = max(size, int(scenario.GetFleetMinOperators()))
+	}
+	return size
+}
+
+// CatalogNeedsFleet reports whether any scenario in the catalog needs a
+// harness roster of more than one Data Operator.
+func CatalogNeedsFleet(catalog *evalv1.EvaluationScenarioCatalog) bool {
+	return CatalogFleetSize(catalog) > 1
+}
+
+// ValidateRosterForCatalog refuses a roster smaller than the catalog's
+// largest fleet scenario, before a run persists.
+func ValidateRosterForCatalog(topology CampaignOperatorTopology, catalog *evalv1.EvaluationScenarioCatalog) error {
+	if need := CatalogFleetSize(catalog); len(topology.Fleet) < need {
+		return fmt.Errorf("evaluation: catalog needs %d Data Operators, the roster holds %d; start more Data Operators or pass --data-operators: %w", need, len(topology.Fleet), constants.ErrHarnessRosterTooSmall)
 	}
 	return nil
 }

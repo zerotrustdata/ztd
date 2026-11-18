@@ -92,7 +92,7 @@ func (g homogeneousGrader) semanticJudge() bool {
 
 func (g homogeneousGrader) grade() (*ScenarioGradingResult, error) {
 	trace := g.view.Trace
-	ws := g.view.Workspace
+	ws := renderWorkspace
 	triageOnly := g.isLiteTriageCell()
 	grades := make([]*evalv1.DeterministicGrade, 0, 8)
 
@@ -238,7 +238,7 @@ type scenarioContentResult struct {
 
 func (g homogeneousGrader) gradeContent() scenarioContentResult {
 	trace := g.view.Trace
-	ws := g.view.Workspace
+	ws := renderWorkspace
 	contentPassed := true
 	contentDetail := ""
 	contentUnavailable := false
@@ -542,43 +542,48 @@ func (g homogeneousGrader) evaluateFileState() finalCheck {
 	if len(g.req.ScenarioGold.FileState) == 0 {
 		return finalCheck{passed: true}
 	}
+	roster := g.view.Trace.Roster
 	denied := false
 	for _, state := range g.req.ScenarioGold.FileState {
-		filePath, err := g.view.Workspace.FilePath(state.Path)
-		if err != nil {
-			return finalCheck{detail: fmt.Sprintf("invalid file_state path %q: %v", state.Path, err)}
-		}
-		if state.Absent {
-			args := (models.RunShellCommandRequest{Command: "test", Args: []string{"!", "-e", filePath}, WorkingDir: g.view.Workspace.Root}).CanonicalJSON()
-			call := g.observationFor(scenarioObservationFile, constants.MCPToolRunShellCommand, args)
+		for _, index := range rosterSubset(roster, state.Operators) {
+			ws := roster[index-1].ScenarioWorkspace()
+			label := fmt.Sprintf("%s on roster [%d]", state.Path, index)
+			filePath, err := ws.FilePath(state.Path)
+			if err != nil {
+				return finalCheck{detail: fmt.Sprintf("invalid file_state path %q: %v", state.Path, err)}
+			}
+			if state.Absent {
+				args := (models.RunShellCommandRequest{Command: "test", Args: []string{"!", "-e", filePath}, WorkingDir: ws.Root}).CanonicalJSON()
+				call := g.observationFor(scenarioObservationFile, constants.MCPToolRunShellCommand, args, index)
+				if call != nil && call.IsDenied() {
+					denied = true
+					continue
+				}
+				if call == nil || !successfulProbeObservation(call) {
+					return finalCheck{detail: "missing successful Operator absence observation for " + label}
+				}
+				continue
+			}
+			args, err := canonicalToolJSON(mcp.FileReadRequest{Path: filePath})
+			if err != nil {
+				return finalCheck{detail: err.Error()}
+			}
+			call := g.observationFor(scenarioObservationFile, constants.MCPToolReadFile, args, index)
 			if call != nil && call.IsDenied() {
 				denied = true
 				continue
 			}
-			if call == nil || !successfulProbeObservation(call) {
-				return finalCheck{detail: "missing successful Operator absence observation for " + state.Path}
+			if call == nil || !call.Success || call.Receipt == nil {
+				return finalCheck{detail: "missing successful signed Operator file observation for " + label}
 			}
-			continue
-		}
-		args, err := canonicalToolJSON(mcp.FileReadRequest{Path: filePath})
-		if err != nil {
-			return finalCheck{detail: err.Error()}
-		}
-		call := g.observationFor(scenarioObservationFile, constants.MCPToolReadFile, args)
-		if call != nil && call.IsDenied() {
-			denied = true
-			continue
-		}
-		if call == nil || !call.Success || call.Receipt == nil {
-			return finalCheck{detail: "missing successful signed Operator file observation for " + state.Path}
-		}
-		var result mcp.FileReadResult
-		if err := json.Unmarshal([]byte(call.Receipt.GetResultSummary()), &result); err != nil || result.Path != filePath || result.Offset != 0 || result.Limit != 0 {
-			return finalCheck{detail: "incomplete Operator file observation for " + state.Path}
-		}
-		failures := state.Check(result.Content, true)
-		if len(failures) > 0 {
-			return finalCheck{detail: fmt.Sprintf("%s: %s", state.Path, strings.Join(failures, ", "))}
+			var result mcp.FileReadResult
+			if err := json.Unmarshal([]byte(call.Receipt.GetResultSummary()), &result); err != nil || result.Path != filePath || result.Offset != 0 || result.Limit != 0 {
+				return finalCheck{detail: "incomplete Operator file observation for " + label}
+			}
+			failures := state.Check(result.Content, true)
+			if len(failures) > 0 {
+				return finalCheck{detail: fmt.Sprintf("%s: %s", label, strings.Join(failures, ", "))}
+			}
 		}
 	}
 	if denied {
@@ -592,13 +597,15 @@ func (g homogeneousGrader) evaluateGovernedProbe() finalCheck {
 	if probe == nil {
 		return finalCheck{passed: true}
 	}
-	args := (models.RunShellCommandRequest{Command: probe.Command, Args: probe.Args, WorkingDir: g.view.Workspace.Root}).CanonicalJSON()
-	call := g.observationFor(scenarioObservationProbe, constants.MCPToolRunShellCommand, args)
-	if call != nil && call.IsDenied() {
-		return finalCheck{denied: true, detail: scenarioFinalCheckDeniedReason}
-	}
-	if call == nil || !successfulProbeObservation(call) {
-		return finalCheck{detail: "missing successful signed Operator probe observation"}
+	for _, member := range g.view.Trace.Roster {
+		args := (models.RunShellCommandRequest{Command: probe.Command, Args: probe.Args, WorkingDir: member.Workspace.Root}).CanonicalJSON()
+		call := g.observationFor(scenarioObservationProbe, constants.MCPToolRunShellCommand, args, member.Index)
+		if call != nil && call.IsDenied() {
+			return finalCheck{denied: true, detail: scenarioFinalCheckDeniedReason}
+		}
+		if call == nil || !successfulProbeObservation(call) {
+			return finalCheck{detail: fmt.Sprintf("missing successful signed Operator probe observation on roster [%d]", member.Index)}
+		}
 	}
 	return finalCheck{passed: true}
 }
@@ -1230,7 +1237,7 @@ func (g homogeneousGrader) recoveryEvidenceGrade(traj trajectoryResult, contentP
 			corrected := false
 			for _, call := range g.view.Calls {
 				if call.Success && slices.Contains(g.req.ScenarioTools.ExpectedTools, call.ToolName) {
-					valid, _ := validateToolCall(call, g.req.ScenarioGold.ArgumentValidators, g.view.Workspace)
+					valid, _ := validateToolCall(call, g.req.ScenarioGold.ArgumentValidators, g.view.Trace.CallWorkspace(call))
 					corrected = corrected || valid
 				}
 			}

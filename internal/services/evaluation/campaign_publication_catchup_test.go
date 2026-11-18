@@ -171,7 +171,14 @@ func TestPublishRunCatchUpRebuildsProofWhenAgentTraceIsUnpublished(t *testing.T)
 	require.NotEmpty(t, assignments)
 	proofKeys, proofArtifacts := recordedProofArtifacts(t, store, run, assignments)
 	traced := assignments[0]
-	traceBody, err := SealAgentTrace(&AgentTrace{RunID: run.GetRunId(), AssignmentID: traced.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Input: testAgentTraceInput(), FinalOutput: "Checkout fails on payment timeouts."})
+	trace := &AgentTrace{
+		RunID: run.GetRunId(), AssignmentID: traced.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary",
+		Roster:      rosterOfOne(AgentTraceRuntime{OperatorID: "data-op", SessionID: "data-session"}, AgentTraceWorkspace{}),
+		Input:       testAgentTraceInput(),
+		FinalOutput: "Checkout fails on payment timeouts.",
+	}
+	withRosterPrompt(trace)
+	traceBody, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 	require.NoError(t, store.SaveAssignmentAgentTrace(ctx, run.GetRunId(), traced.GetAssignmentId(), traceBody))
 	require.NoError(t, publicationState.Save(ctx, &CampaignPublicationState{

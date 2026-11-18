@@ -49,7 +49,7 @@ func workspacePathCases(root string) []struct {
 		{"read the host password file", constants.MCPToolReadFile, `{"path":"/etc/passwd"}`, false},
 		{"search the filesystem root", constants.MCPToolSearchDirectory, `{"path":"/","pattern":"AUTH_FAILURE"}`, false},
 		{"search the operator working directory", constants.MCPToolSearchDirectory, `{"path":"` + workspacePathTestOperatorDir + `","pattern":"ERROR"}`, false},
-		{"relative path resolves against the operator directory", constants.MCPToolReadFile, `{"path":"logs/app.log"}`, false},
+		{"relative path resolves against the workspace root", constants.MCPToolReadFile, `{"path":"logs/app.log"}`, true},
 		{"traversal out of the workspace", constants.MCPToolSearchFile, `{"path":"` + root + `/../ws-0000000000000000/a.log","pattern":"x"}`, false},
 		{"sibling with the workspace as a name prefix", constants.MCPToolReadFile, `{"path":"` + root + `-other/a.log"}`, false},
 		{"list the workspace", constants.MCPToolListDirectory, `{"path":"` + root + `"}`, true},
@@ -83,7 +83,8 @@ func TestWorkspacePathFailure_ConfinesFileToolsToTheAttemptWorkspace(t *testing.
 	for _, tt := range workspacePathCases(workspace.Root) {
 		t.Run(tt.name, func(t *testing.T) {
 			args := workspacePathRequest(t, tt.tool, tt.args).Arguments
-			failure := args.WorkspacePathFailure(workspace)
+			_, failure, err := args.ForWorkspace(workspace)
+			require.NoError(t, err)
 			if tt.inScope {
 				assert.Nil(t, failure)
 				return
@@ -100,26 +101,30 @@ func TestWorkspacePathFailure_ConfinesFileToolsToTheAttemptWorkspace(t *testing.
 // Other native tools carry no file path and are not confined here.
 func TestWorkspacePathFailure_IgnoresToolsWithoutAPath(t *testing.T) {
 	args := workspacePathRequest(t, constants.MCPToolEventReceiptList, `{}`).Arguments
-	assert.Nil(t, args.WorkspacePathFailure(workspacePathTestWorkspace(t)))
+	_, failure, err := args.ForWorkspace(workspacePathTestWorkspace(t))
+	require.NoError(t, err)
+	assert.Nil(t, failure)
 }
 
 // An out-of-workspace path is a model-visible tool failure recorded before any
 // governed dispatch: the run has no executor here, so reaching dispatch panics.
 func TestRunNativeMCPTool_RejectsOutOfWorkspacePathBeforeDispatch(t *testing.T) {
 	workspace := workspacePathTestWorkspace(t)
-	run := &agentRun{trace: &AgentTrace{}, workspace: workspace}
+	run := &agentRun{trace: &AgentTrace{Roster: rosterOfOne(AgentTraceRuntime{}, AgentTraceWorkspace(workspace))}}
 	for _, tt := range workspacePathCases(workspace.Root) {
 		if tt.inScope {
 			continue
 		}
 		t.Run(tt.name, func(t *testing.T) {
 			request := workspacePathRequest(t, tt.tool, tt.args)
-			record := AgentToolCall{ToolName: tt.tool, ArgumentsJSON: request.ArgumentsJSON}
+			record := onTarget(AgentToolCall{ToolName: tt.tool, ArgumentsJSON: request.ArgumentsJSON})
 
+			spec, err := catalogToolSpec(tt.tool)
+			require.NoError(t, err)
 			var completed AgentToolCall
-			var err error
 			require.NotPanics(t, func() {
-				completed, err = run.runNativeMCPTool(context.Background(), record, request)
+				out := run.runOnTarget(context.Background(), spec, request, record)
+				completed, err = out.record, out.err
 			})
 			require.NoError(t, err)
 			assert.False(t, completed.Success)

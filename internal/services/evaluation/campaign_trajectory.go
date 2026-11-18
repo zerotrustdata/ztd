@@ -37,19 +37,22 @@ func (c AgentToolCall) IsExecutedFailure() bool {
 // agentGradingView is the typed trace content deterministic grading reads:
 // only the tool calls the model executed, never fixture-supplied history.
 type agentGradingView struct {
-	Trace     *AgentTrace
-	Workspace ScenarioWorkspace
-	Calls     []AgentToolCall
+	Trace *AgentTrace
+	Calls []AgentToolCall
 }
+
+// renderWorkspace renders model-facing fixture text the same way on every
+// roster member; grading of a call's paths uses that call's own workspace
+// (AgentTrace.CallWorkspace).
+var renderWorkspace = ScenarioWorkspace{}
 
 func newAgentGradingView(trace *AgentTrace) (agentGradingView, error) {
 	if trace == nil {
 		return agentGradingView{}, fmt.Errorf("evaluation: agent grading view: trace: %w", constants.ErrMissingRequiredField)
 	}
 	return agentGradingView{
-		Trace:     trace,
-		Workspace: trace.ScenarioWorkspace(),
-		Calls:     trace.ToolCalls,
+		Trace: trace,
+		Calls: trace.ToolCalls,
 	}, nil
 }
 
@@ -237,7 +240,6 @@ func readTrajectoryPolicy(tools ScenarioToolExpectations, gold ScenarioGoldCrite
 		}
 	}
 
-	ws := view.Workspace
 	calls := view.Calls
 
 	policy := tools.TrajectoryPolicy
@@ -307,7 +309,7 @@ func readTrajectoryPolicy(tools ScenarioToolExpectations, gold ScenarioGoldCrite
 				continue
 			}
 			expectedCalled = true
-			valid, failure := validateToolCall(call, validators, ws)
+			valid, failure := validateToolCall(call, validators, view.Trace.CallWorkspace(call))
 			observed := call.Success && !call.IsDenied()
 			if gold.RecoveryExpectation.Kind == recoveryKindMissingResource {
 				// This task deliberately requests an absent file and asks for a
@@ -417,7 +419,7 @@ func trajectoryOutcomeName(outcome evalv1.EvaluationTrajectoryOutcome) string {
 }
 
 func failureSentences(tools ScenarioToolExpectations, gold ScenarioGoldCriteria, traj trajectoryResult, contentCheckPassed bool, contentFailingRule string, view agentGradingView) (privateReason, publicReason string) {
-	ws := view.Workspace
+	ws := renderWorkspace
 	if traj.Passed && contentCheckPassed {
 		return "", ""
 	}

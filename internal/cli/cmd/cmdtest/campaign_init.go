@@ -40,7 +40,7 @@ func EvaluationTestCampaignInitRequest(t *testing.T) evaluation.CampaignInitRequ
 		RepetitionCount:            1,
 		Platform:                   evaluation.PlatformIdentity{Release: "v2.3.0"},
 		InferenceOperatorSessionID: "inf-session",
-		DataOperatorSessionID:      "data-session",
+		DataRoster:                 []*evalv1.EvaluationRosterMember{{Index: 1, OperatorId: "data-operator", OperatorSessionId: "data-session"}},
 		Judge: &evalv1.ModelVariant{
 			VariantId:      "gemma4-e4b",
 			ServedModelTag: evaluation.DefaultJudgeServedModelTag,

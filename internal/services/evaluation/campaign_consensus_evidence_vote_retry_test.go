@@ -72,7 +72,7 @@ func retriedVoteTrace(t *testing.T, retries int) (*AgentTrace, oracletest.Signer
 	after := ledger.executed("after", string(constants.ActionTypeFsRead))
 
 	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
-	trace.Bracket = bracketOf(before, after)
+	trace.Roster[0].Bracket = bracketOf(before, after)
 	trace.ModelCalls = []AgentModelCall{completedModelCall("turn", model)}
 	trace.ToolCalls = []AgentToolCall{allowedToolCall("tool", tool)}
 	trace.ToolCalls[0].ConsensusInferences = governance.WrapConsensusInferences([]*operatorv1.ConsensusVoteInference{

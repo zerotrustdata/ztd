@@ -23,7 +23,6 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	cliconfig "github.com/zerotrustdata/ztd/internal/cli/config"
-	cliop "github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/netutil"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
@@ -158,7 +157,7 @@ func newEvalRunStack(t *testing.T, opts evalRunOptions) *evalRunStack {
 	require.NoError(t, err)
 	operators, _, err := gatewayClient.ListOperators(ctx)
 	require.NoError(t, err)
-	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, inferenceWorkload.OperatorSessionID, dataWorkload.OperatorID, nil)
+	topology, err := evaluation.ResolveCampaignOperatorTopology(operators, inferenceWorkload.OperatorSessionID, evaluation.DataFleetSelection{OperatorIDs: []string{dataWorkload.OperatorID}}, nil)
 	require.NoError(t, err)
 	topology, err = topology.WithAnchors(operators)
 	require.NoError(t, err)
@@ -208,7 +207,7 @@ func newEvalRunStack(t *testing.T, opts evalRunOptions) *evalRunStack {
 		ScenarioArtifacts:          artifacts,
 		RepetitionCount:            1,
 		InferenceOperatorSessionID: inferenceWorkload.OperatorSessionID,
-		DataOperatorSessionID:      dataWorkload.OperatorSessionID,
+		DataRoster:                 []*evalv1.EvaluationRosterMember{{Index: 1, OperatorId: dataWorkload.OperatorID, OperatorSessionId: dataWorkload.OperatorSessionID}},
 		Judge:                      &evalv1.ModelVariant{VariantId: "gemma4-e4b", ProviderClass: "ollama", ServedModelTag: evaluation.DefaultJudgeServedModelTag, ModelDigest: fixtures.ScriptedModelDigest(t, evaluation.DefaultJudgeServedModelTag)},
 	}
 
@@ -220,9 +219,7 @@ func newEvalRunStack(t *testing.T, opts evalRunOptions) *evalRunStack {
 	}
 	store := evaluation.NewStore(evidenceFiles)
 	persona := harnessclient.Persona{ID: evalRunPersonaID, CLISessionID: authContext.CLISessionID, UserID: authContext.UserID}
-	sentinel, err := drive.NewSentinel(gatewayClient, persona, map[cases.Executor]cliop.Target{
-		cases.ExecutorOutbound: {OperatorID: dataWorkload.OperatorID, OperatorSessionID: dataWorkload.OperatorSessionID},
-	})
+	sentinel, err := drive.NewTargetSentinel(gatewayClient, persona)
 	require.NoError(t, err)
 	inference := evalRunInference{client: appClient, cliSessionID: persona.CLISessionID}
 	residencyDispatcher, err := evaluation.NewGovernedOllamaModelCommandDispatcher(gatewayClient, persona)

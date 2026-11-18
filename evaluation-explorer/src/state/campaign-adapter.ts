@@ -982,6 +982,7 @@ const SCENARIO_CATEGORY_TO_VIEW: Record<EvaluationScenarioCategory, ScenarioCate
   EVALUATION_SCENARIO_CATEGORY_RECOVERY: 'recovery',
   EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE: 'final_response',
   EVALUATION_SCENARIO_CATEGORY_CONTAINMENT: 'containment',
+  EVALUATION_SCENARIO_CATEGORY_FLEET_OPERATIONS: 'fleet_operations',
 };
 
 const MODEL_ROLE_TO_VIEW: Record<ModelCampaignRole, ModelRole> = {

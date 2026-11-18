@@ -125,6 +125,9 @@ func validateScenarioContract(blueprint ScenarioBlueprint, catalog *agentToolCat
 	if err := validateModelAuthoredSamplesVisible(blueprint); err != nil {
 		return err
 	}
+	if err := validateFleet(blueprint); err != nil {
+		return err
+	}
 	if err := validateWorkspaceFiles(blueprint); err != nil {
 		return err
 	}
@@ -421,6 +424,13 @@ func validateArgumentValidators(blueprint ScenarioBlueprint, catalog *agentToolC
 			if hasRegex && (len(constraint.RegexMatches) == 0 || len(constraint.RegexRejects) == 0) {
 				return scenarioContractError(blueprint, "regex constraint on %q.%q needs both match and reject samples", validator.ToolName, constraint.Name)
 			}
+			// Regex samples are matched literally, never rendered, so a
+			// workspace token in one is a sample no model argument can meet.
+			if slices.ContainsFunc(append(slices.Clone(constraint.RegexMatches), constraint.RegexRejects...), func(sample string) bool {
+				return strings.Contains(sample, ScenarioWorkspaceToken)
+			}) {
+				return scenarioContractError(blueprint, "regex samples of %q.%q contain an unrendered workspace token", validator.ToolName, constraint.Name)
+			}
 		}
 	}
 	return nil
@@ -641,10 +651,15 @@ func validateWorkspaceFiles(blueprint ScenarioBlueprint) error {
 		if err := validateWorkspaceRelPath(file.RelPath); err != nil {
 			return scenarioContractErrorWithCause(blueprint, err, "workspace file %q is not a clean relative path", file.RelPath)
 		}
-		if _, dup := seen[file.RelPath]; dup {
-			return scenarioContractError(blueprint, "duplicate workspace file %q", file.RelPath)
+		// One path may hold different content on different roster members;
+		// each member holds at most one file per path.
+		for _, member := range fixtureMembers(blueprint, file.Operators) {
+			key := fmt.Sprintf("%d\x00%s", member, file.RelPath)
+			if _, dup := seen[key]; dup {
+				return scenarioContractError(blueprint, "duplicate workspace file %q on roster [%d]", file.RelPath, member)
+			}
+			seen[key] = struct{}{}
 		}
-		seen[file.RelPath] = struct{}{}
 		if file.RelPath == scenarioCaseMemoryFile && blueprint.Input.Seed.CaseMemory != nil {
 			return scenarioContractError(blueprint, "workspace file collides with the seeded case notes")
 		}
@@ -747,4 +762,60 @@ func validateGoldEvidenceReferences(blueprint ScenarioBlueprint) error {
 		}
 	}
 	return nil
+}
+
+// validateFleet checks a scenario's harness roster requirement: every roster
+// position its workspace files, seeds, and file states name lies in
+// [1, Fleet.MinOperators], and a scenario that names positions declares a
+// fleet. Positions are listed once each.
+func validateFleet(blueprint ScenarioBlueprint) error {
+	need := blueprint.Input.Fleet.MinOperators
+	if need < 0 || need == 1 {
+		return scenarioContractError(blueprint, "fleet min_operators %d: a fleet holds at least two Operators; omit it for any roster", need)
+	}
+	check := func(what string, operators []int) error {
+		if len(operators) == 0 {
+			return nil
+		}
+		if need == 0 {
+			return scenarioContractError(blueprint, "%s names roster positions but the scenario declares no fleet", what)
+		}
+		seen := make(map[int]bool, len(operators))
+		for _, index := range operators {
+			if index < 1 || index > need || seen[index] {
+				return scenarioContractError(blueprint, "%s names roster position %d outside [1, %d] or twice", what, index, need)
+			}
+			seen[index] = true
+		}
+		return nil
+	}
+	for _, file := range blueprint.Input.WorkspaceFiles {
+		if err := check("workspace file "+file.RelPath, file.Operators); err != nil {
+			return err
+		}
+	}
+	for _, seed := range blueprint.Input.Seed.ToolCalls {
+		if err := check("seed "+seed.ToolName, seed.Operators); err != nil {
+			return err
+		}
+	}
+	for _, state := range blueprint.Gold.FileState {
+		if err := check("file state "+state.Path, state.Operators); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// fixtureMembers lists the roster positions a fixture names: every position
+// of the scenario's fleet (or the one member of any roster) when empty.
+func fixtureMembers(blueprint ScenarioBlueprint, operators []int) []int {
+	if len(operators) > 0 {
+		return operators
+	}
+	members := make([]int, 0, max(blueprint.Input.Fleet.MinOperators, 1))
+	for i := 1; i <= max(blueprint.Input.Fleet.MinOperators, 1); i++ {
+		members = append(members, i)
+	}
+	return members
 }

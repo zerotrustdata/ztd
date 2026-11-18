@@ -182,7 +182,7 @@ func TestCampaignControllerKeepsLegacyMissingInvestigationUnchanged(t *testing.T
 		CampaignID:                 req.CampaignID,
 		RunID:                      req.RunID,
 		InferenceOperatorSessionID: "inf-session",
-		DataOperatorSessionID:      "data-session",
+		DataRoster:                 []*evalv1.EvaluationRosterMember{{Index: 1, OperatorId: "data-op", OperatorSessionId: "data-session"}},
 		PlatformRelease:            req.Platform.Release,
 	})
 	require.NoError(t, err)

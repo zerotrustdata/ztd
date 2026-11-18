@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -146,7 +147,7 @@ func evalBindDataOperator(
 	fileSvc fs.RuntimeFileService,
 	authContext *auth.ClientAuthContext,
 	operators []*operatorv1.OperatorDocument,
-	dataSessionID string,
+	dataSessionIDs []string,
 	autoBind bool,
 ) (*auth.ClientAuthContext, error) {
 	client := deps.bindClientFactory(cfg)
@@ -154,11 +155,17 @@ func evalBindDataOperator(
 	if err != nil {
 		return nil, err
 	}
-	if slices.Contains(bound, dataSessionID) {
+	var missing []string
+	for _, sessionID := range dataSessionIDs {
+		if !slices.Contains(bound, sessionID) {
+			missing = append(missing, sessionID)
+		}
+	}
+	if len(missing) == 0 {
 		return authContext, nil
 	}
 	if !autoBind {
-		return nil, fmt.Errorf("%w: session %s", constants.ErrDataOperatorNotBound, dataSessionID)
+		return nil, fmt.Errorf("%w: sessions %s", constants.ErrDataOperatorNotBound, strings.Join(missing, ", "))
 	}
 	targets := make([]string, 0, len(bound)+1)
 	for _, sessionID := range bound {
@@ -168,7 +175,7 @@ func evalBindDataOperator(
 			targets = append(targets, sessionID)
 		}
 	}
-	return evalBindSessions(cmd, cfg, fileSvc, client, authContext, append(targets, dataSessionID))
+	return evalBindSessions(cmd, cfg, fileSvc, client, authContext, append(targets, missing...))
 }
 
 func evalListOperators(
@@ -239,12 +246,12 @@ func evalPreflightGatewayGovernance(
 	if err != nil {
 		return evaluation.RunGovernance{}, fmt.Errorf("evaluation: decision provider preflight: %w", err)
 	}
-	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", spec.GetInvestigation().GetDataOperatorId(), evaluation.HostedProviderClasses(spec.GetModelRegistry(), spec.GetJudgeVariant()))
+	inference, err := evaluation.SelectInferenceOperator(operators, "", evaluation.HostedProviderClasses(spec.GetModelRegistry(), spec.GetJudgeVariant()))
 	if err != nil {
 		return evaluation.RunGovernance{}, fmt.Errorf("evaluation: decision provider preflight: %w", err)
 	}
 	if health.Consensus.VoteKind == models.ConsensusVoteKindDecision {
-		if err := evaluation.ValidateConsensusProviderIsolation(binding, operators, topology.Inference.OperatorID); err != nil {
+		if err := evaluation.ValidateConsensusProviderIsolation(binding, operators, inference.OperatorID); err != nil {
 			return evaluation.RunGovernance{}, err
 		}
 	}

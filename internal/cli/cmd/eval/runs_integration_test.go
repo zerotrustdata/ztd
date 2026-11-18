@@ -141,7 +141,7 @@ func TestRunsShow_AfterPrepare(t *testing.T) {
 	assert.Equal(t, "run-a-1", payload.RunID)
 	assert.Equal(t, "eval-a", payload.CampaignID)
 	assert.Equal(t, "store-only-inference-session", payload.InferenceSession)
-	assert.Equal(t, "store-only-data-session", payload.DataSession)
+	assert.Equal(t, []string{"store-only-data-session"}, payload.DataRoster)
 	assert.Equal(t, uint32(testModelRoleCells(t)), payload.Queued)
 	assert.Nil(t, payload.Holder)
 }
@@ -299,7 +299,7 @@ func TestRunsStart_DryRunJSON(t *testing.T) {
 	assert.Equal(t, uint64(testModelRoleCells(t)), payload.CellCount)
 	assert.False(t, payload.SessionsResolved)
 	assert.Empty(t, payload.InferenceSession)
-	assert.Empty(t, payload.DataSession)
+	assert.Empty(t, payload.DataRoster)
 	assert.Equal(t, []string{"qwen3:4b"}, payload.ModelTags)
 }
 
@@ -329,7 +329,8 @@ func TestRunsStart_PrepareOnlyBindsTheOperatorSessions(t *testing.T) {
 	run, err := env.store(t).LoadRun(context.Background(), "run-a-1")
 	require.NoError(t, err)
 	assert.Equal(t, env.inferenceSession, run.GetCampaignBinding().GetInferenceOperatorSessionId())
-	assert.Equal(t, env.dataSession, run.GetCampaignBinding().GetDataOperatorSessionId())
+	require.Len(t, run.GetCampaignBinding().GetDataRoster(), 1)
+	assert.Equal(t, env.dataSession, run.GetCampaignBinding().GetDataRoster()[0].GetOperatorSessionId())
 }
 
 func TestRunsStart_PersistentResolvesFrozenDataOperator(t *testing.T) {
@@ -354,12 +355,14 @@ func TestRunsStart_PersistentResolvesFrozenDataOperator(t *testing.T) {
 		PrepareOnly: true,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, env.dataOperatorID, result.Topology.Data.OperatorID)
-	assert.Equal(t, env.dataSession, result.Topology.Data.OperatorSessionID)
+	require.Len(t, result.Topology.Fleet, 1)
+	assert.Equal(t, env.dataOperatorID, result.Topology.Fleet[0].OperatorID)
+	assert.Equal(t, env.dataSession, result.Topology.Fleet[0].OperatorSessionID)
 
 	run, err := env.store(t).LoadRun(context.Background(), "run-persistent")
 	require.NoError(t, err)
-	assert.Equal(t, env.dataSession, run.GetCampaignBinding().GetDataOperatorSessionId())
+	require.Len(t, run.GetCampaignBinding().GetDataRoster(), 1)
+	assert.Equal(t, env.dataSession, run.GetCampaignBinding().GetDataRoster()[0].GetOperatorSessionId())
 }
 
 func TestRunsStart_PersistentFailsPreflightWhenFrozenDataOperatorIsUnavailable(t *testing.T) {
@@ -441,7 +444,7 @@ func TestRunsStart_PersistentRejectsReplacementOperatorAfterReenrollment(t *test
 	require.NotEqual(t, oldSession, workload.OperatorSessionID)
 	operators, err := stackRun.stack.Gateway.Service.GetRegistrationService().ListUserOperators(env.cmd.Context(), stackRun.stack.Identity.UserID)
 	require.NoError(t, err)
-	_, err = evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", env.dataOperatorID, nil)
+	_, err = evaluation.ResolveCampaignOperatorTopology(operators, "", evaluation.DataFleetSelection{OperatorIDs: []string{env.dataOperatorID}}, nil)
 	require.ErrorIs(t, err, constants.ErrDataOperatorNotFound)
 	assert.Zero(t, stackRun.stack.Provider.ChatCount(), "re-enrollment must not silently replace a persistent investigation's frozen Operator")
 }

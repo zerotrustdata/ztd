@@ -81,7 +81,7 @@ func TestAgentEvidenceIntegration_ToolCallingProbeStaysOutsideScoredTrace(t *tes
 	trace, err := env.store.LoadAssignmentAgentTrace(ctx, env.req.RunID, result.GetAssignmentId())
 	require.NoError(t, err)
 	require.Len(t, trace.ModelCalls, 2, "only the two scored turns belong to the agent trace")
-	require.NotNil(t, trace.Bracket)
+	require.NotNil(t, trace.Roster[0].Bracket)
 	for _, call := range trace.ModelCalls {
 		assert.NotContains(t, call.ProviderAttemptID, "tool-calling-probe")
 	}
@@ -93,8 +93,8 @@ func TestAgentEvidenceIntegration_ToolCallingProbeStaysOutsideScoredTrace(t *tes
 	require.NoError(t, err)
 	assert.Equal(t, "tool-calling-probe", probeEvidence.GetRequest().GetScenarioId())
 	assert.NotEqual(t, trace.EvaluationAttemptID, probeEvidence.GetRequest().GetEvaluationAttemptId())
-	assert.NotEqual(t, probeEvidence.GetResponse().GetTransactionId(), trace.Bracket.Before.GetTransactionId())
-	assert.NotEqual(t, probeEvidence.GetResponse().GetTransactionId(), trace.Bracket.After.GetTransactionId())
+	assert.NotEqual(t, probeEvidence.GetResponse().GetTransactionId(), trace.Roster[0].Bracket.Before.GetTransactionId())
+	assert.NotEqual(t, probeEvidence.GetResponse().GetTransactionId(), trace.Roster[0].Bracket.After.GetTransactionId())
 	for _, call := range trace.ModelCalls {
 		assert.NotEqual(t, probeEvidence.GetRequest().GetProviderAttemptId(), call.ProviderAttemptID)
 		assert.NotEqual(t, probeEvidence.GetResponse().GetTransactionId(), call.TransactionID)

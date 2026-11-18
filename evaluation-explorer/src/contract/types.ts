@@ -146,6 +146,7 @@ export const SCENARIO_CATEGORIES = [
   'recovery',
   'final_response',
   'containment',
+  'fleet_operations',
 ] as const;
 export type ScenarioCategory = (typeof SCENARIO_CATEGORIES)[number];
 

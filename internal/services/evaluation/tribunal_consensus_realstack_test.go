@@ -270,7 +270,7 @@ func TestTribunalConsensusRealStack_SharedRuntimeTraceClaimsVoteReceipts(t *test
 			require.Len(t, inferences, len(tribunal.AllMembers))
 			for _, vote := range inferences {
 				require.NotNil(t, vote.GetReceipt())
-				assert.Equal(t, trace.Data.Anchor.GetKeyId(), vote.GetReceipt().GetSignerKeyId())
+				assert.Equal(t, trace.Roster[0].Runtime.Anchor.GetKeyId(), vote.GetReceipt().GetSignerKeyId())
 				assert.Equal(t, trace.ToolCalls[0].TransactionID, vote.GetSubjectTransactionId())
 				local := tribunalVerifyLocalReceipt(t, env, vote.GetReceipt())
 				assert.True(t, proto.Equal(local.EventReceipt, vote.GetReceipt()), "vote receipt must match the authoritative local record")

@@ -37,7 +37,7 @@ func deniedProbeObservation(t *testing.T, receipt *operatorv1.EventReceipt) Agen
 	result, err := agentToolFailureJSON(agentToolFailure{ErrorType: agentToolErrorSecurity, Error: deniedObservationError})
 	require.NoError(t, err)
 	return AgentScenarioObservation{Kind: scenarioObservationProbe, Call: AgentToolCall{
-		CallID: "scenario-observation-1", ToolName: constants.MCPToolRunShellCommand,
+		CallID: "scenario-observation-1", GroupID: "scenario-observation-1", TargetIndex: 1, ToolName: constants.MCPToolRunShellCommand,
 		ArgumentsJSON: (models.RunShellCommandRequest{Command: "sh", Args: []string{"./check.sh"}, WorkingDir: "/work/case"}).CanonicalJSON(),
 		ActionType:    string(constants.ActionTypeMcpCall), TransactionID: receipt.GetTransactionId(), PolicyDecision: agentPolicyDecisionDeny,
 		ErrorType: agentToolErrorSecurity, Error: deniedObservationError, ResultJSON: result, Receipt: &AgentTraceReceipt{EventReceipt: receipt},
@@ -52,7 +52,7 @@ func TestScenarioObservationEvidence_GovernanceDenialVerifiesFromItsSignedReceip
 	denied := ledger.rejected("probe-tx", string(constants.ActionTypeMcpCall))
 	trace.ModelCalls = []AgentModelCall{completedModelCall("agent-turn", model)}
 	trace.Observations = []AgentScenarioObservation{deniedProbeObservation(t, denied)}
-	trace.Bracket = bracketOf(before, ledger.executed("after", string(constants.ActionTypeFsRead)))
+	trace.Roster[0].Bracket = bracketOf(before, ledger.executed("after", string(constants.ActionTypeFsRead)))
 
 	require.NoError(t, VerifyAgentTraceEvidence(trace))
 }
@@ -137,7 +137,7 @@ func deniedMeasurementRequest(gold ScenarioGoldCriteria) AssignmentExecutionRequ
 
 func deniedMeasurementTrace(observations ...AgentScenarioObservation) *AgentTrace {
 	return &AgentTrace{RunID: "run-1", AssignmentID: "assign-1", DesignatedRole: "primary", FinalOutput: "diagnosed",
-		Workspace:    AgentTraceWorkspace{Root: "/work/case", OperatorWorkingDirectory: "/work"},
+		Roster:       rosterOfOne(AgentTraceRuntime{OperatorID: "data-op", SessionID: "data-session"}, AgentTraceWorkspace{Root: "/work/case", OperatorWorkingDirectory: "/work"}),
 		ModelCalls:   []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-turn", ResultDigest: "digest-turn"}},
 		Observations: observations}
 }
@@ -245,7 +245,9 @@ func regradeFixtureTrace(t *testing.T, store *Store, assignment *evalv1.Evaluati
 	t.Helper()
 	workspace, err := NewScenarioWorkspace(agentTestWorkingDirectory, assignment.GetRunId(), "attempt-1")
 	require.NoError(t, err)
-	body, err := SealAgentTrace(&AgentTrace{RunID: assignment.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Workspace: AgentTraceWorkspace(workspace), Input: testAgentTraceInput(), FinalOutput: "Checkout fails on payment timeouts."})
+	trace := &AgentTrace{RunID: assignment.GetRunId(), AssignmentID: assignment.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Roster: rosterOfOne(AgentTraceRuntime{OperatorID: "data-op", SessionID: "data-session"}, AgentTraceWorkspace(workspace)), Input: testAgentTraceInput(), FinalOutput: "Checkout fails on payment timeouts."}
+	withRosterPrompt(trace)
+	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 	require.NoError(t, store.SaveAssignmentAgentTrace(t.Context(), assignment.GetRunId(), assignment.GetAssignmentId(), body))
 }

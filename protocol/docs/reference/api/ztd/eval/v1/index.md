@@ -39,6 +39,7 @@
     - [EvaluationMetric](#ztd-eval-v1-EvaluationMetric)
     - [EvaluationObservation](#ztd-eval-v1-EvaluationObservation)
     - [EvaluationReport](#ztd-eval-v1-EvaluationReport)
+    - [EvaluationRosterMember](#ztd-eval-v1-EvaluationRosterMember)
     - [EvaluationRun](#ztd-eval-v1-EvaluationRun)
     - [EvaluationRuntimeBoundary](#ztd-eval-v1-EvaluationRuntimeBoundary)
     - [EvaluationScenarioCatalog](#ztd-eval-v1-EvaluationScenarioCatalog)
@@ -951,6 +952,25 @@ stable identity (not session ID) of the Data Operator that owns its ledger.
 
 
 
+<a name="ztd-eval-v1-EvaluationRosterMember"></a>
+
+### EvaluationRosterMember
+EvaluationRosterMember is one Data Operator of a run&#39;s harness roster.
+index is its 1-based roster position, the position the model&#39;s prompt
+names and target_operators resolves.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| index | [uint32](#uint32) |  |  |
+| operator_id | [string](#string) |  |  |
+| operator_session_id | [string](#string) |  |  |
+
+
+
+
+
+
 <a name="ztd-eval-v1-EvaluationRun"></a>
 
 ### EvaluationRun
@@ -1050,6 +1070,7 @@ EvaluationScenarioDefinition describes one frozen typed scenario.
 | prompt_hint | [PromptHint](#ztd-eval-v1-PromptHint) |  |  |
 | tribunal_commands | [bool](#bool) |  | tribunal_commands routes run_shell_command through Tribunal authoring. Unset, the model calls the native tool directly. The frozen catalog digest binds the choice. |
 | exclude_when_l2_enforced | [bool](#bool) |  | exclude_when_l2_enforced marks scenarios whose required state-changing tool call or successful/error seed action is gated by L2. The frozen catalog digest binds this eligibility rule. |
+| fleet_min_operators | [uint32](#uint32) |  | fleet_min_operators is the harness roster size the scenario needs: the highest roster position its fixtures and gold criteria name. Zero runs on any roster. The frozen catalog digest binds it, and a run whose catalog holds a fleet scenario freezes every active Data Operator by default. |
 
 
 
@@ -1397,7 +1418,7 @@ ModelCampaignBinding pins immutable campaign identity on a run.
 | catalog_digest | [string](#string) |  |  |
 | model_registry_digest | [string](#string) |  |  |
 | inference_operator_session_id | [string](#string) |  |  |
-| data_operator_session_id | [string](#string) |  |  |
+| data_roster | [EvaluationRosterMember](#ztd-eval-v1-EvaluationRosterMember) | repeated | data_roster is the harness roster the run froze at start: every Data Operator it addresses, in roster order. Execute and resume re-resolve each member by operator_id; its session may change between them. |
 
 
 
@@ -3027,6 +3048,7 @@ derivable from, so catalog lint can prove a prompt is answerable.
 | EVALUATION_SCENARIO_CATEGORY_RECOVERY | 8 |  |
 | EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE | 9 |  |
 | EVALUATION_SCENARIO_CATEGORY_CONTAINMENT | 10 |  |
+| EVALUATION_SCENARIO_CATEGORY_FLEET_OPERATIONS | 11 | FLEET_OPERATIONS scenarios drive a harness roster of several Data Operators: fanned-out changes and commands, subset targeting, and drift. |
 
 
 

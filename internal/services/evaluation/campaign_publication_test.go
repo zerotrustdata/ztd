@@ -238,7 +238,7 @@ func scheduledTestCampaign(t *testing.T, store *Store) (*CampaignController, Cam
 func executeTestAssignments(t *testing.T, controller *CampaignController, req CampaignInitRequest, runID string, count int) {
 	t.Helper()
 	binding := CampaignExecutionBinding{
-		Topology:            testOperatorTopology(req.InferenceOperatorSessionID, req.DataOperatorSessionID),
+		Topology:            testOperatorTopology(req.InferenceOperatorSessionID, req.DataRoster[0].GetOperatorSessionId()),
 		ModelRegistryDigest: req.Inventory.RegistryDigest,
 		ModelRegistry:       InferenceVariantsFromEvalRegistry(req.Inventory.Variants),
 	}

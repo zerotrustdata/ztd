@@ -196,6 +196,9 @@ type realStackOptions struct {
 	modelTags []string
 	// bindConsensus rebinds the Gateway's consensus before Operators enroll.
 	bindConsensus func(t *testing.T, gateway *fixtures.GatewayFixture, identity *fixtures.ClientIdentity)
+	// dataOperators is the Data fleet size; the run freezes every member as
+	// its harness roster. Zero or one keeps the single Data Operator.
+	dataOperators int
 }
 
 // realStackAgentRun is a campaign initialized on the real eval stack, with the
@@ -213,7 +216,7 @@ type realStackAgentRun struct {
 	appClient      *harnessclient.Client
 	inference      realStackInference
 	residency      *evaluation.ProviderModelResidency
-	sentinel       *drive.Sentinel
+	sentinel       evaluation.RosterSentinel
 	persona        harnessclient.Persona
 	dataOperatorID string
 	dataSessionID  string
@@ -242,6 +245,7 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	stack := fixtures.NewEvalStack(t, fixtures.EvalStackOptions{
 		Posture: opts.posture, Replies: opts.replies, SharedRuntime: opts.shared,
 		Provenance: true, ModelTags: opts.modelTags, BindConsensus: opts.bindConsensus,
+		DataOperators: opts.dataOperators,
 	})
 
 	logger := testutil.NewTestLogger()
@@ -286,7 +290,13 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 	require.NoError(t, err)
 	operators, _, err := gateway.ListOperators(ctx)
 	require.NoError(t, err)
-	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, inferenceWorkload.OperatorSessionID, dataWorkload.OperatorID, nil)
+	fleet := evaluation.DataFleetSelection{OperatorIDs: []string{dataWorkload.OperatorID}}
+	for _, member := range stack.Fleet[1:] {
+		workload, err := member.Workload()
+		require.NoError(t, err)
+		fleet.OperatorIDs = append(fleet.OperatorIDs, workload.OperatorID)
+	}
+	topology, err := evaluation.ResolveCampaignOperatorTopology(operators, inferenceWorkload.OperatorSessionID, fleet, nil)
 	require.NoError(t, err)
 	topology, err = topology.WithAnchors(operators)
 	require.NoError(t, err)
@@ -376,7 +386,7 @@ func newRealStackAgentRun(t *testing.T, opts realStackOptions) *realStackAgentRu
 		dataOperatorID: dataWorkload.OperatorID, dataSessionID: dataWorkload.OperatorSessionID,
 		catalog: truncated, artifacts: artifacts, topology: topology,
 		inferenceSessionID: inferenceWorkload.OperatorSessionID,
-		workingDirectory:   topology.DataWorkingDirectory,
+		workingDirectory:   topology.Fleet[0].WorkingDirectory,
 		attempts:           attempts,
 	}
 	repetitions := opts.repetitions
@@ -444,7 +454,7 @@ func (env *realStackAgentRun) startRun(t *testing.T, plan realStackRunPlan) {
 		ScenarioArtifacts:          env.artifacts,
 		RepetitionCount:            repetitions,
 		InferenceOperatorSessionID: env.inferenceSessionID,
-		DataOperatorSessionID:      env.dataSessionID,
+		DataRoster:                 env.topology.RosterBinding(),
 		// The rig's stack serves one scripted model, so it also judges.
 		Judge: variant,
 	}

@@ -18,7 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
-	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/tools/agent_harness/client"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -60,7 +59,7 @@ func (w *failingWorkspaceWriter) WriteWorkspaceFile(context.Context, Target, str
 
 type unusedSentinel struct{}
 
-func (unusedSentinel) Read(context.Context, cases.Executor, string) (*operatorv1.EventReceipt, error) {
+func (unusedSentinel) ReadSession(context.Context, string, string, string) (*operatorv1.EventReceipt, error) {
 	return nil, errors.New("test: sentinel must not be read")
 }
 

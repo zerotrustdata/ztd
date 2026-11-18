@@ -38,10 +38,10 @@ func TestAgentTrace_SealRoundTripsReceiptsAnchorAndBracketByteForByte(t *testing
 	require.NotNil(t, decoded.ToolCalls[0].Receipt)
 	assert.True(t, proto.Equal(trace.ToolCalls[0].Receipt.EventReceipt, decoded.ToolCalls[0].Receipt.EventReceipt))
 	assert.True(t, proto.Equal(trace.Inference.Anchor.ConformanceAnchor, decoded.Inference.Anchor.ConformanceAnchor))
-	assert.True(t, proto.Equal(trace.Data.Anchor.ConformanceAnchor, decoded.Data.Anchor.ConformanceAnchor))
+	assert.True(t, proto.Equal(trace.Roster[0].Runtime.Anchor.ConformanceAnchor, decoded.Roster[0].Runtime.Anchor.ConformanceAnchor))
 	assert.True(t, proto.Equal(trace.ModelCalls[0].Receipt.EventReceipt, decoded.ModelCalls[0].Receipt.EventReceipt))
-	require.NotNil(t, decoded.Bracket)
-	assert.True(t, proto.Equal(trace.Bracket.After.EventReceipt, decoded.Bracket.After.EventReceipt))
+	require.NotNil(t, decoded.Roster[0].Bracket)
+	assert.True(t, proto.Equal(trace.Roster[0].Bracket.After.EventReceipt, decoded.Roster[0].Bracket.After.EventReceipt))
 
 	again, err := SealAgentTrace(decoded)
 	require.NoError(t, err)
@@ -77,7 +77,7 @@ func TestAgentTrace_ReceiptMarshalRejectsAbsentReceipt(t *testing.T) {
 
 func TestAgentTrace_SealRejectsBracketWithAbsentSentinelReceipt(t *testing.T) {
 	trace := v7EvidenceTraceWithToolCalls(t)
-	trace.Bracket.Before = AgentTraceReceipt{}
+	trace.Roster[0].Bracket.Before = AgentTraceReceipt{}
 
 	_, err := SealAgentTrace(trace)
 
@@ -120,22 +120,6 @@ func TestAgentTrace_SealRefusesToRestampEarlierVersion(t *testing.T) {
 	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 }
 
-func TestAgentTrace_V3TraceValidatesOnlyWithoutInput(t *testing.T) {
-	trace, _ := validEvidenceTrace(t)
-	trace.Input = nil
-	trace.SchemaVersion = agentTraceSchemaVersionV3
-	digest, err := ComputeAgentTraceDigest(trace)
-	require.NoError(t, err)
-	trace.EvidenceDigest = digest
-
-	require.NoError(t, ValidateAgentTraceDigest(trace))
-
-	trace.Input = testAgentTraceInput()
-	trace.EvidenceDigest, err = ComputeAgentTraceDigest(trace)
-	require.NoError(t, err)
-	assert.ErrorIs(t, ValidateAgentTraceDigest(trace), constants.ErrEvidenceArtifactMalformed, "a v3 trace never claims a captured input")
-}
-
 func TestAgentTrace_V4TraceRequiresInput(t *testing.T) {
 	trace, _ := v7EvidenceTrace(t)
 	_, err := SealAgentTrace(trace)
@@ -145,25 +129,6 @@ func TestAgentTrace_V4TraceRequiresInput(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.ErrorIs(t, ValidateAgentTraceDigest(trace), constants.ErrMissingRequiredField)
-}
-
-func TestAgentTrace_V5TraceVerifiesWithoutInvestigationMetadata(t *testing.T) {
-	trace, _ := validEvidenceTrace(t)
-	trace.SchemaVersion = agentTraceSchemaVersionV5
-	trace.InvestigationID = ""
-	digest, err := ComputeAgentTraceDigest(trace)
-	require.NoError(t, err)
-	trace.EvidenceDigest = digest
-	before, err := MarshalCanonicalJSONObject(trace)
-	require.NoError(t, err)
-	decoded, err := DecodeAgentTrace(before)
-	require.NoError(t, err)
-	require.NoError(t, VerifyAgentTraceEvidence(decoded))
-	after, err := MarshalCanonicalJSONObject(decoded)
-	require.NoError(t, err)
-	assert.Equal(t, before, after, "old evidence must retain its exact digest and schema")
-	_, err = SealAgentTrace(decoded)
-	assert.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
 }
 
 func TestDecodeAgentTrace_PublishedBodyDecodesAndVerifies(t *testing.T) {
@@ -216,8 +181,7 @@ func TestAgentTrace_ConsensusMatchesExplorerFixture(t *testing.T) {
 		Persona:        &AgentTracePersona{ID: "sage", Version: "1.0.0", Digest: strings.Repeat("e", 64)},
 		ServedModelTag: "model:latest", ModelDigest: strings.Repeat("a", 64), ModelRegistryDigest: strings.Repeat("b", 64),
 		Inference: AgentTraceRuntime{OperatorID: "inference-1", SessionID: "session-inference"},
-		Data:      AgentTraceRuntime{OperatorID: "data-1", SessionID: "session-data"},
-		Workspace: AgentTraceWorkspace{Root: "/work", OperatorWorkingDirectory: "/work/run-1"},
+		Roster:    rosterOfOne(AgentTraceRuntime{OperatorID: "data-1", SessionID: "session-data"}, AgentTraceWorkspace{Root: "/work", OperatorWorkingDirectory: "/work/run-1"}),
 		Input:     &AgentTraceInput{Messages: []AgentTraceMessage{{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String(), Text: "Read the log."}}},
 		ToolCalls: []AgentToolCall{{
 			CallID: "call-1", ModelCallID: "attempt-model", ToolName: "fs_read", ArgumentsJSON: `{"path":"app.log"}`,
@@ -238,7 +202,7 @@ func TestAgentTrace_ConsensusMatchesExplorerFixture(t *testing.T) {
 			}),
 		}},
 		Observations: []AgentScenarioObservation{{Kind: scenarioObservationSeed, Call: AgentToolCall{
-			CallID: "scenario-observation-1", ToolName: constants.MCPToolEventReceiptList, ArgumentsJSON: `{"limit":20}`,
+			CallID: "scenario-observation-1", GroupID: "scenario-observation-1", TargetIndex: 1, ToolName: constants.MCPToolEventReceiptList, ArgumentsJSON: `{"limit":20}`,
 			ResultJSON: `{"receipts":[]}`, Success: true, IsOperatorTool: true, ActionType: string(constants.ActionTypeMcpCall), TransactionID: "scenario-observation-1",
 			RequestEnvelope: &AgentTraceEnvelope{GovernanceEnvelope: &commonv1.GovernanceEnvelope{
 				Id: "scenario-observation-1", EventType: string(constants.EventOperatorCommandRequested), ActionType: string(constants.ActionTypeMcpCall), TransactionHash: strings.Repeat("f", 64),

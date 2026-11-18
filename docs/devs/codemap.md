@@ -3,8 +3,8 @@ doc_id: codemap
 title: ztd Code Map
 audience: maintainers and coding agents
 status: current
-version: v1.10.1
-last_updated: 2026-11-16
+version: v1.10.2
+last_updated: 2026-11-18
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
@@ -240,7 +240,7 @@ Files at `internal/cli/cmd/` root own the root command, CLI renewal lifecycle wi
 | `internal/cli/gateway/` | | Shared Gateway inventory helpers, including completed platform-enrollment filtering used by `gw status` and TUI status view. |
 | `internal/cli/identityreset/` | `identityreset` | Removal of Operator runtime CLI credentials, CLI mTLS pair, and cached Gateway trust (`Reset`); refuses a runtime holding `constants.GatewayRuntimeMarker`. Consumed by `operator reset-identity`. |
 | `internal/cli/mcptransport/` | `mcptransport` | Standard JSON-RPC 2.0 stdio framing, dispatch handler, and transport for CLI MCP serving (`mcp stdio`). |
-| `internal/cli/operator/` | | Operator discovery and management helpers: governed command dispatch types, inventory helper `IsConnected`, stop helpers (`CheckStoppable`, `NewStopRequest`, `DecodeStopResponse`) shared by `operator stop` and TUI, and normalized heartbeat parser shared by `operator show` and TUI. |
+| `internal/cli/operator/` | | Operator discovery and management helpers: governed command dispatch types, inventory helper `IsConnected`, stop helpers (`CheckStoppable`, `NewStopRequest`, `DecodeStopResponse`) shared by `operator stop` and TUI, and normalized heartbeat parser shared by `operator show` and TUI. `fanout.go` owns `FanOut`, the bounded dispatch pool shared by `operator run` and evaluation harness fan-out. |
 | `internal/cli/output/` | | Human-readable and JSON command output. |
 | `internal/cli/platform/` | | Cross-platform process, browser, and system trust operations. |
 | `internal/cli/serve/` | | Foreground Gateway and Operator runtimes. See [Process entry](#process-entry). |
@@ -348,7 +348,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/auth/` | Host and system fingerprinting, CSR and certificate fingerprints, and current-account resolution. |
 | `internal/services/autochthon/` | Gateway-less `ztd autochthon` command (CLI: `internal/cli/cmd/autochthon/`): host sampling, local predictor population, `.ztd/autochthon/` hash-chained tally, and read-only status report. No governance path. |
 | `internal/services/compliance/` | KSI evaluation and history, OSCAL support, catalog validation, evidence import and graph verification, and signed report bundles. |
-| `internal/services/evaluation/` | Model campaign controller, campaign Operator role resolution (`campaign_operator_topology.go`), governed command lane, grading, evidence storage, conformance record storage and compliance admission (`conformance_store.go`, `conformance_compliance.go`), and campaign verification. `model_inventory.go` owns `HostedModelVariant` and hosted-model retention on freeze. |
+| `internal/services/evaluation/` | Model campaign controller, campaign Operator role resolution (`campaign_operator_topology.go`), governed command lane, grading, evidence storage, conformance record storage and compliance admission (`conformance_store.go`, `conformance_compliance.go`), and campaign verification. `model_inventory.go` owns `HostedModelVariant` and hosted-model retention on freeze. `harness_roster.go` owns the harness roster: `target_operators` resolution, the roster prompt, fan-out grouping, and per-target workspace dispatch arguments. `devops_fleet_suite.go` holds the built-in `devops-fleet` suite. |
 | `internal/services/evaluation/conformance/` | Governance conformance suite (`governance-conformance@1.1.0`). `cases` holds the catalogue and its validation, `drive` the ingress drivers, fault mutators, sentinel, and attended wrapper, `canary` the effect snapshots, and `oracle` (with `oracle/oracletest`) the anchors, receipt verification, and ledger bracket. `run` captures evidence and writes the record, `verify` recomputes verdicts offline, and `report` builds coverage and recall. |
 | `internal/services/execution/` | Command execution and governed file edits. |
 | `internal/services/fs/` | Scoped `.ztd/` runtime file operations. |

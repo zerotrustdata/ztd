@@ -98,7 +98,7 @@ func (e *runEnv) startStoredRun(t *testing.T, campaignID, runID string) string {
 		CampaignID:                 campaignID,
 		RunID:                      runID,
 		InferenceOperatorSessionID: "store-only-inference-session",
-		DataOperatorSessionID:      "store-only-data-session",
+		DataRoster:                 []*evalv1.EvaluationRosterMember{{Index: 1, OperatorId: "store-only-data-op", OperatorSessionId: "store-only-data-session"}},
 		PlatformRelease:            testPlatform.Release,
 		Governance:                 testGovernance,
 		ProviderObservationPolicy:  evalv1.EvaluationWitnessPolicy_EVALUATION_WITNESS_POLICY_INTERIM,

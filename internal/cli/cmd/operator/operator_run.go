@@ -35,7 +35,7 @@ import (
 )
 
 // defaultOperatorCommandConcurrency bounds bulk run dispatches and local stops.
-const defaultOperatorCommandConcurrency = 64
+const defaultOperatorCommandConcurrency = operator.MaxFanOutConcurrency
 
 type operatorRunJSON struct {
 	Results []operator.RunResult `json:"results"`
@@ -447,27 +447,9 @@ func activeOperatorRunTargets(operators []*operatorv1.OperatorDocument) ([]opera
 // dispatchOperatorRun dispatches to every target with at most concurrency
 // requests in flight. Results keep target order.
 func dispatchOperatorRun(client authcmd.APIClient, targets []operator.Target, command, cliSessionID string, concurrency int) []operator.RunResult {
-	results := make([]operator.RunResult, len(targets))
-	if concurrency < 1 {
-		concurrency = 1
-	}
-	jobs := make(chan int)
-	var wg sync.WaitGroup
-	for range min(concurrency, len(targets)) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range jobs {
-				results[i] = dispatchOperatorRunOnce(client, targets[i], command, cliSessionID)
-			}
-		}()
-	}
-	for i := range targets {
-		jobs <- i
-	}
-	close(jobs)
-	wg.Wait()
-	return results
+	return operator.FanOut(len(targets), concurrency, func(i int) operator.RunResult {
+		return dispatchOperatorRunOnce(client, targets[i], command, cliSessionID)
+	})
 }
 
 // dispatchOperatorRunOnce dispatches one command to target through the shared

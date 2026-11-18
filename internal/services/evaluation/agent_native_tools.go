@@ -90,6 +90,8 @@ func newAgentToolCatalog() (*agentToolCatalog, error) {
 			for k, v := range schema.Properties {
 				props[k] = v
 			}
+			// Every Operator tool runs on roster targets the model names.
+			props[harnessTargetOperatorsArgument] = harnessTargetOperatorsProperty
 			// For event_receipt_list, operator_session_id is only required in Gateway mode.
 			// Operator-local execution requires only investigation_id, which the executor defaults.
 			if name != constants.MCPToolEventReceiptList {
@@ -318,42 +320,78 @@ func (a *agentToolArguments) EventReceiptListScopeFailure(investigationID string
 	return agentToolValidationFailure(a.tool, problems)
 }
 
-// WorkspacePathFailure is the model-visible rejection of a file tool path
-// that resolves outside the attempt workspace. A scored cell reads and changes
-// only its own fixtures, so the call fails before dispatch and binds no
-// governed action. Real Operators keep host-wide file access under the
-// FILE_EDIT path policy; this confinement belongs to the evaluation harness only.
-func (a *agentToolArguments) WorkspacePathFailure(workspace ScenarioWorkspace) *agentToolFailure {
-	field := "path"
-	var value string
+// workspacePathField names the path argument a native read, search, or
+// governed file tool confines to the investigation workspace, and its value.
+// ok is false for a tool with no confined path. A file_diff by diff_id alone
+// is scoped to the verified session by the Operator and has none.
+func (a *agentToolArguments) workspacePathField() (field, value string, ok bool) {
 	switch contract := a.contract.(type) {
 	case typedAgentToolContract[mcp.FileReadRequest]:
-		value = contract.value.Path
+		return "path", contract.value.Path, true
 	case typedAgentToolContract[mcp.SearchFileRequest]:
-		value = contract.value.Path
+		return "path", contract.value.Path, true
 	case typedAgentToolContract[mcp.SearchDirectoryRequest]:
-		value = contract.value.Path
+		return "path", contract.value.Path, true
 	case typedAgentToolContract[mcp.ListDirectoryRequest]:
-		value = contract.value.Path
+		return "path", contract.value.Path, true
 	case typedAgentToolContract[mcp.FileEditToolRequest]:
-		field, value = "file_path", contract.value.FilePath
+		return "file_path", contract.value.FilePath, true
 	case typedAgentToolContract[mcp.FileHistoryRequest]:
-		field, value = "file_path", contract.value.FilePath
+		return "file_path", contract.value.FilePath, true
 	case typedAgentToolContract[mcp.RestoreFileToolRequest]:
-		field, value = "file_path", contract.value.FilePath
+		return "file_path", contract.value.FilePath, true
 	case typedAgentToolContract[mcp.FileDiffRequest]:
-		// A diff_id alone is scoped to the verified session by the Operator.
 		if contract.value.FilePath == "" {
-			return nil
+			return "", "", false
 		}
-		field, value = "file_path", contract.value.FilePath
-	default:
-		return nil
+		return "file_path", contract.value.FilePath, true
 	}
-	if workspace.Root != "" && pathWithin(workspace.Resolve(value), workspace.Root) {
-		return nil
+	return "", "", false
+}
+
+// ForWorkspace returns the arguments as the harness dispatches them on one
+// roster member: a confined path resolves inside that member's workspace and
+// is sent as its absolute path there, so a relative path names the same file
+// on every target. A path that resolves outside the workspace is a
+// model-visible validation failure without a governed action. This
+// confinement belongs to the evaluation harness; Operators outside
+// evaluation keep host-wide native reads.
+func (a *agentToolArguments) ForWorkspace(workspace ScenarioWorkspace) (agentToolArguments, *agentToolFailure, error) {
+	field, value, ok := a.workspacePathField()
+	if !ok {
+		return *a, nil, nil
 	}
-	return agentToolValidationFailure(a.tool, []string{field + "\n  Input should be inside the investigation workspace " + workspace.Root})
+	resolved := workspace.Resolve(value)
+	if workspace.Root == "" || !pathWithin(resolved, workspace.Root) {
+		return agentToolArguments{}, agentToolValidationFailure(a.tool, []string{field + "\n  Input should be inside the investigation workspace " + workspace.Root}), nil
+	}
+	if resolved == value {
+		return *a, nil, nil
+	}
+	values := map[string]json.RawMessage{}
+	decoder := json.NewDecoder(strings.NewReader(a.rawJSON))
+	decoder.UseNumber()
+	if err := decoder.Decode(&values); err != nil {
+		return agentToolArguments{}, nil, fmt.Errorf("evaluation: rewrite %s %s: %w", a.tool, field, err)
+	}
+	encodedPath, err := json.Marshal(resolved)
+	if err != nil {
+		return agentToolArguments{}, nil, fmt.Errorf("evaluation: rewrite %s %s: %w", a.tool, field, err)
+	}
+	values[field] = encodedPath
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		return agentToolArguments{}, nil, fmt.Errorf("evaluation: rewrite %s %s: %w", a.tool, field, err)
+	}
+	canonical, err := canonicalizeToolJSON(string(encoded))
+	if err != nil {
+		return agentToolArguments{}, nil, err
+	}
+	contract, err := decodeAgentToolContract(a.tool, canonical)
+	if err != nil {
+		return agentToolArguments{}, nil, fmt.Errorf("evaluation: rewrite %s %s: %w", a.tool, field, err)
+	}
+	return agentToolArguments{tool: a.tool, contract: contract, rawJSON: canonical}, nil, nil
 }
 
 func (a *agentToolArguments) CanonicalJSON() (string, error) {
@@ -672,6 +710,11 @@ type agentToolRequest struct {
 	Arguments     agentToolArguments
 	// Shell is the typed request of a contract-valid run_shell_command call.
 	Shell *models.RunShellCommandRequest
+	// TargetSelectors are the target_operators the model sent, and
+	// TargetsPresent whether it sent the argument. ArgumentsJSON and Arguments
+	// never carry it: it is the harness's routing, not the tool's input.
+	TargetSelectors []string
+	TargetsPresent  bool
 	// Failure is the model-visible rejection of a request that does not
 	// satisfy its contract. It is nil for an undeclared tool, which the
 	// caller rejects with the declared tool names.
@@ -680,10 +723,19 @@ type agentToolRequest struct {
 
 func decodeAgentToolRequest(spec agentToolSpec, declared bool, raw string) agentToolRequest {
 	request := agentToolRequest{ArgumentsJSON: "{}"}
+	if declared {
+		if _, routed := spec.Properties[harnessTargetOperatorsArgument]; routed {
+			var problem string
+			raw, request.TargetSelectors, request.TargetsPresent, problem = splitTargetOperators(raw)
+			if problem != "" {
+				request.Failure = agentToolValidationFailure(spec.Name, []string{harnessTargetOperatorsArgument + "\n  " + problem})
+			}
+		}
+	}
 	if canonical, err := canonicalizeToolJSON(raw); err == nil {
 		request.ArgumentsJSON = canonical
 	}
-	if !declared {
+	if !declared || request.Failure != nil {
 		return request
 	}
 	request.Arguments, request.Failure = parseAgentToolArguments(spec, raw)

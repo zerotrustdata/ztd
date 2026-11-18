@@ -58,6 +58,8 @@ func (s *Store) LoadSuiteCatalog(ctx context.Context, id string) (*evalv1.Evalua
 		return LoadInvestigationsScenarioCatalog()
 	case QuickstartSuiteID:
 		return LoadQuickstartScenarioCatalog()
+	case DevOpsFleetSuiteID:
+		return LoadDevOpsFleetScenarioCatalog()
 	}
 	def, err := s.loadCustomSuite(ctx, id)
 	if err != nil {

@@ -29,6 +29,7 @@ func TestScenarioObservationEvidenceRejectsFinalReadBeforeAgentActivity(t *testi
 			// pre-identity fixture so this test isolates evidence chronology.
 			ledger := newEvidenceLedger(t, oracletest.NewSigner(t))
 			trace := evidenceTrace(ledger.runtime(), ledger.runtime())
+			trace.Roster[0].Workspace = AgentTraceWorkspace{Root: "/work", OperatorWorkingDirectory: "/"}
 			trace.InvestigationID = "case-1"
 			before := ledger.executed("before", string(constants.ActionTypeFsRead))
 			args := `{"path":"/work/result"}`
@@ -54,11 +55,11 @@ func TestScenarioObservationEvidenceRejectsFinalReadBeforeAgentActivity(t *testi
 			ledger.signer.Resign(t, final)
 			trace.ModelCalls = []AgentModelCall{completedModelCall("agent-turn", model)}
 			trace.Observations = []AgentScenarioObservation{{Kind: scenarioObservationFile, Call: AgentToolCall{
-				CallID: "final-read", ToolName: constants.MCPToolReadFile, ArgumentsJSON: args,
+				CallID: "final-read", GroupID: "final-read", TargetIndex: 1, ToolName: constants.MCPToolReadFile, ArgumentsJSON: args,
 				TransactionID: hash, ActionType: string(constants.ActionTypeMcpCall), PolicyDecision: agentPolicyDecisionAllow,
 				Success: true, ResultJSON: final.ResultSummary, RequestEnvelope: &AgentTraceEnvelope{GovernanceEnvelope: envelope}, Receipt: &AgentTraceReceipt{EventReceipt: final},
 			}}}
-			trace.Bracket = bracketOf(before, ledger.executed("after", string(constants.ActionTypeFsRead)))
+			trace.Roster[0].Bracket = bracketOf(before, ledger.executed("after", string(constants.ActionTypeFsRead)))
 			if finalFirst {
 				require.ErrorIs(t, VerifyAgentTraceEvidence(trace), constants.ErrConformanceLedgerGap, "a signed early read cannot prove final state")
 			} else {
@@ -93,18 +94,17 @@ func TestToolEvidenceCannotClaimSuccessWithoutAnExecutedReceipt(t *testing.T) {
 	trace, _ := validEvidenceTrace(t)
 	anchors, err := agentTraceAnchorSet(trace)
 	require.NoError(t, err)
-	_, err = verifyToolCallEvidence(anchors, trace.Data, AgentToolCall{Success: true})
+	_, err = verifyToolCallEvidence(anchors, trace.Roster[0].Runtime, AgentToolCall{Success: true})
 	require.ErrorIs(t, err, constants.ErrEventReceiptMissing)
 	denied := trace.ToolCalls[1]
 	denied.Success = true
-	_, err = verifyToolCallEvidence(anchors, trace.Data, denied)
+	_, err = verifyToolCallEvidence(anchors, trace.Roster[0].Runtime, denied)
 	require.ErrorIs(t, err, constants.ErrEvaluationEvidenceTraceMismatch)
 }
 
 func TestScenarioObservationRequestBindsCommandAndInvestigationToReceiptHash(t *testing.T) {
 	trace := &AgentTrace{InvestigationID: "case-1", EvaluationAttemptID: "attempt-1",
-		Data:      AgentTraceRuntime{OperatorID: "data-1", SessionID: "session-1"},
-		Workspace: AgentTraceWorkspace{Root: "/work/case", OperatorWorkingDirectory: "/work"}}
+		Roster: rosterOfOne(AgentTraceRuntime{OperatorID: "data-1", SessionID: "session-1"}, AgentTraceWorkspace{Root: "/work/case", OperatorWorkingDirectory: "/work"})}
 	arguments := (models.RunShellCommandRequest{Command: "sh", Args: []string{"./check.sh"}, WorkingDir: "/work/case"}).CanonicalJSON()
 	payload, err := proto.Marshal(&operatorv1.McpCallRequested{ToolName: constants.MCPToolRunShellCommand, ArgumentsJson: arguments, ExecutionId: "observation-1"})
 	require.NoError(t, err)
@@ -113,7 +113,7 @@ func TestScenarioObservationRequestBindsCommandAndInvestigationToReceiptHash(t *
 	hash, err := govhash.GenerateMessageID(envelope)
 	require.NoError(t, err)
 	envelope.TransactionHash, envelope.Id = hash, hash
-	call := AgentToolCall{CallID: "observation-1", ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: arguments, TransactionID: hash,
+	call := AgentToolCall{CallID: "observation-1", GroupID: "observation-1", TargetIndex: 1, ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: arguments, TransactionID: hash,
 		RequestEnvelope: &AgentTraceEnvelope{GovernanceEnvelope: envelope}, Receipt: &AgentTraceReceipt{EventReceipt: &operatorv1.EventReceipt{TransactionHash: hash}}}
 	require.NoError(t, verifyNativeToolCallRequest(trace, call))
 
@@ -134,8 +134,8 @@ func TestScenarioObservationContractRequiresFrozenSeedsAndFinalChecks(t *testing
 		t.Run(bp.ScenarioID, func(t *testing.T) {
 			ws, err := NewScenarioWorkspace("/work", "run-1", "attempt-1")
 			require.NoError(t, err)
-			trace := &AgentTrace{Workspace: AgentTraceWorkspace(ws)}
-			trace.Observations, err = finalScenarioObservationRequests(bp.Gold, ws)
+			trace := &AgentTrace{Roster: rosterOfOne(AgentTraceRuntime{}, AgentTraceWorkspace(ws))}
+			trace.Observations, err = finalScenarioObservationRequests(bp.Gold, trace.Roster)
 			require.NoError(t, err)
 			req := AssignmentExecutionRequest{ScenarioInput: bp.Input, ScenarioGold: bp.Gold}
 			require.NoError(t, verifyScenarioObservationContract(req, trace))
@@ -148,9 +148,8 @@ func TestScenarioObservationContractRequiresFrozenSeedsAndFinalChecks(t *testing
 }
 
 func TestAgentRunCaseMemoryPath_IsInsideSeededWorkspace(t *testing.T) {
-	run := &agentRun{workspace: ScenarioWorkspace{Root: "/work/ws/"}}
-	got, err := run.caseMemoryPath()
-	require.NoError(t, err)
+	run := &agentRun{trace: &AgentTrace{Roster: rosterOfOne(AgentTraceRuntime{}, AgentTraceWorkspace{Root: "/work/ws/"})}}
+	got := run.trace.Roster[0].ScenarioWorkspace().Resolve(caseMemoryPromptPath)
 	require.Equal(t, "/work/ws/"+scenarioCaseMemoryFile, got)
 }
 
@@ -160,7 +159,7 @@ func TestAgentRunCaseMemoryPath_IsInsideSeededWorkspace(t *testing.T) {
 // tool are all evidence mismatches.
 func TestGovernedToolRequestBindsTypedActionAndSession(t *testing.T) {
 	trace := &AgentTrace{InvestigationID: "case-1", EvaluationAttemptID: "attempt-1",
-		Data: AgentTraceRuntime{OperatorID: "data-1", SessionID: "session-1"}}
+		Roster: rosterOfOne(AgentTraceRuntime{OperatorID: "data-1", SessionID: "session-1"}, AgentTraceWorkspace{Root: "/work/case", OperatorWorkingDirectory: "/work"})}
 	arguments := `{"content":"tls_verify: true\n","file_path":"/work/case/config.yaml","justification":"restore TLS verification","operation":"write"}`
 	tool, ok, err := mcp.LookupGovernedActionTool(constants.MCPToolFileEdit)
 	require.NoError(t, err)
@@ -172,7 +171,7 @@ func TestGovernedToolRequestBindsTypedActionAndSession(t *testing.T) {
 		hash, err := govhash.GenerateMessageID(envelope)
 		require.NoError(t, err)
 		envelope.TransactionHash, envelope.Id = hash, hash
-		return AgentToolCall{CallID: "edit-1", ToolName: constants.MCPToolFileEdit, ArgumentsJSON: arguments, TransactionID: hash,
+		return AgentToolCall{CallID: "edit-1", GroupID: "edit-1", TargetIndex: 1, ToolName: constants.MCPToolFileEdit, ArgumentsJSON: arguments, TransactionID: hash,
 			RequestEnvelope: &AgentTraceEnvelope{GovernanceEnvelope: envelope}, Receipt: &AgentTraceReceipt{EventReceipt: &operatorv1.EventReceipt{TransactionHash: hash}}}
 	}
 

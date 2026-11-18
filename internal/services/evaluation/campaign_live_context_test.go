@@ -38,7 +38,7 @@ func TestCampaignInvestigationIdentity_FreshAssignmentsAndPersistentSessionRotat
 	}}
 	req := AssignmentExecutionRequest{
 		Binding: CampaignExecutionBinding{Topology: CampaignOperatorTopology{
-			Data: CampaignOperatorRuntime{OperatorID: "data-operator", OperatorSessionID: "data-session"},
+			Fleet: []CampaignDataOperator{testDataMember("data-operator", "data-session", "")},
 		}},
 	}
 	fresh, err := executor.investigationID(req)
@@ -49,17 +49,17 @@ func TestCampaignInvestigationIdentity_FreshAssignmentsAndPersistentSessionRotat
 
 	req.Investigation = &evalv1.EvaluationInvestigation{
 		Mode:            evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT,
-		InvestigationId: "case-recurring", DataOperatorId: req.Binding.Topology.Data.OperatorID,
+		InvestigationId: "case-recurring", DataOperatorId: req.Binding.Topology.Fleet[0].OperatorID,
 	}
 	one, err := executor.investigationID(req)
 	require.NoError(t, err)
-	req.Binding.Topology.Data.OperatorSessionID = "rotated-session"
+	req.Binding.Topology.Fleet[0].OperatorSessionID = "rotated-session"
 	two, err := executor.investigationID(req)
 	require.NoError(t, err)
 	assert.Equal(t, "case-recurring", one)
 	assert.Equal(t, one, two)
 
-	req.Binding.Topology.Data.OperatorID = "another-operator"
+	req.Binding.Topology.Fleet[0].OperatorID = "another-operator"
 	_, err = executor.investigationID(req)
 	assert.ErrorIs(t, err, constants.ErrEvaluationInvestigationInvalid)
 }

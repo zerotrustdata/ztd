@@ -135,13 +135,13 @@ Archived runs are hidden unless --archived is given.`,
 
 type runShowJSON struct {
 	runRow
-	ModelCount          int    `json:"model_count"`
-	ScenarioCount       uint32 `json:"scenario_count"`
-	RepetitionCount     uint32 `json:"repetition_count"`
-	ModelRegistryDigest string `json:"model_registry_digest"`
-	CatalogDigest       string `json:"catalog_digest"`
-	InferenceSession    string `json:"inference_session,omitempty"`
-	DataSession         string `json:"data_session,omitempty"`
+	ModelCount          int      `json:"model_count"`
+	ScenarioCount       uint32   `json:"scenario_count"`
+	RepetitionCount     uint32   `json:"repetition_count"`
+	ModelRegistryDigest string   `json:"model_registry_digest"`
+	CatalogDigest       string   `json:"catalog_digest"`
+	InferenceSession    string   `json:"inference_session,omitempty"`
+	DataRoster          []string `json:"data_roster,omitempty"`
 }
 
 func loadRunShow(ctx context.Context, deps nativeEvalDeps, store *evaluation.Store, archived bool, runID string, live evaluation.LeaseLiveness) (*runShowJSON, error) {
@@ -162,7 +162,7 @@ func loadRunShow(ctx context.Context, deps nativeEvalDeps, store *evaluation.Sto
 		ModelRegistryDigest: spec.GetModelRegistryDigest(),
 		CatalogDigest:       spec.GetCatalogDigest(),
 		InferenceSession:    binding.GetInferenceOperatorSessionId(),
-		DataSession:         binding.GetDataOperatorSessionId(),
+		DataRoster:          bindingRosterSessions(binding),
 	}, nil
 }
 
@@ -966,4 +966,13 @@ like any other.`,
 			return w.Flush()
 		},
 	}
+}
+
+// bindingRosterSessions lists the Data sessions a run froze, in roster order.
+func bindingRosterSessions(binding *evalv1.ModelCampaignBinding) []string {
+	sessions := make([]string, 0, len(binding.GetDataRoster()))
+	for _, member := range binding.GetDataRoster() {
+		sessions = append(sessions, member.GetOperatorSessionId())
+	}
+	return sessions
 }

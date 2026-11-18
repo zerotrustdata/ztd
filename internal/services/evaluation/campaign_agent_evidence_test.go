@@ -133,7 +133,7 @@ func failedModelCall(txID string, receipt *operatorv1.EventReceipt) AgentModelCa
 }
 
 func allowedToolCall(txID string, receipt *operatorv1.EventReceipt) AgentToolCall {
-	return AgentToolCall{CallID: "call-" + txID, TransactionID: txID, PolicyDecision: agentPolicyDecisionAllow, Receipt: &AgentTraceReceipt{EventReceipt: receipt}}
+	return AgentToolCall{CallID: "call-" + txID, GroupID: "call-" + txID, TargetIndex: 1, TransactionID: txID, PolicyDecision: agentPolicyDecisionAllow, Receipt: &AgentTraceReceipt{EventReceipt: receipt}}
 }
 
 func bracketOf(before, after *operatorv1.EventReceipt) *AgentTraceBracket {
@@ -144,7 +144,7 @@ func evidenceTrace(inference, data AgentTraceRuntime) *AgentTrace {
 	return &AgentTrace{
 		SchemaVersion: agentTraceSchemaVersionV6,
 		RunID:         "run-1", AssignmentID: "assignment-1", EvaluationAttemptID: "attempt-1", ScenarioID: "scenario-1",
-		Inference: inference, Data: data, Input: testAgentTraceInput(),
+		Inference: inference, Roster: rosterOfOne(data, AgentTraceWorkspace{}), Input: testAgentTraceInput(),
 	}
 }
 
@@ -178,9 +178,9 @@ func validEvidenceTrace(t *testing.T) (*AgentTrace, oracletest.Signer) {
 	trace.ModelCalls = []AgentModelCall{completedModelCall("tx-m1", model)}
 	trace.ToolCalls = []AgentToolCall{
 		allowedToolCall("tx-1", executed),
-		{CallID: "call-2", TransactionID: "tx-2", PolicyDecision: agentPolicyDecisionDeny, Receipt: &AgentTraceReceipt{EventReceipt: rejected}},
+		{CallID: "call-2", GroupID: "call-2", TargetIndex: 1, TransactionID: "tx-2", PolicyDecision: agentPolicyDecisionDeny, Receipt: &AgentTraceReceipt{EventReceipt: rejected}},
 	}
-	trace.Bracket = bracketOf(before, after)
+	trace.Roster[0].Bracket = bracketOf(before, after)
 	return trace, signer
 }
 
@@ -198,7 +198,7 @@ func sharedRuntimeTrace(t *testing.T) (*AgentTrace, *evidenceLedger) {
 	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
 	trace.ModelCalls = []AgentModelCall{completedModelCall("tx-m1", first), completedModelCall("tx-m2", second)}
 	trace.ToolCalls = []AgentToolCall{allowedToolCall("tx-1", tool)}
-	trace.Bracket = bracketOf(before, after)
+	trace.Roster[0].Bracket = bracketOf(before, after)
 	return trace, ledger
 }
 
@@ -249,14 +249,14 @@ func TestVerifyAgentTraceEvidence_RejectsReceiptSignedByAnotherKey(t *testing.T)
 
 func TestVerifyAgentTraceEvidence_RejectsAnchorForAnotherRuntime(t *testing.T) {
 	trace, signer := validEvidenceTrace(t)
-	trace.Data.Anchor = &AgentTraceAnchor{ConformanceAnchor: signer.Anchor("operator-other")}
+	trace.Roster[0].Runtime.Anchor = &AgentTraceAnchor{ConformanceAnchor: signer.Anchor("operator-other")}
 
 	requireEvidenceError(t, trace, constants.ErrConformanceAnchorUnknown)
 }
 
 func TestVerifyAgentTraceEvidence_RejectsMissingRuntimeAnchor(t *testing.T) {
 	for name, clear := range map[string]func(*AgentTrace){
-		"data":      func(trace *AgentTrace) { trace.Data.Anchor = nil },
+		"data":      func(trace *AgentTrace) { trace.Roster[0].Runtime.Anchor = nil },
 		"inference": func(trace *AgentTrace) { trace.Inference.Anchor = nil },
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -298,7 +298,7 @@ func TestVerifyAgentTraceEvidence_RejectsClaimedToolReceiptFromAnotherSession(t 
 	after := ledger.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
 	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
 	trace.ToolCalls = []AgentToolCall{allowedToolCall("tx-1", foreign)}
-	trace.Bracket = bracketOf(before, after)
+	trace.Roster[0].Bracket = bracketOf(before, after)
 
 	requireEvidenceError(t, trace, constants.ErrEvaluationEvidenceTraceMismatch)
 }
@@ -314,7 +314,7 @@ func TestVerifyAgentTraceEvidence_RejectsClaimedInferenceReceiptFromAnotherSessi
 	after := data.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
 	trace := evidenceTrace(inference.runtime(), data.runtime())
 	trace.ModelCalls = []AgentModelCall{completedModelCall("tx-m1", model)}
-	trace.Bracket = bracketOf(before, after)
+	trace.Roster[0].Bracket = bracketOf(before, after)
 
 	requireEvidenceError(t, trace, constants.ErrEvaluationEvidenceTraceMismatch)
 }
@@ -327,7 +327,7 @@ func TestVerifyAgentTraceEvidence_RejectsUnclaimedExecutionBetweenSentinels(t *t
 	after := ledger.executed("tx-sentinel-after", string(constants.ActionTypeFsRead))
 	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
 	trace.ToolCalls = []AgentToolCall{allowedToolCall("tx-1", claimed)}
-	trace.Bracket = bracketOf(before, after)
+	trace.Roster[0].Bracket = bracketOf(before, after)
 
 	requireEvidenceError(t, trace, constants.ErrConformanceUnclaimedExecution)
 }
@@ -342,14 +342,14 @@ func TestVerifyAgentTraceEvidence_RejectsClaimedCallsSwappedInTraceAsLedgerGap(t
 	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
 	trace.ModelCalls = []AgentModelCall{completedModelCall("tx-m1", model)}
 	trace.ToolCalls = []AgentToolCall{allowedToolCall("tx-2", second), allowedToolCall("tx-1", first)}
-	trace.Bracket = bracketOf(before, after)
+	trace.Roster[0].Bracket = bracketOf(before, after)
 
 	requireEvidenceError(t, trace, constants.ErrConformanceLedgerGap)
 }
 
 func TestVerifyAgentTraceEvidence_RejectsMissingBracket(t *testing.T) {
 	trace, _ := validEvidenceTrace(t)
-	trace.Bracket = nil
+	trace.Roster[0].Bracket = nil
 
 	requireEvidenceError(t, trace, constants.ErrMissingRequiredField)
 }
@@ -396,7 +396,7 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsFailedInference(t *testing.
 	trace := evidenceTrace(ledger.runtime(), ledger.runtime())
 	trace.ModelCalls = []AgentModelCall{completedModelCall("tx-m1", completed), failedModelCall("tx-m2", failed)}
 	trace.ToolCalls = []AgentToolCall{allowedToolCall("tx-1", tool)}
-	trace.Bracket = bracketOf(before, after)
+	trace.Roster[0].Bracket = bracketOf(before, after)
 
 	require.NoError(t, VerifyAgentTraceEvidence(trace))
 
@@ -427,7 +427,7 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsObservationReceipts(t *test
 		}
 		trace.ModelCalls = []AgentModelCall{call}
 		trace.ToolCalls = []AgentToolCall{allowedToolCall("tx-1", tool)}
-		trace.Bracket = bracketOf(before, after)
+		trace.Roster[0].Bracket = bracketOf(before, after)
 		return trace
 	}
 
@@ -455,7 +455,7 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsFailedObservationReceipts(t
 			call.ObservationReceipts = append(call.ObservationReceipts, AgentTraceReceipt{EventReceipt: receipt})
 		}
 		trace.ModelCalls = []AgentModelCall{call}
-		trace.Bracket = bracketOf(before, after)
+		trace.Roster[0].Bracket = bracketOf(before, after)
 		return trace
 	}
 
@@ -551,8 +551,21 @@ func shellEpisodeTrace(t *testing.T, raw, recorded string) *AgentTrace {
 			ProviderAttemptID: "attempt-1", TransactionID: "tx-m1", Purpose: agentModelCallPurposeTurn,
 			InferenceResult: &AgentTraceInferenceResult{InferenceResult: result},
 		}},
-		ToolCalls: []AgentToolCall{{ModelCallID: "attempt-1", ProviderCallID: "call-1", ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: recorded}},
+		Roster:    rosterOfOne(AgentTraceRuntime{OperatorID: "data-op", SessionID: "data-session"}, AgentTraceWorkspace{}),
+		ToolCalls: []AgentToolCall{{CallID: "tool-call-1", GroupID: "tool-call-1", TargetIndex: shellEpisodeTarget(t, raw), ModelCallID: "attempt-1", ProviderCallID: "call-1", ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: recorded}},
 	}
+}
+
+// shellEpisodeTarget is the roster target a roster of one resolves raw to:
+// [1] when the request satisfies its contract, none when it does not.
+func shellEpisodeTarget(t *testing.T, raw string) int {
+	t.Helper()
+	spec, err := catalogToolSpec(constants.MCPToolRunShellCommand)
+	require.NoError(t, err)
+	if decodeAgentToolRequest(spec, true, raw).Failure != nil {
+		return 0
+	}
+	return 1
 }
 
 func TestVerifyV7EpisodeOutputs_BindsToolArgumentsThroughTypedRequest(t *testing.T) {
@@ -660,7 +673,7 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsConsensusVotes(t *testing.T
 			ledger.signer.Resign(t, tool)
 			after := ledger.executed("after", string(constants.ActionTypeFsRead))
 			trace := evidenceTrace(ledger.runtime(), ledger.runtime())
-			trace.Bracket = bracketOf(before, after)
+			trace.Roster[0].Bracket = bracketOf(before, after)
 			trace.ModelCalls = []AgentModelCall{completedModelCall("turn", model)}
 			trace.ToolCalls = []AgentToolCall{allowedToolCall("tool", tool)}
 			// Binding order differs from the order concurrent members committed.

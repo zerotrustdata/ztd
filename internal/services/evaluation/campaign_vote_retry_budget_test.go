@@ -95,7 +95,7 @@ func TestRunTribunal_CreditsVoteRetryWaitOnTopOfMemberWaits(t *testing.T) {
 			budget.expire()
 		}
 
-		_, err := run.runTribunal(context.Background(), record, proposal)
+		_, err := run.runTribunal(context.Background(), record, proposal, run.trace.Roster[0])
 
 		require.NoError(t, err)
 		require.NoError(t, budget.Err(), "35 s of the Gateway's waits cover a deadline that passed 1 s ago")
@@ -114,7 +114,7 @@ func TestRunTribunal_CreditsVoteRetryWaitOnTopOfMemberWaits(t *testing.T) {
 		base := time.Now().Add(-time.Second)
 		intent.during = func() { setBudgetDeadline(budget, base) }
 
-		_, err := run.runTribunal(context.Background(), record, proposal)
+		_, err := run.runTribunal(context.Background(), record, proposal, run.trace.Roster[0])
 
 		require.NoError(t, err)
 		deadline, _ := budget.Deadline()
@@ -128,7 +128,7 @@ func TestRunTribunal_CreditsVoteRetryWaitOnTopOfMemberWaits(t *testing.T) {
 		run.budget = budget
 		intent.during = func() { setBudgetDeadline(budget, time.Now().Add(-time.Minute)) }
 
-		_, err := run.runTribunal(context.Background(), record, proposal)
+		_, err := run.runTribunal(context.Background(), record, proposal, run.trace.Roster[0])
 
 		require.NoError(t, err)
 		assert.Equal(t, context.DeadlineExceeded, budget.Err())
@@ -163,9 +163,23 @@ func votedOutcome(votes ...*operatorv1.ConsensusVoteInference) *client.GovernedO
 	return outcome
 }
 
-func TestAgentRunDispatch_HoldsTheScenarioBudgetAndCreditsVoteRetryWaits(t *testing.T) {
-	record := func() *AgentToolCall {
-		return &AgentToolCall{CallID: "tool-1", ToolName: constants.MCPToolRunShellCommand}
+// TestAgentRunFanOut_HoldsTheScenarioBudgetAndCreditsVoteRetryWaits drives one
+// governed shell call through fanOut, which holds the budget for the group and
+// credits the longest vote-retry wait.
+func TestAgentRunFanOut_HoldsTheScenarioBudgetAndCreditsVoteRetryWaits(t *testing.T) {
+	shellGroup := func(t *testing.T, run *agentRun) (AgentToolCall, error) {
+		t.Helper()
+		spec, err := catalogToolSpec(constants.MCPToolRunShellCommand)
+		require.NoError(t, err)
+		request := decodeAgentToolRequest(spec, true, `{"command":"echo"}`)
+		require.Nil(t, request.Failure)
+		lead := onTarget(AgentToolCall{CallID: "tool-1", ToolName: constants.MCPToolRunShellCommand, ArgumentsJSON: request.ArgumentsJSON})
+		group, err := run.fanOut(context.Background(), spec, request, []AgentToolCall{lead})
+		if err != nil {
+			return AgentToolCall{}, err
+		}
+		require.Len(t, group, 1)
+		return group[0], nil
 	}
 	newRun := func(t *testing.T, tools *votedTools, budget *scenarioBudget) *agentRun {
 		t.Helper()
@@ -188,12 +202,12 @@ func TestAgentRunDispatch_HoldsTheScenarioBudgetAndCreditsVoteRetryWaits(t *test
 		}
 		run := newRun(t, tools, budget)
 
-		dispatched, denied, err := run.dispatch(context.Background(), record(), constants.ActionTypeMcpCall, constants.MCPToolRunShellCommand, nil)
+		dispatched, err := shellGroup(t, run)
 
 		require.NoError(t, err)
-		assert.False(t, denied)
+		assert.NotEqual(t, agentPolicyDecisionDeny, dispatched.PolicyDecision)
 		assert.Equal(t, "txn-1", dispatched.TransactionID)
-		assert.Equal(t, 1, held, "the budget is held while the governed action dispatches")
+		assert.Equal(t, 1, held, "the budget is held while the fanned-out group dispatches")
 		assert.Zero(t, budgetHolds(budget), "and released afterwards")
 		require.NoError(t, budget.Err(), "the 25 s vote wait covers a deadline that passed 1 s ago")
 		deadline, _ := budget.Deadline()
@@ -205,7 +219,7 @@ func TestAgentRunDispatch_HoldsTheScenarioBudgetAndCreditsVoteRetryWaits(t *test
 		tools.during = func() { setBudgetDeadline(budget, time.Now().Add(-time.Minute)) }
 		run := newRun(t, tools, budget)
 
-		_, _, err := run.dispatch(context.Background(), record(), constants.ActionTypeMcpCall, constants.MCPToolRunShellCommand, nil)
+		_, err := shellGroup(t, run)
 
 		require.NoError(t, err)
 		assert.Equal(t, context.DeadlineExceeded, budget.Err())
@@ -217,7 +231,7 @@ func TestAgentRunDispatch_HoldsTheScenarioBudgetAndCreditsVoteRetryWaits(t *test
 		run := newRun(t, tools, budget)
 		before, _ := budget.Deadline()
 
-		_, _, err := run.dispatch(context.Background(), record(), constants.ActionTypeMcpCall, constants.MCPToolRunShellCommand, nil)
+		_, err := shellGroup(t, run)
 
 		require.NoError(t, err)
 		after, _ := budget.Deadline()
@@ -233,7 +247,7 @@ func TestAgentRunDispatch_HoldsTheScenarioBudgetAndCreditsVoteRetryWaits(t *test
 
 		var err error
 		require.NotPanics(t, func() {
-			_, _, err = run.dispatch(context.Background(), record(), constants.ActionTypeMcpCall, constants.MCPToolRunShellCommand, nil)
+			_, err = shellGroup(t, run)
 		}, "an error answer has no outcome to read votes from")
 
 		require.ErrorIs(t, err, constants.ErrEvaluationDispatchFailed)
@@ -248,7 +262,7 @@ func TestAgentRunDispatch_HoldsTheScenarioBudgetAndCreditsVoteRetryWaits(t *test
 		tools.during = func() { setBudgetDeadline(budget, time.Now().Add(-time.Second)) }
 		run := newRun(t, tools, budget)
 
-		_, _, err := run.dispatch(context.Background(), record(), constants.ActionTypeMcpCall, constants.MCPToolRunShellCommand, nil)
+		_, err := shellGroup(t, run)
 
 		require.ErrorIs(t, err, constants.ErrEvaluationDispatchFailed)
 		assert.Equal(t, context.DeadlineExceeded, budget.Err())
@@ -258,15 +272,15 @@ func TestAgentRunDispatch_HoldsTheScenarioBudgetAndCreditsVoteRetryWaits(t *test
 		run := newRun(t, tools, nil)
 
 		var (
-			denied bool
-			err    error
+			dispatched AgentToolCall
+			err        error
 		)
 		require.NotPanics(t, func() {
-			_, denied, err = run.dispatch(context.Background(), record(), constants.ActionTypeMcpCall, constants.MCPToolRunShellCommand, nil)
+			dispatched, err = shellGroup(t, run)
 		})
 
 		require.NoError(t, err)
-		assert.False(t, denied)
+		assert.NotEqual(t, agentPolicyDecisionDeny, dispatched.PolicyDecision)
 		assert.Equal(t, 1, tools.calls)
 	})
 }

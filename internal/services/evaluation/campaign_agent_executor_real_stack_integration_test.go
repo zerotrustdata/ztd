@@ -260,7 +260,7 @@ func TestCampaignAgentExecutorIntegration_RunShellCommandDispatchesModelWrittenA
 	assert.True(t, call.Success)
 	assert.Equal(t, constants.MCPToolRunShellCommand, call.ToolName)
 	assert.Equal(t, string(constants.ActionTypeMcpCall), call.ActionType)
-	healthPath := trace.Workspace.Root + "/bin/healthcheck.sh"
+	healthPath := trace.Roster[0].Workspace.Root + "/bin/healthcheck.sh"
 	assert.JSONEq(t, string(realStackShellArguments("sh", healthPath)), call.ArgumentsJSON, "the dispatched arguments are the model's arguments, verbatim")
 	// sh runs the absolute path the prompt rendered, so the result is the
 	// workspace fixture's own output as the Data Operator returned it.
@@ -493,9 +493,9 @@ func TestCampaignAgentExecutorIntegration_BracketsToolLoopWithSentinelReadsInOrd
 
 	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED, res.GetLifecycleStatus(), "invalid evidence: %s", res.GetInvalidEvidenceDetail())
 	trace := executorLoadTrace(t, env, res)
-	require.NotNil(t, trace.Bracket, "the trace holds the sentinel receipts read before and after the loop")
-	before := trace.Bracket.Before.EventReceipt
-	after := trace.Bracket.After.EventReceipt
+	require.NotNil(t, trace.Roster[0].Bracket, "the trace holds the sentinel receipts read before and after the loop")
+	before := trace.Roster[0].Bracket.Before.EventReceipt
+	after := trace.Roster[0].Bracket.After.EventReceipt
 	require.NotNil(t, before)
 	require.NotNil(t, after)
 	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, before.GetStatus())
@@ -624,7 +624,7 @@ func TestCampaignAgentExecutorIntegration_VerifiedToolCallCarriesReceiptReferenc
 	}
 	assert.NotEmpty(t, actions[1].GetActionType())
 	assert.Equal(t, trace.ToolCalls[0].Receipt.GetActionType(), actions[1].GetActionType())
-	assert.Equal(t, trace.Data.OperatorID, actions[1].GetOperatorId())
+	assert.Equal(t, trace.Roster[0].Runtime.OperatorID, actions[1].GetOperatorId())
 	receiptRef := actions[1].GetReceiptRef()
 	assert.Equal(t, res.GetEvidenceRefs()[0].GetArtifactId(), receiptRef.GetArtifactId(), "the receipt lives inside the sealed trace")
 	assert.Equal(t, "ztd.operator.v1.EventReceipt", receiptRef.GetSchemaRef())
@@ -747,9 +747,9 @@ func TestCampaignAgentExecutorIntegration_TimeoutClosesBracketSealsTraceAndVerif
 					assert.Equal(t, 1, trace.ModelCalls[1].ToolCallCount, "the late reply requested another tool call")
 				}
 				require.Len(t, trace.ToolCalls, 1, "the completed pre-timeout tool step is retained")
-				require.NotNil(t, trace.Bracket)
-				require.NotNil(t, trace.Bracket.Before.EventReceipt)
-				require.NotNil(t, trace.Bracket.After.EventReceipt)
+				require.NotNil(t, trace.Roster[0].Bracket)
+				require.NotNil(t, trace.Roster[0].Bracket.Before.EventReceipt)
+				require.NotNil(t, trace.Roster[0].Bracket.After.EventReceipt)
 				require.NoError(t, evaluation.VerifyAgentTraceEvidence(trace))
 				assert.Equal(t, evalv1.AgentFinishReason_AGENT_FINISH_REASON_WALL_CLOCK_LIMIT, trace.ToProto().GetFinishReason())
 				report, err := evaluation.NewCampaignRunVerifier(env.clock).VerifyRun(t.Context(), env.store, env.req.RunID, env.req.Catalog, env.req.ScenarioArtifacts)
@@ -963,7 +963,7 @@ func TestCampaignAgentExecutorIntegration_RunShellCommandConfinesWorkingDirToWor
 	require.Len(t, trace.ToolCalls, 1)
 	call := trace.ToolCalls[0]
 	assert.True(t, call.Success)
-	assert.Contains(t, call.ResultJSON, trace.Workspace.Root, "shell command without working_dir must execute inside scenario workspace root")
+	assert.Contains(t, call.ResultJSON, trace.Roster[0].Workspace.Root, "shell command without working_dir must execute inside scenario workspace root")
 }
 
 // A shell command runs only inside the attempt's investigation workspace. The
@@ -1004,7 +1004,7 @@ func TestCampaignAgentExecutorIntegration_RunShellCommandWorkingDirIsTheAttemptW
 			assert.Equal(t, evaluation.ExportedAgentToolErrorSecurity, call.ErrorType)
 			assert.Contains(t, call.Error, "outside the investigation workspace")
 			assert.Empty(t, call.TransactionID, "a refused working directory never reaches the Operator")
-			assert.NotContains(t, trace.Input.Messages[0].Text, trace.Workspace.OperatorWorkingDirectory+"\n", "the prompt names only the attempt workspace")
+			assert.NotContains(t, trace.Input.Messages[0].Text, trace.Roster[0].Workspace.OperatorWorkingDirectory+"\n", "the prompt names only the attempt workspace")
 		})
 	}
 }

@@ -98,10 +98,11 @@ func newTribunalAuthoringRun(t *testing.T, useTribunal bool, inference *tribunal
 		designated: evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
 		variants:   map[evalv1.ModelCampaignRole]*evalv1.ModelVariant{evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY: variant},
 		registry:   nil,
-		workspace:  ScenarioWorkspace{Root: "/operator/workspace/case-1", OperatorWorkingDirectory: "/operator/workspace"},
 		tools:      scope,
-		target:     Target{OperatorID: "operator-1", SessionID: "operator-session-1"},
-		trace:      &AgentTrace{RunID: "run-1", AssignmentID: "assignment-1", ScenarioID: "scenario-1", EvaluationAttemptID: "attempt-1", InvestigationID: "investigation-1", ModelRegistryDigest: "", Inference: AgentTraceRuntime{SessionID: "inference-session-1"}},
+		trace: &AgentTrace{
+			RunID: "run-1", AssignmentID: "assignment-1", ScenarioID: "scenario-1", EvaluationAttemptID: "attempt-1", InvestigationID: "investigation-1", ModelRegistryDigest: "", Inference: AgentTraceRuntime{SessionID: "inference-session-1"},
+			Roster: rosterOfOne(AgentTraceRuntime{OperatorID: "operator-1", SessionID: "operator-session-1"}, AgentTraceWorkspace{Root: "/operator/workspace/case-1", OperatorWorkingDirectory: "/operator/workspace"}),
+		},
 	}
 }
 
@@ -206,7 +207,7 @@ func TestRunTribunalRetainsVotesAndObservationsOnReviewFailure(t *testing.T) {
 		}},
 	}
 	run := newTribunalAuthoringRun(t, true, &tribunalAuthoringInference{result: result}, &tribunalAuthoringTools{})
-	call, err := run.runTribunal(context.Background(), AgentToolCall{CallID: "tool-1", ToolName: constants.MCPToolRunShellCommand}, models.RunShellCommandRequest{Command: "pwd"})
+	call, err := run.runTribunal(context.Background(), AgentToolCall{CallID: "tool-1", ToolName: constants.MCPToolRunShellCommand}, models.RunShellCommandRequest{Command: "pwd"}, run.trace.Roster[0])
 	require.NoError(t, err)
 	require.Len(t, call.ConsensusInferences, 1)
 	assert.True(t, proto.Equal(vote, call.ConsensusInferences[0].ConsensusVoteInference))
@@ -221,8 +222,10 @@ func TestRunToolRoutesNativeAndTribunalShellCalls(t *testing.T) {
 		tools := &tribunalAuthoringTools{outcome: shellToolOutcome(`{"exit_code":0,"stdout":"hello\n"}`)}
 		inference := &tribunalAuthoringInference{result: &tribunalv1.TribunalIntentResult{Outcome: tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_AUDIT_FAILED}}
 		run := newTribunalAuthoringRun(t, false, inference, tools)
-		call, err := run.runTool(context.Background(), 1, "model-call-1", &operatorv1.InferenceToolCall{CallId: "call-1", Name: constants.MCPToolRunShellCommand, ArgumentsJson: proposal})
+		calls, err := run.runTool(context.Background(), 1, "model-call-1", &operatorv1.InferenceToolCall{CallId: "call-1", Name: constants.MCPToolRunShellCommand, ArgumentsJson: proposal})
 		require.NoError(t, err)
+		require.Len(t, calls, 1)
+		call := calls[0]
 		assert.True(t, call.Success)
 		assert.Equal(t, 1, tools.dispatches)
 		assert.Equal(t, constants.ActionTypeMcpCall, tools.action)
@@ -239,8 +242,10 @@ func TestRunToolRoutesNativeAndTribunalShellCalls(t *testing.T) {
 		tools := &tribunalAuthoringTools{}
 		inference := &tribunalAuthoringInference{result: &tribunalv1.TribunalIntentResult{Outcome: tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_AUDIT_FAILED}}
 		run := newTribunalAuthoringRun(t, true, inference, tools)
-		call, err := run.runTool(context.Background(), 1, "model-call-1", &operatorv1.InferenceToolCall{CallId: "call-1", Name: constants.MCPToolRunShellCommand, ArgumentsJson: proposal})
+		calls, err := run.runTool(context.Background(), 1, "model-call-1", &operatorv1.InferenceToolCall{CallId: "call-1", Name: constants.MCPToolRunShellCommand, ArgumentsJson: proposal})
 		require.NoError(t, err)
+		require.Len(t, calls, 1)
+		call := calls[0]
 		assert.False(t, call.Success)
 		assert.Equal(t, 1, inference.intentCalls)
 		assert.Equal(t, `{"args":["hello"],"command":"echo"}`, inference.intent.GetRequest(), "the intent carries the proposal in canonical sorted-key form") //nolint:testifylint // exact bytes, not JSON equivalence
@@ -265,11 +270,13 @@ func TestRunToolRejectsHostnamesBeforeTribunalIntent(t *testing.T) {
 		tools := &tribunalAuthoringTools{outcome: shellToolOutcome(`{"exit_code":0}`)}
 		inference := &tribunalAuthoringInference{result: &tribunalv1.TribunalIntentResult{Outcome: tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_AUDIT_FAILED}}
 		run := newTribunalAuthoringRun(t, true, inference, tools)
-		call, err := run.runTool(context.Background(), 1, "model-call-1", &operatorv1.InferenceToolCall{
+		calls, err := run.runTool(context.Background(), 1, "model-call-1", &operatorv1.InferenceToolCall{
 			CallId: "call-1", Name: constants.MCPToolRunShellCommand,
 			ArgumentsJson: `{"command":"echo","args":["hello"],"hostnames":["web-1"]}`,
 		})
 		require.NoError(t, err)
+		require.Len(t, calls, 1)
+		call := calls[0]
 		assert.False(t, call.Success)
 		assert.Contains(t, call.Error, "does not accept hostnames")
 		assert.Zero(t, tools.dispatches)

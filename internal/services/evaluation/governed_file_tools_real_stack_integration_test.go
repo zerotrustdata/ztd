@@ -232,7 +232,7 @@ func TestCampaignAgentExecutorIntegration_GovernedFileEditDiffRestoreVerifyAndGr
 	var editResult operatorv1.FileEditResult
 	require.NoError(t, protojson.Unmarshal([]byte(trace.ToolCalls[0].Receipt.GetResultSummary()), &editResult))
 	assert.Equal(t, "replace", editResult.GetOperation())
-	assert.Equal(t, trace.Workspace.Root+"/services/checkout/config.yaml", editResult.GetFilePath())
+	assert.Equal(t, trace.Roster[0].Workspace.Root+"/services/checkout/config.yaml", editResult.GetFilePath())
 	assert.Contains(t, trace.ToolCalls[2].Receipt.GetResultSummary(), "ledger_hash_before")
 	assert.Contains(t, trace.ToolCalls[3].Receipt.GetResultSummary(), "diff_content")
 	var historyResult operatorv1.FetchFileHistoryResult
@@ -240,7 +240,7 @@ func TestCampaignAgentExecutorIntegration_GovernedFileEditDiffRestoreVerifyAndGr
 	assert.GreaterOrEqual(t, len(historyResult.GetHistory()), 2, "governed history exposes restorable snapshots")
 	var restoreResult operatorv1.RestoreFileResult
 	require.NoError(t, protojson.Unmarshal([]byte(trace.ToolCalls[4].Receipt.GetResultSummary()), &restoreResult))
-	assert.Equal(t, trace.Workspace.Root+"/services/checkout/config.yaml", restoreResult.GetFilePath())
+	assert.Equal(t, trace.Roster[0].Workspace.Root+"/services/checkout/config.yaml", restoreResult.GetFilePath())
 
 	var fileStateGrade, roleGrade *evalv1.DeterministicGrade
 	for _, grade := range result.GetDeterministicGrades() {

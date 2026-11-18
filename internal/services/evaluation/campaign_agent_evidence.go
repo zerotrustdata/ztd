@@ -35,45 +35,64 @@ const agentReceiptSchemaRef = "ztd.operator.v1.EventReceipt"
 
 // VerifyAgentTraceEvidence proves, from the sealed trace alone, that every
 // governed inference is backed by a receipt the Inference runtime signed,
-// every governed tool call by a receipt the Data runtime signed, and that the
-// Data runtime's ledger between the two sentinels holds exactly the executions
-// the trace claims. When one Operator holds both capabilities its ledger also
-// records every inference, so the bracket claims the model calls as well as
-// the tool calls, in ledger order. An observer on the Data runtime commits its
-// BEGIN and FINALIZE there too, and the bracket claims those receipts as well.
+// every governed tool dispatch by a receipt its roster target signed, and that
+// each roster member's ledger between its two sentinels holds exactly the
+// executions the trace claims on that member. Each member is bracketed
+// whether or not a call targeted it, so a member the model never targeted
+// must show an empty bracket. When one Operator holds both capabilities its
+// ledger also records every inference, so that member's bracket claims the
+// model calls as well as its tool dispatches, in ledger order. An observer on
+// a roster member commits its BEGIN and FINALIZE there too, and that member's
+// bracket claims those receipts as well.
 func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 	if trace == nil {
 		return agentEvidenceError(agentEvidenceStageRuntime, "trace", constants.ErrMissingRequiredField)
+	}
+	if err := validateAgentTraceRoster(trace.Roster); err != nil {
+		return agentEvidenceError(agentEvidenceStageRuntime, "roster", err)
+	}
+	if err := verifyRosterPrompt(trace); err != nil {
+		return agentEvidenceError(agentEvidenceStageRuntime, "roster prompt", err)
 	}
 	anchors, err := agentTraceAnchorSet(trace)
 	if err != nil {
 		return err
 	}
-	if trace.Bracket == nil {
-		return agentEvidenceError(agentEvidenceStageLedger, "ledger bracket", constants.ErrMissingRequiredField)
+	ledgers := make([]*memberLedger, len(trace.Roster))
+	for i, member := range trace.Roster {
+		subject := fmt.Sprintf("roster [%d] ledger bracket", member.Index)
+		if member.Bracket == nil {
+			return agentEvidenceError(agentEvidenceStageLedger, subject, constants.ErrMissingRequiredField)
+		}
+		before, err := verifiedSentinelOutcome(anchors, member.Runtime, member.Bracket.Before.EventReceipt)
+		if err != nil {
+			return agentEvidenceError(agentEvidenceStageLedger, subject+" before", err)
+		}
+		after, err := verifiedSentinelOutcome(anchors, member.Runtime, member.Bracket.After.EventReceipt)
+		if err != nil {
+			return agentEvidenceError(agentEvidenceStageLedger, subject+" after", err)
+		}
+		ledgers[i] = &memberLedger{member: member, before: before, after: after, phases: make(map[string]uint8)}
 	}
-	before, err := verifiedSentinelOutcome(anchors, trace.Data, trace.Bracket.Before.EventReceipt)
-	if err != nil {
-		return agentEvidenceError(agentEvidenceStageLedger, "ledger bracket before", err)
+	claim := func(claims []rosterClaim, add func(*memberLedger, oracle.Outcome)) {
+		for _, c := range claims {
+			add(ledgers[c.index-1], c.outcome)
+		}
 	}
-	after, err := verifiedSentinelOutcome(anchors, trace.Data, trace.Bracket.After.EventReceipt)
-	if err != nil {
-		return agentEvidenceError(agentEvidenceStageLedger, "ledger bracket after", err)
-	}
-	var modelClaims, toolClaims, observationClaims, consensusClaims []oracle.Outcome
+	shared, sharedOK := trace.SharedMember()
 	for _, call := range trace.ModelCalls {
 		outcome, err := verifyModelCallEvidence(anchors, trace, call)
 		if err != nil {
 			return agentEvidenceError(agentEvidenceStageModelCall, "model call "+call.ProviderAttemptID, err)
 		}
-		if trace.SharedRuntime() && outcome.Commitment != nil {
-			modelClaims = append(modelClaims, outcome)
+		if sharedOK && outcome.Commitment != nil {
+			ledgers[shared.Index-1].model = append(ledgers[shared.Index-1].model, outcome)
 		}
-		observed, err := verifyObservationEvidence(anchors, trace.Data, call)
+		observed, err := verifyObservationEvidence(anchors, trace.Roster, call)
 		if err != nil {
 			return agentEvidenceError(agentEvidenceStageModelCall, "model call "+call.ProviderAttemptID+" observation", err)
 		}
-		observationClaims = append(observationClaims, observed...)
+		claim(observed, (*memberLedger).addObservation)
 	}
 	if err := verifyRetryChains(trace); err != nil {
 		return agentEvidenceError(agentEvidenceStageModelCall, "retry chain", err)
@@ -96,78 +115,149 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 		if err != nil {
 			return agentEvidenceError(agentEvidenceStageToolCall, "tool call "+call.CallID+" consensus", err)
 		}
-		consensusClaims = append(consensusClaims, votes...)
+		claim(votes, (*memberLedger).addConsensus)
 		if err := verifyContextRetrieval(trace, call); err != nil {
 			return agentEvidenceError(agentEvidenceStageToolCall, "context retrieval "+call.CallID, err)
 		}
-		outcome, err := verifyToolCallEvidence(anchors, trace.Data, call)
+		outcome, err := verifyTargetedCallEvidence(anchors, trace, call)
 		if err != nil {
 			return agentEvidenceError(agentEvidenceStageToolCall, "tool call "+call.CallID, err)
 		}
 		if outcome != nil && outcome.Commitment != nil {
-			toolClaims = append(toolClaims, *outcome)
+			ledgers[call.TargetIndex-1].tool = append(ledgers[call.TargetIndex-1].tool, *outcome)
 		}
 	}
-	var scenarioClaims []oracle.Outcome
-	observationPhases := make(map[string]uint8)
 	for _, observation := range trace.Observations {
+		subject := "scenario observation " + string(observation.Kind) + " " + observation.Call.ToolName
 		if err := verifyScenarioObservation(trace, observation); err != nil {
-			return agentEvidenceError(agentEvidenceStageObservation, "scenario observation "+string(observation.Kind)+" "+observation.Call.ToolName, err)
+			return agentEvidenceError(agentEvidenceStageObservation, subject, err)
 		}
 		votes, err := verifyConsensusInferenceEvidence(anchors, trace, observation.Call)
 		if err != nil {
-			return agentEvidenceError(agentEvidenceStageObservation, "scenario observation "+string(observation.Kind)+" "+observation.Call.ToolName+" consensus", err)
+			return agentEvidenceError(agentEvidenceStageObservation, subject+" consensus", err)
 		}
-		consensusClaims = append(consensusClaims, votes...)
-		outcome, err := verifyToolCallEvidence(anchors, trace.Data, observation.Call)
+		outcome, err := verifyTargetedCallEvidence(anchors, trace, observation.Call)
 		if err != nil {
-			return agentEvidenceError(agentEvidenceStageObservation, "scenario observation "+string(observation.Kind)+" "+observation.Call.ToolName+" receipt", err)
+			return agentEvidenceError(agentEvidenceStageObservation, subject+" receipt", err)
 		}
-		if outcome != nil && outcome.Commitment != nil {
-			scenarioClaims = append(scenarioClaims, *outcome)
-		}
-		// Seed evidence precedes agent activity; final checks follow it. Include
-		// the observation's own consensus calls in the same phase.
+		// Seed evidence precedes agent activity; final checks follow it. The
+		// observation's own consensus calls sit in the same phase.
 		phase := uint8(2)
 		if observation.Kind == scenarioObservationSeed {
 			phase = 0
 		}
 		for _, vote := range votes {
-			observationPhases[vote.Commitment.Hash] = phase
+			ledger := ledgers[vote.index-1]
+			ledger.consensus = append(ledger.consensus, vote.outcome)
+			ledger.phases[vote.outcome.Commitment.Hash] = phase
 		}
 		if outcome != nil && outcome.Commitment != nil {
-			observationPhases[outcome.Commitment.Hash] = phase
+			ledger := ledgers[observation.Call.TargetIndex-1]
+			ledger.scenario = append(ledger.scenario, *outcome)
+			ledger.phases[outcome.Commitment.Hash] = phase
 		}
 	}
-	claims := append(slices.Clone(modelClaims), toolClaims...)
-	claims = append(claims, consensusClaims...)
-	claims = append(claims, scenarioClaims...)
-	ordered, err := oracle.OrderLedger(before, after, append(claims, observationClaims...))
+	for _, ledger := range ledgers {
+		if err := ledger.verify(); err != nil {
+			return agentEvidenceError(agentEvidenceStageLedger, fmt.Sprintf("roster [%d] ledger bracket", ledger.member.Index), err)
+		}
+	}
+	return nil
+}
+
+// verifyRosterPrompt requires the system prompt of a trace that declared
+// tools to carry the roster block rendered from the frozen roster, so the
+// roster the model read is the roster its calls resolved against. A held
+// repetition's system prompt sits in its held context, verified with it.
+func verifyRosterPrompt(trace *AgentTrace) error {
+	if trace.SchemaVersion != agentTraceSchemaVersion || trace.HeldContext != nil || trace.Input == nil || len(trace.Input.Tools) == 0 {
+		return nil
+	}
+	system := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM.String()
+	if len(trace.Input.Messages) == 0 || trace.Input.Messages[0].Role != system || !strings.Contains(trace.Input.Messages[0].Text, renderRosterPrompt(trace.Roster)) {
+		return constants.ErrHarnessRosterMismatch
+	}
+	return nil
+}
+
+// rosterClaim is one verified execution claimed on a roster member's ledger.
+type rosterClaim struct {
+	index   int
+	outcome oracle.Outcome
+}
+
+// memberLedger collects the executions the trace claims on one roster member
+// between its two sentinels.
+type memberLedger struct {
+	member        AgentTraceRosterMember
+	before, after oracle.Outcome
+	model, tool   []oracle.Outcome
+	scenario      []oracle.Outcome
+	consensus     []oracle.Outcome
+	observation   []oracle.Outcome
+	// phases orders scenario observations around agent activity: 0 for seed
+	// evidence, 2 for final checks; everything else is 1.
+	phases map[string]uint8
+}
+
+func (l *memberLedger) addObservation(outcome oracle.Outcome) {
+	l.observation = append(l.observation, outcome)
+}
+
+func (l *memberLedger) addConsensus(outcome oracle.Outcome) {
+	l.consensus = append(l.consensus, outcome)
+}
+
+// verify proves the member's bracket holds exactly the claimed executions,
+// that each role's claims are in ledger order, and that seed observations
+// precede and final checks follow agent activity.
+func (l *memberLedger) verify() error {
+	claims := append(slices.Clone(l.model), l.tool...)
+	claims = append(claims, l.consensus...)
+	claims = append(claims, l.scenario...)
+	ordered, err := oracle.OrderLedger(l.before, l.after, append(claims, l.observation...))
 	if err == nil {
-		err = oracle.VerifyBracket(before, after, ordered)
+		err = oracle.VerifyBracket(l.before, l.after, ordered)
 	}
 	if err != nil {
-		return agentEvidenceError(agentEvidenceStageLedger, "ledger bracket", err)
+		return err
 	}
 	// Grading reads each role's calls in trace order, so that order must be
 	// the order the ledger committed them in.
-	for _, claims := range [][]oracle.Outcome{modelClaims, toolClaims, scenarioClaims} {
+	for _, claims := range [][]oracle.Outcome{l.model, l.tool, l.scenario} {
 		if !inLedgerOrder(ordered, claims) {
-			return agentEvidenceError(agentEvidenceStageLedger, "ledger bracket", fmt.Errorf("trace records claimed executions out of ledger order: %w", constants.ErrConformanceLedgerGap))
+			return fmt.Errorf("trace records claimed executions out of ledger order: %w", constants.ErrConformanceLedgerGap)
 		}
 	}
 	var phase uint8
 	for _, outcome := range ordered {
-		next, observation := observationPhases[outcome.Commitment.Hash]
+		next, observation := l.phases[outcome.Commitment.Hash]
 		if !observation {
 			next = 1
 		}
 		if next < phase {
-			return agentEvidenceError(agentEvidenceStageLedger, "ledger bracket", fmt.Errorf("scenario observations do not bracket agent activity: %w", constants.ErrConformanceLedgerGap))
+			return fmt.Errorf("scenario observations do not bracket agent activity: %w", constants.ErrConformanceLedgerGap)
 		}
 		phase = next
 	}
 	return nil
+}
+
+// verifyTargetedCallEvidence verifies one recorded dispatch against the
+// roster member it targeted. A call rejected before any target resolved has
+// no target and must carry no receipt.
+func verifyTargetedCallEvidence(anchors *oracle.AnchorSet, trace *AgentTrace, call AgentToolCall) (*oracle.Outcome, error) {
+	if call.TargetIndex == 0 {
+		if call.Receipt != nil || call.TransactionID != "" || call.RequestEnvelope != nil || call.Success {
+			return nil, fmt.Errorf("dispatch without a roster target carries execution evidence: %w", constants.ErrHarnessFanOutMismatch)
+		}
+		return nil, nil
+	}
+	member, err := trace.TargetMember(call)
+	if err != nil {
+		return nil, err
+	}
+	return verifyToolCallEvidence(anchors, member.Runtime, call)
 }
 
 // verifyRetryChains proves every retried model call against the attempt it
@@ -270,24 +360,12 @@ func verifyV7EpisodeOutputs(trace *AgentTrace) error {
 			specs[declaration.Name] = spec
 		}
 	}
+	for _, group := range toolCallGroups(trace.ToolCalls) {
+		if err := verifyFanOutGroup(trace, turns, specs, group); err != nil {
+			return err
+		}
+	}
 	for _, tool := range trace.ToolCalls {
-		turn := turns[tool.ModelCallID]
-		if turn == nil {
-			return fmt.Errorf("tool call has no signed agent turn: %w", constants.ErrEvaluationEvidenceTraceMismatch)
-		}
-		_, _, calls := agentResponseParts(turn.InferenceResult.InferenceResult)
-		found := false
-		for _, requested := range calls {
-			spec, declared := specs[requested.GetName()]
-			request := decodeAgentToolRequest(spec, declared, requested.GetArgumentsJson())
-			if requested.GetCallId() == tool.ProviderCallID && requested.GetProviderSignature() == tool.ProviderSignature && requested.GetName() == tool.ToolName && request.ArgumentsJSON == tool.ArgumentsJSON {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("tool call differs from the signed model request: %w", constants.ErrEvaluationEvidenceTraceMismatch)
-		}
 		if tool.ApprovedArgumentsJSON != "" {
 			var approved models.RunShellCommandRequest
 			if err := json.Unmarshal([]byte(tool.ApprovedArgumentsJSON), &approved); err != nil || approved.Command == "" || approved.CanonicalJSON() != tool.ApprovedArgumentsJSON {
@@ -309,21 +387,22 @@ func verifyV7EpisodeOutputs(trace *AgentTrace) error {
 }
 
 // verifyObservationEvidence returns the ledger claims for the observer receipts
-// a model call carries that the Data runtime signed. An observer on the Data
-// runtime commits its BEGIN and FINALIZE inside the trace bracket, so the
+// a model call carries that a roster member signed. An observer on a roster
+// member commits its BEGIN and FINALIZE inside that member's bracket, so the
 // bracket must claim them; an observer on any other runtime commits to a ledger
-// the bracket does not cover, so its receipt claims nothing. A claimed receipt
-// must be a verified observation with a commitment, whether its handler completed
-// or failed: its signed action type binds it, so no other execution on the Data
-// runtime can be passed off as one. A rejected observation committed nothing and
+// no bracket covers, so its receipt claims nothing. A claimed receipt must be a
+// verified observation with a commitment, whether its handler completed or
+// failed: its signed action type binds it, so no other execution on the member
+// can be passed off as one. A rejected observation committed nothing and
 // claims nothing.
-func verifyObservationEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime, call AgentModelCall) ([]oracle.Outcome, error) {
-	var claims []oracle.Outcome
+func verifyObservationEvidence(anchors *oracle.AnchorSet, roster []AgentTraceRosterMember, call AgentModelCall) ([]rosterClaim, error) {
+	var claims []rosterClaim
 	for _, receipt := range call.ObservationReceipts {
 		if receipt.EventReceipt == nil {
 			return nil, constants.ErrMissingRequiredField
 		}
-		if receipt.GetSignerKeyId() != data.Anchor.GetKeyId() {
+		member, ok := rosterSigner(roster, receipt.GetSignerKeyId())
+		if !ok {
 			continue
 		}
 		switch action := constants.ActionType(receipt.GetActionType()); action {
@@ -331,11 +410,11 @@ func verifyObservationEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime
 		default:
 			return nil, fmt.Errorf("receipt action %q is not an observation: %w", action, constants.ErrEvaluationEvidenceTraceMismatch)
 		}
-		outcome, err := verifiedOutcome(anchors, data.OperatorID, receipt.EventReceipt)
+		outcome, err := verifiedOutcome(anchors, member.Runtime.OperatorID, receipt.EventReceipt)
 		if err != nil {
 			return nil, err
 		}
-		if err := verifyReceiptSession(receipt.EventReceipt, data.SessionID); err != nil {
+		if err := verifyReceiptSession(receipt.EventReceipt, member.Runtime.SessionID); err != nil {
 			return nil, err
 		}
 		if outcome.Kind == oracle.OutcomeRejected {
@@ -344,9 +423,19 @@ func verifyObservationEvidence(anchors *oracle.AnchorSet, data AgentTraceRuntime
 		if outcome.Commitment == nil {
 			return nil, fmt.Errorf("observation receipt carries no commitment: %w", constants.ErrConformanceLedgerGap)
 		}
-		claims = append(claims, outcome)
+		claims = append(claims, rosterClaim{index: member.Index, outcome: outcome})
 	}
 	return claims, nil
+}
+
+// rosterSigner returns the roster member whose pinned actuator key is keyID.
+func rosterSigner(roster []AgentTraceRosterMember, keyID string) (AgentTraceRosterMember, bool) {
+	for _, member := range roster {
+		if keyID != "" && member.Runtime.Anchor.GetKeyId() == keyID {
+			return member, true
+		}
+	}
+	return AgentTraceRosterMember{}, false
 }
 
 // inLedgerOrder reports whether claims appear in ordered in the same relative
@@ -361,26 +450,33 @@ func inLedgerOrder(ordered, claims []oracle.Outcome) bool {
 	return next == len(claims)
 }
 
-// agentTraceAnchorSet pins each traced runtime's key. Both roles must carry an
-// anchor bound to their own runtime; a shared runtime must pin one key for
+// agentTraceAnchorSet pins each traced runtime's key: the Inference runtime
+// and every roster member. Each must carry an anchor bound to its own runtime;
+// a runtime shared by the Inference role and a member must pin one key for
 // both, so a receipt verifies the same whichever role claims it.
 func agentTraceAnchorSet(trace *AgentTrace) (*oracle.AnchorSet, error) {
-	roles := []struct {
-		name    string
-		runtime AgentTraceRuntime
-	}{{"inference runtime anchor", trace.Inference}, {"data runtime anchor", trace.Data}}
-	for _, role := range roles {
-		if role.runtime.OperatorID == "" || role.runtime.Anchor == nil || role.runtime.Anchor.ConformanceAnchor == nil {
-			return nil, agentEvidenceError(agentEvidenceStageRuntime, role.name, constants.ErrConformanceAnchorMissing)
+	check := func(name string, runtime AgentTraceRuntime) error {
+		if runtime.OperatorID == "" || runtime.Anchor == nil || runtime.Anchor.ConformanceAnchor == nil {
+			return agentEvidenceError(agentEvidenceStageRuntime, name, constants.ErrConformanceAnchorMissing)
 		}
-		if runtimeID := role.runtime.Anchor.GetRuntimeId(); runtimeID != role.runtime.OperatorID {
-			return nil, agentEvidenceError(agentEvidenceStageRuntime, role.name, fmt.Errorf("anchor runtime %q is not the traced runtime %q: %w", runtimeID, role.runtime.OperatorID, constants.ErrConformanceAnchorUnknown))
+		if runtimeID := runtime.Anchor.GetRuntimeId(); runtimeID != runtime.OperatorID {
+			return agentEvidenceError(agentEvidenceStageRuntime, name, fmt.Errorf("anchor runtime %q is not the traced runtime %q: %w", runtimeID, runtime.OperatorID, constants.ErrConformanceAnchorUnknown))
 		}
+		return nil
 	}
-	pinned := []*evalv1.ConformanceAnchor{trace.Data.Anchor.ConformanceAnchor}
-	if trace.SharedRuntime() {
-		if !proto.Equal(trace.Inference.Anchor.ConformanceAnchor, trace.Data.Anchor.ConformanceAnchor) {
-			return nil, agentEvidenceError(agentEvidenceStageRuntime, "inference runtime anchor", fmt.Errorf("shared runtime %q pins two keys: %w", trace.Data.OperatorID, constants.ErrConformanceAnchorInvalid))
+	if err := check("inference runtime anchor", trace.Inference); err != nil {
+		return nil, err
+	}
+	var pinned []*evalv1.ConformanceAnchor
+	for _, member := range trace.Roster {
+		if err := check(fmt.Sprintf("roster [%d] runtime anchor", member.Index), member.Runtime); err != nil {
+			return nil, err
+		}
+		pinned = append(pinned, member.Runtime.Anchor.ConformanceAnchor)
+	}
+	if shared, ok := trace.SharedMember(); ok {
+		if !proto.Equal(trace.Inference.Anchor.ConformanceAnchor, shared.Runtime.Anchor.ConformanceAnchor) {
+			return nil, agentEvidenceError(agentEvidenceStageRuntime, "inference runtime anchor", fmt.Errorf("shared runtime %q pins two keys: %w", shared.Runtime.OperatorID, constants.ErrConformanceAnchorInvalid))
 		}
 	} else {
 		pinned = append(pinned, trace.Inference.Anchor.ConformanceAnchor)
@@ -706,11 +802,15 @@ func agentReceiptEvidenceReference(traceEvidence *compliancev1.ComplianceEvidenc
 	}, nil
 }
 
-// agentToolGovernedAction binds one tool call's signed receipt as a governed
-// action on the Data Operator. A refused call has no receipt and binds nothing.
+// agentToolGovernedAction binds one tool dispatch's signed receipt as a
+// governed action on the roster member it targeted. A refused call has no receipt and binds nothing.
 func agentToolGovernedAction(traceEvidence *compliancev1.ComplianceEvidenceReference, trace *AgentTrace, assignmentID string, call AgentToolCall) (*evalv1.GovernedActionBinding, error) {
 	if call.Receipt == nil {
 		return nil, nil
+	}
+	member, err := trace.TargetMember(call)
+	if err != nil {
+		return nil, err
 	}
 	ref, err := agentReceiptEvidenceReference(traceEvidence, trace, call.TransactionID, call.Receipt)
 	if err != nil {
@@ -720,8 +820,8 @@ func agentToolGovernedAction(traceEvidence *compliancev1.ComplianceEvidenceRefer
 		BindingId:         call.CallID,
 		AssignmentId:      assignmentID,
 		TransactionId:     call.TransactionID,
-		OperatorId:        trace.Data.OperatorID,
-		OperatorSessionId: trace.Data.SessionID,
+		OperatorId:        member.Runtime.OperatorID,
+		OperatorSessionId: member.Runtime.SessionID,
 		ReceiptRef:        ref,
 		PolicyDecision:    call.PolicyDecision,
 		ActionType:        call.Receipt.GetActionType(),

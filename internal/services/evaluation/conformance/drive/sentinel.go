@@ -29,8 +29,7 @@ type Sentinel struct {
 }
 
 // NewSentinel requires at least one executor target. The conformance runner
-// passes both; a campaign reads only its Data Operator. Read refuses an executor
-// with no target.
+// passes both. Read refuses an executor with no target.
 func NewSentinel(c *client.Client, p client.Persona, targets map[cases.Executor]operator.Target) (*Sentinel, error) {
 	if c == nil {
 		return nil, fmt.Errorf("sentinel: client: %w", constants.ErrMissingRequiredField)
@@ -41,6 +40,15 @@ func NewSentinel(c *client.Client, p client.Persona, targets map[cases.Executor]
 	return &Sentinel{client: c, persona: p, targets: targets}, nil
 }
 
+// NewTargetSentinel returns a sentinel that reads only through ReadTarget: a
+// campaign brackets each member of its harness roster by session.
+func NewTargetSentinel(c *client.Client, p client.Persona) (*Sentinel, error) {
+	if c == nil {
+		return nil, fmt.Errorf("sentinel: client: %w", constants.ErrMissingRequiredField)
+	}
+	return &Sentinel{client: c, persona: p}, nil
+}
+
 // Read dispatches FS_READ of readAbs to the executor's session and returns the
 // signed receipt. Any outcome other than RECEIPT is an error.
 func (s *Sentinel) Read(ctx context.Context, ex cases.Executor, readAbs string) (*operatorv1.EventReceipt, error) {
@@ -48,29 +56,43 @@ func (s *Sentinel) Read(ctx context.Context, ex cases.Executor, readAbs string) 
 	if !ok {
 		return nil, fmt.Errorf("sentinel %s: %w", ex, constants.ErrConformanceIngressUnsupported)
 	}
+	return s.read(ctx, string(ex), target, readAbs)
+}
+
+// ReadSession dispatches FS_READ of readAbs to one named Operator session and
+// returns the signed receipt. A harness roster brackets every member this way
+// (evaluation.RosterSentinel).
+func (s *Sentinel) ReadSession(ctx context.Context, operatorID, operatorSessionID, readAbs string) (*operatorv1.EventReceipt, error) {
+	if operatorID == "" || operatorSessionID == "" {
+		return nil, fmt.Errorf("sentinel %s: target: %w", operatorID, constants.ErrMissingRequiredField)
+	}
+	return s.read(ctx, operatorID, operator.Target{OperatorID: operatorID, OperatorSessionID: operatorSessionID}, readAbs)
+}
+
+func (s *Sentinel) read(ctx context.Context, label string, target operator.Target, readAbs string) (*operatorv1.EventReceipt, error) {
 	executionID, err := uuid.NewString()
 	if err != nil {
-		return nil, fmt.Errorf("sentinel %s: execution id: %w", ex, err)
+		return nil, fmt.Errorf("sentinel %s: execution id: %w", label, err)
 	}
 	a := cases.Attempt{
 		AttemptID: executionID,
 		ReadAbs:   readAbs,
-		Case:      cases.Case{ID: "sentinel-" + string(ex), Action: cases.ActionRead},
+		Case:      cases.Case{ID: "sentinel-" + label, Action: cases.ActionRead},
 	}
 	req, err := dispatchRequest(a, target, s.persona)
 	if err != nil {
-		return nil, fmt.Errorf("sentinel %s: %w", ex, err)
+		return nil, fmt.Errorf("sentinel %s: %w", label, err)
 	}
 	outcome, err := s.client.DispatchCommand(ctx, s.persona, req)
 	if err != nil {
-		return nil, fmt.Errorf("sentinel %s: submit: %w", ex, err)
+		return nil, fmt.Errorf("sentinel %s: submit: %w", label, err)
 	}
 	if err := outcome.Typed(); err != nil {
-		return nil, fmt.Errorf("sentinel %s: %w", ex, err)
+		return nil, fmt.Errorf("sentinel %s: %w", label, err)
 	}
 	obs := Observe(outcome)
 	if obs.GetKind() != evalv1.ConformanceObservationKind_CONFORMANCE_OBSERVATION_KIND_RECEIPT || obs.GetReceipt() == nil {
-		return nil, fmt.Errorf("sentinel %s: outcome %s: %w", ex, obs.GetKind(), constants.ErrEventReceiptMissing)
+		return nil, fmt.Errorf("sentinel %s: outcome %s: %w", label, obs.GetKind(), constants.ErrEventReceiptMissing)
 	}
 	return obs.GetReceipt(), nil
 }

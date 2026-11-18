@@ -3,8 +3,8 @@ doc_id: agents
 title: AI Agents and the ztd Governance Boundary
 audience: maintainers and coding agents
 status: current
-version: v1.10.1
-last_updated: 2026-11-16
+version: v1.10.2
+last_updated: 2026-11-18
 owners:
   - internal/cli/agent/
   - internal/cli/cmd/mcp/
@@ -55,6 +55,7 @@ Defines how AI agents and agentic applications interface with the ztd zero-trust
   - [Five-Layer Governance Enforcement for Agents](#five-layer-governance-enforcement-for-agents)
   - [Audit Evidence, Receipts, and Attestation](#audit-evidence-receipts-and-attestation)
   - [Production Tribunal (Intent Deliberation Pipeline)](#production-tribunal-intent-deliberation-pipeline)
+  - [Harness Roster Prompt](#harness-roster-prompt)
 - [Anti-patterns](#anti-patterns)
 - [Links out](#links-out)
 
@@ -319,6 +320,12 @@ Under `ratify` and `notary`, every member call is a governed `INFERENCE` mutatio
 Every member call carries a JSON response format whose schema is the shape its strict decoder accepts (`internal/services/tribunal/schema.go`). A candidate and a `REVISE` carry only the authored `{command, args}`; the Gateway owns timeout and working directory. Marshal answers `{risk, rationale, feedback}`, where `feedback` is always present and empty unless risk is `HIGH`. The Auditor answers one object with `verdict`, `rationale`, and `revised_arguments` (null unless `REVISE`), plus `swap_to_cluster` (null unless `SWAP`) when the panel split into alternative clusters; without alternatives the schema offers only `APPROVE` and `REVISE`. The Gateway validates authoring answers against those same schemas, including required fields, exact field names, duplicate keys, and null values. Surrounding JSON whitespace is accepted; prose, markdown fences, and trailing content are rejected. Marshal treats an invalid answer as `HIGH`, and the Auditor's answer counts as an invalid attempt.
 
 Authoring prompts distinguish direct argv from shell text: `command` names the executable, `args` excludes argv[0], and arguments contain no simulated output or invented paths. Shell expansion is unavailable, while literal utility syntax remains intact: `find -exec` retains its terminating `;` or `+`, regex patterns remain literal arguments, and a path containing spaces remains one argument. These instructions guide model correctness; schema and L1 validation do not prove a utility expression is correct. Every Tribunal stage renders its persona from the typed persona registry (`internal/services/agentpersona`): the shared security prefix, then role, output contract, identity, purpose and autonomy. Vote renderings instead use the fixed `{decision,reason}` output contract and omit autonomy. The four honest members share the `tribunalMemberContract` output contract. Nemesis, the only adversarial seat, has its own authoring contract (`nemesisContract`) with the same answer shape, so only the flaw distinguishes its candidate. Nemesis is a calibrated adversary, always cunning but not always aggressive. It authors a plausible subtle flaw when one exists and otherwise the honest command. Its L2 vote is the calibrated-attacker ballot described in [Tribunal Provider Vote Mechanics](consensus.md#tribunal-provider-vote-mechanics), and its signed affirmative votes count toward the consensus quorum (INV-CON-VOTE-09).
+
+### Harness Roster Prompt
+
+In evaluation, ztd acts as the harness. `CampaignAgentExecutor` (`internal/services/evaluation/campaign_agent_executor.go`) is the agent loop: it renders the agent's system prompt, receives the model's tool calls, and dispatches each one as a governed action. This is distinct from the Go agent harness client in `internal/tools/agent_harness/`, which is a typed Gateway client with no reasoning loop (`INV-AGT-08`).
+
+When a run addresses several Data Operators, the harness adds an `<operator_roster>` block to the system prompt. The block lists each member's 1-based position, Operator ID, host identity, and workspace root. Every Operator tool takes a harness-owned `target_operators` argument that selects members by position, Operator ID, hostname, or `["all"]`. The harness strips the argument before the native tool decodes its arguments, resolves it against the frozen roster, and never forwards it to an Operator. An unresolved selector returns a model-visible failure with no governed action. Roster freezing, fan-out, and verification are specified in [Evaluation Programs](evals.md#harness-roster-and-fan-out) (`INV-EVAL-CAMP-64` to `INV-EVAL-CAMP-72`).
 
 ## Anti-patterns
 

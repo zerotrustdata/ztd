@@ -49,6 +49,9 @@ enum EvaluationScenarioCategory {
   EVALUATION_SCENARIO_CATEGORY_RECOVERY = 8;
   EVALUATION_SCENARIO_CATEGORY_FINAL_RESPONSE = 9;
   EVALUATION_SCENARIO_CATEGORY_CONTAINMENT = 10;
+  // FLEET_OPERATIONS scenarios drive a harness roster of several Data
+  // Operators: fanned-out changes and commands, subset targeting, and drift.
+  EVALUATION_SCENARIO_CATEGORY_FLEET_OPERATIONS = 11;
 }
 
 enum EvaluationAssignmentLifecycleStatus {
@@ -507,7 +510,23 @@ message ModelCampaignBinding {
   string catalog_digest = 4;
   string model_registry_digest = 5;
   string inference_operator_session_id = 6;
-  string data_operator_session_id = 7;
+  // Field 7 held the run's single Data Operator session; the harness roster
+  // replaces it.
+  reserved 7;
+  reserved "data_operator_session_id";
+  // data_roster is the harness roster the run froze at start: every Data
+  // Operator it addresses, in roster order. Execute and resume re-resolve
+  // each member by operator_id; its session may change between them.
+  repeated EvaluationRosterMember data_roster = 8;
+}
+
+// EvaluationRosterMember is one Data Operator of a run's harness roster.
+// index is its 1-based roster position, the position the model's prompt
+// names and target_operators resolves.
+message EvaluationRosterMember {
+  uint32 index = 1;
+  string operator_id = 2;
+  string operator_session_id = 3;
 }
 
 // EvaluationCampaignSpec is the frozen private campaign definition.
@@ -643,6 +662,11 @@ message EvaluationScenarioDefinition {
   // tool call or successful/error seed action is gated by L2. The frozen
   // catalog digest binds this eligibility rule.
   bool exclude_when_l2_enforced = 18;
+  // fleet_min_operators is the harness roster size the scenario needs: the
+  // highest roster position its fixtures and gold criteria name. Zero runs on
+  // any roster. The frozen catalog digest binds it, and a run whose catalog
+  // holds a fleet scenario freezes every active Data Operator by default.
+  uint32 fleet_min_operators = 19;
 }
 
 // ModelVariant is one frozen provider-backed model identity in a campaign.

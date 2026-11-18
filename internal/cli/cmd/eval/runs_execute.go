@@ -19,11 +19,9 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
-	cliop "github.com/zerotrustdata/ztd/internal/cli/operator"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
-	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/drive"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
@@ -298,7 +296,11 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err != nil {
 		return 0, err
 	}
-	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", investigation.GetDataOperatorId(), evaluation.HostedProviderClasses(spec.GetModelRegistry(), spec.GetJudgeVariant()))
+	fleet, err := evaluation.FrozenRosterSelection(binding)
+	if err != nil {
+		return 0, fmt.Errorf("evaluation: run execute: %w", err)
+	}
+	topology, err := evaluation.ResolveCampaignOperatorTopology(operators, "", fleet, evaluation.HostedProviderClasses(spec.GetModelRegistry(), spec.GetJudgeVariant()))
 	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}
@@ -308,14 +310,16 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	// The workspace is checked first because its refusal is the actionable
 	// error. A platform run reads no receipts, so it needs no anchors.
 	if summary.Run.GetLane() != evalv1.EvaluationLane_EVALUATION_LANE_PLATFORM {
-		if err := evaluation.ValidateAgentDataOperator(topology.DataWorkingDirectory, cfg.ProjectRoot); err != nil {
-			return 0, fmt.Errorf("evaluation: run execute: %w", err)
+		for _, member := range topology.Fleet {
+			if err := evaluation.ValidateAgentDataOperator(member.WorkingDirectory, cfg.ProjectRoot); err != nil {
+				return 0, fmt.Errorf("evaluation: run execute: Data Operator %s: %w", member.OperatorID, err)
+			}
 		}
 		if topology, err = topology.WithAnchors(operators); err != nil {
 			return 0, fmt.Errorf("evaluation: run execute: %w", err)
 		}
 	}
-	authContext, err = evalBindDataOperator(cmd, gatewayDeps, cfg, fileSvc, authContext, operators, topology.Data.OperatorSessionID, !opts.NoAutoBind)
+	authContext, err = evalBindDataOperator(cmd, gatewayDeps, cfg, fileSvc, authContext, operators, rosterSessions(topology), !opts.NoAutoBind)
 	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}
@@ -605,9 +609,7 @@ func newProductionCampaignAgentExecutor(in campaignAgentExecutorInputs) (evaluat
 		return nil, fmt.Errorf("evaluation: initialize gateway client: %w", err)
 	}
 	persona := harnessclient.Persona{ID: campaignAgentPersonaID, CLISessionID: in.AuthContext.CLISessionID, UserID: in.AuthContext.UserID}
-	sentinel, err := drive.NewSentinel(gatewayClient, persona, map[cases.Executor]cliop.Target{
-		cases.ExecutorOutbound: {OperatorID: in.Topology.Data.OperatorID, OperatorSessionID: in.Topology.Data.OperatorSessionID},
-	})
+	sentinel, err := drive.NewTargetSentinel(gatewayClient, persona)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: initialize ledger sentinel: %w", err)
 	}

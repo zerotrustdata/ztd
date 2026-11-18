@@ -103,10 +103,13 @@ func saveRunAttemptTraces(t *testing.T, store *Store, runID string, attempts ...
 	result.ResultDigest = digest
 	require.NoError(t, store.SaveAssignmentResult(ctx, result))
 
-	body, err := SealAgentTrace(&AgentTrace{
+	trace := &AgentTrace{
 		RunID: runID, AssignmentID: assignmentID, EvaluationAttemptID: "attempt-1", DesignatedRole: "primary",
-		Input: testAgentTraceInput(), FinalOutput: "done", ModelCalls: calls,
-	})
+		Roster: rosterOfOne(AgentTraceRuntime{OperatorID: "data-op", SessionID: "data-session"}, AgentTraceWorkspace{}),
+		Input:  testAgentTraceInput(), FinalOutput: "done", ModelCalls: calls,
+	}
+	withRosterPrompt(trace)
+	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 	require.NoError(t, store.SaveAssignmentAgentTrace(ctx, runID, assignmentID, body))
 }

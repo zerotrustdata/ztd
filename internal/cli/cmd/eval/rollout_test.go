@@ -204,6 +204,7 @@ func TestRequireRunServed_FailsWhenEveryAssignmentFailedAtTheProvider(t *testing
 	// failed before a trace existed.
 	traceBody, err := evaluation.SealAgentTrace(&evaluation.AgentTrace{
 		RunID: "run-a-1", AssignmentID: assignments[0].GetAssignmentId(), EvaluationAttemptID: "attempt-1",
+		Roster:               []evaluation.AgentTraceRosterMember{{Index: 1, Runtime: evaluation.AgentTraceRuntime{OperatorID: "data-op", SessionID: "data-session"}}},
 		Input:                &evaluation.AgentTraceInput{Messages: []evaluation.AgentTraceMessage{{Role: "INFERENCE_MESSAGE_ROLE_USER", Text: "Diagnose the outage."}}},
 		ProviderFailure:      string(evaluation.ExecutionFailureProvider),
 		ProviderFailureClass: "capability_unsupported",

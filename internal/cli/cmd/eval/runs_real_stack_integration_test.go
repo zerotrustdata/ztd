@@ -319,8 +319,8 @@ func TestRunsExecute_RealStack(t *testing.T) {
 			assert.Equal(t, workload.OperatorSessionID, trace.Inference.SessionID)
 			dataWorkload, err := run.stack.Data.Workload()
 			require.NoError(t, err)
-			assert.Equal(t, dataWorkload.OperatorID, trace.Data.OperatorID)
-			assert.NotEqual(t, trace.Data.OperatorID, trace.Inference.OperatorID)
+			assert.Equal(t, dataWorkload.OperatorID, trace.Roster[0].Runtime.OperatorID)
+			assert.NotEqual(t, trace.Roster[0].Runtime.OperatorID, trace.Inference.OperatorID)
 
 			operatorFiles, err := fs.NewRuntimeFileService(run.stack.InferenceHost.WorkingDir, slog.Default())
 			require.NoError(t, err)

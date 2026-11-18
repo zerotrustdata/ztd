@@ -21,6 +21,12 @@ type DataOperatorStatus struct {
 	OperatorSessionID string
 	Status            string
 	WorkingDirectory  string
+	// Hostname, OS, and Architecture are the host identity the Operator last
+	// reported in its heartbeat. The embedded Operator never heartbeats, so
+	// they are empty for it.
+	Hostname     string
+	OS           string
+	Architecture string
 	// Embedded is true for the Gateway's embedded Operator, whose working
 	// directory is <runtime>/operators/embedded-operator.
 	Embedded bool
@@ -62,23 +68,7 @@ func PreferEmbeddedDataOperator(operators []*operatorv1.OperatorDocument) []*ope
 func ActiveDataOperators(operators []*operatorv1.OperatorDocument) []DataOperatorStatus {
 	var dedicatedMatches []DataOperatorStatus
 	var embeddedMatches []DataOperatorStatus
-	for _, op := range operators {
-		if !IsDataOperator(op) {
-			continue
-		}
-		wd := extractWorkingDirectory(op.GetLatestHeartbeatSnapshot())
-		if wd == "" && constants.OperatorType(op.OperatorType) == constants.OperatorTypeEmbedded {
-			// The embedded Operator never heartbeats; the Gateway registers
-			// its working directory in the runtime config instead.
-			wd = op.GetRuntimeConfig().GetLocalDir()
-		}
-		status := DataOperatorStatus{
-			OperatorID:        op.Id,
-			OperatorSessionID: op.OperatorSessionId,
-			Status:            op.Status,
-			WorkingDirectory:  wd,
-			Embedded:          constants.OperatorType(op.OperatorType) == constants.OperatorTypeEmbedded,
-		}
+	for _, status := range ActiveDataFleet(operators) {
 		if status.Embedded {
 			embeddedMatches = append(embeddedMatches, status)
 		} else {
@@ -89,6 +79,42 @@ func ActiveDataOperators(operators []*operatorv1.OperatorDocument) []DataOperato
 		return embeddedMatches
 	}
 	return dedicatedMatches
+}
+
+// ActiveDataFleet returns every active Data session, embedded and dedicated,
+// in registry order. Unlike ActiveDataOperators it applies no embedded
+// preference: a harness fleet addresses each Data Operator by itself.
+func ActiveDataFleet(operators []*operatorv1.OperatorDocument) []DataOperatorStatus {
+	var fleet []DataOperatorStatus
+	for _, op := range operators {
+		if !IsDataOperator(op) {
+			continue
+		}
+		embedded := constants.OperatorType(op.OperatorType) == constants.OperatorTypeEmbedded
+		snapshot := op.GetLatestHeartbeatSnapshot()
+		wd := extractWorkingDirectory(snapshot)
+		if wd == "" && embedded {
+			// The embedded Operator never heartbeats; the Gateway registers
+			// its working directory in the runtime config instead.
+			wd = op.GetRuntimeConfig().GetLocalDir()
+		}
+		identity := snapshot.GetSystemIdentity()
+		hostname := identity.GetHostname()
+		if hostname == "" {
+			hostname = op.GetCurrentHostname()
+		}
+		fleet = append(fleet, DataOperatorStatus{
+			OperatorID:        op.Id,
+			OperatorSessionID: op.OperatorSessionId,
+			Status:            op.Status,
+			WorkingDirectory:  wd,
+			Hostname:          hostname,
+			OS:                identity.GetOs(),
+			Architecture:      identity.GetArchitecture(),
+			Embedded:          embedded,
+		})
+	}
+	return fleet
 }
 
 // extractWorkingDirectory reads the pwd from the operator's heartbeat.

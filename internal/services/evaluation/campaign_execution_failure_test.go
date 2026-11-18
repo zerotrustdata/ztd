@@ -392,7 +392,9 @@ func TestRepairAssignmentsWithoutResults_LeavesOtherStoredResults(t *testing.T) 
 			if tt.trace {
 				workspace, err := NewScenarioWorkspace(agentTestWorkingDirectory, req.RunID, "attempt-1")
 				require.NoError(t, err)
-				traceBody, err := SealAgentTrace(&AgentTrace{RunID: req.RunID, AssignmentID: target.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Workspace: AgentTraceWorkspace(workspace), Input: testAgentTraceInput(), FinalOutput: "Checkout fails on payment timeouts."})
+				trace := &AgentTrace{RunID: req.RunID, AssignmentID: target.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Roster: rosterOfOne(AgentTraceRuntime{OperatorID: "data-op", SessionID: "data-session"}, AgentTraceWorkspace(workspace)), Input: testAgentTraceInput(), FinalOutput: "Checkout fails on payment timeouts."}
+				withRosterPrompt(trace)
+				traceBody, err := SealAgentTrace(trace)
 				require.NoError(t, err)
 				require.NoError(t, store.SaveAssignmentAgentTrace(ctx, req.RunID, target.GetAssignmentId(), traceBody))
 			}
@@ -604,7 +606,9 @@ func TestRegradeAssignmentsFromAgentTraces_ReimportsDisagreeingResult(t *testing
 	// A trace that carries no ledger evidence imports as INVALID_EVIDENCE.
 	workspace, err := NewScenarioWorkspace(agentTestWorkingDirectory, run.GetRunId(), "attempt-1")
 	require.NoError(t, err)
-	traceBody, err := SealAgentTrace(&AgentTrace{RunID: run.GetRunId(), AssignmentID: traced.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Workspace: AgentTraceWorkspace(workspace), Input: testAgentTraceInput(), FinalOutput: "Checkout fails on payment timeouts."})
+	trace := &AgentTrace{RunID: run.GetRunId(), AssignmentID: traced.GetAssignmentId(), EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Roster: rosterOfOne(AgentTraceRuntime{OperatorID: "data-op", SessionID: "data-session"}, AgentTraceWorkspace(workspace)), Input: testAgentTraceInput(), FinalOutput: "Checkout fails on payment timeouts."}
+	withRosterPrompt(trace)
+	traceBody, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 	require.NoError(t, store.SaveAssignmentAgentTrace(ctx, run.GetRunId(), traced.GetAssignmentId(), traceBody))
 

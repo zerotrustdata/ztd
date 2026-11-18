@@ -114,6 +114,9 @@ type ScenarioWorkspaceFile struct {
 	RelPath string `json:"rel_path"`
 	Content string `json:"content"`
 	Decoy   bool   `json:"decoy,omitempty"`
+	// Operators are the 1-based roster members whose workspace holds the
+	// file. Empty means every member.
+	Operators []int `json:"operators,omitempty"`
 }
 
 // InvestigationSeedTurn is one prior conversation turn. Sender is "user",
@@ -153,6 +156,9 @@ type ScenarioSeedToolCall struct {
 	Arguments  json.RawMessage        `json:"arguments"`
 	Outcome    string                 `json:"outcome"`
 	Disclosure ScenarioSeedDisclosure `json:"disclosure,omitempty"`
+	// Operators are the 1-based roster members the seed runs on, one
+	// observation per member in roster order. Empty means every member.
+	Operators []int `json:"operators,omitempty"`
 }
 
 // ScenarioSeedDisclosure says how a seeded governed call reaches the scored
@@ -196,6 +202,16 @@ type ScenarioInputFixture struct {
 	Seed           InvestigationSeed          `json:"seed"`
 	FollowUps      []ScenarioScriptedFollowUp `json:"follow_ups,omitempty"`
 	Budget         *investigation.Budget      `json:"budget,omitempty"`
+	// Fleet is the harness roster the scenario needs. A scenario without it
+	// runs on any roster, a roster of one included.
+	Fleet ScenarioFleet `json:"fleet,omitzero"`
+}
+
+// ScenarioFleet is a scenario's harness roster requirement. Roster positions
+// a scenario names (workspace files, seeds, file states) are 1-based and must
+// not exceed MinOperators.
+type ScenarioFleet struct {
+	MinOperators int `json:"min_operators,omitempty"`
 }
 
 // ScenarioCriterion describes one responsibility-specific scoring criterion.

@@ -13,10 +13,9 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 )
 
-// resolveOperatorTopologyForDataOperator resolves the selected Inference
-// session, which must serve every class in hostedClasses, and either the
-// default Data Operator or a campaign's frozen stable Data Operator identity.
-func resolveOperatorTopologyForDataOperator(cmd *cobra.Command, deps nativeEvalDeps, dataOperatorID string, hostedClasses []string) (evaluation.CampaignOperatorTopology, error) {
+// resolveOperatorTopology resolves the selected Inference session, which must
+// serve every class in hostedClasses, and the Data fleet the selection names.
+func resolveOperatorTopology(cmd *cobra.Command, deps nativeEvalDeps, fleet evaluation.DataFleetSelection, hostedClasses []string) (evaluation.CampaignOperatorTopology, error) {
 	gatewayDeps := deps.gatewayDeps()
 	cfg, _, authContext, err := gatewayEvalEnvironment(cmd, gatewayDeps)
 	if err != nil {
@@ -26,5 +25,5 @@ func resolveOperatorTopologyForDataOperator(cmd *cobra.Command, deps nativeEvalD
 	if err != nil {
 		return evaluation.CampaignOperatorTopology{}, err
 	}
-	return evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", dataOperatorID, hostedClasses)
+	return evaluation.ResolveCampaignOperatorTopology(operators, "", fleet, hostedClasses)
 }

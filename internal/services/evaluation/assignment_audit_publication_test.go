@@ -198,7 +198,13 @@ func testScenarioFixtures(t *testing.T) map[string]ScenarioArtifacts {
 // result that references it alongside the exact persisted body.
 func saveAgentTraceForAuditProof(t *testing.T, store *Store) (*evalv1.EvaluationAssignmentResult, []byte) {
 	t.Helper()
-	trace := &AgentTrace{RunID: "run-1", AssignmentID: "assignment-1", EvaluationAttemptID: "attempt-1", DesignatedRole: "primary", Input: testAgentTraceInput(), FinalOutput: "Checkout fails on payment timeouts."}
+	trace := &AgentTrace{
+		RunID: "run-1", AssignmentID: "assignment-1", EvaluationAttemptID: "attempt-1", DesignatedRole: "primary",
+		Roster:      rosterOfOne(AgentTraceRuntime{OperatorID: "data-op", SessionID: "data-session"}, AgentTraceWorkspace{}),
+		Input:       testAgentTraceInput(),
+		FinalOutput: "Checkout fails on payment timeouts.",
+	}
+	withRosterPrompt(trace)
 	body, err := SealAgentTrace(trace)
 	require.NoError(t, err)
 	require.NoError(t, store.SaveAssignmentAgentTrace(context.Background(), "run-1", "assignment-1", body))

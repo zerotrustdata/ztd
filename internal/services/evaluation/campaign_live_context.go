@@ -10,6 +10,7 @@ package evaluation
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
@@ -60,8 +61,10 @@ func (e *CampaignAgentExecutor) investigationID(req AssignmentExecutionRequest) 
 		return "", err
 	}
 	if req.Investigation.GetMode() == evalv1.EvaluationInvestigationMode_EVALUATION_INVESTIGATION_MODE_PERSISTENT {
-		if req.Binding.Topology.Data.OperatorID != req.Investigation.GetDataOperatorId() {
-			return "", fmt.Errorf("evaluation: persistent investigation Data Operator binding: %w", constants.ErrEvaluationInvestigationInvalid)
+		if !slices.ContainsFunc(req.Binding.Topology.Fleet, func(member CampaignDataOperator) bool {
+			return member.OperatorID == req.Investigation.GetDataOperatorId()
+		}) {
+			return "", fmt.Errorf("evaluation: persistent investigation Data Operator is not in the roster: %w", constants.ErrEvaluationInvestigationInvalid)
 		}
 		return req.Investigation.GetInvestigationId(), nil
 	}
@@ -72,11 +75,11 @@ func (e *CampaignAgentExecutor) investigationID(req AssignmentExecutionRequest) 
 	return id, nil
 }
 
-// decodeInvestigationReceipts trusts only the selected runtime's signed answer,
+// decodeInvestigationReceipts trusts only the queried roster member's signed answer,
 // then checks each returned receipt against the same enrollment-bound key. The
 // signed receipt has no target resource, so the audit-read exclusion is the
 // Operator's answer under the query's scope and is not re-derived here.
-func decodeInvestigationReceipts(trace *AgentTrace, query mcp.EventReceiptListRequest, receipt *AgentTraceReceipt) (mcp.OperatorEventReceiptListResult, []AgentContextReceiptRef, error) {
+func decodeInvestigationReceipts(trace *AgentTrace, member AgentTraceRosterMember, query mcp.EventReceiptListRequest, receipt *AgentTraceReceipt) (mcp.OperatorEventReceiptListResult, []AgentContextReceiptRef, error) {
 	fail := func(err error) (mcp.OperatorEventReceiptListResult, []AgentContextReceiptRef, error) {
 		return mcp.OperatorEventReceiptListResult{}, nil, fmt.Errorf("evaluation: authoritative investigation context: %w", err)
 	}
@@ -90,7 +93,7 @@ func decodeInvestigationReceipts(trace *AgentTrace, query mcp.EventReceiptListRe
 	if err != nil {
 		return fail(err)
 	}
-	if _, err := oracle.VerifyReceipt(anchors, trace.Data.OperatorID, receipt.EventReceipt); err != nil {
+	if _, err := oracle.VerifyReceipt(anchors, member.Runtime.OperatorID, receipt.EventReceipt); err != nil {
 		return fail(err)
 	}
 	if receipt.GetActionType() != string(constants.ActionTypeMcpCall) || receipt.GetStatus() != operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED {
@@ -100,7 +103,7 @@ func decodeInvestigationReceipts(trace *AgentTrace, query mcp.EventReceiptListRe
 	if err := json.Unmarshal([]byte(receipt.GetResultSummary()), &result); err != nil {
 		return fail(err)
 	}
-	if result.OperatorID != trace.Data.OperatorID || result.Authority != "operator_local_ledger" || result.InvestigationID != query.InvestigationID || result.Count != len(result.Receipts) || result.Count > query.Limit {
+	if result.OperatorID != member.Runtime.OperatorID || result.Authority != "operator_local_ledger" || result.InvestigationID != query.InvestigationID || result.Count != len(result.Receipts) || result.Count > query.Limit {
 		return fail(constants.ErrEvidenceScopeMismatch)
 	}
 	refs := make([]AgentContextReceiptRef, 0, len(result.Receipts))
@@ -113,7 +116,7 @@ func decodeInvestigationReceipts(trace *AgentTrace, query mcp.EventReceiptListRe
 		if r.GetTransactionId() == "" || seen[r.GetTransactionId()] {
 			return fail(constants.ErrEvidenceScopeMismatch)
 		}
-		if _, err := oracle.VerifyReceipt(anchors, trace.Data.OperatorID, r); err != nil {
+		if _, err := oracle.VerifyReceipt(anchors, member.Runtime.OperatorID, r); err != nil {
 			return fail(err)
 		}
 		body, err := evalv1.MarshalCanonical(r)
@@ -166,7 +169,11 @@ func verifyContextRetrieval(trace *AgentTrace, call AgentToolCall) error {
 	if (call.ToolName != agentToolInvestigationCtx && call.ToolName != constants.MCPToolEventReceiptList) || !call.Success || call.ActionType != string(constants.ActionTypeMcpCall) {
 		return constants.ErrEvaluationEvidenceTraceMismatch
 	}
-	result, refs, err := decodeInvestigationReceipts(trace, call.Retrieval.Query, call.Receipt)
+	member, err := trace.TargetMember(call)
+	if err != nil {
+		return err
+	}
+	result, refs, err := decodeInvestigationReceipts(trace, member, call.Retrieval.Query, call.Receipt)
 	if err != nil {
 		return err
 	}

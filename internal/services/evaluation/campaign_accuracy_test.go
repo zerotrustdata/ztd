@@ -27,7 +27,15 @@ func accuracyGrade(t *testing.T, blueprint ScenarioBlueprint, output string, cal
 		ScenarioInput: blueprint.Input, ScenarioGold: blueprint.Gold,
 		ScenarioTools: ScenarioToolExpectations{TrajectoryPolicy: blueprint.TrajectoryPolicy, ExpectedTools: blueprint.ExpectedTools, AllowedTools: blueprint.AllowedTools, ForbiddenTools: blueprint.ForbiddenTools},
 	}
-	trace := &AgentTrace{RunID: "accuracy-run", AssignmentID: "accuracy", DesignatedRole: "primary", FinalOutput: output, ToolCalls: calls, ContentJudgments: judgments,
+	targeted := make([]AgentToolCall, 0, len(calls))
+	for _, call := range calls {
+		if call.TargetIndex == 0 {
+			call = onTarget(call)
+		}
+		targeted = append(targeted, call)
+	}
+	trace := &AgentTrace{RunID: "accuracy-run", AssignmentID: "accuracy", DesignatedRole: "primary", FinalOutput: output, ToolCalls: targeted, ContentJudgments: judgments,
+		Roster:     rosterOfOne(AgentTraceRuntime{OperatorID: "data-op", SessionID: "data-session"}, AgentTraceWorkspace{}),
 		ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx", ResultDigest: "digest"}}}
 	result, err := GradeHomogeneousScenario(req, trace, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED)
 	require.NoError(t, err)

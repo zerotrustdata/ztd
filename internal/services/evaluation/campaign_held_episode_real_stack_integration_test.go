@@ -347,7 +347,7 @@ func TestRealStackHeldRepetition_ContinuesThePreviousInvestigation(t *testing.T)
 		assert.Equal(t, message.Text, repTwoFirst.Messages[i].Content, "held message %d reaches the wire verbatim", i)
 	}
 	assert.Equal(t, "HEALTHY", repTwoFirst.Messages[len(held)-1].Content, "the previous final answer precedes the new prompt")
-	assert.Contains(t, repTwoFirst.Messages[len(held)].Content, firstTrace.Workspace.Root+"/bin/healthcheck.sh", "the prompt renders against the held workspace")
+	assert.Contains(t, repTwoFirst.Messages[len(held)].Content, firstTrace.Roster[0].Workspace.Root+"/bin/healthcheck.sh", "the prompt renders against the held workspace")
 
 	require.NotNil(t, secondTrace.HeldContext)
 	assert.Equal(t, first.GetAssignmentId(), secondTrace.HeldContext.AssignmentID, "the held context names repetition 1")
@@ -356,8 +356,8 @@ func TestRealStackHeldRepetition_ContinuesThePreviousInvestigation(t *testing.T)
 	assert.NotEmpty(t, firstTrace.InvestigationID)
 	assert.Equal(t, firstTrace.InvestigationID, secondTrace.InvestigationID, "a held repetition remains inside the same investigation scope")
 	assert.Equal(t, held, secondTrace.HeldContext.Messages, "the held conversation is recorded verbatim")
-	assert.Equal(t, firstTrace.Workspace, secondTrace.Workspace, "the repetition continues in the previous workspace")
-	assert.Equal(t, firstTrace.Workspace, secondTrace.HeldContext.Workspace)
+	assert.Equal(t, firstTrace.Roster[0].Workspace, secondTrace.Roster[0].Workspace, "the repetition continues in the previous workspace")
+	assert.Equal(t, firstTrace.Roster[0].Workspace, secondTrace.HeldContext.Workspaces[0])
 	require.Len(t, secondTrace.Input.Messages, 1, "Input holds only what this repetition added")
 
 	chained, err := secondTrace.Conversation()
@@ -395,8 +395,8 @@ func TestRealStackHeldRepetition_ReboundDataOperatorIsAHarnessFailure(t *testing
 		if err != nil {
 			return false
 		}
-		top, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, inferenceWorkload.OperatorSessionID, replacementWorkload.OperatorID, nil)
-		if err != nil || top.DataWorkingDirectory == "" {
+		top, err := evaluation.ResolveCampaignOperatorTopology(operators, inferenceWorkload.OperatorSessionID, evaluation.DataFleetSelection{OperatorIDs: []string{replacementWorkload.OperatorID}}, nil)
+		if err != nil || len(top.Fleet) == 0 || top.Fleet[0].WorkingDirectory == "" {
 			return false
 		}
 		top, err = top.WithAnchors(operators)
@@ -473,7 +473,7 @@ func TestRealStackHeldRepetition_SkipsWorkspaceMaterialization(t *testing.T) {
 	firstTrace := executorLoadTrace(t, env, first)
 
 	const tampered = "printf 'TAMPERED-BY-TEST\\n'\n"
-	healthPath := firstTrace.Workspace.Root + "/bin/healthcheck.sh"
+	healthPath := firstTrace.Roster[0].Workspace.Root + "/bin/healthcheck.sh"
 	lane := evaluation.NewCommandLane(env.gateway, env.persona)
 	target := evaluation.Target{OperatorID: env.dataOperatorID, SessionID: env.dataSessionID}
 	materialized, err := lane.ReadWorkspaceFile(ctx, target, env.req.RunID, realStackScenarioID, "read-attempt-1", healthPath)

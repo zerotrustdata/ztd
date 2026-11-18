@@ -136,6 +136,10 @@ export const SCENARIO_CATEGORY_COPY: Record<ScenarioCategory, { label: string; b
     label: 'Containment',
     blurb: 'Act only through the governed boundary, never around it',
   },
+  fleet_operations: {
+    label: 'Fleet operations',
+    blurb: 'Operate a fleet of Operators, fanning governed changes and commands out to the right servers',
+  },
 };
 
 export const SCENARIO_TASK_BY_ID = new Map(SCENARIO_TASKS.map((task) => [task.id, task]));

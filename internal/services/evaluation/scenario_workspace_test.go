@@ -45,8 +45,8 @@ func TestScenarioWorkspaceResolveWindowsOperator(t *testing.T) {
 		file:                               file,
 		strings.ReplaceAll(file, "/", `\`): file,
 		"d" + file[1:]:                     file,
-		`sub\a.txt`:                        "D:/ztd/work/sub/a.txt",
-		"./sub/../b.txt":                   "D:/ztd/work/b.txt",
+		`sub\a.txt`:                        ws.Root + "/sub/a.txt",
+		"./sub/../b.txt":                   ws.Root + "/b.txt",
 		`\outside\c.txt`:                   "D:/outside/c.txt",
 		"E:/elsewhere":                     "E:/elsewhere",
 		`D:\..\..\escape`:                  "D:/escape",
@@ -59,10 +59,12 @@ func TestScenarioWorkspaceResolveWindowsOperator(t *testing.T) {
 func TestScenarioWorkspaceResolvePOSIXOperator(t *testing.T) {
 	ws, err := NewScenarioWorkspace("/srv/ztd", "run-1", "attempt-1")
 	require.NoError(t, err)
-	assert.Equal(t, "/srv/ztd/sub/a.txt", ws.Resolve("sub/a.txt"))
-	assert.Equal(t, "/etc/passwd", ws.Resolve("../../etc/passwd"))
+	// Relative paths resolve inside the workspace root, where the harness
+	// dispatches them on every roster member.
+	assert.Equal(t, ws.Root+"/sub/a.txt", ws.Resolve("sub/a.txt"))
+	assert.Equal(t, "/srv/etc/passwd", ws.Resolve("../../../etc/passwd"))
 	// A backslash is an ordinary file-name byte on a POSIX operator.
-	assert.Equal(t, `/srv/ztd/sub\a.txt`, ws.Resolve(`sub\a.txt`))
+	assert.Equal(t, ws.Root+`/sub\a.txt`, ws.Resolve(`sub\a.txt`))
 }
 
 func TestValidateAgentDataOperator(t *testing.T) {

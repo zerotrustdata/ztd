@@ -59,7 +59,7 @@ func TestInvestigationGrading_LocalFilesystemChangesCannotReplaceSignedObservati
 		RunID:          "run-inv-fixed",
 		AssignmentID:   "assign-inv-fixed",
 		DesignatedRole: "primary",
-		Workspace:      AgentTraceWorkspace(ws),
+		Roster:         rosterOfOne(AgentTraceRuntime{OperatorID: "data-op", SessionID: "data-session"}, AgentTraceWorkspace(ws)),
 		ModelCalls: []AgentModelCall{
 			{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-turn", ResultDigest: "digest-turn"},
 		},

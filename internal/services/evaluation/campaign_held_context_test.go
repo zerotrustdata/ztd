@@ -22,19 +22,20 @@ func TestImportAssignmentResultFromAgentTrace_HeldTraceMustRunInTheHeldWorkspace
 	require.NoError(t, err)
 	heldWorkspace := AgentTraceWorkspace(held)
 	trace := &AgentTrace{
-		RunID: runID, EvaluationAttemptID: "attempt-2", Workspace: heldWorkspace,
-		HeldContext: &AgentTraceHeldContext{AssignmentID: "assignment-1", Repetition: 1, Workspace: heldWorkspace},
+		RunID: runID, EvaluationAttemptID: "attempt-2",
+		Roster:      rosterOfOne(AgentTraceRuntime{}, heldWorkspace),
+		HeldContext: &AgentTraceHeldContext{AssignmentID: "assignment-1", Repetition: 1, Workspaces: []AgentTraceWorkspace{heldWorkspace}},
 	}
 	require.NoError(t, trace.validateWorkspace())
 
 	own, err := NewScenarioWorkspace(agentTestWorkingDirectory, runID, trace.EvaluationAttemptID)
 	require.NoError(t, err)
-	trace.Workspace = AgentTraceWorkspace(own)
+	trace.Roster[0].Workspace = AgentTraceWorkspace(own)
 	require.ErrorIs(t, trace.validateWorkspace(), constants.ErrEvaluationWorkspaceUnavailable, "a held trace must run in the held workspace, not its own")
 
 	elsewhere := AgentTraceWorkspace{Root: agentTestWorkingDirectory + "/elsewhere", OperatorWorkingDirectory: agentTestWorkingDirectory}
-	trace.Workspace = elsewhere
-	trace.HeldContext.Workspace = elsewhere
+	trace.Roster[0].Workspace = elsewhere
+	trace.HeldContext.Workspaces[0] = elsewhere
 	require.ErrorIs(t, trace.validateWorkspace(), constants.ErrEvaluationWorkspaceUnavailable, "a held workspace must still be an attempt-scoped root")
 }
 

@@ -32,7 +32,8 @@
       "security_policy",
       "recovery",
       "final_response",
-      "containment"
+      "containment",
+      "fleet_operations"
     ],
     "EvaluationUnit": [
       "model",

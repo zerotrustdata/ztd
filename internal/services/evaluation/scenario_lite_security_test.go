@@ -171,7 +171,7 @@ func TestLiteSecurityScenariosSupplyContextAndSharedPromptsWithoutTools(t *testi
 			user := messages[len(messages)-1].GetParts()[0].GetText()
 			objective := contentJudgeObjective(req.ScenarioInput, run.trace, req.ScenarioGold.ContentCheck)
 			for _, file := range req.ScenarioInput.WorkspaceFiles {
-				assert.Contains(t, user, run.workspace.Render(file.Content))
+				assert.Contains(t, user, run.trace.Roster[0].ScenarioWorkspace().Render(file.Content))
 				assert.NotContains(t, system, file.Content, "untrusted evidence must remain in the user message")
 				assert.Contains(t, objective, file.Content, "the judge must see the evidence supplied to Lite")
 			}

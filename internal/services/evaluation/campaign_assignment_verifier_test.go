@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -191,23 +192,6 @@ func TestCampaignAssignmentVerifier_AcceptsStoredInvalidEvidenceFromGraderVerdic
 	}
 }
 
-// A stored INVALID_EVIDENCE from the live schema pin must verify offline.
-func TestCampaignAssignmentVerifier_AcceptsStoredInvalidEvidenceFromSchemaPin(t *testing.T) {
-	triage := &TriageExpectation{
-		Complexity: []constants.TriageComplexity{constants.TriageComplexitySimple},
-		Intent:     []constants.TriageIntent{constants.TriageIntentAction},
-		Posture:    []constants.TriagePosture{constants.TriagePostureNormal},
-	}
-	trace := verifiedGradingTrace(t, evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN)
-	req := verifiedGradingRequest(trace, &ScenarioPlayerExpectations{Triage: triage})
-	relabelAgentTrace(t, trace, agentTraceSchemaVersionV6)
-	result := storedHomogeneousResult(t, req, trace)
-	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, result.GetLifecycleStatus(), "premise: the live pin makes the import INVALID_EVIDENCE")
-
-	report := verifyStoredHomogeneous(t, req, trace, result, nil)
-	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_PASS, report.GetStatus(), "%v", report.GetFailureReasons())
-}
-
 // A stored INVALID_EVIDENCE has to state the reason its trace recomputes to, so
 // the public result cannot name a different cause than the evidence does.
 func TestCampaignAssignmentVerifier_FlagsStoredInvalidEvidenceWithoutItsReason(t *testing.T) {
@@ -217,8 +201,12 @@ func TestCampaignAssignmentVerifier_FlagsStoredInvalidEvidenceWithoutItsReason(t
 		Intent:     []constants.TriageIntent{constants.TriageIntentAction},
 		Posture:    []constants.TriagePosture{constants.TriagePostureNormal},
 	}})
-	relabelAgentTrace(t, trace, agentTraceSchemaVersionV6)
+	// A persona digest the frozen catalog does not hold is INVALID_EVIDENCE with
+	// no staged reason, so it is classified as unclassified.
+	trace.Persona.Digest = strings.Repeat("0", 64)
+	resealV7Trace(t, trace)
 	result := storedHomogeneousResult(t, req, trace)
+	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, result.GetLifecycleStatus(), "premise: the persona digest makes the import INVALID_EVIDENCE")
 	require.Equal(t, invalidEvidenceReasonUnclassified, result.GetPublicFailureReason())
 	require.Equal(t, result.GetPublicFailureReason(), result.GetFailureReason())
 
@@ -232,8 +220,8 @@ func TestCampaignAssignmentVerifier_FlagsStoredInvalidEvidenceWithoutItsReason(t
 }
 
 // A campaign assignment whose v7 trace was relabelled to an earlier version
-// cannot be stored COMPLETED: the verifier applies the schema pin, so the
-// COMPLETED lifecycle is flagged.
+// cannot be stored COMPLETED: the verifier rejects the earlier schema version,
+// so the stored COMPLETED lifecycle is flagged along with the rejection.
 func TestCampaignAssignmentVerifier_FlagsStoredCompletedForRelabelledEarlierVersion(t *testing.T) {
 	triage := &TriageExpectation{
 		Complexity: []constants.TriageComplexity{constants.TriageComplexitySimple},
@@ -249,7 +237,12 @@ func TestCampaignAssignmentVerifier_FlagsStoredCompletedForRelabelledEarlierVers
 
 	// Relabel the persisted trace and re-bind the stored result to its relabelled body,
 	// as a stored result is sealed against the persisted body.
-	relabelAgentTrace(t, trace, agentTraceSchemaVersionV6)
+	trace.SchemaVersion = agentTraceSchemaVersionV6
+	trace.Persona = nil
+	trace.EvidenceDigest = ""
+	traceDigest, err := ComputeAgentTraceDigest(trace)
+	require.NoError(t, err)
+	trace.EvidenceDigest = traceDigest
 	body, err := MarshalCanonicalJSONObject(trace)
 	require.NoError(t, err)
 	ref, err := BuildAssignmentAgentTraceEvidenceReference(trace.RunID, trace.EvaluationAttemptID, body, time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC))
@@ -261,5 +254,7 @@ func TestCampaignAssignmentVerifier_FlagsStoredCompletedForRelabelledEarlierVers
 
 	report := verifyStoredHomogeneous(t, req, trace, result, nil)
 	assert.Equal(t, evalv1.EvaluationVerdictStatus_EVALUATION_VERDICT_STATUS_FAIL, report.GetStatus())
-	assert.Contains(t, report.GetFailureReasons(), "stored lifecycle "+completed.String()+" does not match agent trace lifecycle "+evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE.String())
+	require.NotEmpty(t, report.GetFailureReasons())
+	assert.Contains(t, report.GetFailureReasons()[0], `agent trace digest validation failed`)
+	assert.Contains(t, report.GetFailureReasons()[0], `schema version "`+agentTraceSchemaVersionV6+`"`)
 }

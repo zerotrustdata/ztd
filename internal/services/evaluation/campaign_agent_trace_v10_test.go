@@ -28,23 +28,6 @@ func relabelV9(t *testing.T, trace *AgentTrace) {
 	trace.EvidenceDigest = digest
 }
 
-// agent-trace.v9 predates recorded content judgments. A v9 trace without them
-// stays readable and verifiable through the decode entrypoint.
-func TestAgentTraceV10_PreservesV9HistoryTrace(t *testing.T) {
-	trace, _ := v7EvidenceTrace(t)
-	relabelV9(t, trace)
-
-	body, err := MarshalCanonicalJSONObject(trace)
-	require.NoError(t, err)
-	decoded, err := DecodeAgentTrace(body)
-	require.NoError(t, err)
-	require.NoError(t, VerifyAgentTraceEvidence(decoded))
-	assert.Equal(t, agentTraceSchemaVersionV9, decoded.SchemaVersion)
-	assert.True(t, decoded.CarriesModelIdentity())
-	assert.True(t, decoded.carriesObservationEvidence())
-	assert.Empty(t, decoded.ContentJudgments)
-}
-
 // Content judgments are v10 evidence. A v9 trace that carries them is refused
 // with ErrEvidenceArtifactMalformed, while the same judgments sealed under the
 // current version validate.

@@ -81,40 +81,41 @@ func newAgentTraceHeldContext(previous *AgentTrace, repetition uint32) (*AgentTr
 		AssignmentID:   previous.AssignmentID,
 		Repetition:     repetition - 1,
 		EvidenceDigest: previous.EvidenceDigest,
-		Workspace:      previous.Workspace,
+		Workspaces:     previousWorkspaces(previous),
 		Messages:       conversation,
 	}, messages, nil
 }
 
-// heldScenarioWorkspace returns the workspace a held-context repetition
-// continues in: the previous repetition's own, on the same Data Operator and
-// working directory this repetition is bound to. A rebound Data Operator
-// cannot see the held workspace, so that is a harness failure.
-func heldScenarioWorkspace(previous *AgentTrace, topology CampaignOperatorTopology) (ScenarioWorkspace, error) {
-	workingDirectory, err := cleanOperatorWorkingDirectory(topology.DataWorkingDirectory)
-	if err != nil {
-		return ScenarioWorkspace{}, err
+// validateWorkspace checks the workspaces a trace ran in: each roster
+// member's own attempt-scoped workspace, or for a held-context repetition
+// exactly the workspaces of the repetition it continued, member by member.
+func (t *AgentTrace) validateWorkspace() error {
+	if t.HeldContext != nil && len(t.HeldContext.Workspaces) != len(t.Roster) {
+		return fmt.Errorf("%w: %d held workspaces for %d roster members", constants.ErrEvaluationWorkspaceUnavailable, len(t.HeldContext.Workspaces), len(t.Roster))
 	}
-	workspace := previous.ScenarioWorkspace()
-	if previous.Data.OperatorID != topology.Data.OperatorID || workspace.OperatorWorkingDirectory != workingDirectory {
-		return ScenarioWorkspace{}, assignmentExecutionError("evaluation: held context", fmt.Errorf("%w: repetition %s ran on Data Operator %s in %q, this repetition is bound to %s in %q",
-			constants.ErrEvaluationHeldContextUnavailable, previous.AssignmentID, previous.Data.OperatorID, workspace.OperatorWorkingDirectory, topology.Data.OperatorID, workingDirectory))
+	for i, member := range t.Roster {
+		if t.HeldContext == nil {
+			if err := member.ScenarioWorkspace().Validate(t.RunID, t.EvaluationAttemptID); err != nil {
+				return err
+			}
+			continue
+		}
+		if member.Workspace != t.HeldContext.Workspaces[i] {
+			return fmt.Errorf("%w: roster [%d] workspace root %q is not the held repetition's root %q", constants.ErrEvaluationWorkspaceUnavailable, member.Index, member.Workspace.Root, t.HeldContext.Workspaces[i].Root)
+		}
+		if err := member.ScenarioWorkspace().ValidateShape(); err != nil {
+			return err
+		}
 	}
-	if err := workspace.ValidateShape(); err != nil {
-		return ScenarioWorkspace{}, assignmentExecutionError("evaluation: held context", fmt.Errorf("%w: %w", constants.ErrEvaluationHeldContextUnavailable, err))
-	}
-	return workspace, nil
+	return nil
 }
 
-// validateWorkspace checks the workspace a trace ran in: its own
-// attempt-scoped workspace, or for a held-context repetition exactly the
-// workspace of the repetition it continued.
-func (t *AgentTrace) validateWorkspace() error {
-	if t.HeldContext == nil {
-		return t.ScenarioWorkspace().Validate(t.RunID, t.EvaluationAttemptID)
+// previousWorkspaces lists the previous repetition's member workspaces in
+// roster order.
+func previousWorkspaces(previous *AgentTrace) []AgentTraceWorkspace {
+	workspaces := make([]AgentTraceWorkspace, 0, len(previous.Roster))
+	for _, member := range previous.Roster {
+		workspaces = append(workspaces, member.Workspace)
 	}
-	if t.Workspace != t.HeldContext.Workspace {
-		return fmt.Errorf("%w: workspace root %q is not the held repetition's root %q", constants.ErrEvaluationWorkspaceUnavailable, t.Workspace.Root, t.HeldContext.Workspace.Root)
-	}
-	return t.ScenarioWorkspace().ValidateShape()
+	return workspaces
 }

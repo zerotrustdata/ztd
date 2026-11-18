@@ -116,11 +116,13 @@ func TestGradeHomogeneousScenario_V3FileStateOnlyObjective(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			trace := &AgentTrace{
 				RunID: "run-file-state-only", AssignmentID: "assign-file-state-only", DesignatedRole: "primary",
-				Workspace:  workspace,
+				Roster:     rosterOfOne(AgentTraceRuntime{}, workspace),
 				ModelCalls: []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-turn"}},
 			}
 			if tc.observation != nil {
-				trace.Observations = []AgentScenarioObservation{*tc.observation}
+				observation := *tc.observation
+				observation.Call = onTarget(observation.Call)
+				trace.Observations = []AgentScenarioObservation{observation}
 			}
 			req := AssignmentExecutionRequest{
 				Assignment:    &evalv1.EvaluationAssignment{AssignmentId: trace.AssignmentID, RunId: trace.RunID},
@@ -175,7 +177,7 @@ func TestGradeHomogeneousScenario_ErrorGuidedRetryUsesExecutedCorrection(t *test
 		{Path: workspace.Render(ScenarioWorkspaceToken + "/logs/auth.log"), LineNumber: 1, Content: "2026-09-16T08:00:01Z AUTH_FAILURE user=svc-deploy"},
 	}, TotalMatches: 1})
 	require.NoError(t, err)
-	corrected := AgentToolCall{ToolName: constants.MCPToolSearchDirectory, ArgumentsJSON: string(arguments), ResultJSON: string(resultBody), Success: true}
+	corrected := AgentToolCall{ToolName: constants.MCPToolSearchDirectory, ArgumentsJSON: string(arguments), ResultJSON: string(resultBody), Success: true, TargetIndex: 1}
 	failed := corrected
 	failed.Success = false
 	failed.Error = "search failed"
@@ -213,7 +215,7 @@ func TestGradeHomogeneousScenario_ErrorGuidedRetryUsesExecutedCorrection(t *test
 			}
 			trace := &AgentTrace{
 				RunID: "run-retry", AssignmentID: "assign-retry", DesignatedRole: "primary",
-				Workspace:        AgentTraceWorkspace(workspace),
+				Roster:           rosterOfOne(AgentTraceRuntime{}, AgentTraceWorkspace(workspace)),
 				ModelCalls:       []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-retry", ResultDigest: "digest-retry"}},
 				ToolCalls:        tc.calls,
 				FinalOutput:      "logs/auth.log line 1: AUTH_FAILURE user=svc-deploy",
@@ -293,7 +295,7 @@ func TestGradeHomogeneousScenario_MissingResourceRecoveryRequiresExecutedFailure
 			}
 			trace := &AgentTrace{
 				RunID: "run-missing", AssignmentID: "assign-missing", DesignatedRole: "primary",
-				Workspace:        AgentTraceWorkspace(workspace),
+				Roster:           rosterOfOne(AgentTraceRuntime{}, AgentTraceWorkspace(workspace)),
 				ModelCalls:       []AgentModelCall{{Purpose: agentModelCallPurposeTurn, TransactionID: "tx-missing", ResultDigest: "digest-missing"}},
 				ToolCalls:        tc.calls,
 				FinalOutput:      "The status file is missing; propose checking the deploy directory.",
@@ -556,7 +558,7 @@ func verifiedGradingTrace(t *testing.T, callClass evalv1.EvaluationCallClassific
 	trace, _ := v7EvidenceTrace(t)
 	workspace, err := NewScenarioWorkspace(agentTestWorkingDirectory, trace.RunID, trace.EvaluationAttemptID)
 	require.NoError(t, err)
-	trace.Workspace = AgentTraceWorkspace(workspace)
+	trace.Roster[0].Workspace = AgentTraceWorkspace(workspace)
 	trace.Steps = routerTrace(callClass).Steps
 	sage, err := frozenRolePersona(testCatalogPersonas(t), evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY)
 	require.NoError(t, err)
@@ -683,11 +685,10 @@ func relabelAgentTrace(t *testing.T, trace *AgentTrace, version string) {
 	require.NoError(t, ValidateAgentTraceDigest(trace))
 }
 
-// A v7 trace relabelled as an earlier version skips the v7 bindings. The campaign
-// import always pins to the current sealed version, for the live executor and for
-// persisted recovery alike, so a relabelled trace on either path is
-// INVALID_EVIDENCE with no grades, and the detail names the expected and actual
-// versions.
+// A v7 trace relabelled as an earlier version is rejected: the import validates
+// the sealed digest first, and an earlier schema version has no digest the
+// current validator accepts, so the import fails with ErrEvidenceArtifactMalformed
+// naming the version it found, and no grades are produced.
 func TestImportAssignmentResultFromAgentTrace_RelabelledEarlierVersionIsInvalidEvidence(t *testing.T) {
 	triage := &TriageExpectation{
 		Complexity: []constants.TriageComplexity{constants.TriageComplexitySimple},
@@ -703,14 +704,17 @@ func TestImportAssignmentResultFromAgentTrace_RelabelledEarlierVersionIsInvalidE
 	_, err := GradeHomogeneousScenario(req, trace, completed)
 	require.NoError(t, err, "premise: the v7 trace grades")
 
-	relabelAgentTrace(t, trace, agentTraceSchemaVersionV6)
-	result, err := ImportAssignmentResultFromAgentTrace(req, trace, evidenceRef, importedAt, nil)
+	// Restamp the digest without validating it, as a relabelled trace is stored.
+	trace.SchemaVersion = agentTraceSchemaVersionV6
+	trace.Persona = nil
+	trace.EvidenceDigest = ""
+	digest, err := ComputeAgentTraceDigest(trace)
 	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Equal(t, evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_INVALID_EVIDENCE, result.GetLifecycleStatus())
-	require.Contains(t, result.GetInvalidEvidenceDetail(), agentTraceSchemaVersionV6, "detail names the actual version")
-	require.Contains(t, result.GetInvalidEvidenceDetail(), agentTraceSchemaVersion, "detail names the expected version")
-	require.Empty(t, result.GetDeterministicGrades(), "an invalid-evidence assignment carries no grades")
+	trace.EvidenceDigest = digest
+	result, err := ImportAssignmentResultFromAgentTrace(req, trace, evidenceRef, importedAt, nil)
+	require.ErrorIs(t, err, constants.ErrEvidenceArtifactMalformed)
+	require.Nil(t, result)
+	require.Contains(t, err.Error(), `schema version "`+agentTraceSchemaVersionV6+`"`, "the error names the actual version")
 }
 
 // A Lite cell's classification is its whole task. Under the original contract

@@ -41,9 +41,12 @@ func sealedBracketOnlyTrace(t *testing.T) []byte {
 	body, err := evaluation.SealAgentTrace(&evaluation.AgentTrace{
 		RunID: "run-1", AssignmentID: "assignment-1", EvaluationAttemptID: "attempt-1",
 		Inference: evaluation.AgentTraceRuntime{OperatorID: "operator-inference", SessionID: "session-inference", Anchor: &evaluation.AgentTraceAnchor{ConformanceAnchor: inference.Anchor("operator-inference")}},
-		Data:      evaluation.AgentTraceRuntime{OperatorID: "operator-data", SessionID: "session-data", Anchor: &evaluation.AgentTraceAnchor{ConformanceAnchor: data.Anchor("operator-data")}},
-		Input:     &evaluation.AgentTraceInput{Messages: []evaluation.AgentTraceMessage{{Role: "INFERENCE_MESSAGE_ROLE_USER", Text: "Diagnose the outage."}}},
-		Bracket:   &evaluation.AgentTraceBracket{Before: sentinel("tx-before", "h-0", "h-1"), After: sentinel("tx-after", "h-1", "h-2")},
+		Roster: []evaluation.AgentTraceRosterMember{{
+			Index:   1,
+			Runtime: evaluation.AgentTraceRuntime{OperatorID: "operator-data", SessionID: "session-data", Anchor: &evaluation.AgentTraceAnchor{ConformanceAnchor: data.Anchor("operator-data")}},
+			Bracket: &evaluation.AgentTraceBracket{Before: sentinel("tx-before", "h-0", "h-1"), After: sentinel("tx-after", "h-1", "h-2")},
+		}},
+		Input: &evaluation.AgentTraceInput{Messages: []evaluation.AgentTraceMessage{{Role: "INFERENCE_MESSAGE_ROLE_USER", Text: "Diagnose the outage."}}},
 	})
 	require.NoError(t, err)
 	return body

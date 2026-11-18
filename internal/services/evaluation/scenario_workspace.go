@@ -88,9 +88,25 @@ func NewScenarioWorkspace(operatorWorkingDirectory, runID, attemptID string) (Sc
 	}, nil
 }
 
-// Render replaces every ScenarioWorkspaceToken in text with the workspace root.
+// ScenarioWorkspacePromptRoot is how every model-facing text names the
+// attempt workspace. Each roster member holds its own copy of the workspace
+// under its own working directory, so the model addresses it relatively:
+// Resolve and the harness dispatch resolve a relative path inside the workspace
+// of the Operator that runs the call, so one path names the same file on every
+// target of a fanned-out call.
+const ScenarioWorkspacePromptRoot = "."
+
+// Render replaces every ScenarioWorkspaceToken in text with the model-facing
+// workspace root, ScenarioWorkspacePromptRoot.
 func (w ScenarioWorkspace) Render(text string) string {
-	return strings.ReplaceAll(text, ScenarioWorkspaceToken, w.Root)
+	return renderScenarioText(text)
+}
+
+// renderScenarioText replaces every ScenarioWorkspaceToken in model-facing
+// fixture text with ScenarioWorkspacePromptRoot. The rendering is the same on
+// every roster member.
+func renderScenarioText(text string) string {
+	return strings.ReplaceAll(text, ScenarioWorkspaceToken, ScenarioWorkspacePromptRoot)
 }
 
 // SentinelPath is the harness-owned file the attempt's ledger sentinels read.
@@ -108,17 +124,17 @@ func (w ScenarioWorkspace) FilePath(relPath string) (string, error) {
 }
 
 // Resolve turns a path argument a model supplied into a cleaned absolute
-// path: absolute paths are cleaned, relative ones resolve against the
-// operator working directory the way the operator itself resolves them. On a
+// path on the workspace's Operator: absolute paths are cleaned, relative ones
+// resolve inside the workspace root, where the harness dispatches them. On a
 // Windows operator, backslashes are separators and a rooted path without a
-// drive ("\x") sits on the working directory's drive.
+// drive ("\x") sits on the workspace's drive.
 func (w ScenarioWorkspace) Resolve(value string) string {
-	volume, workingRest, windows := splitWindowsVolume(w.OperatorWorkingDirectory)
+	volume, workingRest, windows := splitWindowsVolume(w.Root)
 	if !windows {
 		if path.IsAbs(value) {
 			return path.Clean(value)
 		}
-		return path.Clean(path.Join(w.OperatorWorkingDirectory, value))
+		return path.Clean(path.Join(w.Root, value))
 	}
 	if cleaned, ok := cleanOperatorAbsPath(value); ok {
 		return cleaned
