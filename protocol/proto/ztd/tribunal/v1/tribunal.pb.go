@@ -175,13 +175,15 @@ type TribunalIntentRequest struct {
 	ExecutionId    string `protobuf:"bytes,11,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
 	TimeoutSeconds int32  `protobuf:"varint,12,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
 	// member_inference is the template for generation member calls. The Gateway
-	// sets messages, provider_attempt_id and response_format per call; every
-	// stage template must leave messages, tools, provider_attempt_id,
-	// acting_app_id, stream and response_format empty.
+	// sets messages, provider_attempt_id, response_format and retry_count per
+	// call; every stage template must leave messages, tools,
+	// provider_attempt_id, acting_app_id, stream, response_format and
+	// retry_count empty.
 	MemberInference *v1.InferenceDispatchRequest `protobuf:"bytes,13,opt,name=member_inference,json=memberInference,proto3" json:"member_inference,omitempty"`
 	// provider_attempt_prefix names the member calls: call n (from 1, in
-	// deliberation order) uses provider_attempt_id "<prefix>-<n>". Required and
-	// unique per intent, so the caller can bind each result to its request.
+	// deliberation order, a transient retry included) uses provider_attempt_id
+	// "<prefix>-<n>". Required and unique per intent, so the caller can bind
+	// each result to its request.
 	ProviderAttemptPrefix string `protobuf:"bytes,14,opt,name=provider_attempt_prefix,json=providerAttemptPrefix,proto3" json:"provider_attempt_prefix,omitempty"`
 	// tier is the campaign role recorded on each persona step.
 	Tier v11.ModelCampaignRole `protobuf:"varint,15,opt,name=tier,proto3,enum=ztd.eval.v1.ModelCampaignRole" json:"tier,omitempty"`
@@ -391,8 +393,18 @@ type TribunalMemberCall struct {
 	// observation_receipts are the observers' signed final receipts for the
 	// call's BEGIN and FINALIZE commands (InferenceDispatchResponse field 4).
 	ObservationReceipts []*v1.EventReceipt `protobuf:"bytes,9,rep,name=observation_receipts,json=observationReceipts,proto3" json:"observation_receipts,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// retry_count is the call's retry ordinal: 0 for the first attempt, n for
+	// the nth retry after the provider asked to retry later
+	// (RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT). It equals the dispatched
+	// request's and the signed result's retry_count.
+	RetryCount uint32 `protobuf:"varint,10,opt,name=retry_count,json=retryCount,proto3" json:"retry_count,omitempty"`
+	// retry_of is the provider_attempt_id of the earlier member call this one
+	// retries; set exactly when retry_count is non-zero. That call did not
+	// complete, and its signed FAILED receipt carries
+	// RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT.
+	RetryOf       string `protobuf:"bytes,11,opt,name=retry_of,json=retryOf,proto3" json:"retry_of,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *TribunalMemberCall) Reset() {
@@ -486,6 +498,20 @@ func (x *TribunalMemberCall) GetObservationReceipts() []*v1.EventReceipt {
 		return x.ObservationReceipts
 	}
 	return nil
+}
+
+func (x *TribunalMemberCall) GetRetryCount() uint32 {
+	if x != nil {
+		return x.RetryCount
+	}
+	return 0
+}
+
+func (x *TribunalMemberCall) GetRetryOf() string {
+	if x != nil {
+		return x.RetryOf
+	}
+	return ""
 }
 
 // TribunalIntentResult is the HTTP 200 body of POST /api/v1/operators/intents.
@@ -696,7 +722,7 @@ const file_ztd_tribunal_v1_tribunal_proto_rawDesc = "" +
 	"\x11marshal_inference\x18\x11 \x01(\v2).ztd.operator.v1.InferenceDispatchRequestR\x10marshalInference\x12V\n" +
 	"\x11auditor_inference\x18\x12 \x01(\v2).ztd.operator.v1.InferenceDispatchRequestR\x10auditorInference\x12<\n" +
 	"\bpersonas\x18\x13 \x03(\v2 .ztd.eval.v1.AgentPersonaBindingR\bpersonas\x12 \n" +
-	"\vhomogeneous\x18\x14 \x01(\bR\vhomogeneous\"\xdb\x03\n" +
+	"\vhomogeneous\x18\x14 \x01(\bR\vhomogeneous\"\x97\x04\n" +
 	"\x12TribunalMemberCall\x124\n" +
 	"\x05stage\x18\x01 \x01(\x0e2\x1e.ztd.tribunal.v1.TribunalStageR\x05stage\x12\x18\n" +
 	"\apersona\x18\x02 \x01(\tR\apersona\x12\x14\n" +
@@ -706,7 +732,11 @@ const file_ztd_tribunal_v1_tribunal_proto_rawDesc = "" +
 	"\x06result\x18\x06 \x01(\v2 .ztd.operator.v1.InferenceResultR\x06result\x127\n" +
 	"\areceipt\x18\a \x01(\v2\x1d.ztd.operator.v1.EventReceiptR\areceipt\x12C\n" +
 	"\afailure\x18\b \x01(\v2).ztd.operator.v1.InferenceDispatchFailureR\afailure\x12P\n" +
-	"\x14observation_receipts\x18\t \x03(\v2\x1d.ztd.operator.v1.EventReceiptR\x13observationReceipts\"\xec\x05\n" +
+	"\x14observation_receipts\x18\t \x03(\v2\x1d.ztd.operator.v1.EventReceiptR\x13observationReceipts\x12\x1f\n" +
+	"\vretry_count\x18\n" +
+	" \x01(\rR\n" +
+	"retryCount\x12\x19\n" +
+	"\bretry_of\x18\v \x01(\tR\aretryOf\"\xec\x05\n" +
 	"\x14TribunalIntentResult\x12:\n" +
 	"\aoutcome\x18\x01 \x01(\x0e2 .ztd.tribunal.v1.TribunalOutcomeR\aoutcome\x12G\n" +
 	"\targuments\x18\v \x01(\v2).ztd.operator.v1.RunShellCommandArgumentsR\targuments\x12%\n" +

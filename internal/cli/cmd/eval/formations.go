@@ -294,9 +294,9 @@ func bindFormationRoleFlags(cmd *cobra.Command, prefix, label string) *formation
 	cmd.Flags().StringVar(&f.displayName, prefix+"-display-name", "", label+" display name (defaults to the served tag)")
 	cmd.Flags().StringVar(&f.provider, prefix+"-provider", "", label+" provider, for example Alibaba (defaults to the model family)")
 	cmd.Flags().StringVar(&f.family, prefix+"-family", "", label+" model family, for example \"Qwen 3.5\"")
-	cmd.Flags().StringVar(&f.providerClass, prefix+"-provider-class", constants.InferenceProviderOllama, label+" inference provider class: ollama or llamacpp for sovereign roles")
+	cmd.Flags().StringVar(&f.providerClass, prefix+"-provider-class", constants.InferenceProviderOllama, label+" inference provider class: ollama or llamacpp (local), or gemini, anthropic or openai (hosted); a registry tag supplies its own")
 	cmd.Flags().StringVar(&f.servedTag, prefix+"-tag", "", label+" served model tag, for example qwen3.5:9b (required)")
-	cmd.Flags().StringVar(&f.trust, prefix+"-trust", "sovereign", label+" trust class: sovereign or delegated")
+	cmd.Flags().StringVar(&f.trust, prefix+"-trust", "sovereign", label+" trust class: sovereign or delegated (defaults to the provider class's: sovereign for local, delegated for hosted)")
 	cmd.Flags().StringVar(&f.quant, prefix+"-quant", "", label+" quantization format, required for sovereign roles (e.g. Q4_K_M)")
 	cmd.Flags().StringVar(&f.parameters, prefix+"-parameters", "", label+" parameter count, for example 9b")
 	cmd.Flags().Uint64Var(&f.modelVRAM, prefix+"-model-vram", 0, label+" model VRAM MiB (sovereign only; estimated from parameters and quantization when omitted)")
@@ -328,11 +328,12 @@ func (f *formationRoleFlagSet) resolve(flags *pflag.FlagSet, variants []*evalv1.
 		model = evaluation.FormationModelFromVariant(matched[0])
 	}
 	changed := func(name string) bool { return flags.Changed(f.prefix + "-" + name) }
-	if changed("trust") {
-		model.Trust = evaluation.FormationTrust(strings.ToLower(strings.TrimSpace(f.trust)))
-	}
 	if changed("provider-class") {
 		model.ProviderClass = f.providerClass
+	}
+	model.Trust = evaluation.FormationTrustForProviderClass(model.ProviderClass)
+	if changed("trust") {
+		model.Trust = evaluation.FormationTrust(strings.ToLower(strings.TrimSpace(f.trust)))
 	}
 	for _, override := range []struct {
 		value  string
@@ -408,9 +409,17 @@ defaults to the family and display names to the served tag. Any role flag
 overrides the resolved value; a tag in neither inventory needs its family,
 quantization, and parameter count passed explicitly.
 
-Example:
+Any role can be local or hosted. A role's trust follows its provider class:
+sovereign for a local model (ollama, llamacpp), which counts against the VRAM
+budget, and delegated for a hosted model (gemini, anthropic, openai), which
+does not. A hosted tag resolves from the registry entry that
+'ztd eval models add <tag> --provider <class>' wrote.
+
+Examples:
   ztd eval formations create my-formation --max-vram 12gb \
-    --primary-tag qwen3.5:9b --assistant-tag ministral-3:3b --lite-tag gemma3:1b`,
+    --primary-tag qwen3.5:9b --assistant-tag ministral-3:3b --lite-tag gemma3:1b
+  ztd eval formations create my-mixed-formation --max-vram 12gb \
+    --primary-tag gemini-3.6-flash --assistant-tag ministral-3:3b --lite-tag gemma3:1b`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := strings.TrimSpace(args[0])

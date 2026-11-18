@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { prepareReleaseNotes, releaseLinkResolver, renderReleaseNotes } from '../src/release-notes.js';
-import { compareVersions, formatSize } from '../src/releases.js';
+import { compareVersions, downloadable, formatSize } from '../src/releases.js';
 
 const REPOSITORY = fileURLToPath(new URL('../..', import.meta.url));
 const NOTE = 'docs/release_notes/v2.3.x/v2.3.1.md';
@@ -18,6 +18,11 @@ test('compareVersions orders releases and prereleases by SemVer precedence', () 
   const shuffled = [...ordered].reverse().sort(compareVersions);
   assert.deepEqual(shuffled, ordered);
   assert.equal(compareVersions('2.3.2', '2.3.2'), 0);
+});
+
+test('downloadable offers v1.10 and newer, including its prereleases, and archives older lines', () => {
+  for (const version of ['1.10.0-rc.1', '1.10.0', '1.10.7', '1.11.0', '2.0.0', '2.3.2']) assert.equal(downloadable(version), true, version);
+  for (const version of ['1.9.9', '1.9.0', '1.1.3', '0.12.0']) assert.equal(downloadable(version), false, version);
 });
 
 test('formatSize uses binary units', () => {

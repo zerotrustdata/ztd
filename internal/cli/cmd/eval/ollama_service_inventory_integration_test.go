@@ -45,7 +45,7 @@ func TestListOllamaProviderInventory_UsesTypedInventoryAction(t *testing.T) {
 				TargetOperatorSessionID: workload.OperatorSessionID,
 				CaseID:                  caseID,
 				NewID:                   adaptNewID(env.deps.newID),
-			})
+			}, nil)
 			require.NoError(t, err)
 			require.Len(t, entries, 1)
 			assert.Equal(t, testQwenVariant().GetServedModelTag(), entries[0].ServedModelTag)

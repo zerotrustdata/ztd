@@ -444,6 +444,9 @@ message OperatorRuntimeConfig {
   // Model store layout under provenance_operator_model_storage_root
   // (--model-storage-format: ollama or llamacpp).
   string provenance_operator_model_storage_format = 26;
+  // Hosted inference provider classes this Operator serves, discovered from
+  // the provider API keys set when it starts and bound at enrollment.
+  repeated string inference_hosted_providers = 27;
 }
 
 // OperatorDocument is the canonical Operator record. The Gateway owns and
@@ -701,6 +704,9 @@ enum ReceiptFailureCode {
   RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR = 26;
   // The request exceeded the Inference Operator's request size bound, so it was rejected before the provider was called.
   RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE = 27;
+  // The provider asked to be retried later (a rate limit, an overload, or a transient server failure) before returning a result.
+  // A new provider attempt can succeed; authentication, permission and billing failures are BACKEND_UNAVAILABLE instead.
+  RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT = 28;
 }
 
 // GovernanceRejectionCode names the verification check that rejected a
@@ -816,6 +822,17 @@ message ConsensusVoteInference {
   EventReceipt receipt = 7;
   InferenceDispatchFailure failure = 8;
   repeated EventReceipt observation_receipts = 9;
+  // retry_count is the vote attempt's retry ordinal: 0 for the first
+  // attempt, n for the nth retry after the provider asked to retry later. It
+  // equals the dispatched request's and the signed result's retry_count, and
+  // provider_attempt_id is governance.ConsensusVoteAttemptID for it.
+  uint32 retry_count = 10;
+  // superseded_attempts are the member's earlier vote attempts this one
+  // retries, in order (retry_count 0..n-1). Each did not complete, carries the
+  // Inference Operator's signed FAILED receipt with
+  // RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT, and has no superseded_attempts of
+  // its own. Every one is execution evidence; only this record casts the vote.
+  repeated ConsensusVoteInference superseded_attempts = 11;
 }
 
 // GovernanceDeliberationResult is the L2 decision for an authenticated envelope.
@@ -1069,6 +1086,12 @@ message PortCheckResult {
 
 message OllamaModelInventoryRequested {
   string execution_id = 1;
+  // Provider classes to list: the Operator's local provider class and/or the
+  // hosted classes it serves. Empty lists every class the Operator serves. A
+  // named class the Operator does not serve fails the request closed, and the
+  // local provider is read only when its class is listed, so a hosted-only
+  // listing never depends on a reachable local provider.
+  repeated string provider_classes = 2;
 }
 
 // ParameterCountSource distinguishes exact provider metadata from rounded labels.
@@ -1565,6 +1588,11 @@ message InferenceToolCall {
   string call_id = 1;
   string name = 2;
   string arguments_json = 3;
+  // Opaque continuation token the provider attached to this call (a Gemini
+  // thought signature). It is not content: the scrubber never reads it, the
+  // result digest covers it, and a later turn returns it to the same provider
+  // verbatim, which a hosted provider requires to continue a tool call.
+  string provider_signature = 4;
 }
 
 // InferenceToolResult carries a tool continuation value. result_json is a canonical JSON value.
@@ -1574,12 +1602,29 @@ message InferenceToolResult {
   string result_json = 3;
 }
 
+// InferenceProviderReasoning is one reasoning item a hosted provider returned
+// in opaque form: an Anthropic thinking or redacted_thinking block, or an
+// OpenAI encrypted reasoning item. The provider binds it to the conversation
+// that produced it, so a later turn of that conversation returns it to the same
+// provider class verbatim, in its original position. It carries no readable
+// text: the client requests none and refuses an item that holds any, so the
+// scrubber, which never reads it, has nothing to scrub. The result digest
+// covers it.
+message InferenceProviderReasoning {
+  // Hosted provider class that issued the item (anthropic, openai).
+  string provider_class = 1;
+  // The provider's item as canonical JSON, returned to it unchanged.
+  string item_json = 2;
+}
+
 // InferenceMessagePart carries exactly one typed part of a conversation turn.
 message InferenceMessagePart {
   oneof part {
     string text = 1;
     InferenceToolCall tool_call = 2;
     InferenceToolResult tool_result = 3;
+    // Only in an assistant turn of a request to the issuing provider class.
+    InferenceProviderReasoning provider_reasoning = 4;
   }
 }
 
@@ -1627,6 +1672,7 @@ message InferenceResponsePart {
     string text = 1;
     InferenceToolCall tool_call = 2;
     string thinking = 3;
+    InferenceProviderReasoning provider_reasoning = 4;
   }
 }
 
@@ -1739,6 +1785,13 @@ message InferenceRequested {
 
   // Exclusive with messages, tools, streaming and generation controls.
   InferenceDecisionRequest decision = 30;
+
+  // Hosted provider class (gemini, anthropic, openai) that serves model. Empty
+  // selects the Operator's local provider (Ollama or llama.cpp). A hosted
+  // class is the envelope's explicit consent to hosted egress: the Operator
+  // serves it only when its runtime config lists that class, discovered from
+  // the class's API key when the Operator started.
+  string provider_class = 31;
 }
 
 enum InferenceTimingSource {
@@ -1970,6 +2023,10 @@ message InferenceDispatchRequest {
 
   // Exclusive with messages, tools, streaming and generation controls.
   InferenceDecisionRequest decision = 37;
+
+  // Hosted provider class that serves model; empty selects the local
+  // provider. See InferenceRequested.provider_class.
+  string provider_class = 38;
 }
 
 // InferenceDispatchFailureCode is the typed classification of a failed
@@ -2029,6 +2086,7 @@ enum InferenceDispatchFailureCode {
   INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR = 48;
   INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED = 49;
   INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE = 50;
+  INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TRANSIENT = 51;
 }
 
 // InferenceDispatchFailure is the protocol-owned error body for a non-2xx
@@ -2096,12 +2154,30 @@ message InferenceDispatchResponse {
 }
 
 // Included in result_digest and therefore bound by the Operator's signed L5 receipt.
+// For hosted generation it is the Inference Operator's model provenance record:
+// the provider cannot attest weights, so the Operator records what the provider
+// reported serving and the exact bytes it received.
 message InferenceHostedEgressAttestation {
  string provider_origin = 1;
+ // Model the provider reported serving (Gemini modelVersion).
  string model_version = 2;
  string provenance = 3;
  string normalized_request_hash = 4;
  bool explicit_consent = 5;
+ // Hosted provider class that served the attempt (gemini, anthropic, openai).
+ string provider_class = 6;
+ // Model the governed request named.
+ string requested_model = 7;
+ // Provider metadata version of requested_model, read immediately before the call.
+ string provider_model_version = 8;
+ // Hosted model identity digest of (provider_class, provider_origin,
+ // requested_model, provider_model_version); models.ComputeHostedModelIdentityDigest.
+ string model_identity_digest = 9;
+ // Provider-assigned response identifier (Gemini responseId).
+ string provider_response_id = 10;
+ // Hex SHA-256 of the provider's 200 response byte stream.
+ string raw_response_digest = 11;
+ uint64 raw_response_size_bytes = 12;
 }
 
 // AuditChainCheckpointPayload is the canonical protobuf payload for

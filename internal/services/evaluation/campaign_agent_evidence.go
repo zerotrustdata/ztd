@@ -23,6 +23,8 @@ import (
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
+	inferencedispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	compliancev1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/compliance/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -72,6 +74,9 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 			return agentEvidenceError(agentEvidenceStageModelCall, "model call "+call.ProviderAttemptID+" observation", err)
 		}
 		observationClaims = append(observationClaims, observed...)
+	}
+	if err := verifyRetryChains(trace); err != nil {
+		return agentEvidenceError(agentEvidenceStageModelCall, "retry chain", err)
 	}
 	if trace.CarriesModelIdentity() {
 		if err := verifyV7EpisodeOutputs(trace); err != nil {
@@ -165,6 +170,62 @@ func VerifyAgentTraceEvidence(trace *AgentTrace) error {
 	return nil
 }
 
+// verifyRetryChains proves every retried model call against the attempt it
+// names in retry_of. The retried attempt must be the model call immediately
+// before it in the trace, the same call (purpose, loop turn, tool call,
+// persona) one retry ordinal lower on the same model and request, not have
+// completed, and carry a receipt the Inference runtime signed as a FAILED
+// execution whose provider asked to retry later
+// (RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT). No call retries past the transient
+// retry policy's bound. Receipts are verified by verifyModelCallEvidence before
+// this runs.
+//
+// Adjacency holds for every producer: the executor's turn and Interrogator
+// calls (agentRun.infer) and the Gateway's Tribunal member calls
+// (memberInferer.Infer, recorded in order by recordMemberCalls) append an
+// attempt and its retry back to back. It is what keeps a chain from linking
+// across Tribunal rounds, stages, or tool calls: a model call does not carry
+// its Tribunal round, so the same persona's calls in two rounds are otherwise
+// indistinguishable, and no later call can name an earlier attempt over the
+// calls between them.
+func verifyRetryChains(trace *AgentTrace) error {
+	fail := func(call AgentModelCall, reason string) error {
+		return fmt.Errorf("model call %q %s: %w", call.ProviderAttemptID, reason, constants.ErrEvaluationEvidenceTraceMismatch)
+	}
+	for i, call := range trace.ModelCalls {
+		if (call.RetryOf == "") != (call.RetryCount == 0) {
+			return fail(call, "retry ordinal and retried attempt disagree")
+		}
+		if call.RetryCount > inferencedispatch.MaxTransientRetries() {
+			return fail(call, "retries past the transient retry bound")
+		}
+		if call.RetryOf == "" {
+			continue
+		}
+		if i == 0 || trace.ModelCalls[i-1].ProviderAttemptID != call.RetryOf {
+			return fail(call, "does not retry the model call immediately before it")
+		}
+		previous := trace.ModelCalls[i-1]
+		if previous.Purpose != call.Purpose || previous.LoopTurn != call.LoopTurn || previous.ToolCallID != call.ToolCallID || previous.Persona != call.Persona {
+			return fail(call, "retries a different call")
+		}
+		if previous.ModelVariantID != call.ModelVariantID || previous.ModelRole != call.ModelRole ||
+			previous.ServedModelTag != call.ServedModelTag || previous.ModelDigest != call.ModelDigest {
+			return fail(call, "retries on a different model")
+		}
+		if !slices.Equal(previous.ToolsDeclared, call.ToolsDeclared) || !slices.Equal(previous.Input, call.Input) {
+			return fail(call, "retries with a different request")
+		}
+		if previous.RetryCount+1 != call.RetryCount {
+			return fail(call, "does not follow its retried attempt's ordinal")
+		}
+		if previous.Completed() || previous.Receipt == nil || !governance.IsTransientFailureReceipt(previous.Receipt.EventReceipt) {
+			return fail(call, "retries an attempt the provider did not ask to retry")
+		}
+	}
+	return nil
+}
+
 // The final diagnosis and requested tool arguments are grader inputs too. Bind
 // them to the signed responses rather than trusting the trace's repeated copy.
 func verifyV7EpisodeOutputs(trace *AgentTrace) error {
@@ -219,7 +280,7 @@ func verifyV7EpisodeOutputs(trace *AgentTrace) error {
 		for _, requested := range calls {
 			spec, declared := specs[requested.GetName()]
 			request := decodeAgentToolRequest(spec, declared, requested.GetArgumentsJson())
-			if requested.GetCallId() == tool.ProviderCallID && requested.GetName() == tool.ToolName && request.ArgumentsJSON == tool.ArgumentsJSON {
+			if requested.GetCallId() == tool.ProviderCallID && requested.GetProviderSignature() == tool.ProviderSignature && requested.GetName() == tool.ToolName && request.ArgumentsJSON == tool.ArgumentsJSON {
 				found = true
 				break
 			}

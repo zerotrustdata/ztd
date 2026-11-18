@@ -35,6 +35,10 @@ import (
 const (
 	tribunalTestTag    = "vote-model"
 	tribunalTestDigest = "abababababababababababababababababababababababababababababababab"
+	// tribunalHostedTag is a hosted registry model; its registry digest is the
+	// hosted model identity digest.
+	tribunalHostedTag    = "gemini-3.6-flash"
+	tribunalHostedDigest = "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
 )
 
 // fakeAppEnroller completes enrollment without touching keys or the Gateway.
@@ -44,8 +48,9 @@ func (fakeAppEnroller) Enroll(context.Context, io.Writer) (*models.PlatformEnrol
 	return nil, nil
 }
 
-// writeTribunalRegistry freezes a registry with one variant whose digest is
-// stored in the provider's "sha256:" form, so normalization is exercised.
+// writeTribunalRegistry freezes a registry with one local variant whose digest
+// is stored in the provider's "sha256:" form, so normalization is exercised,
+// and one hosted Gemini variant pinned by its identity digest.
 func writeTribunalRegistry(t *testing.T, fileSvc fs.RuntimeFileService) {
 	t.Helper()
 	ctx := context.Background()
@@ -54,6 +59,12 @@ func writeTribunalRegistry(t *testing.T, fileSvc fs.RuntimeFileService) {
 		ProviderClass:  "ollama",
 		ServedModelTag: tribunalTestTag,
 		ModelDigest:    "sha256:" + tribunalTestDigest,
+	}, {
+		VariantId:      "variant-hosted-vote",
+		ProviderClass:  constants.InferenceProviderGemini,
+		ServedModelTag: tribunalHostedTag,
+		ModelDigest:    tribunalHostedDigest,
+		ModelFormat:    constants.HostedModelFormat,
 	}}
 	freeze, err := evaluation.MaterializeModelRegistry("campaign-tribunal-test", variants)
 	require.NoError(t, err)
@@ -201,6 +212,51 @@ func TestConsensusEnrollTribunal_BindRequestBody(t *testing.T) {
 			}, client.PostCalls[0].Body)
 		})
 	}
+}
+
+// TestConsensusEnrollTribunal_HostedRegistryModelBindsItsProviderClass: a
+// hosted registry tag binds exactly like a local one, pinned by its identity
+// digest, and the binding names the hosted class the vote dispatch selects.
+func TestConsensusEnrollTribunal_HostedRegistryModelBindsItsProviderClass(t *testing.T) {
+	members := constants.TribunalConsensusMemberAppIDs()
+	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: members[0], MemberAppIDs: members, Quorum: constants.TribunalConsensusDefaultQuorum, RequireDistinct: true, Provider: string(constants.ConsensusProviderTribunal), ModelTag: tribunalHostedTag, ModelDigest: tribunalHostedDigest, ModelProviderClass: constants.InferenceProviderGemini, Enabled: true}
+	body, err := json.Marshal(policy)
+	require.NoError(t, err)
+	client := &cmdtest.MockAPIClient{PostResp: body}
+	_, _, err = runEnrollTribunal(t, client, map[string]bool{members[0]: true}, "tribunal", "--model", tribunalHostedTag)
+	require.NoError(t, err)
+	require.Len(t, client.PostCalls, 1)
+	require.Equal(t, models.PlatformEnrollmentBindConsensusRequest{
+		AppID:              members[0],
+		MemberAppIDs:       members,
+		Quorum:             constants.TribunalConsensusDefaultQuorum,
+		Provider:           string(constants.ConsensusProviderTribunal),
+		ModelTag:           tribunalHostedTag,
+		ModelDigest:        tribunalHostedDigest,
+		ModelProviderClass: constants.InferenceProviderGemini,
+	}, client.PostCalls[0].Body)
+}
+
+// TestConsensusEnrollTribunal_RejectsBindingWithoutHostedClass: a Gateway
+// answer that drops the hosted class would route votes to the local provider.
+func TestConsensusEnrollTribunal_RejectsBindingWithoutHostedClass(t *testing.T) {
+	members := constants.TribunalConsensusMemberAppIDs()
+	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: members[0], MemberAppIDs: members, Quorum: constants.TribunalConsensusDefaultQuorum, Provider: string(constants.ConsensusProviderTribunal), ModelTag: tribunalHostedTag, ModelDigest: tribunalHostedDigest, Enabled: true}
+	body, err := json.Marshal(policy)
+	require.NoError(t, err)
+	client := &cmdtest.MockAPIClient{PostResp: body}
+	_, _, err = runEnrollTribunal(t, client, map[string]bool{members[0]: true}, "tribunal", "--model", tribunalHostedTag)
+	require.ErrorIs(t, err, constants.ErrInvalidJSONResponse)
+}
+
+// TestConsensusEnrollTribunal_HostedModelRejectsDecisionVotes: a hosted
+// registry model serves generative votes only; nothing is enrolled or posted.
+func TestConsensusEnrollTribunal_HostedModelRejectsDecisionVotes(t *testing.T) {
+	client := &cmdtest.MockAPIClient{}
+	_, enrolled, err := runEnrollTribunal(t, client, nil, "tribunal", "--model", tribunalHostedTag, "--vote-kind", "decision", "--inference-operator", "op-decision")
+	require.ErrorIs(t, err, constants.ErrConsensusDecisionBindingInvalid)
+	require.Empty(t, client.PostCalls)
+	require.Empty(t, enrolled)
 }
 
 func TestConsensusEnrollTribunal_PrintsPostureSuspension(t *testing.T) {

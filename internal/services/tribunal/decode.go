@@ -37,9 +37,11 @@ func decodeAnswer(text string, v any) error {
 }
 
 // decodeAuthoringAnswer enforces the same schema sent to the provider.
-// encoding/json alone accepts missing fields, case-insensitive keys and null
-// strings, and cannot enforce verdict shapes. Decode first to give actionable
-// diagnostics for malformed JSON and unknown fields before schema validation.
+// encoding/json alone accepts missing fields and case-insensitive keys.
+// Decode first to give actionable diagnostics for malformed JSON and unknown
+// fields before schema validation. The schema holds only constraints every
+// provider applies; each caller checks the rest (a valid executable name, the
+// fields a verdict carries).
 func decodeAuthoringAnswer(text, schemaJSON string, answer any) error {
 	if err := decodeAnswer(text, answer); err != nil {
 		return err

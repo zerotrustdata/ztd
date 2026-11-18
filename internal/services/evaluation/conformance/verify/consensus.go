@@ -18,6 +18,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	govhash "github.com/zerotrustdata/ztd/internal/governance"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
+	"github.com/zerotrustdata/ztd/internal/services/governance"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -79,22 +80,27 @@ func (r *recordCheck) consensusClaims(runtime string, ev *evalv1.ConformanceCase
 			continue
 		}
 		seen[key] = call
-		if receipt := call.GetReceipt(); receipt != nil {
-			claimed, err := r.consensusReceipt(runtime, receipt, false)
-			if err != nil {
-				return nil, err
+		// A member's vote record is one record however many provider attempts
+		// the vote needed; every attempt is an execution on its runtime's
+		// ledger, so the superseded ones are claimed beside the final one.
+		for _, attempt := range governance.ConsensusVoteAttempts(call) {
+			if receipt := attempt.GetReceipt(); receipt != nil {
+				claimed, err := r.consensusReceipt(runtime, receipt, false)
+				if err != nil {
+					return nil, err
+				}
+				if claimed.Commitment != nil {
+					claims = append(claims, claimed)
+				}
 			}
-			if claimed.Commitment != nil {
-				claims = append(claims, claimed)
-			}
-		}
-		for _, receipt := range call.GetObservationReceipts() {
-			claimed, err := r.consensusReceipt(runtime, receipt, true)
-			if err != nil {
-				return nil, err
-			}
-			if claimed.Commitment != nil {
-				claims = append(claims, claimed)
+			for _, receipt := range attempt.GetObservationReceipts() {
+				claimed, err := r.consensusReceipt(runtime, receipt, true)
+				if err != nil {
+					return nil, err
+				}
+				if claimed.Commitment != nil {
+					claims = append(claims, claimed)
+				}
 			}
 		}
 	}

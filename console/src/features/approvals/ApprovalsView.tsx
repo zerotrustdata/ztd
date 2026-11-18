@@ -244,6 +244,14 @@ function EnrollmentRequest({
             <dd className="mono">{req.system_fingerprint}</dd>
           </>
         )}
+        {req.capabilities && req.capabilities.length > 0 && (
+          <>
+            <dt>Capabilities</dt>
+            <dd className="mono">{req.capabilities.join(', ')}</dd>
+            <dt>Hosted providers</dt>
+            <dd className="mono">{req.hosted_providers?.length ? req.hosted_providers.join(', ') : 'none'}</dd>
+          </>
+        )}
         {fps.app && (
           <>
             <dt>App key</dt>

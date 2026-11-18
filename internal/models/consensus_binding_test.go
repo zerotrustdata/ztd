@@ -178,6 +178,64 @@ func TestResolveConsensusBinding(t *testing.T) {
 	}
 }
 
+// TestResolveConsensusBinding_ModelProviderClass: a Tribunal binding names
+// either the local provider (empty) or one hosted class serving a
+// digest-pinned generative vote model; nothing else is admitted.
+func TestResolveConsensusBinding_ModelProviderClass(t *testing.T) {
+	canonical := constants.TribunalConsensusMemberAppIDs()
+	hosted := func(class string) ConsensusBindingSpec {
+		return ConsensusBindingSpec{Provider: constants.ConsensusProviderTribunal, AppID: canonical[0], ModelTag: "gemini-3.6-flash", ModelDigest: SHA256Hex([]byte("gemini-3.6-flash identity")), ModelProviderClass: class}
+	}
+	thresholds := make([]ConsensusDecisionThreshold, 0, len(canonical))
+	for _, id := range canonical {
+		thresholds = append(thresholds, ConsensusDecisionThreshold{MemberAppID: id, Threshold: 0.9})
+	}
+	for _, tc := range []struct {
+		name      string
+		spec      ConsensusBindingSpec
+		wantClass string
+		wantErr   error
+	}{
+		{name: "local provider", spec: hosted(""), wantClass: ""},
+		{name: "gemini", spec: hosted(constants.InferenceProviderGemini), wantClass: constants.InferenceProviderGemini},
+		{name: "anthropic", spec: hosted(constants.InferenceProviderAnthropic), wantClass: constants.InferenceProviderAnthropic},
+		{name: "openai is trimmed", spec: hosted(" " + constants.InferenceProviderOpenAI + " "), wantClass: constants.InferenceProviderOpenAI},
+		{name: "explicit generative vote kind", spec: func() ConsensusBindingSpec {
+			s := hosted(constants.InferenceProviderGemini)
+			s.VoteKind = ConsensusVoteKindGenerative
+			return s
+		}(), wantClass: constants.InferenceProviderGemini},
+		{name: "local class name is not a hosted class", spec: hosted(constants.InferenceProviderOllama), wantErr: constants.ErrInferenceHostedProviderInvalid},
+		{name: "unknown class", spec: hosted("bogus"), wantErr: constants.ErrInferenceHostedProviderInvalid},
+		{name: "hosted class needs an identity digest", spec: func() ConsensusBindingSpec {
+			s := hosted(constants.InferenceProviderGemini)
+			s.ModelDigest = "not-a-digest"
+			return s
+		}(), wantErr: constants.ErrConsensusModelRequired},
+		{name: "hosted class never serves decision votes", spec: func() ConsensusBindingSpec {
+			s := hosted(constants.InferenceProviderGemini)
+			s.VoteKind, s.InferenceOperatorID, s.VoteThresholds = ConsensusVoteKindDecision, "op-decision", thresholds
+			return s
+		}(), wantErr: constants.ErrConsensusDecisionBindingInvalid},
+		{name: "application binding names no model provider", spec: ConsensusBindingSpec{Provider: constants.ConsensusProviderApplication, AppID: "app-a", EndpointURL: testAppEndpoint, ModelProviderClass: constants.InferenceProviderGemini}, wantErr: constants.ErrConsensusModelUnexpected},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ResolveConsensusBinding(tc.spec)
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.wantClass, got.ModelProviderClass)
+		})
+	}
+}
+
+func TestConsensusModelLabel(t *testing.T) {
+	require.Equal(t, "qwen3:4b", ConsensusModelLabel("qwen3:4b", ""))
+	require.Equal(t, "gemini-3.6-flash (hosted: gemini)", ConsensusModelLabel("gemini-3.6-flash", constants.InferenceProviderGemini))
+}
+
 func TestConsensusPolicyProviderRequiresExplicitProvider(t *testing.T) {
 	var policy ConsensusPolicy
 	legacy := `{"app_id":"app-a","member_app_ids":["app-a"],"quorum":1,"require_distinct":true,"endpoint_url":"https://app.example.com/deliberate","enabled":true}`

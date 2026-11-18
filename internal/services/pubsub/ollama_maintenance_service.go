@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -37,6 +38,9 @@ type OllamaMaintenanceService struct {
 	eventsStore *storage.LocalFirstEventsStore
 	scrubbing   *scrubbing.ScrubbingService
 	provider    inference.Provider
+	// hosted are the Operator's hosted provider clients; their models join
+	// the inventory after the local provider's.
+	hosted []inference.HostedBackend
 }
 
 // NewOllamaMaintenanceService creates a new OllamaMaintenanceService. Every dependency
@@ -45,6 +49,8 @@ type OllamaMaintenanceService struct {
 // with constants.ErrEgressScrubberUnavailable when it is nil or disabled. eventsStore records
 // observed-state content evidence; a nil store fails with constants.ErrLocalFirstEventsStoreRequired.
 // provider is nil on an Operator without inference, where every command fails closed.
+// hosted lists the Operator's hosted provider clients, whose models the inventory
+// command also reports.
 func NewOllamaMaintenanceService(
 	cfg *config.Config,
 	logger *slog.Logger,
@@ -52,6 +58,7 @@ func NewOllamaMaintenanceService(
 	scrubbingSvc *scrubbing.ScrubbingService,
 	eventsStore *storage.LocalFirstEventsStore,
 	provider inference.Provider,
+	hosted []inference.HostedBackend,
 ) (*OllamaMaintenanceService, error) {
 	if cfg == nil || logger == nil || client == nil {
 		return nil, fmt.Errorf("ollama maintenance service: %w", constants.ErrMissingRequiredField)
@@ -69,6 +76,7 @@ func NewOllamaMaintenanceService(
 		eventsStore: eventsStore,
 		scrubbing:   scrubbingSvc,
 		provider:    provider,
+		hosted:      hosted,
 	}, nil
 }
 
@@ -89,14 +97,31 @@ func (s *OllamaMaintenanceService) HandleInventoryRequest(ctx context.Context, m
 		executionID = executionIDFromMessage(msg)
 	}
 
-	backend, err := s.inferenceProvider()
-	if err != nil {
+	classes := request.GetProviderClasses()
+	if err := s.validateInventoryClasses(classes); err != nil {
 		return fail(executionID, err)
 	}
+	listed := func(class string) bool { return len(classes) == 0 || slices.Contains(classes, class) }
 
-	entries, err := backend.ListProviderModelInventory(ctx)
-	if err != nil {
-		return fail(executionID, err)
+	var entries []inference.ProviderModelInventoryEntry
+	if listed(s.config.Inference.Provider) {
+		backend, err := s.inferenceProvider()
+		if err != nil {
+			return fail(executionID, err)
+		}
+		if entries, err = backend.ListProviderModelInventory(ctx); err != nil {
+			return fail(executionID, err)
+		}
+	}
+	for _, hosted := range s.hosted {
+		if !listed(hosted.ProviderClass()) {
+			continue
+		}
+		hostedEntries, err := hosted.ListProviderModelInventory(ctx)
+		if err != nil {
+			return fail(executionID, fmt.Errorf("%s: %w", hosted.ProviderClass(), err))
+		}
+		entries = append(entries, hostedEntries...)
 	}
 
 	payload := &operatorv1.OllamaModelInventoryResult{
@@ -300,6 +325,21 @@ func validateReleaseModelTags(modelTags []string) error {
 	for _, modelTag := range modelTags {
 		if err := operatorcapability.ValidateServedModelTag(modelTag); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// validateInventoryClasses fails closed when an inventory request names a
+// provider class this Operator does not serve.
+func (s *OllamaMaintenanceService) validateInventoryClasses(classes []string) error {
+	for _, class := range classes {
+		served := s.provider != nil && class == s.config.Inference.Provider
+		for _, hosted := range s.hosted {
+			served = served || class == hosted.ProviderClass()
+		}
+		if !served {
+			return fmt.Errorf("%w: provider class %q is not served by this Operator", constants.ErrInferenceOperatorNotCapable, class)
 		}
 	}
 	return nil

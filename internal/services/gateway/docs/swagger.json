@@ -3786,13 +3786,15 @@
                 0,
                 1,
                 2,
-                3
+                3,
+                4
             ],
             "x-enum-varnames": [
                 "EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_UNSPECIFIED",
                 "EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN",
                 "EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_POST_TURN",
-                "EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_GRADER"
+                "EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_GRADER",
+                "EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_RETRIED"
             ]
         },
         "evalv1.ModelCampaignRole": {
@@ -3993,6 +3995,10 @@
                 "member_app_id": {
                     "type": "string"
                 },
+                "model_provider_class": {
+                    "description": "ModelProviderClass is the hosted provider class that served ModelTag;\nempty when the vote model is served by a local provider.",
+                    "type": "string"
+                },
                 "model_tag": {
                     "type": "string"
                 },
@@ -4000,6 +4006,7 @@
                     "$ref": "#/definitions/models.ConsensusVoteOutcome"
                 },
                 "provider_attempt_id": {
+                    "description": "ProviderAttemptID and InferenceTransactionID name the member's final\nattempt. RetryCount is that attempt's retry ordinal: the number of\nearlier attempts a provider's transient failure superseded. It is absent\nfor a vote that needed no retry, and so for every record written before\nvote retries.",
                     "type": "string"
                 },
                 "quorum": {
@@ -4011,6 +4018,9 @@
                 },
                 "recorded_at": {
                     "type": "string"
+                },
+                "retry_count": {
+                    "type": "integer"
                 },
                 "transaction_hash": {
                     "type": "string"
@@ -5325,6 +5335,13 @@
                 "cli_csr_pem": {
                     "type": "string"
                 },
+                "hosted_providers": {
+                    "description": "HostedProviders are the hosted inference provider classes the Operator\nserves, discovered from the API keys set when it started. The owner's\napproval of the request binds them with the capabilities.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "operator_csr_pem": {
                     "type": "string"
                 }
@@ -6048,11 +6065,22 @@
                 "result": {
                     "$ref": "#/definitions/operatorv1.InferenceResult"
                 },
+                "retry_count": {
+                    "description": "retry_count is the vote attempt's retry ordinal: 0 for the first\nattempt, n for the nth retry after the provider asked to retry later. It\nequals the dispatched request's and the signed result's retry_count, and\nprovider_attempt_id is governance.ConsensusVoteAttemptID for it.",
+                    "type": "integer"
+                },
                 "subject_transaction_hash": {
                     "type": "string"
                 },
                 "subject_transaction_id": {
                     "type": "string"
+                },
+                "superseded_attempts": {
+                    "description": "superseded_attempts are the member's earlier vote attempts this one\nretries, in order (retry_count 0..n-1). Each did not complete, carries the\nInference Operator's signed FAILED receipt with\nRECEIPT_FAILURE_CODE_BACKEND_TRANSIENT, and has no superseded_attempts of\nits own. Every one is execution evidence; only this record casts the vote.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/operatorv1.ConsensusVoteInference"
+                    }
                 },
                 "transaction_id": {
                     "type": "string"
@@ -6567,7 +6595,8 @@
                 47,
                 48,
                 49,
-                50
+                50,
+                51
             ],
             "x-enum-varnames": [
                 "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_UNSPECIFIED",
@@ -6620,7 +6649,8 @@
                 "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_HOSTED_NOT_ALLOWED",
                 "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR",
                 "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED",
-                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE"
+                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE",
+                "InferenceDispatchFailureCode_INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TRANSIENT"
             ]
         },
         "operatorv1.InferenceDispatchRequest": {
@@ -6695,6 +6725,10 @@
                     "type": "boolean"
                 },
                 "provider_attempt_id": {
+                    "type": "string"
+                },
+                "provider_class": {
+                    "description": "Hosted provider class that serves model; empty selects the local\nprovider. See InferenceRequested.provider_class.",
                     "type": "string"
                 },
                 "request_schema_version": {
@@ -6808,7 +6842,12 @@
                 "explicit_consent": {
                     "type": "boolean"
                 },
+                "model_identity_digest": {
+                    "description": "Hosted model identity digest of (provider_class, provider_origin,\nrequested_model, provider_model_version); models.ComputeHostedModelIdentityDigest.",
+                    "type": "string"
+                },
                 "model_version": {
+                    "description": "Model the provider reported serving (Gemini modelVersion).",
                     "type": "string"
                 },
                 "normalized_request_hash": {
@@ -6817,7 +6856,30 @@
                 "provenance": {
                     "type": "string"
                 },
+                "provider_class": {
+                    "description": "Hosted provider class that served the attempt (gemini, anthropic, openai).",
+                    "type": "string"
+                },
+                "provider_model_version": {
+                    "description": "Provider metadata version of requested_model, read immediately before the call.",
+                    "type": "string"
+                },
                 "provider_origin": {
+                    "type": "string"
+                },
+                "provider_response_id": {
+                    "description": "Provider-assigned response identifier (Gemini responseId).",
+                    "type": "string"
+                },
+                "raw_response_digest": {
+                    "description": "Hex SHA-256 of the provider's 200 response byte stream.",
+                    "type": "string"
+                },
+                "raw_response_size_bytes": {
+                    "type": "integer"
+                },
+                "requested_model": {
+                    "description": "Model the governed request named.",
                     "type": "string"
                 }
             }
@@ -6856,7 +6918,7 @@
             "type": "object",
             "properties": {
                 "part": {
-                    "description": "Types that are valid to be assigned to Part:\n\n\t*InferenceMessagePart_Text\n\t*InferenceMessagePart_ToolCall\n\t*InferenceMessagePart_ToolResult"
+                    "description": "Types that are valid to be assigned to Part:\n\n\t*InferenceMessagePart_Text\n\t*InferenceMessagePart_ToolCall\n\t*InferenceMessagePart_ToolResult\n\t*InferenceMessagePart_ProviderReasoning"
                 }
             }
         },
@@ -6904,7 +6966,7 @@
             "type": "object",
             "properties": {
                 "part": {
-                    "description": "Types that are valid to be assigned to Part:\n\n\t*InferenceResponsePart_Text\n\t*InferenceResponsePart_ToolCall\n\t*InferenceResponsePart_Thinking"
+                    "description": "Types that are valid to be assigned to Part:\n\n\t*InferenceResponsePart_Text\n\t*InferenceResponsePart_ToolCall\n\t*InferenceResponsePart_Thinking\n\t*InferenceResponsePart_ProviderReasoning"
                 }
             }
         },
@@ -7280,7 +7342,8 @@
                 24,
                 25,
                 26,
-                27
+                27,
+                28
             ],
             "x-enum-varnames": [
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_UNSPECIFIED",
@@ -7310,7 +7373,8 @@
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_DECISION_UNSUPPORTED",
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED",
                 "ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR",
-                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE"
+                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE",
+                "ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT"
             ]
         },
         "operatorv1.ReceiptPersistenceAttestation": {
@@ -7945,7 +8009,7 @@
                     ]
                 },
                 "member_inference": {
-                    "description": "member_inference is the template for generation member calls. The Gateway\nsets messages, provider_attempt_id and response_format per call; every\nstage template must leave messages, tools, provider_attempt_id,\nacting_app_id, stream and response_format empty.",
+                    "description": "member_inference is the template for generation member calls. The Gateway\nsets messages, provider_attempt_id, response_format and retry_count per\ncall; every stage template must leave messages, tools,\nprovider_attempt_id, acting_app_id, stream, response_format and\nretry_count empty.",
                     "allOf": [
                         {
                             "$ref": "#/definitions/operatorv1.InferenceDispatchRequest"
@@ -7963,7 +8027,7 @@
                     }
                 },
                 "provider_attempt_prefix": {
-                    "description": "provider_attempt_prefix names the member calls: call n (from 1, in\ndeliberation order) uses provider_attempt_id \"\u003cprefix\u003e-\u003cn\u003e\". Required and\nunique per intent, so the caller can bind each result to its request.",
+                    "description": "provider_attempt_prefix names the member calls: call n (from 1, in\ndeliberation order, a transient retry included) uses provider_attempt_id\n\"\u003cprefix\u003e-\u003cn\u003e\". Required and unique per intent, so the caller can bind\neach result to its request.",
                     "type": "string"
                 },
                 "request": {
@@ -8095,6 +8159,14 @@
                             "$ref": "#/definitions/operatorv1.InferenceResult"
                         }
                     ]
+                },
+                "retry_count": {
+                    "description": "retry_count is the call's retry ordinal: 0 for the first attempt, n for\nthe nth retry after the provider asked to retry later\n(RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT). It equals the dispatched\nrequest's and the signed result's retry_count.",
+                    "type": "integer"
+                },
+                "retry_of": {
+                    "description": "retry_of is the provider_attempt_id of the earlier member call this one\nretries; set exactly when retry_count is non-zero. That call did not\ncomplete, and its signed FAILED receipt carries\nRECEIPT_FAILURE_CODE_BACKEND_TRANSIENT.",
+                    "type": "string"
                 },
                 "round": {
                     "type": "integer"

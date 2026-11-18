@@ -697,6 +697,7 @@ func TestClassifyReceiptFailure_MapsTypedSentinelsToCodes(t *testing.T) {
 		{name: "backend unavailable", execErr: constants.ErrInferenceBackendUnavailable, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE},
 		{name: "backend not registered", execErr: constants.ErrInferenceBackendNotRegistered, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE},
 		{name: "backend timeout", execErr: constants.ErrInferenceBackendTimeout, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT},
+		{name: "backend transient", execErr: constants.ErrInferenceBackendTransient, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT},
 		{name: "generate failed", execErr: constants.ErrInferenceGenerateFailed, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATE_FAILED},
 		{name: "model not found", execErr: constants.ErrInferenceModelNotFound, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND},
 		{name: "provider response invalid", execErr: constants.ErrInferenceProviderResponseInvalid, want: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID},

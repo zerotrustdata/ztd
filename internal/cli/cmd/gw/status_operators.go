@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -33,7 +34,9 @@ import (
 
 // Start flags `gw status` can attribute to an Operator. The Gateway only knows
 // the values an Operator reported at registration (operatorv1.OperatorRuntimeConfig) plus,
-// for the embedded Operator, the Gateway's own launch profile.
+// for the embedded Operator, the Gateway's own launch profile. rowHostedProviders
+// is not a flag: it lists the hosted provider classes the Operator enrolled
+// with, discovered from the API keys set when it started.
 const (
 	flagLog                = "--log"
 	flagCloud              = "--cloud"
@@ -42,6 +45,7 @@ const (
 	flagLlamaCppEndpoint   = "--inference-llamacpp-endpoint"
 	flagLlamaCppModelRoot  = "--inference-llamacpp-model-root"
 	flagInferenceKeepAlive = "--inference-keep-alive"
+	rowHostedProviders     = "hosted-providers"
 	flagModelStorageRoot   = "--model-storage-root"
 	flagModelStorageFormat = "--model-storage-format"
 	flagProvenanceID       = "--provenance-operator-id"
@@ -58,7 +62,7 @@ var capabilityFlags = []struct {
 	capability constants.OperatorCapability
 	flags      []string
 }{
-	{constants.OperatorCapabilityInference, []string{flagInferenceEndpoint, flagLlamaCppEndpoint, flagLlamaCppModelRoot, flagInferenceKeepAlive}},
+	{constants.OperatorCapabilityInference, []string{flagInferenceEndpoint, flagLlamaCppEndpoint, flagLlamaCppModelRoot, flagInferenceKeepAlive, rowHostedProviders}},
 	{constants.OperatorCapabilityProvenance, []string{flagModelStorageRoot, flagModelStorageFormat, flagProvenanceID}},
 	{constants.OperatorCapabilityObserver, []string{flagObserverID}},
 }
@@ -108,12 +112,16 @@ func operatorStatusFromDocument(op *operatorv1.OperatorDocument) operatorStatus 
 		row.Port = int(rc.HttpPort)
 	}
 	row.reportCustom(rc.LogLevel, rc.CloudMode, rc.CloudProvider)
-	// An Inference Operator serves exactly one provider; list only its flags.
+	// An Inference Operator serves exactly one local provider; list only its
+	// flags. Hosted providers it enrolled with are reported alongside.
 	if rc.InferenceLlamacppEndpoint != "" {
 		row.reported[flagLlamaCppEndpoint] = rc.InferenceLlamacppEndpoint
 		row.reported[flagLlamaCppModelRoot] = rc.InferenceLlamacppModelRoot
 	} else {
 		row.reported[flagInferenceEndpoint] = rc.InferenceOllamaEndpoint
+	}
+	if len(rc.InferenceHostedProviders) > 0 {
+		row.reported[rowHostedProviders] = strings.Join(rc.InferenceHostedProviders, ",")
 	}
 	row.reported[flagModelStorageRoot] = rc.ProvenanceOperatorModelStorageRoot
 	// Operators resolve these to non-empty defaults before reporting; empty

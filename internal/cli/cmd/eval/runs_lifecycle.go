@@ -138,6 +138,11 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
 	}
+	// Checked before the dry-run return as well, so plan validation (including a
+	// rollout's whole remaining sequence) rejects a campaign StartRun would.
+	if err := evaluation.ValidateCampaignPlatformRelease(spec, platformIdentity(cmd).Release); err != nil {
+		return nil, fmt.Errorf("evaluation: runs start: %w", err)
+	}
 	laneName, stacks, err := campaignLane(cmd.Context(), store, opts.CampaignID)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: runs start: %w", err)
@@ -176,7 +181,7 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		if governance, err = evalPreflightGatewayGovernance(cmd, gatewayDeps, gatewayCfg, gatewayAuth, spec, nil); err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
 		}
-		topology, err = resolveOperatorTopologyForDataOperator(cmd, deps, investigation.GetDataOperatorId())
+		topology, err = resolveOperatorTopologyForDataOperator(cmd, deps, investigation.GetDataOperatorId(), evaluation.HostedProviderClasses(spec.GetModelRegistry(), spec.GetJudgeVariant()))
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
 		}

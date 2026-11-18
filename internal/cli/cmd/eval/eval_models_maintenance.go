@@ -30,8 +30,12 @@ type governedModelMaintenanceEnv struct {
 }
 
 // resolveGovernedModelMaintenance targets provider maintenance at the inference
-// operator.
-func resolveGovernedModelMaintenance(cmd *cobra.Command, deps nativeEvalDeps) (governedModelMaintenanceEnv, error) {
+// operator, which must serve every class in hostedClasses: the hosted classes
+// whose provider inventory the command reads.
+func resolveGovernedModelMaintenance(cmd *cobra.Command, deps nativeEvalDeps, hostedClasses []string) (governedModelMaintenanceEnv, error) {
+	if deps.modelMaintenance != nil {
+		return deps.modelMaintenance(cmd, deps)
+	}
 	gatewayDeps := deps.gatewayDeps()
 	cfg, fileSvc, authContext, err := gatewayEvalEnvironment(cmd, gatewayDeps)
 	if err != nil {
@@ -41,7 +45,7 @@ func resolveGovernedModelMaintenance(cmd *cobra.Command, deps nativeEvalDeps) (g
 	if err != nil {
 		return governedModelMaintenanceEnv{}, err
 	}
-	inference, err := evaluation.SelectInferenceOperator(operators, "")
+	inference, err := evaluation.SelectInferenceOperator(operators, "", hostedClasses)
 	if err != nil {
 		return governedModelMaintenanceEnv{}, err
 	}

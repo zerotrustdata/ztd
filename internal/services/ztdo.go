@@ -403,6 +403,7 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 		Inference:                 handlers.Inference,
 		InferenceAttemptStore:     handlers.InferenceAttemptStore,
 		InferenceProvider:         handlers.InferenceProvider,
+		InferenceHosted:           handlers.InferenceHosted,
 		ProviderBoundaryObserver:  handlers.ProviderBoundaryObserver,
 		ModelProvenanceOperator:   handlers.ModelProvenanceOperator,
 		ActuatorSigningKey:        actuatorPriv,

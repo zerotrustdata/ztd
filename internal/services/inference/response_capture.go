@@ -99,3 +99,15 @@ func (c *providerResponseCapture) result() ([]byte, error) {
 	<-c.finished
 	return c.raw.Bytes(), c.err
 }
+
+// finalArrival is the elapsed time from the request start to the arrival of
+// the last response bytes, or nil when no bytes arrived. Call it after result.
+func (c *providerResponseCapture) finalArrival() *int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.reads) == 0 {
+		return nil
+	}
+	elapsed := c.reads[len(c.reads)-1].elapsedNS
+	return &elapsed
+}

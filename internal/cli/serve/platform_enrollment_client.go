@@ -456,6 +456,7 @@ func operatorRuntimeConfig(cfg *config.Config) (json.RawMessage, error) {
 		InferenceAllowHostedDecision:         cfg.Inference.AllowHostedDecision,
 		InferenceDecisionModels:              cfg.Inference.DecisionModels,
 		InferenceDecisionOnly:                cfg.Inference.DecisionOnly,
+		InferenceHostedProviders:             cfg.Inference.HostedProviders,
 		InferenceDecisionBackend:             inferenceDecisionBackendKind(cfg),
 		ProvenanceOperatorId:                 cfg.ProvenanceOperator.OperatorID,
 		ProvenanceOperatorModelStorageRoot:   cfg.ProvenanceOperator.ModelStorageRoot,

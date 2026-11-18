@@ -358,6 +358,7 @@ func TestVerifyInferenceCompletion_FailureCodeMapping(t *testing.T) {
 		{name: "model ref invalid", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_REF_INVALID, want: constants.ErrInferenceModelRefInvalid},
 		{name: "backend unavailable", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE, want: constants.ErrInferenceBackendUnavailable},
 		{name: "backend timeout", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT, want: constants.ErrInferenceBackendTimeout},
+		{name: "backend transient", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT, want: constants.ErrInferenceBackendTransient},
 		{name: "generate failed", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATE_FAILED, want: constants.ErrInferenceGenerateFailed},
 		{name: "model not found", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND, want: constants.ErrInferenceModelNotFound},
 		{name: "provider response invalid", code: operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID, want: constants.ErrInferenceProviderResponseInvalid},

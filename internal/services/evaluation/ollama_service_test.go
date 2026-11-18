@@ -401,7 +401,7 @@ func TestOllamaProviderQueries_UsePayloadExecutionID(t *testing.T) {
 			}
 			var payloadID string
 			if action == constants.ActionTypeOllamaModelInventory {
-				_, err := ListOllamaProviderInventory(t.Context(), dispatcher, maintenance)
+				_, err := ListOllamaProviderInventory(t.Context(), dispatcher, maintenance, nil)
 				require.NoError(t, err)
 				require.Len(t, dispatcher.requests, 1)
 				var payload operatorv1.OllamaModelInventoryRequested
@@ -420,4 +420,17 @@ func TestOllamaProviderQueries_UsePayloadExecutionID(t *testing.T) {
 			assert.Equal(t, 2, minted, "one execution ID and one task ID are minted")
 		})
 	}
+}
+
+func TestListOllamaProviderInventory_CarriesItsProviderClassScope(t *testing.T) {
+	dispatcher := &recordingOllamaModelCommandDispatcher{}
+	maintenance := OllamaModelMaintenanceContext{TargetOperatorSessionID: "inference-session", NewID: func(prefix string) string { return prefix + "-1" }}
+
+	_, err := ListOllamaProviderInventory(t.Context(), dispatcher, maintenance, []string{constants.InferenceProviderOpenAI})
+	require.NoError(t, err)
+
+	require.Len(t, dispatcher.requests, 1)
+	var payload operatorv1.OllamaModelInventoryRequested
+	require.NoError(t, proto.Unmarshal(dispatcher.requests[0].Payload, &payload))
+	assert.Equal(t, []string{constants.InferenceProviderOpenAI}, payload.GetProviderClasses())
 }

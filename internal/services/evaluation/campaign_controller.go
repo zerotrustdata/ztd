@@ -251,6 +251,18 @@ func (c *CampaignController) CreateCampaign(ctx context.Context, req CampaignCre
 	return spec, nil
 }
 
+// ValidateCampaignPlatformRelease fails with
+// ErrEvaluationPlatformReleaseMismatch when spec recorded a platform release
+// other than release, the executing build's. Campaigns frozen before ztd
+// v1.0.0 recorded no release; their asserted tag is not a digest-bound fact,
+// so only a recorded release is enforced.
+func ValidateCampaignPlatformRelease(spec *evalv1.EvaluationCampaignSpec, release string) error {
+	if recorded := spec.GetPlatformRelease(); recorded != "" && recorded != release {
+		return fmt.Errorf("campaign %q recorded %q, executing build is %q: %w", spec.GetCampaignId(), recorded, release, constants.ErrEvaluationPlatformReleaseMismatch)
+	}
+	return nil
+}
+
 // StartRun persists a new run record bound to an existing campaign.
 func (c *CampaignController) StartRun(ctx context.Context, req RunStartRequest) (*evalv1.EvaluationRun, error) {
 	if c == nil || c.store == nil {
@@ -269,10 +281,8 @@ func (c *CampaignController) StartRun(ctx context.Context, req RunStartRequest) 
 	if err := ValidateCampaignSpecDigest(spec); err != nil {
 		return nil, fmt.Errorf("evaluation: start run: campaign spec: %w", err)
 	}
-	// Campaigns frozen before ztd v1.0.0 recorded no release; their asserted tag
-	// is not a digest-bound fact, so only a recorded release is enforced.
-	if recorded := spec.GetPlatformRelease(); recorded != "" && recorded != req.PlatformRelease {
-		return nil, fmt.Errorf("evaluation: start run %q: campaign %q recorded %q, executing build is %q: %w", req.RunID, req.CampaignID, recorded, req.PlatformRelease, constants.ErrEvaluationPlatformReleaseMismatch)
+	if err := ValidateCampaignPlatformRelease(spec, req.PlatformRelease); err != nil {
+		return nil, fmt.Errorf("evaluation: start run %q: %w", req.RunID, err)
 	}
 	if err := req.Governance.validate(); err != nil {
 		return nil, fmt.Errorf("evaluation: start run %q: %w", req.RunID, err)

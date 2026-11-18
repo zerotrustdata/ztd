@@ -17,6 +17,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
+	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 )
@@ -160,6 +162,31 @@ func TestNamedRollout_ValidatesEveryCampaignBeforeSavingOrRunning(t *testing.T) 
 		return nil
 	})
 	require.ErrorIs(t, err, constants.ErrEvaluationArchived)
+	assert.False(t, called)
+	assert.Empty(t, loadTestRollout(t, env, "nightly").Executions)
+}
+
+// A campaign frozen under another release can never start, so a rollout
+// rejects it before running any step instead of failing every remaining step.
+func TestNamedRollout_RejectsCampaignFrozenUnderAnotherReleaseBeforeRunning(t *testing.T) {
+	env := newNamedRolloutEnv(t)
+	create := evalCmdWithConfig(env.deps)
+	var out bytes.Buffer
+	create.SetOut(&out)
+	create.SetErr(&out)
+	create.SetArgs([]string{"campaigns", "create", "stale", "qwen3:4b", "--project-root", env.root})
+	require.NoError(t, create.ExecuteContext(shared.ContextWithVersionInfo(context.Background(), serve.VersionInfo{Version: "v2.2.9"})), out.String())
+
+	_, err := env.run(t, "runs", "start", "stale", "--dry-run")
+	require.ErrorIs(t, err, constants.ErrEvaluationPlatformReleaseMismatch)
+
+	require.NoError(t, evaluation.SaveNamedRollout(context.Background(), env.fileSvc(t), &evaluation.NamedRollout{RolloutDefinition: evaluation.RolloutDefinition{Name: "nightly", Campaigns: []string{"control", "stale"}}}))
+	called := false
+	err = runNamedRollout(env.cmd, env.deps, env.fileSvc(t), "nightly", namedRolloutOptions{Repeat: 1}, func(*cobra.Command, string, string, bool) error {
+		called = true
+		return nil
+	})
+	require.ErrorIs(t, err, constants.ErrEvaluationPlatformReleaseMismatch)
 	assert.False(t, called)
 	assert.Empty(t, loadTestRollout(t, env, "nightly").Executions)
 }

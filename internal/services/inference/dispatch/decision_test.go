@@ -31,7 +31,7 @@ func TestDecisionPinnedOperatorNeverFallsBack(t *testing.T) {
 	service := NewDispatchService(&stubCommandDispatcher{}, lister, testLogger())
 	session, err := service.resolveInferenceOperator(t.Context(), req)
 	require.NoError(t, err)
-	require.Equal(t, pinned.OperatorSessionId, session)
+	require.Equal(t, pinned.OperatorSessionId, session.GetOperatorSessionId())
 	lister.ops = []*operatorv1.OperatorDocument{other}
 	_, err = service.resolveInferenceOperator(t.Context(), req)
 	require.ErrorIs(t, err, constants.ErrInferenceOperatorNotFound)

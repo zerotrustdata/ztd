@@ -92,7 +92,7 @@ func TestGatewayKeystoreRecovery(t *testing.T) {
 			assert.Contains(t, stderr.String(), fingerprint)
 			assert.Contains(t, stderr.String(), "./ztd gw start")
 			if tc.keyPath != "" {
-				assert.Contains(t, stderr.String(), `ssh-add -t 8h '/home/example user/.ssh/key'"'"'$(touch should-not-run)'`)
+				assert.Contains(t, stderr.String(), `ssh-add -t 24h '/home/example user/.ssh/key'"'"'$(touch should-not-run)'`)
 				assert.Contains(t, stderr.String(), "SSH key's passphrase")
 			} else {
 				assert.Contains(t, stderr.String(), "ssh-keygen -lf")

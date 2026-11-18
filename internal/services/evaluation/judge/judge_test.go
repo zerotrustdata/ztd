@@ -414,7 +414,7 @@ func TestScoreTrace_MissingRunAssignmentOrScenarioIDFailsWithoutDispatch(t *test
 			}}
 			j := newTestJudge(t, dispatcher, mutate)
 
-			req, _, err := j.buildDispatchRequest(SubjectFinalReply, finalReplyPrompt())
+			req, _, err := j.buildDispatchRequest(SubjectFinalReply, finalReplyPrompt(), 0)
 			assert.Nil(t, req)
 			require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 
@@ -437,22 +437,22 @@ func TestValidateResponse_RejectsResultBoundToAnotherRunAssignmentOrScenario(t *
 	for name, forge := range cases {
 		t.Run(name, func(t *testing.T) {
 			j := newTestJudge(t, &fakeDispatcher{}, nil)
-			req, providerAttemptID, err := j.buildDispatchRequest(SubjectFinalReply, finalReplyPrompt())
+			req, providerAttemptID, err := j.buildDispatchRequest(SubjectFinalReply, finalReplyPrompt(), 0)
 			require.NoError(t, err)
 			resp := judgmentResponse(req, `{"score": 3, "rationale": "x"}`)
 			forge(resp.GetResult())
 
-			err = j.validateResponse(providerAttemptID, resp)
+			err = j.validateResponse(providerAttemptID, 0, resp)
 
 			assert.ErrorIs(t, err, constants.ErrIdentityBindingFailed)
 		})
 	}
 	t.Run("result carrying the requested identity validates", func(t *testing.T) {
 		j := newTestJudge(t, &fakeDispatcher{}, nil)
-		req, providerAttemptID, err := j.buildDispatchRequest(SubjectFinalReply, finalReplyPrompt())
+		req, providerAttemptID, err := j.buildDispatchRequest(SubjectFinalReply, finalReplyPrompt(), 0)
 		require.NoError(t, err)
 
-		require.NoError(t, j.validateResponse(providerAttemptID, judgmentResponse(req, `{"score": 3, "rationale": "x"}`)))
+		require.NoError(t, j.validateResponse(providerAttemptID, 0, judgmentResponse(req, `{"score": 3, "rationale": "x"}`)))
 	})
 }
 
@@ -502,6 +502,29 @@ func TestJudgmentJSONSchema_IsCanonical(t *testing.T) {
 	canonical, err := json.Marshal(decoded)
 	require.NoError(t, err)
 	assert.Equal(t, string(canonical), judgmentJSONSchema) //nolint:testifylint // exact bytes, not JSON equivalence
+}
+
+// TestJudgeSchemas_UseOnlyPortableConstraints: a judge may be any registry
+// model, local or hosted, so its response schemas use only constraints every
+// provider applies. Anthropic structured outputs reject numerical and string
+// length constraints; the score range is an enum the decoder also enforces.
+func TestJudgeSchemas_UseOnlyPortableConstraints(t *testing.T) {
+	for name, schema := range map[string]string{"judgment": judgmentJSONSchema, "criterion": criterionJSONSchema} {
+		require.NoError(t, models.ValidatePortableResponseSchema(schema), name)
+	}
+	var decoded struct {
+		Properties struct {
+			Score struct {
+				Enum []int `json:"enum"`
+			} `json:"score"`
+		} `json:"properties"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(judgmentJSONSchema), &decoded))
+	want := make([]int, 0, judgeScoreMax-judgeScoreMin+1)
+	for score := judgeScoreMin; score <= judgeScoreMax; score++ {
+		want = append(want, score)
+	}
+	assert.Equal(t, want, decoded.Properties.Score.Enum)
 }
 
 func TestNew_RejectsEachMissingRequiredField(t *testing.T) {
@@ -588,6 +611,38 @@ func TestScoreCriterion_VerdictIsBoundToTheFrozenJudgeAndCampaignAuthority(t *te
 			assert.Contains(t, user, criterionStatement)
 			assert.Contains(t, user, judgeObjective)
 			assert.Contains(t, user, criterionReply)
+		})
+	}
+}
+
+// TestScoreCriterion_JudgeDispatchesItsFrozenProviderClass: the judge is any
+// frozen registry model, local or hosted, whatever the graded subject is. A
+// local judge leaves the dispatch class empty so the Inference Operator's
+// local provider serves it; a hosted judge names its class.
+func TestScoreCriterion_JudgeDispatchesItsFrozenProviderClass(t *testing.T) {
+	for _, tc := range []struct {
+		providerClass string
+		wantDispatch  string
+	}{
+		{providerClass: constants.InferenceProviderOllama, wantDispatch: ""},
+		{providerClass: constants.InferenceProviderLlamaCpp, wantDispatch: ""},
+		{providerClass: constants.InferenceProviderGemini, wantDispatch: constants.InferenceProviderGemini},
+		{providerClass: constants.InferenceProviderAnthropic, wantDispatch: constants.InferenceProviderAnthropic},
+		{providerClass: constants.InferenceProviderOpenAI, wantDispatch: constants.InferenceProviderOpenAI},
+	} {
+		t.Run(tc.providerClass, func(t *testing.T) {
+			dispatcher := &fakeDispatcher{respond: func(req *operatorv1.InferenceDispatchRequest) (*operatorv1.InferenceDispatchResponse, error) {
+				return judgmentResponse(req, `{"met": true, "rationale": "declines"}`), nil
+			}}
+			j := newTestJudge(t, dispatcher, func(cfg *Config) { cfg.Variant.ProviderClass = tc.providerClass })
+
+			score := j.ScoreCriterion(context.Background(), refusalCriterion(), onlyPosition, judgeObjective, criterionReply)
+
+			assert.Equal(t, StatusScored, score.Status)
+			require.Len(t, dispatcher.requests, 1)
+			assert.Equal(t, tc.wantDispatch, dispatcher.requests[0].GetProviderClass())
+			assert.Equal(t, judgeModelTag, dispatcher.requests[0].GetModel())
+			assert.Equal(t, strings.Repeat("d", 64), dispatcher.requests[0].GetModelDigest())
 		})
 	}
 }
@@ -834,7 +889,7 @@ func TestVerifyCriterionResult_ReturnsTheRecordedVerdictAndRationale(t *testing.
 			cfg := judgeConfig(t, nil)
 			score := dispatchCriterion(t, cfg, tc.text)
 
-			met, rationale, err := VerifyCriterionResult(cfg, score.ProviderAttemptID, score.Result, score.Receipt)
+			met, rationale, err := VerifyCriterionResult(cfg, score.ProviderAttemptID, 0, score.Result, score.Receipt)
 
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantMet, met)
@@ -858,7 +913,7 @@ func TestVerifyCriterionResult_UndecodableVerdictIsErrJudgeResponseInvalid(t *te
 			cfg := judgeConfig(t, nil)
 			score := dispatchCriterion(t, cfg, text)
 
-			met, _, err := VerifyCriterionResult(cfg, score.ProviderAttemptID, score.Result, score.Receipt)
+			met, _, err := VerifyCriterionResult(cfg, score.ProviderAttemptID, 0, score.Result, score.Receipt)
 
 			require.ErrorIs(t, err, constants.ErrJudgeResponseInvalid)
 			assert.False(t, met)
@@ -896,7 +951,7 @@ func TestVerifyCriterionResult_ResultNotBoundToTheDispatchAuthorityIsRejected(t 
 				attemptID = tc.attemptID
 			}
 
-			met, _, err := VerifyCriterionResult(verifyCfg, attemptID, score.Result, score.Receipt)
+			met, _, err := VerifyCriterionResult(verifyCfg, attemptID, 0, score.Result, score.Receipt)
 
 			require.ErrorIs(t, err, tc.want)
 			assert.False(t, met)
@@ -909,7 +964,7 @@ func TestVerifyCriterionResult_NilVariantIsErrMissingRequiredField(t *testing.T)
 	score := dispatchCriterion(t, cfg, `{"met": true, "rationale": "x"}`)
 	cfg.Variant = nil
 
-	met, _, err := VerifyCriterionResult(cfg, score.ProviderAttemptID, score.Result, score.Receipt)
+	met, _, err := VerifyCriterionResult(cfg, score.ProviderAttemptID, 0, score.Result, score.Receipt)
 
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	assert.False(t, met)
@@ -1001,26 +1056,26 @@ func TestVerifyQualityResult_ReturnsTheRecordedScoreAndClassifiesEachFailure(t *
 	}
 
 	scored := dispatched(`{"score": 2, "rationale": "unsupported certainty"}`)
-	value, rationale, err := VerifyQualityResult(cfg, scored.ProviderAttemptID, scored.Result, scored.Receipt)
+	value, rationale, err := VerifyQualityResult(cfg, scored.ProviderAttemptID, 0, scored.Result, scored.Receipt)
 	require.NoError(t, err)
 	assert.Equal(t, 2, value)
 	assert.Equal(t, "unsupported certainty", rationale)
 
 	invalid := dispatched("not-json")
-	_, _, err = VerifyQualityResult(cfg, invalid.ProviderAttemptID, invalid.Result, invalid.Receipt)
+	_, _, err = VerifyQualityResult(cfg, invalid.ProviderAttemptID, 0, invalid.Result, invalid.Receipt)
 	assert.Equal(t, evalv1.JudgeFailure_JUDGE_FAILURE_VERDICT_INVALID, ResultFailure(err))
 
 	repeated := dispatched("")
 	repeated.Result.FinishReason = constants.InferenceFinishReasonRepetition
-	_, _, err = VerifyQualityResult(cfg, repeated.ProviderAttemptID, repeated.Result, repeated.Receipt)
+	_, _, err = VerifyQualityResult(cfg, repeated.ProviderAttemptID, 0, repeated.Result, repeated.Receipt)
 	assert.Equal(t, evalv1.JudgeFailure_JUDGE_FAILURE_REPETITION, ResultFailure(err), "offline verification classifies a stopped loop as the live judge did")
 
-	_, _, err = VerifyQualityResult(cfg, "other-attempt", scored.Result, scored.Receipt)
+	_, _, err = VerifyQualityResult(cfg, "other-attempt", 0, scored.Result, scored.Receipt)
 	assert.Equal(t, evalv1.JudgeFailure_JUDGE_FAILURE_RESPONSE_MISMATCH, ResultFailure(err))
 
 	forged := proto.Clone(scored.Receipt).(*operatorv1.EventReceipt)
 	forged.ResultSummary = "other-digest"
-	_, _, err = VerifyQualityResult(cfg, scored.ProviderAttemptID, scored.Result, forged)
+	_, _, err = VerifyQualityResult(cfg, scored.ProviderAttemptID, 0, scored.Result, forged)
 	assert.Equal(t, evalv1.JudgeFailure_JUDGE_FAILURE_RESULT_DIGEST, ResultFailure(err))
 }
 
@@ -1182,7 +1237,7 @@ func TestScoreCriterion_AndVerifyCriterionResult_AcceptVerdictEmittedInThinkingP
 	assert.False(t, score.Met)
 	assert.Equal(t, "The reply proposes clearing the log rather than preserving it.", score.Rationale)
 
-	met, rationale, err := VerifyCriterionResult(cfg, score.ProviderAttemptID, score.Result, score.Receipt)
+	met, rationale, err := VerifyCriterionResult(cfg, score.ProviderAttemptID, 0, score.Result, score.Receipt)
 	require.NoError(t, err)
 	assert.False(t, met)
 	assert.Equal(t, score.Rationale, rationale)
@@ -1222,7 +1277,7 @@ func TestDecodeVerdictAndJudgment_StoppedRepetitionIsNeverAVerdict(t *testing.T)
 
 func TestBuildDispatchRequest_StatesNoOutputLimit(t *testing.T) {
 	j := newTestJudge(t, &fakeDispatcher{}, nil)
-	req, _, err := j.buildDispatchRequest(SubjectFinalReply, finalReplyPrompt())
+	req, _, err := j.buildDispatchRequest(SubjectFinalReply, finalReplyPrompt(), 0)
 	require.NoError(t, err)
 	assert.Zero(t, req.GetMaxTokens(), "the judge's output is bounded by the context window its model is loaded with")
 }

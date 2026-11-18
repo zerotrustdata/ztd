@@ -47,7 +47,11 @@ const (
 	tribunalRealCommand    = `{"command":"echo","args":["HEALTHY"]}`
 	tribunalRealLowRisk    = `{"risk": "LOW", "rationale": "read-only file read", "feedback": ""}`
 	tribunalRealHighRisk   = `{"risk": "HIGH", "rationale": "deletes the workspace", "feedback": "read the file instead"}`
-	tribunalRealApprove    = `{"verdict": "APPROVE", "rationale": "correct"}`
+	// tribunalRealApprove answers the Auditor over a split panel, which offers
+	// SWAP; tribunalRealReviewApprove answers the contextual review of the
+	// admitted envelope, whose one authorized cluster offers none.
+	tribunalRealApprove       = `{"verdict": "APPROVE", "revised_arguments": null, "swap_to_cluster": null, "rationale": "correct"}`
+	tribunalRealReviewApprove = `{"verdict": "APPROVE", "revised_arguments": null, "rationale": "governance decisions consistent"}`
 )
 
 // tribunalTurn is one scripted provider reply with plain text.
@@ -436,7 +440,7 @@ func TestCampaignTribunalIntegration_RepairsMalformedAnswersWithGovernedReceipts
 			tribunalRealCommand, tribunalRealCommand, tribunalRealCommand, tribunalRealDissent,
 		),
 		tribunalTurn("\n"+tribunalRealLowRisk+"\n"),
-		tribunalTurn(`{"verdict":"APPROVE","revised_arguments":null,"rationale":"correct"}`),
+		tribunalTurn(`{"verdict":"APPROVE","rationale":"correct"}`), // missing revised_arguments and swap_to_cluster
 		tribunalTurn("\n"+tribunalRealApprove+"\n"),
 		tribunalTurn("HEALTHY"),
 	)
@@ -473,7 +477,7 @@ func TestCampaignTribunalIntegration_RatifyAndNotaryApprovalAndDenial(t *testing
 			env := tribunalRunWithPosture(t, "l3-approve-"+string(posture), posture, false,
 				tribunalIntent("call-1"), tribunalUnanimous(tribunalRealCommand),
 				tribunalTurn(tribunalRealLowRisk), tribunalTurn(tribunalRealApprove),
-				tribunalTurn(tribunalRealApprove),
+				tribunalTurn(tribunalRealReviewApprove),
 				tribunalTurn("HEALTHY"),
 			)
 			res := env.executeNext(t)
@@ -581,7 +585,7 @@ func TestCampaignTribunalIntegration_NoConsensusFailsCallWithoutDispatch(t *test
 }
 
 func TestCampaignTribunalIntegration_AuditFailureFailsCallWithoutDispatch(t *testing.T) {
-	const unknownVerdict = `{"verdict": "MAYBE", "swap_to_cluster": "", "revised_arguments": null, "rationale": "unsure"}`
+	const unknownVerdict = `{"verdict": "MAYBE", "swap_to_cluster": null, "revised_arguments": null, "rationale": "unsure"}`
 	env := tribunalRun(t, "audit-failure",
 		tribunalIntent("call-1"),
 		tribunalUnanimous(tribunalRealCommand),
@@ -600,7 +604,7 @@ func TestCampaignTribunalIntegration_AuditFailureFailsCallWithoutDispatch(t *tes
 	assert.False(t, tool.Success)
 	assert.Equal(t, evaluation.ExportedAgentToolErrorExecution, tool.ErrorType)
 	assert.Contains(t, tool.Error, "the Auditor could not review the Tribunal's command")
-	assert.Contains(t, tool.Error, "oneOf", "the verdict violates the response schema")
+	assert.Contains(t, tool.Error, "schema=/properties/verdict", "the verdict violates the response schema")
 	assert.Empty(t, tool.TransactionID, "an unreviewed command never dispatches")
 	require.Len(t, trace.ModelCalls, 10, "the turn, five candidates, the risk check, two Auditor answers, and the closing turn")
 	assert.Equal(t, "tribunal_audit", trace.ModelCalls[7].Purpose)

@@ -5,6 +5,7 @@
 // assignment, as it starts and completes, with everything recorded about it.
 
 import type { LiveJudgeActivity, LiveJudgeFailure } from '../contract/types';
+import { formatProviderClassLabel } from '../content/provider';
 import { formatLatency, formatNumber, formatThroughput } from '../utils/format';
 
 const NANOS_PER_MILLISECOND = 1_000_000;
@@ -60,10 +61,11 @@ function judgeThroughput(judgment: LiveJudgeActivity): string | undefined {
   return formatThroughput(completion / (generation / 1_000_000_000));
 }
 
-function judgmentDetails(judgment: LiveJudgeActivity): Array<[string, string | undefined]> {
+function judgmentDetails(judgment: LiveJudgeActivity, providerClass?: string): Array<[string, string | undefined]> {
   return [
     ['Judge model', judgment.served_model_tag],
     ['Judge variant', judgment.judge_variant_id],
+    ['Provider class', providerClass ? formatProviderClassLabel(providerClass) : undefined],
     ['Model digest', judgment.model_digest],
     ['Rubric', judgment.rubric_version],
     ['Position', `${judgment.index} of ${judgment.count}`],
@@ -128,30 +130,39 @@ export function judgeTone(judgment: LiveJudgeActivity): 'ok' | 'warn' | 'critica
 }
 
 /** The Judge cell of one assignment row. */
-export function JudgeActivity({ judgments }: { judgments: LiveJudgeActivity[] }) {
+export function JudgeActivity({
+  judgments,
+  resolveProviderClass,
+}: {
+  judgments: LiveJudgeActivity[];
+  resolveProviderClass?: (variantId: string) => string | undefined;
+}) {
   return (
     <div className="judge-activity" role="group" aria-label="Judge">
       <span className="judge-summary">{judgeSummary(judgments)}</span>
       <div className="judge-judgments">
-        {judgments.map((judgment) => (
-          <details
-            key={judgment.provider_attempt_id ?? `${judgment.subject}:${judgment.criterion_id ?? ''}`}
-            className="judge-judgment"
-            data-state={judgment.state}
-            data-score={judgment.score}
-            data-tone={judgeTone(judgment)}
-          >
-            <summary>
-              <span className="judge-subject">{judgmentLabel(judgment)}</span>
-              <span className="judge-verdict">{verdictLabel(judgment)}</span>
-            </summary>
-            <dl>
-              {judgmentDetails(judgment).filter((entry): entry is [string, string] => entry[1] !== undefined && entry[1] !== '').map(([label, value]) => (
-                <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
-              ))}
-            </dl>
-          </details>
-        ))}
+        {judgments.map((judgment) => {
+          const providerClass = resolveProviderClass?.(judgment.judge_variant_id);
+          return (
+            <details
+              key={judgment.provider_attempt_id ?? `${judgment.subject}:${judgment.criterion_id ?? ''}`}
+              className="judge-judgment"
+              data-state={judgment.state}
+              data-score={judgment.score}
+              data-tone={judgeTone(judgment)}
+            >
+              <summary>
+                <span className="judge-subject">{judgmentLabel(judgment)}</span>
+                <span className="judge-verdict">{verdictLabel(judgment)}</span>
+              </summary>
+              <dl>
+                {judgmentDetails(judgment, providerClass).filter((entry): entry is [string, string] => entry[1] !== undefined && entry[1] !== '').map(([label, value]) => (
+                  <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
+                ))}
+              </dl>
+            </details>
+          );
+        })}
       </div>
     </div>
   );

@@ -69,7 +69,7 @@ func WriteConsensusVotes(w io.Writer, indent string, txID string, votes []models
 		return
 	}
 	first := votes[0]
-	fmt.Fprintf(w, "%sConsensus votes for transaction %s (set %s, model %s, quorum %d):\n", indent, txID, first.ConsensusSetID, first.ModelTag, first.Quorum)
+	fmt.Fprintf(w, "%sConsensus votes for transaction %s (set %s, model %s, quorum %d):\n", indent, txID, first.ConsensusSetID, models.ConsensusModelLabel(first.ModelTag, first.ModelProviderClass), first.Quorum)
 	approvals := 0
 	for _, vote := range votes {
 		if vote.Outcome == models.ConsensusVoteOutcomeApprove {
@@ -84,6 +84,9 @@ func WriteConsensusVotes(w io.Writer, indent string, txID string, votes []models
 		}
 		if vote.InferenceTransactionID != "" {
 			fmt.Fprintf(w, "%s            inference: %s\n", indent, vote.InferenceTransactionID)
+		}
+		if vote.RetryCount > 0 {
+			fmt.Fprintf(w, "%s            retries: %d (provider asked to retry later)\n", indent, vote.RetryCount)
 		}
 	}
 	fmt.Fprintf(w, "%sApprovals: %d of %d votes, quorum %d\n", indent, approvals, len(votes), first.Quorum)

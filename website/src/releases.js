@@ -6,6 +6,9 @@
 // uploads the manifest last, after every other object is verified) and it is not newer than latest.json, so an
 // uploaded but unpromoted set never appears as a release. Release notes are rendered at build time from
 // docs/release_notes/ into /_release-notes/<version>.html fragments (src/release-notes.js).
+// Versions older than DOWNLOAD_FLOOR stay listed with their dates and release notes, but their binaries are no
+// longer offered: their pages carry no downloads or pinned install commands, and the Worker answers /v/<version>/
+// with 404 (downloadable).
 // This module must stay free of Node.js imports because worker.js bundles it.
 
 import { ORIGIN, RELEASES_PATH, REPOSITORY_URL, escape, layout } from './layout.js';
@@ -27,6 +30,8 @@ const PLATFORMS = {
   'windows/arm64': 'Windows ARM64'
 };
 const PLATFORM_ORDER = Object.keys(PLATFORMS);
+// Oldest downloadable major.minor; every release and prerelease of that line or newer is offered.
+const DOWNLOAD_FLOOR = [1, 10];
 
 export const startCommand = version => `curl -fsSL ${ORIGIN}/start.sh | ${version ? `ZTD_VERSION=${version} ` : ''}sh`;
 export const installCommand = version => `curl -fsSL ${ORIGIN}/ztd.sh | ${version ? `ZTD_VERSION=${version} ` : ''}sh`;
@@ -54,6 +59,12 @@ export function compareVersions(a, b) {
     if (partsA[i] !== partsB[i]) return partsA[i] < partsB[i] ? -1 : 1;
   }
   return 0;
+}
+
+// Reports whether a version's binaries are still offered for download (see DOWNLOAD_FLOOR).
+export function downloadable(version) {
+  const [[major, minor]] = splitVersion(version);
+  return major !== DOWNLOAD_FLOOR[0] ? major > DOWNLOAD_FLOOR[0] : minor >= DOWNLOAD_FLOOR[1];
 }
 
 function splitVersion(version) {
@@ -142,9 +153,9 @@ ${command(windowsInstallCommand(pinned ? version : ''), 'Install the binary only
 
 export function renderReleasesIndex({ releases, latest, manifest }) {
   const items = releases.map(release => `<li class="release-row">
-<a class="release-version" href="${releasePath(release.version)}">v${escape(release.version)}</a>${release.version === latest ? '<span class="badge latest">Latest</span>' : ''}
+<a class="release-version" href="${releasePath(release.version)}">v${escape(release.version)}</a>${release.version === latest ? '<span class="badge latest">Latest</span>' : downloadable(release.version) ? '' : '<span class="badge archived">Archived</span>'}
 <span class="release-date">${time(release.published)}</span>
-<span class="release-links"><a href="${releasePath(release.version)}">Downloads and notes <span aria-hidden="true">→</span></a><a href="${tagUrl(release.version)}">GitHub ↗</a></span></li>`).join('');
+<span class="release-links"><a href="${releasePath(release.version)}">${downloadable(release.version) ? 'Downloads and notes' : 'Release notes'} <span aria-hidden="true">→</span></a><a href="${tagUrl(release.version)}">GitHub ↗</a></span></li>`).join('');
   return layout({
     title: 'Releases',
     description: DESCRIPTION,
@@ -165,21 +176,24 @@ export function renderReleasePage({ manifest, latest, published, notes }) {
   const { version } = manifest;
   const identity = `${REPOSITORY_URL}/.github/workflows/release-binary.yml@refs/tags/v${version}`;
   const example = manifest.targets[0].filename;
+  const offered = downloadable(version);
   return layout({
     title: `ztd v${version}`,
-    description: `ztd v${version} release binaries, checksums, Sigstore bundles, and release notes.`,
+    description: offered ? `ztd v${version} release binaries, checksums, Sigstore bundles, and release notes.` : `ztd v${version} release notes.`,
     path: releasePath(version),
     section: 'releases',
     content: `
 <div class="article-breadcrumb"><a href="${RELEASES_PATH}">← All releases</a><span>RELEASES / v${escape(version)}</span></div>
 <header class="release-header"><h1>ztd <span>v${escape(version)}</span>${version === latest ? '<span class="badge latest">Latest</span>' : ''}</h1>
 <p class="post-meta">Published ${time(published)}${manifest.revision ? `<span aria-hidden="true">/</span><span>Source <a href="${REPOSITORY_URL}/commit/${manifest.revision}"><code>${manifest.revision.slice(0, 12)}</code></a></span>` : ''}<span aria-hidden="true">/</span><a href="${tagUrl(version)}">GitHub release ↗</a></p></header>
-${installSection(version, true)}
+${offered ? `${installSection(version, true)}
 <section aria-labelledby="downloads-title"><div class="section-topline"><h2 id="downloads-title">Downloads <span>${String(manifest.targets.length).padStart(2, '0')}</span></h2><span>IMMUTABLE / v${escape(version)}</span></div>${downloadTable(manifest)}</section>
 <section class="verify" aria-labelledby="verify-title"><h2 id="verify-title" class="label">VERIFY A DOWNLOAD</h2>
 ${command(`sha256sum -c ${example}.sha256`, 'Checksum (macOS: shasum -a 256 -c)')}
 ${command(`cosign verify-blob --bundle ${example}.sigstore.json --certificate-identity '${identity}' --certificate-oidc-issuer ${CERTIFICATE_ISSUER} ${example}`, 'Sigstore signature')}</section>
-<section class="release-notes" aria-labelledby="notes-title"><div class="section-topline"><h2 id="notes-title">Release notes</h2><span>v${escape(version)}</span></div>
+` : `<section class="install" aria-labelledby="archived-title"><h2 id="archived-title" class="label">ARCHIVED</h2>
+<p class="install-note">v${escape(version)} is kept here for its date and release notes; its binaries are no longer offered for download. <a href="${releasePath(latest)}">Install v${escape(latest)} <span aria-hidden="true">→</span></a></p></section>
+`}<section class="release-notes" aria-labelledby="notes-title"><div class="section-topline"><h2 id="notes-title">Release notes</h2><span>v${escape(version)}</span></div>
 ${notes ? `<div class="article-body">${notes}</div>` : `<p>The release notes for this version are on <a href="${tagUrl(version)}">GitHub ↗</a>.</p>`}</section>`
   });
 }

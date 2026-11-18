@@ -962,10 +962,10 @@ func (pk *PublicKey) serializeWithoutHeaders(w io.Writer) (err error) {
 			return
 		}
 		var mlkemBin []byte
-		mlkemBin, err = publicKey.PublicMlkem.MarshalBinary()
-		if err != nil {
+        mlkemBin, err = publicKey.PublicMlkem.MarshalBinary()
+        if err != nil {
 			return
-		}
+        }
 		_, err = w.Write(mlkemBin)
 		return
 	case PubKeyAlgoMldsa65Ed25519, PubKeyAlgoMldsa87Ed448:
@@ -974,19 +974,19 @@ func (pk *PublicKey) serializeWithoutHeaders(w io.Writer) (err error) {
 			return
 		}
 		var mldsaBin []byte
-		mldsaBin, err = publicKey.PublicMldsa.MarshalBinary()
-		if err != nil {
+        mldsaBin, err = publicKey.PublicMldsa.MarshalBinary()
+        if err != nil {
 			return
-		}
+        }
 		_, err = w.Write(mldsaBin)
 		return
 	case PubKeyAlgoSlhdsaShake128s, PubKeyAlgoSlhdsaShake128f, PubKeyAlgoSlhdsaShake256s:
 		publicKey := pk.PublicKey.(*slhdsa.PublicKey)
 		var slhdsaBin []byte
-		slhdsaBin, err = publicKey.PublicSlhdsa.MarshalBinary()
-		if err != nil {
+        slhdsaBin, err = publicKey.PublicSlhdsa.MarshalBinary()
+        if err != nil {
 			return
-		}
+        }
 		_, err = w.Write(slhdsaBin)
 		return
 	}

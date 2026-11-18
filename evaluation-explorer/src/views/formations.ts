@@ -73,12 +73,17 @@ export function formationGroups(runs: EvaluationSummary[]): FormationGroup[] {
   });
 }
 
-function qualifies({ run, summary }: FormationSource): boolean {
+/** Complete, verified evidence for a formation leaderboard row, apart from its size. */
+function hasFormationEvidence({ run, summary }: FormationSource): boolean {
   return run.lifecycle_state === 'completed' && run.verifier_state === 'passed' && run.quality_state === 'exploratory_verified' &&
     summary.assignment_total > 0 &&
     TERMINAL_STATUSES.reduce((sum, status) => sum + summary.terminal_outcomes[status], 0) === summary.assignment_total &&
     (summary.pass_rate?.denominator ?? 0) > 0 &&
-    (summary.parameter_count ?? 0) > 0 && (summary.latency_p50_ms.value ?? 0) > 0 && (summary.output_tokens.value ?? 0) > 0;
+    (summary.latency_p50_ms.value ?? 0) > 0 && (summary.output_tokens.value ?? 0) > 0;
+}
+
+function qualifies(source: FormationSource): boolean {
+  return hasFormationEvidence(source) && (source.summary.parameter_count ?? 0) > 0;
 }
 
 export function qualifiedFormationRuns(runs: EvaluationSummary[]): EvaluationSummary[] {
@@ -88,6 +93,32 @@ export function qualifiedFormationRuns(runs: EvaluationSummary[]): EvaluationSum
 export interface FormationLeaderboardRow extends FormationGroup {
   rank: number;
   score: number;
+}
+
+/** A formation with a hosted member and complete evidence. Hosted providers do not disclose
+ *  parameter counts, so the formation has no total size, score, or rank; it is listed unranked
+ *  beside its suite's ranked formations and never enters their best-in-suite minimums. */
+export interface HostedFormationRow extends FormationGroup {
+  hosted_variants: string[];
+}
+
+/** Reports whether a member variant of a run's dataset is served by a hosted provider. */
+export type HostedMemberLookup = (datasetId: string, variantId: string) => boolean;
+
+export function hostedFormationRows(runs: EvaluationSummary[], isHostedMember: HostedMemberLookup, maxArtifactGiB = 0): HostedFormationRow[] {
+  const hostedMembers = ({ run, summary }: FormationSource) =>
+    Object.values(summary.model_role_mapping).filter((variant) => isHostedMember(run.dataset_id, variant));
+  const listed = runs.map((run) => ({ ...run, formations: run.formations?.filter((summary) =>
+    hasFormationEvidence({ run, summary }) && summary.parameter_count === undefined && hostedMembers({ run, summary }).length > 0 &&
+    (!(maxArtifactGiB > 0) ||
+      (summary.artifact_size_bytes !== undefined && summary.artifact_size_bytes <= maxArtifactGiB * 1024 ** 3)),
+  ) }));
+  return formationGroups(listed)
+    .filter(({ summary }) => (summary.pass_rate?.denominator ?? 0) > 0 &&
+      (summary.latency_p50_ms.value ?? 0) > 0 && (summary.output_tokens.value ?? 0) > 0)
+    .map((group) => ({ ...group, hosted_variants: Array.from(new Set(group.sources.flatMap(hostedMembers))).sort() }))
+    .sort((a, b) => a.suite_id.localeCompare(b.suite_id) || b.summary.pass_rate!.estimate - a.summary.pass_rate!.estimate ||
+      a.summary.stack_id.localeCompare(b.summary.stack_id));
 }
 
 export function formationLeaderboardRows(runs: EvaluationSummary[], maxArtifactGiB = 0): FormationLeaderboardRow[] {

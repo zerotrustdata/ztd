@@ -9,6 +9,7 @@ package config
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -200,6 +201,16 @@ type InferenceConfig struct {
 	// keeps each requested model resident on the provider. A llama.cpp
 	// router accepts only "-1" (resident) or "0" (unload after the request).
 	KeepAlive string
+
+	// HostedProviders are the hosted provider classes the Operator serves in
+	// addition to its local provider: every class in
+	// constants.HostedInferenceProviders whose API key is set in the
+	// environment when the Operator starts (DiscoverHostedProviders), in that
+	// order. The Operator declares them in the runtime config it enrolls with.
+	// A governed request reaches a hosted provider only by naming its class.
+	// API keys are never held here: each hosted client reads its key from the
+	// environment when it is built.
+	HostedProviders []string
 }
 
 // Endpoint returns the HTTP endpoint of the selected provider, or "" when no
@@ -742,6 +753,13 @@ func newInferenceConfig(enabled bool, opts LoadOptions) (InferenceConfig, error)
 		LlamaCppModelRoot:   strings.TrimSpace(opts.InferenceLlamaCppModelRoot),
 		KeepAlive:           cmp.Or(opts.InferenceKeepAlive, constants.InferenceDefaultKeepAlive),
 	}
+	if enabled {
+		hosted, err := DiscoverHostedProviders()
+		if err != nil {
+			return InferenceConfig{}, err
+		}
+		cfg.HostedProviders = hosted
+	}
 	if cfg.LlamaCppEndpoint == "" {
 		if cfg.OllamaEndpoint == "" {
 			cfg.OllamaEndpoint = fmt.Sprintf("http://127.0.0.1:%d", constants.InferenceOllamaDefaultPort)
@@ -762,6 +780,47 @@ func newInferenceConfig(enabled bool, opts LoadOptions) (InferenceConfig, error)
 		return InferenceConfig{}, fmt.Errorf("config: inference keep-alive %q: %w", cfg.KeepAlive, constants.ErrInferenceLlamaCppKeepAliveInvalid)
 	}
 	return cfg, nil
+}
+
+// DiscoverHostedProviders returns the hosted provider classes an Inference
+// Operator serves: each class in constants.HostedInferenceProviders whose API
+// key is set in the process environment (the root command loads .env into it),
+// in that order. No startup flag names them, and no network call is made. An
+// unset or empty key leaves its class unserved; a set key HostedProviderAPIKey
+// rejects fails closed.
+func DiscoverHostedProviders() ([]string, error) {
+	var hosted []string
+	for _, class := range constants.HostedInferenceProviders {
+		if _, err := HostedProviderAPIKey(class); err != nil {
+			if errors.Is(err, constants.ErrInferenceHostedProviderKeyMissing) {
+				continue
+			}
+			return nil, err
+		}
+		hosted = append(hosted, class)
+	}
+	return hosted, nil
+}
+
+// HostedProviderAPIKey reads a hosted provider class's API key from the process
+// environment and returns it trimmed. It is the one key rule for discovery and
+// for building a client. An unset or empty key fails with
+// ErrInferenceHostedProviderKeyMissing; a whitespace-only key, or one containing
+// CR or LF anywhere, fails with ErrInferenceHostedProviderKeyInvalid. Errors
+// name the variable, never its value.
+func HostedProviderAPIKey(class string) (string, error) {
+	keyEnv, ok := constants.HostedInferenceProviderAPIKeyEnv(class)
+	if !ok {
+		return "", fmt.Errorf("config: hosted provider %q: %w", class, constants.ErrInferenceHostedProviderInvalid)
+	}
+	key := os.Getenv(string(keyEnv))
+	switch {
+	case key == "":
+		return "", fmt.Errorf("config: hosted provider %q: %s: %w", class, keyEnv, constants.ErrInferenceHostedProviderKeyMissing)
+	case strings.TrimSpace(key) == "", strings.ContainsAny(key, "\r\n"):
+		return "", fmt.Errorf("config: hosted provider %q: %s: %w", class, keyEnv, constants.ErrInferenceHostedProviderKeyInvalid)
+	}
+	return strings.TrimSpace(key), nil
 }
 
 func newProviderBoundaryObserverConfig(enabled bool, opts LoadOptions) ProviderBoundaryObserverConfig {

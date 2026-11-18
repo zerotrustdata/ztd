@@ -55,6 +55,8 @@
     - [HeterogeneousAssignmentTarget](#ztd-eval-v1-HeterogeneousAssignmentTarget)
     - [HeterogeneousStackDefinition](#ztd-eval-v1-HeterogeneousStackDefinition)
     - [HomogeneousAssignmentTarget](#ztd-eval-v1-HomogeneousAssignmentTarget)
+    - [HostedModelAttestation](#ztd-eval-v1-HostedModelAttestation)
+    - [JudgeSupersededAttempt](#ztd-eval-v1-JudgeSupersededAttempt)
     - [MemoryOutput](#ztd-eval-v1-MemoryOutput)
     - [ModelCampaignBinding](#ztd-eval-v1-ModelCampaignBinding)
     - [ModelCapabilityObservation](#ztd-eval-v1-ModelCapabilityObservation)
@@ -827,6 +829,7 @@ mixes two vote producers or vote models in one run.
 | quorum | [uint32](#uint32) |  |  |
 | member_app_ids | [string](#string) | repeated |  |
 | binding_digest | [string](#string) |  | binding_digest is the SHA-256 of the complete governing binding, including the fields not projected above. Empty when unbound. |
+| model_provider_class | [string](#string) |  | model_provider_class is the hosted provider class serving model_tag; empty when the vote model is served by a local provider. |
 
 
 
@@ -1241,6 +1244,8 @@ whose digest the signed receipt&#39;s result_summary binds.
 | transaction_id | [string](#string) |  |  |
 | inference_result | [ztd.operator.v1.InferenceResult](#ztd-operator-v1-InferenceResult) |  |  |
 | receipt | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
+| retry_count | [uint32](#uint32) |  | retry_count is the judge call&#39;s retry ordinal: 0 for the first attempt, n for the nth retry after the provider asked to retry later. It equals the signed inference_result&#39;s retry_count. |
+| superseded_attempts | [JudgeSupersededAttempt](#ztd-eval-v1-JudgeSupersededAttempt) | repeated | superseded_attempts are the judge call&#39;s earlier attempts this one retries, in order (retry_count 0..n-1). |
 
 
 
@@ -1311,6 +1316,52 @@ HeterogeneousStackDefinition binds Primary, Assistant, and Lite slots.
 | ----- | ---- | ----- | ----------- |
 | candidate_variant | [ModelVariant](#ztd-eval-v1-ModelVariant) |  |  |
 | designated_role | [ModelCampaignRole](#ztd-eval-v1-ModelCampaignRole) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-HostedModelAttestation"></a>
+
+### HostedModelAttestation
+HostedModelAttestation is the hosted provider model record an Inference
+Operator signed into one attempt&#39;s InferenceResult. provenance_operator_id of
+its window names that Inference Operator.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| provider_class | [string](#string) |  |  |
+| provider_origin | [string](#string) |  |  |
+| requested_model | [string](#string) |  |  |
+| provider_model_version | [string](#string) |  |  |
+| served_model | [string](#string) |  | Model the provider reported serving. |
+| provider_response_id | [string](#string) |  |  |
+| raw_response_digest | [string](#string) |  |  |
+| inference_transaction_id | [string](#string) |  | Inference transaction whose signed receipt binds result_digest. |
+| result_digest | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="ztd-eval-v1-JudgeSupersededAttempt"></a>
+
+### JudgeSupersededAttempt
+JudgeSupersededAttempt is one judge provider attempt a retry superseded. The
+provider asked to retry later, so the attempt did not complete and the
+Inference Operator signed a FAILED receipt with
+RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT. It carries no result and no verdict.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| provider_attempt_id | [string](#string) |  |  |
+| transaction_id | [string](#string) |  |  |
+| retry_count | [uint32](#uint32) |  |  |
+| receipt | [ztd.operator.v1.EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
 
 
 
@@ -1442,6 +1493,7 @@ to one governed inference provider attempt.
 | attested_at_unix_ms | [int64](#int64) |  |  |
 | digest_match | [bool](#bool) |  |  |
 | attestation_digest | [string](#string) |  |  |
+| hosted | [HostedModelAttestation](#ztd-eval-v1-HostedModelAttestation) |  | Set only under MODEL_MANIFEST_VERIFICATION_STATUS_HOSTED_PROVIDER_REPORTED. |
 
 
 
@@ -2750,6 +2802,7 @@ in model_inferences.
 | EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN | 1 |  |
 | EVALUATION_CALL_CLASSIFICATION_POST_TURN | 2 |  |
 | EVALUATION_CALL_CLASSIFICATION_GRADER | 3 |  |
+| EVALUATION_CALL_CLASSIFICATION_RETRIED | 4 | A scored-chain attempt the provider asked to retry later and a later attempt of the same call superseded. It stays evidence; metrics skip it. |
 
 
 
@@ -3168,6 +3221,7 @@ ModelManifestVerificationStatus reports signed-manifest verification outcome.
 | MODEL_MANIFEST_VERIFICATION_STATUS_VERIFIED | 2 |  |
 | MODEL_MANIFEST_VERIFICATION_STATUS_FAILED | 3 |  |
 | MODEL_MANIFEST_VERIFICATION_STATUS_UNAVAILABLE | 4 |  |
+| MODEL_MANIFEST_VERIFICATION_STATUS_HOSTED_PROVIDER_REPORTED | 5 | A hosted provider served the attempt. There are no weights or manifest to hash; the window carries the Inference Operator&#39;s signed hosted model record instead (ModelProvenanceAttestationWindow.hosted). |
 
 
 

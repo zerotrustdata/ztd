@@ -15,10 +15,10 @@
         "served_model_tag": "qwen3.5:4b",
         "trust": "sovereign",
         "quantization": "Q4_K_M",
-        "parameter_count": 4210000000,
-        "estimated_model_vram_mib": 2510,
+        "parameter_count": 4205751296,
+        "estimated_model_vram_mib": 2507,
         "estimated_kv_cache_mib": 512,
-        "model_digest": "d31742299266cc8758092a5907bca52e823bb11e92db2e06ad1a0e7b46628159"
+        "model_digest": "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04"
       },
       "assistant": {
         "variant_id": "gemma4-e2b",
@@ -29,10 +29,10 @@
         "served_model_tag": "gemma4:e2b",
         "trust": "sovereign",
         "quantization": "Q4_K_M",
-        "parameter_count": 5100000000,
-        "estimated_model_vram_mib": 3040,
+        "parameter_count": 4647450147,
+        "estimated_model_vram_mib": 2771,
         "estimated_kv_cache_mib": 512,
-        "model_digest": "7fbdbf8f5e45a75bb122155ed546e765b4d9c53a1285f62fd9f506baa1c5a47e"
+        "model_digest": "b37049369adfe3d2b653af0ab301a062ca5cbe96ace6aa0d3f2559ee9b563fc2"
       },
       "lite": {
         "variant_id": "lfm2-5-thinking-1-2b",
@@ -43,8 +43,8 @@
         "served_model_tag": "lfm2.5-thinking:1.2b",
         "trust": "sovereign",
         "quantization": "Q4_K_M",
-        "parameter_count": 1200000000,
-        "estimated_model_vram_mib": 1024,
+        "parameter_count": 1170340608,
+        "estimated_model_vram_mib": 698,
         "estimated_kv_cache_mib": 256,
         "model_digest": "95bd9d45385f33bfe96d8b3651c8569e152f21f5bdb7c19894ffde650e9cf140"
       }
@@ -66,7 +66,7 @@
         "parameter_count": 4447623680,
         "estimated_model_vram_mib": 2651,
         "estimated_kv_cache_mib": 512,
-        "model_digest": "3df9a31aa87b5671ac7a9854a7aa6cbf96692cf2827cc2fe7c2b766fea0e640a"
+        "model_digest": "44a412f722ad5061c5465eeeebbf45d4f63dfc724f4ba5d5eaead046fe1a1fbc"
       },
       "assistant": {
         "variant_id": "granite4-3b-h",
@@ -338,54 +338,6 @@
       }
     },
     {
-      "id": "formation-07",
-      "display_name": "formation-07",
-      "description": "openbmb/minicpm5:2b primary, smollm2:360m assistant, xlam2:1b-fc-r lite",
-      "max_vram_mib": 12288,
-      "primary": {
-        "variant_id": "openbmb-minicpm5-2b",
-        "display_name": "openbmb/minicpm5:2b",
-        "provider": "minicpm",
-        "family": "minicpm",
-        "provider_class": "ollama",
-        "served_model_tag": "openbmb/minicpm5:2b",
-        "trust": "sovereign",
-        "quantization": "Q4_K_M",
-        "parameter_count": 2500000000,
-        "estimated_model_vram_mib": 1491,
-        "estimated_kv_cache_mib": 256,
-        "model_digest": "d31762ae1593ae98ab6196f89cc98a22b9babb691bf8e95362ebc68ae53446d6"
-      },
-      "assistant": {
-        "variant_id": "smollm2-360m",
-        "display_name": "smollm2:360m",
-        "provider": "llama",
-        "family": "llama",
-        "provider_class": "ollama",
-        "served_model_tag": "smollm2:360m",
-        "trust": "sovereign",
-        "quantization": "F16",
-        "parameter_count": 361821120,
-        "estimated_model_vram_mib": 691,
-        "estimated_kv_cache_mib": 256,
-        "model_digest": "297281b699fc51376006233ca400cd664c4f7b80ed88a47ef084f1e4b089803b"
-      },
-      "lite": {
-        "variant_id": "xlam2-1b-fc-r",
-        "display_name": "xlam2:1b-fc-r",
-        "provider": "qwen2",
-        "family": "qwen2",
-        "provider_class": "ollama",
-        "served_model_tag": "xlam2:1b-fc-r",
-        "trust": "sovereign",
-        "quantization": "Q4_K_M",
-        "parameter_count": 1543714304,
-        "estimated_model_vram_mib": 921,
-        "estimated_kv_cache_mib": 256,
-        "model_digest": "7cff8a9eb0ed04af02e5c940561eb4f5ec539bd662a346a6e636dfe5c0aea45b"
-      }
-    },
-    {
       "id": "formation-08",
       "display_name": "formation-08",
       "description": "phi4-mini-reasoning:3.8b primary, smollm2:360m assistant, xlam2:1b-fc-r lite",
@@ -436,7 +388,7 @@
     {
       "id": "formation-09",
       "display_name": "formation-09",
-      "description": "Impulse2000/smollm3:3b-q4_k_m primary, xlam2:3b-fc-r assistant, lfm2.5:1.2b lite",
+      "description": "Impulse2000/smollm3:3b-q4_k_m primary, xlam2:3b-fc-r assistant, hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M lite",
       "max_vram_mib": 12288,
       "primary": {
         "variant_id": "impulse2000-smollm3-3b-q4-k-m",
@@ -467,24 +419,24 @@
         "model_digest": "fd17426d66d96214eab71bf83fc95c313795b8f779be0361aa6a8dd6c2fe3b53"
       },
       "lite": {
-        "variant_id": "lfm2-5-1-2b",
-        "display_name": "lfm2.5:1.2b",
+        "variant_id": "hf-co-liquidai-lfm2-5-1-2b-instruct-gguf-q4-k-m",
+        "display_name": "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
         "provider": "lfm2",
         "family": "lfm2",
         "provider_class": "ollama",
-        "served_model_tag": "lfm2.5:1.2b",
+        "served_model_tag": "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
         "trust": "sovereign",
         "quantization": "Q4_K_M",
-        "parameter_count": 1200000000,
-        "estimated_model_vram_mib": 716,
+        "parameter_count": 1170340608,
+        "estimated_model_vram_mib": 698,
         "estimated_kv_cache_mib": 256,
-        "model_digest": "5791ac70d52d5f309995be96f6fcfa78f5f3e9b17c9fc3806f030eb9dfc3b5bb"
+        "model_digest": "5791ac70d52d5f30f115beed78283c13f5715b262bd33da417f545b7259fb1e2"
       }
     },
     {
       "id": "formation-10",
       "display_name": "formation-10",
-      "description": "smollm3:3b primary, xlam2:3b-fc-r assistant, lfm2.5:1.2b lite",
+      "description": "smollm3:3b primary, xlam2:3b-fc-r assistant, hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M lite",
       "max_vram_mib": 12288,
       "primary": {
         "variant_id": "smollm3-3b",
@@ -515,18 +467,18 @@
         "model_digest": "fd17426d66d96214eab71bf83fc95c313795b8f779be0361aa6a8dd6c2fe3b53"
       },
       "lite": {
-        "variant_id": "lfm2-5-1-2b",
-        "display_name": "lfm2.5:1.2b",
+        "variant_id": "hf-co-liquidai-lfm2-5-1-2b-instruct-gguf-q4-k-m",
+        "display_name": "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
         "provider": "lfm2",
         "family": "lfm2",
         "provider_class": "ollama",
-        "served_model_tag": "lfm2.5:1.2b",
+        "served_model_tag": "hf.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF:Q4_K_M",
         "trust": "sovereign",
         "quantization": "Q4_K_M",
-        "parameter_count": 1200000000,
-        "estimated_model_vram_mib": 716,
+        "parameter_count": 1170340608,
+        "estimated_model_vram_mib": 698,
         "estimated_kv_cache_mib": 256,
-        "model_digest": "5791ac70d52d5f309995be96f6fcfa78f5f3e9b17c9fc3806f030eb9dfc3b5bb"
+        "model_digest": "5791ac70d52d5f30f115beed78283c13f5715b262bd33da417f545b7259fb1e2"
       }
     },
     {
@@ -666,11 +618,11 @@
         "provider_class": "ollama",
         "served_model_tag": "qwen3.5:2b",
         "trust": "sovereign",
-        "quantization": "Q4_K_M",
+        "quantization": "Q8_0",
         "parameter_count": 1881825088,
-        "estimated_model_vram_mib": 1122,
+        "estimated_model_vram_mib": 1907,
         "estimated_kv_cache_mib": 256,
-        "model_digest": "8572a8510e8517742777c4a2b49accaaf3d19a99aa08bf09bce216de82b76233"
+        "model_digest": "0689d44085e06d165161a8a9a1731344278cfb5aade63a3c3dbdb48ab54b130a"
       }
     },
     {
@@ -700,11 +652,11 @@
         "provider_class": "ollama",
         "served_model_tag": "qwen3.5:2b",
         "trust": "sovereign",
-        "quantization": "Q4_K_M",
+        "quantization": "Q8_0",
         "parameter_count": 1881825088,
-        "estimated_model_vram_mib": 1122,
+        "estimated_model_vram_mib": 1907,
         "estimated_kv_cache_mib": 256,
-        "model_digest": "8572a8510e8517742777c4a2b49accaaf3d19a99aa08bf09bce216de82b76233"
+        "model_digest": "0689d44085e06d165161a8a9a1731344278cfb5aade63a3c3dbdb48ab54b130a"
       },
       "lite": {
         "variant_id": "granite4-350m",
@@ -734,11 +686,11 @@
         "provider_class": "ollama",
         "served_model_tag": "qwen3.5:2b",
         "trust": "sovereign",
-        "quantization": "Q4_K_M",
+        "quantization": "Q8_0",
         "parameter_count": 1881825088,
-        "estimated_model_vram_mib": 1122,
+        "estimated_model_vram_mib": 1907,
         "estimated_kv_cache_mib": 256,
-        "model_digest": "8572a8510e8517742777c4a2b49accaaf3d19a99aa08bf09bce216de82b76233"
+        "model_digest": "0689d44085e06d165161a8a9a1731344278cfb5aade63a3c3dbdb48ab54b130a"
       },
       "assistant": {
         "variant_id": "granite4-350m",
@@ -962,54 +914,6 @@
       }
     },
     {
-      "id": "formation-20",
-      "display_name": "formation-20",
-      "description": "ministral-3:3b primary, hermes3:8b assistant, minicpm5:2b lite",
-      "max_vram_mib": 16384,
-      "primary": {
-        "variant_id": "ministral-3-3b",
-        "display_name": "ministral-3:3b",
-        "provider": "mistral3",
-        "family": "mistral3",
-        "provider_class": "ollama",
-        "served_model_tag": "ministral-3:3b",
-        "trust": "sovereign",
-        "quantization": "Q4_K_M",
-        "parameter_count": 3849090048,
-        "estimated_model_vram_mib": 2295,
-        "estimated_kv_cache_mib": 512,
-        "model_digest": "f04aa1c738f64e13c625b82ae92504fc0260fa6723b509ed1ece0fa188179b1d"
-      },
-      "assistant": {
-        "variant_id": "hermes3-8b",
-        "display_name": "hermes3:8b",
-        "provider": "llama",
-        "family": "llama",
-        "provider_class": "ollama",
-        "served_model_tag": "hermes3:8b",
-        "trust": "sovereign",
-        "quantization": "Q4_0",
-        "parameter_count": 8030261312,
-        "estimated_model_vram_mib": 4787,
-        "estimated_kv_cache_mib": 512,
-        "model_digest": "4f6b83f30b62bc3d0cf9be09266db222805ee815c8fd7d8b38f863f655be78b7"
-      },
-      "lite": {
-        "variant_id": "minicpm5-2b",
-        "display_name": "minicpm5:2b",
-        "provider": "minicpm",
-        "family": "minicpm",
-        "provider_class": "ollama",
-        "served_model_tag": "minicpm5:2b",
-        "trust": "sovereign",
-        "quantization": "Q4_K_M",
-        "parameter_count": 2500000000,
-        "estimated_model_vram_mib": 1491,
-        "estimated_kv_cache_mib": 256,
-        "model_digest": "dddf0b90a4322325fcddc056ccaaa72073ea262387d4e6d3e434d33b91ee4736"
-      }
-    },
-    {
       "id": "v180-formation-01",
       "display_name": "v180-formation-01",
       "description": "ministral-3:3b primary, hermes3:8b assistant, gemma3n:e4b lite",
@@ -1103,150 +1007,6 @@
         "estimated_model_vram_mib": 4954,
         "estimated_kv_cache_mib": 512,
         "model_digest": "d20e29ab8d0f11423b1e8da33764c8bdafc1d0abbb9971f68edd0f6d4176435f"
-      }
-    },
-    {
-      "id": "v180-formation-03",
-      "display_name": "v180-formation-03",
-      "description": "gemma3n:e4b primary, rnj-1:8b assistant, hf.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF:Q5_K_M lite",
-      "max_vram_mib": 16384,
-      "primary": {
-        "variant_id": "gemma3n-e4b",
-        "display_name": "gemma3n:e4b",
-        "provider": "gemma3n",
-        "family": "gemma3n",
-        "provider_class": "ollama",
-        "served_model_tag": "gemma3n:e4b",
-        "trust": "sovereign",
-        "quantization": "Q4_K_M",
-        "parameter_count": 6868990448,
-        "estimated_model_vram_mib": 4095,
-        "estimated_kv_cache_mib": 512,
-        "model_digest": "0a377808afeaafcbf5dcc2b1844594a1b60a50cd18e7e3e469cfd64e7bb7faa5"
-      },
-      "assistant": {
-        "variant_id": "rnj-1-8b",
-        "display_name": "rnj-1:8b",
-        "provider": "gemma3",
-        "family": "gemma3",
-        "provider_class": "ollama",
-        "served_model_tag": "rnj-1:8b",
-        "trust": "sovereign",
-        "quantization": "Q4_K_M",
-        "parameter_count": 8310501376,
-        "estimated_model_vram_mib": 4954,
-        "estimated_kv_cache_mib": 512,
-        "model_digest": "d20e29ab8d0f11423b1e8da33764c8bdafc1d0abbb9971f68edd0f6d4176435f"
-      },
-      "lite": {
-        "variant_id": "hf-co-nvidia-nvidia-nemotron-labs-dory1-0-4b-gguf-q5-k-m",
-        "display_name": "hf.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF:Q5_K_M",
-        "provider": "dory",
-        "family": "dory",
-        "provider_class": "ollama",
-        "served_model_tag": "hf.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF:Q5_K_M",
-        "trust": "sovereign",
-        "quantization": "Q5_K_M",
-        "parameter_count": 3975229440,
-        "estimated_model_vram_mib": 2607,
-        "estimated_kv_cache_mib": 512,
-        "model_digest": "58e9208d19bcc969719da8a396bcd34ca2ca253630a597e93d2943695e6bfd07"
-      }
-    },
-    {
-      "id": "v180-formation-04",
-      "display_name": "v180-formation-04",
-      "description": "rnj-1:8b primary, hf.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF:Q5_K_M assistant, gemma3n:e2b lite",
-      "max_vram_mib": 16384,
-      "primary": {
-        "variant_id": "rnj-1-8b",
-        "display_name": "rnj-1:8b",
-        "provider": "gemma3",
-        "family": "gemma3",
-        "provider_class": "ollama",
-        "served_model_tag": "rnj-1:8b",
-        "trust": "sovereign",
-        "quantization": "Q4_K_M",
-        "parameter_count": 8310501376,
-        "estimated_model_vram_mib": 4954,
-        "estimated_kv_cache_mib": 512,
-        "model_digest": "d20e29ab8d0f11423b1e8da33764c8bdafc1d0abbb9971f68edd0f6d4176435f"
-      },
-      "assistant": {
-        "variant_id": "hf-co-nvidia-nvidia-nemotron-labs-dory1-0-4b-gguf-q5-k-m",
-        "display_name": "hf.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF:Q5_K_M",
-        "provider": "dory",
-        "family": "dory",
-        "provider_class": "ollama",
-        "served_model_tag": "hf.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF:Q5_K_M",
-        "trust": "sovereign",
-        "quantization": "Q5_K_M",
-        "parameter_count": 3975229440,
-        "estimated_model_vram_mib": 2607,
-        "estimated_kv_cache_mib": 512,
-        "model_digest": "58e9208d19bcc969719da8a396bcd34ca2ca253630a597e93d2943695e6bfd07"
-      },
-      "lite": {
-        "variant_id": "gemma3n-e2b",
-        "display_name": "gemma3n:e2b",
-        "provider": "gemma3n",
-        "family": "gemma3n",
-        "provider_class": "ollama",
-        "served_model_tag": "gemma3n:e2b",
-        "trust": "sovereign",
-        "quantization": "Q4_K_M",
-        "parameter_count": 4458122848,
-        "estimated_model_vram_mib": 2658,
-        "estimated_kv_cache_mib": 512,
-        "model_digest": "dae166dc6a5e93061da12b75b887ce7c72cb91785d547b88c7503047f8411ffd"
-      }
-    },
-    {
-      "id": "v180-formation-05",
-      "display_name": "v180-formation-05",
-      "description": "hf.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF:Q5_K_M primary, gemma3n:e2b assistant, ministral-3:14b lite",
-      "max_vram_mib": 16384,
-      "primary": {
-        "variant_id": "hf-co-nvidia-nvidia-nemotron-labs-dory1-0-4b-gguf-q5-k-m",
-        "display_name": "hf.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF:Q5_K_M",
-        "provider": "dory",
-        "family": "dory",
-        "provider_class": "ollama",
-        "served_model_tag": "hf.co/nvidia/NVIDIA-Nemotron-Labs-Dory1.0-4B-GGUF:Q5_K_M",
-        "trust": "sovereign",
-        "quantization": "Q5_K_M",
-        "parameter_count": 3975229440,
-        "estimated_model_vram_mib": 2607,
-        "estimated_kv_cache_mib": 512,
-        "model_digest": "58e9208d19bcc969719da8a396bcd34ca2ca253630a597e93d2943695e6bfd07"
-      },
-      "assistant": {
-        "variant_id": "gemma3n-e2b",
-        "display_name": "gemma3n:e2b",
-        "provider": "gemma3n",
-        "family": "gemma3n",
-        "provider_class": "ollama",
-        "served_model_tag": "gemma3n:e2b",
-        "trust": "sovereign",
-        "quantization": "Q4_K_M",
-        "parameter_count": 4458122848,
-        "estimated_model_vram_mib": 2658,
-        "estimated_kv_cache_mib": 512,
-        "model_digest": "dae166dc6a5e93061da12b75b887ce7c72cb91785d547b88c7503047f8411ffd"
-      },
-      "lite": {
-        "variant_id": "ministral-3-14b",
-        "display_name": "ministral-3:14b",
-        "provider": "mistral3",
-        "family": "mistral3",
-        "provider_class": "ollama",
-        "served_model_tag": "ministral-3:14b",
-        "trust": "sovereign",
-        "quantization": "Q4_K_M",
-        "parameter_count": 13900000000,
-        "estimated_model_vram_mib": 8286,
-        "estimated_kv_cache_mib": 512,
-        "model_digest": "9017218b31a4ab2e784fac090b7c97e46c044aba3f7f1470efb68e2a58996919"
       }
     },
     {
@@ -6918,7 +6678,7 @@
     {
       "id": "v191-formation-llama-03",
       "display_name": "v191-formation-llama-03",
-      "description": "llama3.2:1b-instruct-q4_K_M primary, hf.co/Salesforce/Llama-xLAM-2-8b-fc-r-gguf:latest assistant, llama3.2 lite",
+      "description": "llama3.2:1b-instruct-q4_K_M primary, hf.co/Salesforce/Llama-xLAM-2-8b-fc-r-gguf:latest assistant, llama3.2:3b lite",
       "max_vram_mib": 16384,
       "relaxed_validation": true,
       "primary": {
@@ -6950,24 +6710,24 @@
         "model_digest": "6289cc92099210c18c422d9fd01792965eab3233deca6ae8e6ccd6b2b5cdd12b"
       },
       "lite": {
-        "variant_id": "llama3-2",
-        "display_name": "llama3.2",
+        "variant_id": "llama3-2-3b",
+        "display_name": "llama3.2:3b",
         "provider": "llama",
         "family": "llama",
         "provider_class": "ollama",
-        "served_model_tag": "llama3.2",
+        "served_model_tag": "llama3.2:3b",
         "trust": "sovereign",
         "quantization": "Q4_K_M",
-        "parameter_count": 3200000000,
-        "estimated_model_vram_mib": 1908,
+        "parameter_count": 3212749888,
+        "estimated_model_vram_mib": 1915,
         "estimated_kv_cache_mib": 512,
-        "model_digest": "a80c4f17acd5526543b593ef39c89e248b1d9bf5b1ce55bb468bb7aa27df5316"
+        "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72"
       }
     },
     {
       "id": "v191-formation-llama-04",
       "display_name": "v191-formation-llama-04",
-      "description": "hf.co/Salesforce/Llama-xLAM-2-8b-fc-r-gguf:latest primary, llama3.2 assistant, llama3.2:1b lite",
+      "description": "hf.co/Salesforce/Llama-xLAM-2-8b-fc-r-gguf:latest primary, llama3.2:3b assistant, llama3.2:1b lite",
       "max_vram_mib": 16384,
       "relaxed_validation": true,
       "primary": {
@@ -6985,18 +6745,18 @@
         "model_digest": "6289cc92099210c18c422d9fd01792965eab3233deca6ae8e6ccd6b2b5cdd12b"
       },
       "assistant": {
-        "variant_id": "llama3-2",
-        "display_name": "llama3.2",
+        "variant_id": "llama3-2-3b",
+        "display_name": "llama3.2:3b",
         "provider": "llama",
         "family": "llama",
         "provider_class": "ollama",
-        "served_model_tag": "llama3.2",
+        "served_model_tag": "llama3.2:3b",
         "trust": "sovereign",
         "quantization": "Q4_K_M",
-        "parameter_count": 3200000000,
-        "estimated_model_vram_mib": 1908,
+        "parameter_count": 3212749888,
+        "estimated_model_vram_mib": 1915,
         "estimated_kv_cache_mib": 512,
-        "model_digest": "a80c4f17acd5526543b593ef39c89e248b1d9bf5b1ce55bb468bb7aa27df5316"
+        "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72"
       },
       "lite": {
         "variant_id": "llama3-2-1b",
@@ -7016,22 +6776,22 @@
     {
       "id": "v191-formation-llama-05",
       "display_name": "v191-formation-llama-05",
-      "description": "llama3.2 primary, llama3.2:1b assistant, llama3.1:8b-instruct-q4_K_M lite",
+      "description": "llama3.2:3b primary, llama3.2:1b assistant, llama3.1:8b-instruct-q4_K_M lite",
       "max_vram_mib": 16384,
       "relaxed_validation": true,
       "primary": {
-        "variant_id": "llama3-2",
-        "display_name": "llama3.2",
+        "variant_id": "llama3-2-3b",
+        "display_name": "llama3.2:3b",
         "provider": "llama",
         "family": "llama",
         "provider_class": "ollama",
-        "served_model_tag": "llama3.2",
+        "served_model_tag": "llama3.2:3b",
         "trust": "sovereign",
         "quantization": "Q4_K_M",
-        "parameter_count": 3200000000,
-        "estimated_model_vram_mib": 1908,
+        "parameter_count": 3212749888,
+        "estimated_model_vram_mib": 1915,
         "estimated_kv_cache_mib": 512,
-        "model_digest": "a80c4f17acd5526543b593ef39c89e248b1d9bf5b1ce55bb468bb7aa27df5316"
+        "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72"
       },
       "assistant": {
         "variant_id": "llama3-2-1b",

@@ -10,8 +10,10 @@ package evaluation
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/judge"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
@@ -115,6 +117,42 @@ type GradingActivitySink interface {
 // terminal assignment result.
 type CampaignAssignmentExecutor interface {
 	ExecuteAssignment(ctx context.Context, req AssignmentExecutionRequest) (*evalv1.EvaluationAssignmentResult, error)
+}
+
+// DispatchesLocalModels reports whether a campaign dispatches any model a local
+// provider serves: a registry model or its judge. Only those inferences run on
+// a host a provider-boundary observer can witness, and only those hold local
+// residency a run must release.
+func DispatchesLocalModels(registry []*evalv1.ModelVariant, judge *evalv1.ModelVariant) bool {
+	if judge != nil && !constants.IsHostedInferenceProvider(judge.GetProviderClass()) {
+		return true
+	}
+	for _, variant := range registry {
+		if !constants.IsHostedInferenceProvider(variant.GetProviderClass()) {
+			return true
+		}
+	}
+	return false
+}
+
+// HostedProviderClasses returns the hosted provider classes a campaign
+// dispatches: those of its frozen registry models, formation members
+// included, and of its judge, in constants.HostedInferenceProviders order,
+// each once. The campaign's one Inference Operator must serve all of them.
+func HostedProviderClasses(registry []*evalv1.ModelVariant, judge *evalv1.ModelVariant) []string {
+	named := make(map[string]bool, len(constants.HostedInferenceProviders))
+	for _, variant := range append(slices.Clone(registry), judge) {
+		if class := variant.GetProviderClass(); constants.IsHostedInferenceProvider(class) {
+			named[class] = true
+		}
+	}
+	var classes []string
+	for _, class := range constants.HostedInferenceProviders {
+		if named[class] {
+			classes = append(classes, class)
+		}
+	}
+	return classes
 }
 
 // InferenceVariantsFromEvalRegistry converts frozen eval model variants into the

@@ -1033,6 +1033,11 @@ func (d *DispatchService) verifyInferenceCompletion(ctx context.Context, cmdEnv,
 	if err := models.ValidateDecisionCompletion(request.GetDecision(), result); err != nil {
 		return nil, fmt.Errorf("dispatch: %w", err)
 	}
+	if request.GetDecision() == nil {
+		if err := models.ValidateHostedEgress(request.GetProviderClass(), result.GetRequestedModel(), request.GetModelDigest(), result); err != nil {
+			return nil, fmt.Errorf("dispatch: %w", err)
+		}
+	}
 	if result.GetProviderAttemptId() != request.GetProviderAttemptId() ||
 		(request.GetModel() != "" && result.GetRequestedModel() != request.GetModel()) ||
 		result.GetRequestedModelDigest() != request.GetModelDigest() ||
@@ -1088,6 +1093,8 @@ func inferenceReceiptFailureError(receipt *operatorv1.EventReceipt) error {
 		return constants.ErrInferenceModelRefInvalid
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE:
 		return constants.ErrInferenceBackendUnavailable
+	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT:
+		return constants.ErrInferenceBackendTransient
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT:
 		return constants.ErrInferenceBackendTimeout
 	case operatorv1.ReceiptFailureCode_RECEIPT_FAILURE_CODE_GENERATE_FAILED:

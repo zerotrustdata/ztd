@@ -155,6 +155,53 @@ describe('operators', () => {
     expect(await screen.findByText('This session')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Unbind' })).toBeInTheDocument();
   });
+
+  it('displays hosted inference providers only when non-empty', async () => {
+    routes = signedInRoutes({
+      'GET /api/v1/operators': () => [
+        200,
+        {
+          success: true,
+          operators: [
+            {
+              id: 'op-hosted',
+              user_id: 'u1',
+              status: 'active',
+              operator_type: 'embedded',
+              operator_capabilities: ['inference'],
+              operator_session_id: 'os1',
+              current_hostname: 'gw-embedded',
+              runtime_config: { inference_hosted_providers: ['gemini', 'openai'] },
+              created_at: '2026-01-01T00:00:00Z',
+              updated_at: '2026-01-01T00:00:00Z',
+            },
+            {
+              id: 'op-local',
+              user_id: 'u1',
+              status: 'active',
+              operator_type: 'remote',
+              operator_capabilities: ['inference'],
+              operator_session_id: 'os2',
+              current_hostname: 'local-worker',
+              runtime_config: { inference_hosted_providers: [] },
+              created_at: '2026-01-01T00:00:00Z',
+              updated_at: '2026-01-01T00:00:00Z',
+            },
+          ],
+        },
+      ],
+    });
+    window.history.replaceState(null, '', '/console/?view=operators');
+    renderApp();
+
+    const hostedRow = (await screen.findByText('gw-embedded')).closest('tr')!;
+    expect(within(hostedRow).getByLabelText('Hosted inference providers')).toBeInTheDocument();
+    expect(within(hostedRow).getByText('Gemini')).toBeInTheDocument();
+    expect(within(hostedRow).getByText('OpenAI')).toBeInTheDocument();
+
+    const localRow = screen.getByText('local-worker').closest('tr')!;
+    expect(within(localRow).queryByLabelText('Hosted inference providers')).toBeNull();
+  });
 });
 
 describe('session', () => {

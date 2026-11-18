@@ -343,7 +343,7 @@ func modelInferenceMetricDelta(record *evalv1.ModelInferenceRecord) PublicMetric
 
 func reportedModelInferences(result *evalv1.EvaluationAssignmentResult) []*evalv1.ModelInferenceRecord {
 	records := make([]*evalv1.ModelInferenceRecord, 0, len(result.GetModelInferences()))
-	for _, record := range result.GetModelInferences() {
+	for _, record := range scoredInferenceRecords(result.GetModelInferences()) {
 		if record == nil {
 			continue
 		}
@@ -466,6 +466,12 @@ func newGradingActivityRow(assignment *evalv1.EvaluationAssignment, release Camp
 
 // publishRequest projects, encodes, and validates one judge event.
 func (r gradingActivityRow) publishRequest(activity JudgeActivity, observedAt string) (campaignFeedPublishRequest, error) {
+	// A judgment is one live entry however many provider attempts it took, and
+	// the feed joins its started and completed events by attempt ID: both carry
+	// the judgment's first attempt, which a retried completion keeps among its
+	// superseded attempts. The transaction and usage a completion reports are
+	// the final attempt's.
+	activity.Score.ProviderAttemptID = activity.Score.FirstAttemptID()
 	runID, assignmentID := r.assignment.GetRunId(), r.assignment.GetAssignmentId()
 	key := JudgeStartedIdempotencyKey(runID, assignmentID, judgmentID(activity.Score))
 	if activity.Completed {
@@ -701,17 +707,19 @@ func recordedJudgeScore(cfg judge.Config, call *evalv1.GraderModelCallRecord, po
 		Receipt:           call.GetReceipt(),
 		Result:            call.GetInferenceResult(),
 		RubricVersion:     call.GetRubricVersion(),
+		RetryCount:        call.GetRetryCount(),
+		Superseded:        judgeSupersededFromRecords(call.GetSupersededAttempts()),
 	}
 	var err error
 	if criterion, ok := strings.CutPrefix(call.GetCriterionId(), contentCriterionPrefix); ok {
 		score.Criterion = criterion
-		score.Met, score.Rationale, err = judge.VerifyCriterionResult(cfg, call.GetProviderAttemptId(), call.GetInferenceResult(), call.GetReceipt())
+		score.Met, score.Rationale, err = judge.VerifyCriterionResult(cfg, call.GetProviderAttemptId(), call.GetRetryCount(), call.GetInferenceResult(), call.GetReceipt())
 	} else {
 		score.Subject = judge.SubjectFinalReply
 		if call.GetCriterionId() == memoryQualityCriterionID {
 			score.Subject = judge.SubjectMemory
 		}
-		score.Value, score.Rationale, err = judge.VerifyQualityResult(cfg, call.GetProviderAttemptId(), call.GetInferenceResult(), call.GetReceipt())
+		score.Value, score.Rationale, err = judge.VerifyQualityResult(cfg, call.GetProviderAttemptId(), call.GetRetryCount(), call.GetInferenceResult(), call.GetReceipt())
 	}
 	if err != nil {
 		score.Status, score.Failure, score.Detail = judge.StatusFailed, judge.ResultFailure(err), err.Error()

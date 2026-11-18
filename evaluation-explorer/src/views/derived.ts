@@ -18,6 +18,7 @@
 //     reported separately, not silently dropped.
 
 import { MODEL_CAPABILITY_KEYS, resolveModelProfile, type ModelCapabilityKey } from '../content/framework-catalog';
+import { isHostedProviderClass } from '../content/provider';
 import { CURRENT_PLATFORM_RELEASE, newestAdmittedRelease, toReleaseSeries } from '../content/release';
 import { MODEL_ROLE_WIRE_ORDER, MODEL_ROLES } from '../content/roles';
 import { SCENARIO_CATEGORY_COPY, TRAJECTORY_POLICY_META } from '../content/scenario-task';
@@ -1348,6 +1349,10 @@ export const LEADERBOARD_SECURITY_SCORING_DESCRIPTION =
 export const LEADERBOARD_SCORE_FORMULA =
   'Score = 100 × accuracy² × √security × 0.9^log2(total parameters ÷ smallest in role) × (0.85 + 0.10 × speed + 0.05 × tokens)';
 
+/** Display form of the size-free score computed by Overall and Remote-hosted leaderboards. */
+export const LEADERBOARD_SIZE_FREE_SCORE_FORMULA =
+  'Score = 100 × accuracy² × √security × (0.85 + 0.10 × speed + 0.05 × tokens)';
+
 /** A model is the stable registry variant. Runs, roles and frozen weight versions
  * remain inspectable source evidence rather than separate model identities. */
 export function modelSummaryGroups(models: ModelSummary[]): Array<{ model: ModelSummary; sources: ModelSummary[] }> {
@@ -1451,8 +1456,8 @@ export interface ModelLeaderboardRow {
   security?: number;
   latency_p50_ms: number;
   output_tokens: number;
-  /** Published total parameter count; scored relative to the role's smallest model. */
-  parameter_count: number;
+  /** Published total parameter count when known; undefined for undisclosed hosted models. */
+  parameter_count?: number;
   throughput_p50?: number;
   run_seconds?: number;
 }
@@ -1460,6 +1465,17 @@ export interface ModelLeaderboardRow {
 export interface ModelRoleLeaderboardRow extends ModelLeaderboardRow {
   /** 100 × accuracy² × √security × size × efficiency (see modelRoleLeaderboardRows). */
   score: number;
+  /** Published total parameter count; scored relative to the role's smallest model. */
+  parameter_count: number;
+}
+
+/** A hosted variant with complete leaderboard evidence. Hosted providers do not disclose
+ *  parameter counts, so the size factor and therefore the score cannot be computed: the row
+ *  shows its measurements beside ranked models without a rank, score, or parameter count. */
+export interface HostedLeaderboardRow extends Omit<ModelLeaderboardRow, 'rank' | 'score' | 'parameter_count'> {
+  rank?: undefined;
+  score?: undefined;
+  parameter_count?: undefined;
 }
 
 export interface ModelOverallLeaderboardRow extends ModelLeaderboardRow {
@@ -1512,31 +1528,64 @@ function passesCatalogCapabilities(model: ModelSummary, keys: readonly ModelCapa
   return keys.every((key) => key === 'tool_calling' || capabilities[key].status === 'pass');
 }
 
-/** Whether the Leaderboard can rank a model: full coverage, verified scored evidence, the role's
- *  required capabilities, a parameter count, latency and token observations, and security
+/** Whether a model has the evidence a Leaderboard row needs: full coverage, verified scored
+ *  evidence, the role's required capabilities, latency and token observations, and security
  *  evidence or an allowed N/A. A tool-bearing role requires the run's own published proof that
- *  its tool-calling probe excluded no assignment; a record without that count is unranked. */
-function isLeaderboardQualified(model: ModelSummary): boolean {
+ *  its tool-calling probe excluded no assignment; a record without that count has no row. */
+function hasLeaderboardEvidence(model: ModelSummary): boolean {
   if (model.inventory_only || !model.pass_rate || model.pass_rate.denominator <= 0) return false;
   if (model.evaluation_coverage !== 1 || model.quality_state !== 'exploratory_verified') return false;
   const required = LEADERBOARD_ROLE_CAPABILITIES[model.role];
   if (!passesCatalogCapabilities(model, required)) return false;
   if (required.includes('tool_calling') && model.tool_calling_exclusions !== 0) return false;
-  if (positive(model.latency_p50_ms?.value) === undefined || positive(model.output_tokens?.value) === undefined ||
-    positive(resolveModelProfile(model).parameter_count) === undefined) return false;
+  if (positive(model.latency_p50_ms?.value) === undefined || positive(model.output_tokens?.value) === undefined) return false;
   const security = resolveModelSecurity(model);
   return security !== undefined || model.role === 'lite' ||
     model.security_resistance?.unavailable_reason === 'scenario_not_applicable' ||
     model.security_resistance?.unavailable_reason === 'source_unavailable';
 }
 
+/** Whether the Leaderboard can rank a model: complete evidence and a published parameter count
+ *  for the size factor. Hosted variants never rank; see hostedRoleLeaderboardRows. */
+function isLeaderboardQualified(model: ModelSummary): boolean {
+  return !isHostedProviderClass(model.backend_provider_class) && hasLeaderboardEvidence(model) &&
+    positive(resolveModelProfile(model).parameter_count) !== undefined;
+}
+
+/** Model summaries a role table may show: not a formation dataset, in the role, and not
+ *  barred from tool-bearing roles by a run whose verified probe excluded tool tasks. */
+function roleTableCandidates(models: ModelSummary[], role: ModelRole | 'all', evaluations: EvaluationSummary[]): ModelSummary[] {
+  const formationDatasets = new Set(evaluations.filter((run) => run.evaluation_unit === 'system').map((run) => run.dataset_id));
+  // A run whose verified probe excluded tool tasks shows the variant cannot call tools, so no
+  // other run or role ranks it where tools are required.
+  const toolless = new Set(models.filter((model) => (model.tool_calling_exclusions ?? 0) > 0).map((model) => model.variant_id));
+  return models.filter((model) => !formationDatasets.has(model.dataset_id) &&
+    (role === 'all' || model.role === role) &&
+    !(LEADERBOARD_ROLE_CAPABILITIES[model.role].includes('tool_calling') && toolless.has(model.variant_id)));
+}
+
 /** The series the Leaderboard opens on: the newest with a model it can rank, so neither a
  *  platform upgrade nor a run still in progress blanks the page. The build series is the
  *  fallback before the feed holds a rankable model. */
 export function defaultLeaderboardRelease(models: ModelSummary[], qualifiedFormationRuns: EvaluationSummary[] = []): string {
-  const release = newestAdmittedRelease([
-    ...models.filter((model) => isLeaderboardQualified(model)), ...qualifiedFormationRuns,
-  ], () => true);
+  const bySeries = new Map<string, ModelSummary[]>();
+  for (const model of models) {
+    if (!model.release || model.release_basis !== 'recorded') continue;
+    const series = toReleaseSeries(model.release);
+    const group = bySeries.get(series) ?? [];
+    group.push(model);
+    bySeries.set(series, group);
+  }
+  const admittedModels: ModelSummary[] = [];
+  for (const seriesModels of bySeries.values()) {
+    const overallSources = new Set(modelCombinedOverallLeaderboardRows(seriesModels).flatMap((row) => row.sources));
+    for (const model of seriesModels) {
+      if (isLeaderboardQualified(model) || overallSources.has(model)) {
+        admittedModels.push(model);
+      }
+    }
+  }
+  const release = newestAdmittedRelease([...admittedModels, ...qualifiedFormationRuns], () => true);
   return toReleaseSeries(release ?? CURRENT_PLATFORM_RELEASE);
 }
 
@@ -1556,13 +1605,7 @@ export function modelRoleLeaderboardRows(
   role: ModelRole | 'all' = 'all',
   evaluations: EvaluationSummary[] = [],
 ): ModelRoleLeaderboardRow[] {
-  const formationDatasets = new Set(evaluations.filter((run) => run.evaluation_unit === 'system').map((run) => run.dataset_id));
-  // A run whose verified probe excluded tool tasks shows the variant cannot call tools, so no
-  // other run or role ranks it where tools are required.
-  const toolless = new Set(models.filter((model) => (model.tool_calling_exclusions ?? 0) > 0).map((model) => model.variant_id));
-  const qualified = models.filter((model) => !formationDatasets.has(model.dataset_id) &&
-    (role === 'all' || model.role === role) && isLeaderboardQualified(model) &&
-    !(LEADERBOARD_ROLE_CAPABILITIES[model.role].includes('tool_calling') && toolless.has(model.variant_id)));
+  const qualified = roleTableCandidates(models, role, evaluations).filter(isLeaderboardQualified);
   const measured = modelSummaryGroups(qualified).map(({ model, sources }) => ({
     model, sources,
     latency: model.latency_p50_ms!.value!, tokens: model.output_tokens!.value!, size: model.parameter_count!,
@@ -1605,34 +1648,122 @@ export function modelRoleLeaderboardRows(
   return rows.map((row, index) => ({ ...row, rank: index + 1 }));
 }
 
+/** Hosted variants with complete evidence, one row per variant and role with its runs pooled,
+ *  shown unranked beside the ranked rows. They never enter a role's best-in-role minimums, so
+ *  they leave ranked scores unchanged, and they never enter Overall, which averages role scores. */
+export function hostedRoleLeaderboardRows(
+  models: ModelSummary[],
+  role: ModelRole | 'all' = 'all',
+  evaluations: EvaluationSummary[] = [],
+): HostedLeaderboardRow[] {
+  const hosted = roleTableCandidates(models, role, evaluations)
+    .filter((model) => isHostedProviderClass(model.backend_provider_class) && hasLeaderboardEvidence(model));
+  return modelSummaryGroups(hosted).map(({ model, sources }) => {
+    const runDurations = Object.fromEntries(sources.map((source) => [source.dataset_id, modelRunSeconds(source, evaluations)]));
+    return {
+      model,
+      sources,
+      run_durations: runDurations,
+      pass_rate: model.pass_rate!.estimate,
+      security: resolveModelSecurity(model),
+      latency_p50_ms: model.latency_p50_ms!.value!,
+      output_tokens: model.output_tokens!.value!,
+      throughput_p50: model.output_throughput_p50?.value,
+      run_seconds: sumRunDurations(runDurations),
+    };
+  }).sort((a, b) => b.pass_rate - a.pass_rate ||
+    a.model.display_name.localeCompare(b.model.display_name) || a.model.variant_id.localeCompare(b.model.variant_id));
+}
+
+/** Size-free score formula (accuracy, security, and bounded best-in-group efficiency), used for
+ *  side-by-side Overall and Remote-hosted rankings where parameter counts are undisclosed. */
+export function leaderboardSizeFreeScore(
+  accuracy: number, security: number,
+  measured: { latency: number; tokens: number },
+  best: { latency: number; tokens: number },
+): number {
+  const { speed, tokens } = LEADERBOARD_EFFICIENCY_WEIGHTS;
+  const efficiency = 1 - speed - tokens + speed * best.latency / measured.latency + tokens * best.tokens / measured.tokens;
+  return 100 * accuracy ** 2 * Math.sqrt(security) * efficiency;
+}
+
 /** Shared score formula; callers choose a comparable role or formation suite population. */
 export function leaderboardScore(
   accuracy: number, security: number,
   measured: { latency: number; tokens: number; size: number },
   best: { latency: number; tokens: number; size: number },
 ): number {
-  const { speed, tokens } = LEADERBOARD_EFFICIENCY_WEIGHTS;
   const sizeFactor = (1 - LEADERBOARD_TOTAL_PARAMETER_DOUBLING_PENALTY) ** Math.log2(measured.size / best.size);
-  const efficiency = 1 - speed - tokens + speed * best.latency / measured.latency + tokens * best.tokens / measured.tokens;
-  return 100 * accuracy ** 2 * Math.sqrt(security) * sizeFactor * efficiency;
+  return leaderboardSizeFreeScore(accuracy, security, measured, best) * sizeFactor;
+}
+
+function compareOptionalParameterCount(a?: number, b?: number): number {
+  if (a === undefined && b === undefined) return 0;
+  if (a === undefined) return 1;
+  if (b === undefined) return -1;
+  return a - b;
 }
 
 function compareModelLeaderboardScores(a: ModelLeaderboardRow, b: ModelLeaderboardRow): number {
   return b.score - a.score ||
     b.pass_rate - a.pass_rate ||
-    a.parameter_count - b.parameter_count ||
+    compareOptionalParameterCount(a.parameter_count, b.parameter_count) ||
     a.model.display_name.localeCompare(b.model.display_name) ||
     a.model.variant_id.localeCompare(b.model.variant_id);
 }
 
-/** One row per stable variant, with one-third weight per qualified role. Only a variant that
- * qualifies in every role and has every capability is ranked overall: its Primary and Assistant
- * rows prove tool calling, and the catalog supplies the rest.
- * Runs are pooled before role scoring. Execution duration counts each dataset once. */
-export function modelOverallLeaderboardRows(roleRows: ModelRoleLeaderboardRow[]): ModelOverallLeaderboardRow[] {
-  const byVariant = new Map<string, Map<ModelRole, ModelRoleLeaderboardRow>>();
+function buildSizeFreeRoleRows(
+  models: ModelSummary[],
+  evaluations: EvaluationSummary[],
+  scope: 'all' | 'remote-hosted',
+): ModelLeaderboardRow[] {
+  const qualified = roleTableCandidates(models, 'all', evaluations).filter(
+    (model) => hasLeaderboardEvidence(model) && (scope === 'all' || isHostedProviderClass(model.backend_provider_class)),
+  );
+  const measured = modelSummaryGroups(qualified).map(({ model, sources }) => ({
+    model, sources,
+    latency: model.latency_p50_ms!.value!, tokens: model.output_tokens!.value!,
+    security: resolveModelSecurity(model),
+  }));
+
+  const best = new Map<ModelRole, { latency: number; tokens: number }>();
+  for (const { model, latency, tokens } of measured) {
+    const current = best.get(model.role);
+    best.set(model.role, current
+      ? { latency: Math.min(current.latency, latency), tokens: Math.min(current.tokens, tokens) }
+      : { latency, tokens });
+  }
+
+  const rows: ModelLeaderboardRow[] = measured.map(({ model, sources, latency, tokens, security }) => {
+    const roleBest = best.get(model.role)!;
+    const passRate = model.pass_rate!.estimate;
+    const runDurations = Object.fromEntries(sources.map((source) => [source.dataset_id, modelRunSeconds(source, evaluations)]));
+    return {
+      rank: 0,
+      model,
+      sources,
+      run_durations: runDurations,
+      score: leaderboardSizeFreeScore(passRate, security ?? 0, { latency, tokens }, roleBest),
+      pass_rate: passRate,
+      security,
+      latency_p50_ms: latency,
+      output_tokens: tokens,
+      parameter_count: model.parameter_count,
+      throughput_p50: model.output_throughput_p50?.value,
+      run_seconds: sumRunDurations(runDurations),
+    };
+  });
+  rows.sort(compareModelLeaderboardScores);
+  return rows.map((row, index) => ({ ...row, rank: index + 1 }));
+}
+
+function aggregateOverallRows(
+  roleRows: ModelLeaderboardRow[],
+  requireCatalogCapabilities: boolean,
+): ModelOverallLeaderboardRow[] {
+  const byVariant = new Map<string, Map<ModelRole, ModelLeaderboardRow>>();
   for (const row of roleRows) {
-    const roles = byVariant.get(row.model.variant_id) ?? new Map<ModelRole, ModelRoleLeaderboardRow>();
+    const roles = byVariant.get(row.model.variant_id) ?? new Map<ModelRole, ModelLeaderboardRow>();
     roles.set(row.model.role, row);
     byVariant.set(row.model.variant_id, roles);
   }
@@ -1643,7 +1774,7 @@ export function modelOverallLeaderboardRows(roleRows: ModelRoleLeaderboardRow[])
     const contributors = MODEL_ROLE_WIRE_ORDER.map((role) => roles.get(role)!);
     const sources = contributors.flatMap((row) => row.sources);
     const representative = contributors[0]!.model;
-    if (!passesCatalogCapabilities(representative, LEADERBOARD_OVERALL_CAPABILITIES)) continue;
+    if (requireCatalogCapabilities && !passesCatalogCapabilities(representative, LEADERBOARD_OVERALL_CAPABILITIES)) continue;
     const security = contributors.flatMap((row) => row.security !== undefined ? [row.security] : []);
     const throughputs = contributors.map((row) => row.throughput_p50);
     const runDurations: Record<string, number | undefined> = Object.assign({}, ...contributors.map((row) => row.run_durations));
@@ -1664,4 +1795,30 @@ export function modelOverallLeaderboardRows(roleRows: ModelRoleLeaderboardRow[])
     });
   }
   return rows.sort(compareModelLeaderboardScores).map((row, index) => ({ ...row, rank: index + 1 }));
+}
+
+/** Self-hosted Overall leaderboard: one row per stable variant, with one-third weight per
+ *  qualified role. Only a variant that qualifies in every role (including parameter count) and
+ *  has every catalog capability is ranked here. */
+export function modelOverallLeaderboardRows(roleRows: ModelRoleLeaderboardRow[]): ModelOverallLeaderboardRow[] {
+  return aggregateOverallRows(roleRows, true);
+}
+
+/** Combined Overall leaderboard comparing self-hosted and remote-hosted models side by side
+ *  across all three roles using size-free scoring (no parameter-count or static catalog probe
+ *  requirement). Tool calling is still gated by the run's verified probe. */
+export function modelCombinedOverallLeaderboardRows(
+  models: ModelSummary[],
+  evaluations: EvaluationSummary[] = [],
+): ModelOverallLeaderboardRow[] {
+  return aggregateOverallRows(buildSizeFreeRoleRows(models, evaluations, 'all'), false);
+}
+
+/** Remote-hosted Overall leaderboard (Gemini, Anthropic, OpenAI): size-free scoring normalized
+ *  within the remote-hosted population across all three roles. */
+export function modelRemoteHostedLeaderboardRows(
+  models: ModelSummary[],
+  evaluations: EvaluationSummary[] = [],
+): ModelOverallLeaderboardRow[] {
+  return aggregateOverallRows(buildSizeFreeRoleRows(models, evaluations, 'remote-hosted'), false);
 }

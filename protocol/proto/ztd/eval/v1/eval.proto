@@ -108,6 +108,9 @@ enum EvaluationCallClassification {
   EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN = 1;
   EVALUATION_CALL_CLASSIFICATION_POST_TURN = 2;
   EVALUATION_CALL_CLASSIFICATION_GRADER = 3;
+  // A scored-chain attempt the provider asked to retry later and a later
+  // attempt of the same call superseded. It stays evidence; metrics skip it.
+  EVALUATION_CALL_CLASSIFICATION_RETRIED = 4;
 }
 
 enum EvaluationPolicyDecisionOutcome {
@@ -399,6 +402,9 @@ message EvaluationConsensusIdentity {
   // binding_digest is the SHA-256 of the complete governing binding,
   // including the fields not projected above. Empty when unbound.
   string binding_digest = 9;
+  // model_provider_class is the hosted provider class serving model_tag;
+  // empty when the vote model is served by a local provider.
+  string model_provider_class = 10;
 }
 
 message EvaluationAttempt {
@@ -832,6 +838,10 @@ enum ModelManifestVerificationStatus {
   MODEL_MANIFEST_VERIFICATION_STATUS_VERIFIED = 2;
   MODEL_MANIFEST_VERIFICATION_STATUS_FAILED = 3;
   MODEL_MANIFEST_VERIFICATION_STATUS_UNAVAILABLE = 4;
+  // A hosted provider served the attempt. There are no weights or manifest to
+  // hash; the window carries the Inference Operator's signed hosted model
+  // record instead (ModelProvenanceAttestationWindow.hosted).
+  MODEL_MANIFEST_VERIFICATION_STATUS_HOSTED_PROVIDER_REPORTED = 5;
 }
 
 // ModelProvenanceAttestationWindow binds cryptographic model-weight evidence
@@ -851,6 +861,25 @@ message ModelProvenanceAttestationWindow {
   int64 attested_at_unix_ms = 12;
   bool digest_match = 13;
   string attestation_digest = 14;
+  // Set only under MODEL_MANIFEST_VERIFICATION_STATUS_HOSTED_PROVIDER_REPORTED.
+  HostedModelAttestation hosted = 15;
+}
+
+// HostedModelAttestation is the hosted provider model record an Inference
+// Operator signed into one attempt's InferenceResult. provenance_operator_id of
+// its window names that Inference Operator.
+message HostedModelAttestation {
+  string provider_class = 1;
+  string provider_origin = 2;
+  string requested_model = 3;
+  string provider_model_version = 4;
+  // Model the provider reported serving.
+  string served_model = 5;
+  string provider_response_id = 6;
+  string raw_response_digest = 7;
+  // Inference transaction whose signed receipt binds result_digest.
+  string inference_transaction_id = 8;
+  string result_digest = 9;
 }
 
 // ModelProvenanceObservationPhase identifies one lifecycle transition for a
@@ -1057,6 +1086,24 @@ message GraderModelCallRecord {
   string transaction_id = 8;
   ztd.operator.v1.InferenceResult inference_result = 9;
   ztd.operator.v1.EventReceipt receipt = 10;
+  // retry_count is the judge call's retry ordinal: 0 for the first attempt,
+  // n for the nth retry after the provider asked to retry later. It equals
+  // the signed inference_result's retry_count.
+  uint32 retry_count = 11;
+  // superseded_attempts are the judge call's earlier attempts this one
+  // retries, in order (retry_count 0..n-1).
+  repeated JudgeSupersededAttempt superseded_attempts = 12;
+}
+
+// JudgeSupersededAttempt is one judge provider attempt a retry superseded. The
+// provider asked to retry later, so the attempt did not complete and the
+// Inference Operator signed a FAILED receipt with
+// RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT. It carries no result and no verdict.
+message JudgeSupersededAttempt {
+  string provider_attempt_id = 1;
+  string transaction_id = 2;
+  uint32 retry_count = 3;
+  ztd.operator.v1.EventReceipt receipt = 4;
 }
 
 message PolicyDecisionRecord {

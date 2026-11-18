@@ -103,6 +103,7 @@ func (r *governedCapabilityProbeRunner) baseProbeRequest(variant *evalv1.ModelVa
 		Role:                    models.InferenceModelRolePrimary,
 		Model:                   variant.GetServedModelTag(),
 		ModelDigest:             variant.GetModelDigest(),
+		ProviderClass:           models.HostedDispatchProviderClass(variant.GetProviderClass()),
 		TargetOperatorSessionID: r.sessionID,
 	}
 }

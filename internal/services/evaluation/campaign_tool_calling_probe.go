@@ -46,7 +46,7 @@ func (e *CampaignAgentExecutor) ProbeToolCalling(ctx context.Context, req Assign
 	if err != nil {
 		return nil, err
 	}
-	if err := e.releaseAllExcept(ctx, req, "tool-calling probe", run.modelTags()); err != nil {
+	if err := e.releaseAllExcept(ctx, req, "tool-calling probe", run.modelVariants()); err != nil {
 		return nil, toolCallingProbeError("residency", err)
 	}
 	role, err := tribunal.InferenceRoleForTier(run.designated)
@@ -56,6 +56,7 @@ func (e *CampaignAgentExecutor) ProbeToolCalling(ctx context.Context, req Assign
 	probe := InferenceProbeRequest{
 		ProviderAttemptID: e.newID(toolCallingProbeScenario), Role: role,
 		Model: run.variant.GetServedModelTag(), ModelDigest: run.variant.GetModelDigest(),
+		ProviderClass:           models.HostedDispatchProviderClass(run.variant.GetProviderClass()),
 		TargetOperatorSessionID: req.Binding.Topology.Inference.OperatorSessionID,
 		CampaignID:              req.Assignment.GetCampaignId(), ModelRegistryDigest: req.Binding.ModelRegistryDigest,
 		ModelRegistry: req.Binding.ModelRegistry,
@@ -260,6 +261,7 @@ func verifyToolCallingProbeEvidence(runID, registryDigest string, variant *evalv
 		request.GetAssignmentId() == "" || request.GetEvaluationAttemptId() == "" || request.GetEvaluationAttemptId() != request.GetProviderAttemptId() ||
 		request.GetCampaignId() == "" || request.GetModelRegistryDigest() != registryDigest ||
 		request.GetModel() != variant.GetServedModelTag() || request.GetModelDigest() != variant.GetModelDigest() ||
+		request.GetProviderClass() != models.HostedDispatchProviderClass(variant.GetProviderClass()) ||
 		request.GetTargetOperatorSessionId() != evidence.GetInferenceSessionId() || response.GetTransactionId() == "" || response.GetTransactionId() != receipt.GetTransactionId() || receipt.GetActionType() != string(constants.ActionTypeInference) {
 		return fmt.Errorf("evaluation: tool probe identity: %w", constants.ErrEvidenceScopeMismatch)
 	}
@@ -270,7 +272,8 @@ func verifyToolCallingProbeEvidence(runID, registryDigest string, variant *evalv
 	configureToolCallingProbe(&probe)
 	expected, err := BuildInferenceProbeDispatchRequest(InferenceProbeRequest{
 		ProviderAttemptID: request.GetProviderAttemptId(), Model: request.GetModel(), ModelDigest: request.GetModelDigest(),
-		Role: models.InferenceModelRoleFromProto(request.GetRole()), TargetOperatorSessionID: request.GetTargetOperatorSessionId(),
+		ProviderClass: request.GetProviderClass(),
+		Role:          models.InferenceModelRoleFromProto(request.GetRole()), TargetOperatorSessionID: request.GetTargetOperatorSessionId(),
 		Prompt: probe.Prompt, Tools: probe.Tools, ToolChoice: probe.ToolChoice,
 		CampaignID: request.GetCampaignId(), ModelRegistryDigest: registryDigest, ModelRegistry: request.GetModelRegistry(),
 	})

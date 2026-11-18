@@ -20,9 +20,16 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/services/fs"
 )
 
 var errFactory = fmt.Errorf("factory boom")
+
+func panickingAPIClientFactory() authcmd.APIClientFactory {
+	return func(fs.RuntimeFileService, *config.Config) (authcmd.APIClient, error) {
+		panic("downstream API client factory must not be called when fileSvcFactory fails")
+	}
+}
 
 func TestMcpStdioCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	_, cfg := cmdtest.NewCmdTestEnv(t)
@@ -42,6 +49,24 @@ func TestAgentRunCmdWithConfig_FileSvcFactoryError(t *testing.T) {
 	shared.ConfigLoad = func(string) (*config.Config, error) { return cfg, nil }
 	t.Cleanup(func() { shared.ConfigLoad = origConfigLoad })
 	cmd := agentRunCmdWithConfig(cmdtest.FailingFileSvcFactory(errFactory), authcmd.PanickingEnrollerFactory())
+	err := cmd.RunE(cmd, []string{"claude"})
+	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, errFactory)
+}
+
+func TestAgentVerifyCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+	_, cfg := cmdtest.NewCmdTestEnv(t)
+	cmd := agentVerifyCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), panickingAPIClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
+	err := cmd.RunE(cmd, []string{"claude"})
+	require.Error(t, err)
+	require.ErrorIs(t, err, constants.ErrFileServiceInit)
+	assert.ErrorIs(t, err, errFactory)
+}
+
+func TestAgentShowCmdWithConfig_FileSvcFactoryError(t *testing.T) {
+	_, cfg := cmdtest.NewCmdTestEnv(t)
+	cmd := agentShowCmdWithConfig(cmdtest.ConfigLoaderFor(cfg), panickingAPIClientFactory(), cmdtest.FailingFileSvcFactory(errFactory))
 	err := cmd.RunE(cmd, []string{"claude"})
 	require.Error(t, err)
 	require.ErrorIs(t, err, constants.ErrFileServiceInit)

@@ -42,6 +42,10 @@ type ModelInventoryFreeze struct {
 type ModelInventoryOptions struct {
 	RunCapabilityProbes   bool
 	CapabilityProbeRunner GovernedCapabilityProbeRunner
+	// HostedVariants are the hosted models the registry already holds. A
+	// freeze keeps each one, re-resolved against the live inventory so it
+	// binds the provider's current model version.
+	HostedVariants []*evalv1.ModelVariant
 }
 
 // GovernedCapabilityProbeRunner executes bounded non-scored capability probes
@@ -50,9 +54,13 @@ type GovernedCapabilityProbeRunner interface {
 	RunCapabilityProbes(context.Context, *evalv1.ModelVariant) ([]*evalv1.ModelCapabilityObservation, error)
 }
 
-// FreezeModelInventoryFromProvider discovers the complete provider inventory
-// through the governed Inference Operator session, optionally runs bounded
-// capability probes, and freezes the eval model registry digest for campaignID.
+// FreezeModelInventoryFromProvider discovers the complete local provider
+// inventory through the governed Inference Operator session, optionally runs
+// bounded capability probes, and freezes the eval model registry digest for
+// campaignID. A hosted provider's inventory is the vendor's whole catalog, so
+// hosted models are never frozen in bulk: each joins the registry by name
+// (HostedModelVariant), and a freeze keeps opts.HostedVariants, failing when
+// the provider no longer lists one.
 func FreezeModelInventoryFromProvider(
 	ctx context.Context,
 	dispatcher OllamaModelCommandDispatcher,
@@ -63,9 +71,22 @@ func FreezeModelInventoryFromProvider(
 	if campaignID == "" {
 		return nil, fmt.Errorf("evaluation: freeze model inventory: %w", constants.ErrMissingRequiredField)
 	}
-	entries, err := ListOllamaProviderInventory(ctx, dispatcher, maintenance)
+	listed, err := ListOllamaProviderInventory(ctx, dispatcher, maintenance, nil)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: freeze model inventory: %w", err)
+	}
+	entries := make([]inference.ProviderModelInventoryEntry, 0, len(listed))
+	for _, entry := range listed {
+		if !constants.IsHostedInferenceProvider(entry.ProviderClass) {
+			entries = append(entries, entry)
+		}
+	}
+	for _, hosted := range opts.HostedVariants {
+		entry, err := hostedInventoryEntry(listed, hosted.GetProviderClass(), hosted.GetServedModelTag())
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: freeze model inventory: %w", err)
+		}
+		entries = append(entries, entry)
 	}
 	variants, err := BuildModelVariantsFromProviderInventory(ctx, entries, opts)
 	if err != nil {
@@ -139,6 +160,38 @@ func modelVariantFromProviderEntry(entry inference.ProviderModelInventoryEntry) 
 		ArtifactSizeBytes:    entry.ArtifactSizeBytes,
 		ParameterCountSource: entry.ParameterCountSource,
 	}
+}
+
+// HostedModelVariant resolves one hosted model from a live provider inventory
+// into a registry variant bound to the hosted model identity digest the
+// Inference Operator reported for it. A non-empty expectedDigest must equal
+// that live identity: a caller's digest never overrides the provider's.
+func HostedModelVariant(entries []inference.ProviderModelInventoryEntry, providerClass, servedModelTag, expectedDigest string) (*evalv1.ModelVariant, error) {
+	entry, err := hostedInventoryEntry(entries, providerClass, servedModelTag)
+	if err != nil {
+		return nil, fmt.Errorf("evaluation: hosted model variant: %w", err)
+	}
+	if expectedDigest != "" && expectedDigest != entry.ModelDigest {
+		return nil, fmt.Errorf("evaluation: hosted model variant: %s model %q: %w", providerClass, servedModelTag, constants.ErrInferenceModelDigestMismatch)
+	}
+	return modelVariantFromProviderEntry(entry), nil
+}
+
+// hostedInventoryEntry finds one hosted model in a live provider inventory.
+func hostedInventoryEntry(entries []inference.ProviderModelInventoryEntry, providerClass, servedModelTag string) (inference.ProviderModelInventoryEntry, error) {
+	if !constants.IsHostedInferenceProvider(providerClass) {
+		return inference.ProviderModelInventoryEntry{}, fmt.Errorf("provider class %q: %w", providerClass, constants.ErrInferenceHostedNotAllowed)
+	}
+	for _, entry := range entries {
+		if entry.ProviderClass != providerClass || entry.ServedModelTag != servedModelTag {
+			continue
+		}
+		if entry.ModelDigest == "" {
+			return inference.ProviderModelInventoryEntry{}, fmt.Errorf("%s model %q: %w", providerClass, servedModelTag, constants.ErrMissingRequiredField)
+		}
+		return entry, nil
+	}
+	return inference.ProviderModelInventoryEntry{}, fmt.Errorf("%s model %q is not in the Inference Operator's inventory: %w", providerClass, servedModelTag, constants.ErrInferenceModelNotFound)
 }
 
 // MaterializeModelRegistry binds the discovered variants to one campaign registry digest.

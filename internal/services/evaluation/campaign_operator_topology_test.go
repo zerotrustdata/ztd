@@ -56,10 +56,13 @@ func TestResolveCampaignOperatorTopology(t *testing.T) {
 	both := topologyOperator("embedded", "embedded-1", constants.OperatorCapabilityData, constants.OperatorCapabilityInference)
 	inactive := topologyOperator("i1", "infer-1", constants.OperatorCapabilityInference)
 	inactive.Status = string(constants.OperatorStatusOffline)
+	geminiInference := topologyOperator("gemini", "gemini-1", constants.OperatorCapabilityInference)
+	geminiInference.RuntimeConfig.InferenceHostedProviders = []string{constants.InferenceProviderGemini}
 
 	tests := []struct {
 		name       string
 		operators  []*operatorv1.OperatorDocument
+		hosted     []string
 		wantShared bool
 		want       CampaignOperatorTopology
 		wantErr    error
@@ -90,6 +93,21 @@ func TestResolveCampaignOperatorTopology(t *testing.T) {
 			},
 		},
 		{
+			name:      "a Gemini and local formation runs inference on the Operator that serves gemini",
+			operators: []*operatorv1.OperatorDocument{both, geminiInference},
+			hosted:    []string{constants.InferenceProviderGemini},
+			want: CampaignOperatorTopology{
+				Inference: CampaignOperatorRuntime{OperatorID: "gemini", OperatorSessionID: "gemini-1"},
+				Data:      CampaignOperatorRuntime{OperatorID: "embedded", OperatorSessionID: "embedded-1"},
+			},
+		},
+		{
+			name:      "no inference operator serves the hosted classes",
+			operators: []*operatorv1.OperatorDocument{both, geminiInference},
+			hosted:    []string{constants.InferenceProviderGemini, constants.InferenceProviderAnthropic},
+			wantErr:   constants.ErrInferenceOperatorNotFound,
+		},
+		{
 			name:      "several data operators are ambiguous",
 			operators: []*operatorv1.OperatorDocument{inference, data, topologyOperator("d2", "data-2", constants.OperatorCapabilityData)},
 			wantErr:   constants.ErrDataOperatorAmbiguous,
@@ -117,7 +135,7 @@ func TestResolveCampaignOperatorTopology(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := ResolveCampaignOperatorTopology(test.operators, "")
+			got, err := ResolveCampaignOperatorTopology(test.operators, "", test.hosted)
 			if test.wantErr != nil {
 				require.ErrorIs(t, err, test.wantErr)
 				return
@@ -145,6 +163,7 @@ func TestResolveCampaignOperatorTopologyForDataOperatorFollowsStableIdentityAcro
 		[]*operatorv1.OperatorDocument{inference, oldSession, newSession, otherData, embedded},
 		"",
 		"data-stable",
+		nil,
 	)
 
 	require.NoError(t, err)
@@ -173,7 +192,7 @@ func TestResolveCampaignOperatorTopologyForDataOperatorFailsClosed(t *testing.T)
 		{name: "several active sessions are ambiguous", operators: []*operatorv1.OperatorDocument{inference, first, second}, wantErr: constants.ErrDataOperatorAmbiguous},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := ResolveCampaignOperatorTopologyForDataOperator(test.operators, "", "stable-id")
+			_, err := ResolveCampaignOperatorTopologyForDataOperator(test.operators, "", "stable-id", nil)
 			require.ErrorIs(t, err, test.wantErr)
 		})
 	}
@@ -185,7 +204,7 @@ func TestCampaignOperatorTopology_WithAnchorsBindsEachRuntime(t *testing.T) {
 		anchoredOperator(topologyOperator("i1", "infer-1", constants.OperatorCapabilityInference), inferenceSigner),
 		anchoredOperator(topologyOperator("d1", "data-1", constants.OperatorCapabilityData), dataSigner),
 	}
-	topology, err := ResolveCampaignOperatorTopology(operators, "")
+	topology, err := ResolveCampaignOperatorTopology(operators, "", nil)
 	require.NoError(t, err)
 
 	anchored, err := topology.WithAnchors(operators)
@@ -202,7 +221,7 @@ func TestCampaignOperatorTopology_SharedRuntimePinsOneKeyForBothRoles(t *testing
 	operators := []*operatorv1.OperatorDocument{
 		anchoredOperator(topologyOperator("embedded", "embedded-1", constants.OperatorCapabilityData, constants.OperatorCapabilityInference), signer),
 	}
-	topology, err := ResolveCampaignOperatorTopology(operators, "")
+	topology, err := ResolveCampaignOperatorTopology(operators, "", nil)
 	require.NoError(t, err)
 
 	anchored, err := topology.WithAnchors(operators)
@@ -222,7 +241,7 @@ func TestCampaignOperatorTopology_WithAnchorsFailsClosed(t *testing.T) {
 		anchoredOperator(topologyOperator("i1", "infer-1", constants.OperatorCapabilityInference), signer),
 		topologyOperator("d1", "data-1", constants.OperatorCapabilityData),
 	}
-	topology, err := ResolveCampaignOperatorTopology(unbound, "")
+	topology, err := ResolveCampaignOperatorTopology(unbound, "", nil)
 	require.NoError(t, err)
 
 	_, err = topology.WithAnchors(unbound)

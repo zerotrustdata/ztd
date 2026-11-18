@@ -33,6 +33,8 @@ import {
   defaultLeaderboardRelease,
   modelRoleLeaderboardRows,
   modelOverallLeaderboardRows,
+  modelCombinedOverallLeaderboardRows,
+  modelRemoteHostedLeaderboardRows,
   modelSuiteRows,
   restampStreamProgress,
   siblingRepetitions,
@@ -692,6 +694,45 @@ describe('modelOverallLeaderboardRows', () => {
     expect(overall(separateRuns, separateRuns.map((model, index) => ({
       ...run, dataset_id: model.dataset_id, run_seconds: (index + 1) * 10,
     })))[0]?.run_seconds).toBe(60);
+  });
+});
+
+describe('modelCombinedOverallLeaderboardRows and modelRemoteHostedLeaderboardRows', () => {
+  const roles: ModelRole[] = ['primary', 'assistant', 'lite'];
+
+  it('scores models side by side without parameter counts or catalog probes', () => {
+    const noThinking = 'granite3-3-2b';
+    const models: ModelSummary[] = roles.flatMap((role) => [
+      { ...rankedModel(noThinking, role, { passRate: 0.9, size: 32_000_000_000 }), parameter_count: undefined },
+      rankedModel('randomblock1-nemotron-nano-8b', role, { passRate: 0.8, size: 8_000_000_000 }),
+      {
+        ...rankedModel('gemini-3-6-flash', role, { passRate: 0.95 }),
+        backend_provider_class: 'gemini',
+        model_format: 'hosted',
+        parameter_count: undefined,
+      },
+    ]);
+
+    const combined = modelCombinedOverallLeaderboardRows(models);
+    expect(combined.map((row) => row.model.variant_id)).toEqual([
+      'gemini-3-6-flash',
+      noThinking,
+      'randomblock1-nemotron-nano-8b',
+    ]);
+    expect(combined.map((row) => row.rank)).toEqual([1, 2, 3]);
+    expect(combined[0]?.score).toBeCloseTo(100 * 0.95 ** 2);
+    expect(combined[1]?.score).toBeCloseTo(100 * 0.9 ** 2);
+    expect(combined[2]?.score).toBeCloseTo(100 * 0.8 ** 2);
+
+    // Self-hosted overall still excludes models lacking parameter_count or full catalog probes.
+    expect(modelOverallLeaderboardRows(modelRoleLeaderboardRows(models)).map((row) => row.model.variant_id)).toEqual([
+      'randomblock1-nemotron-nano-8b',
+    ]);
+
+    // Remote-hosted overall isolates hosted variants.
+    const remote = modelRemoteHostedLeaderboardRows(models);
+    expect(remote.map((row) => row.model.variant_id)).toEqual(['gemini-3-6-flash']);
+    expect(remote[0]?.rank).toBe(1);
   });
 });
 

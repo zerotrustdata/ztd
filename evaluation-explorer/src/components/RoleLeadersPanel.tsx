@@ -4,6 +4,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { formatParameterCount } from '../content/framework-catalog';
+import { formatProviderClassLabel, isHostedProviderClass } from '../content/provider';
 import { MODEL_ROLE_WIRE_ORDER, roleScopeFor } from '../content/roles';
 import {
   formatLatency,
@@ -17,10 +18,15 @@ import {
 import { formatCompact } from '../utils/format';
 import {
   LEADERBOARD_SCORE_FORMULA,
+  LEADERBOARD_SIZE_FREE_SCORE_FORMULA,
   LEADERBOARD_SECURITY_SCORING_DESCRIPTION,
   roleLabel,
+  hostedRoleLeaderboardRows,
   modelRoleLeaderboardRows,
   modelOverallLeaderboardRows,
+  modelCombinedOverallLeaderboardRows,
+  modelRemoteHostedLeaderboardRows,
+  type HostedLeaderboardRow,
   type ModelLeaderboardRow,
   type ModelOverallLeaderboardRow,
   type ModelRoleLeaderboardRow,
@@ -28,7 +34,7 @@ import {
 import type { EvaluationSummary, ModelRole, ModelSummary } from '../contract/types';
 import { ModelScoreCoverage } from './evidence';
 import { FormationTable } from './FormationTable';
-import { formationLeaderboardRows } from '../views/formations';
+import { formationLeaderboardRows, hostedFormationRows } from '../views/formations';
 import { PREF, useUserPref } from '../state/dataset';
 
 export type LeaderboardSortField =
@@ -121,7 +127,7 @@ const LEADERBOARD_COLUMNS: LeaderboardColumnDef[] = [
 ];
 
 const OVERALL_COLUMN_TITLES: Partial<Record<LeaderboardSortField, string>> = {
-  score: `Overall score = (Primary score + Assistant score + Lite score) / 3; all qualified runs are pooled within each role before scoring. ${LEADERBOARD_SECURITY_SCORING_DESCRIPTION}`,
+  score: `Self-hosted score = (Primary score + Assistant score + Lite score) / 3; all qualified runs are pooled within each role before scoring. ${LEADERBOARD_SCORE_FORMULA}. ${LEADERBOARD_SECURITY_SCORING_DESCRIPTION}`,
   accuracy: 'Mean accuracy across Primary, Assistant, and Lite, with equal weight per role',
   security: 'Mean security score across roles with applicable security scenarios',
   speed: 'Mean of role latency aggregates (assignment-count-weighted run p50s); faster is better',
@@ -129,6 +135,31 @@ const OVERALL_COLUMN_TITLES: Partial<Record<LeaderboardSortField, string>> = {
   throughput: 'Mean of role throughput aggregates (assignment-count-weighted run p50s); unavailable if any contributor lacks throughput',
   run_time: 'Total run time of distinct contributing datasets; shared runs count once',
 };
+
+const SIZE_FREE_SCORE_TITLE =
+  `Overall score = (Primary score + Assistant score + Lite score) / 3; all qualified runs are pooled within each role before scoring. ${LEADERBOARD_SIZE_FREE_SCORE_FORMULA} (no parameter-size penalty). ${LEADERBOARD_SECURITY_SCORING_DESCRIPTION}`;
+
+export type LeaderboardCategory = 'all' | 'self-hosted' | 'remote-hosted' | ModelRole | 'formations';
+
+const VALID_CATEGORIES = new Set<LeaderboardCategory>([
+  'all',
+  'self-hosted',
+  'remote-hosted',
+  'primary',
+  'assistant',
+  'lite',
+  'formations',
+]);
+
+/** A ranked role or overall row, or an unranked hosted row shown beside them. */
+type LeaderboardTableRow = ModelLeaderboardRow | HostedLeaderboardRow;
+
+const HOSTED_UNRANKED_TITLE =
+  'Not ranked: hosted providers do not disclose parameter counts, so the size factor and score cannot be computed. Measurements are shown for comparison.';
+
+function isRankedRow(row: LeaderboardTableRow): row is ModelLeaderboardRow {
+  return row.rank !== undefined;
+}
 
 function compareNullableNumber(
   a: number | undefined,
@@ -142,26 +173,51 @@ function compareNullableNumber(
 }
 
 function compareLeaderboardRows(
-  a: ModelLeaderboardRow,
-  b: ModelLeaderboardRow,
+  a: LeaderboardTableRow,
+  b: LeaderboardTableRow,
   field: LeaderboardSortField,
   direction: 'asc' | 'desc',
 ): number {
+  if (field === 'rank') {
+    const aRanked = isRankedRow(a);
+    const bRanked = isRankedRow(b);
+    if (!aRanked || !bRanked) {
+      if (aRanked !== bRanked) return aRanked ? -1 : 1;
+      return b.pass_rate - a.pass_rate || a.model.display_name.localeCompare(b.model.display_name);
+    }
+    const diff = a.rank - b.rank;
+    return direction === 'asc' ? diff : -diff;
+  }
+  if (field === 'score') {
+    const aRanked = isRankedRow(a);
+    const bRanked = isRankedRow(b);
+    if (!aRanked || !bRanked) {
+      if (aRanked !== bRanked) return aRanked ? -1 : 1;
+      return b.pass_rate - a.pass_rate || a.model.display_name.localeCompare(b.model.display_name);
+    }
+    const diff = b.score - a.score || a.rank - b.rank;
+    const result = direction === 'desc' ? diff : -diff;
+    return result !== 0 ? result : a.model.display_name.localeCompare(b.model.display_name);
+  }
+  if (field === 'size') {
+    if (a.parameter_count === undefined && b.parameter_count === undefined) {
+      return (b.score ?? b.pass_rate) - (a.score ?? a.pass_rate) ||
+        a.model.display_name.localeCompare(b.model.display_name);
+    }
+    if (a.parameter_count === undefined) return 1;
+    if (b.parameter_count === undefined) return -1;
+    const diff = a.parameter_count - b.parameter_count;
+    const result = direction === 'desc' ? diff : -diff;
+    return result !== 0 ? result : a.model.display_name.localeCompare(b.model.display_name);
+  }
   let diff = 0;
   switch (field) {
-    case 'rank':
-      diff = a.rank - b.rank;
-      return direction === 'asc' ? diff : -diff;
     case 'model':
       diff = a.model.display_name.localeCompare(b.model.display_name);
       return direction === 'asc' ? diff : -diff;
     case 'role':
       diff = a.model.role.localeCompare(b.model.role);
       return direction === 'asc' ? diff : -diff;
-    case 'score':
-      // Higher score is better
-      diff = b.score - a.score || a.rank - b.rank;
-      break;
     case 'accuracy':
       // Higher pass rate is better
       diff = b.pass_rate - a.pass_rate;
@@ -177,10 +233,6 @@ function compareLeaderboardRows(
     case 'tokens':
       // Fewer tokens is better: smaller the better
       diff = a.output_tokens - b.output_tokens;
-      break;
-    case 'size':
-      // Smaller parameter count is better: smaller the better
-      diff = a.parameter_count - b.parameter_count;
       break;
     case 'throughput':
       // Higher throughput is better
@@ -229,19 +281,32 @@ export function RoleLeadersPanel({
   stats?: { label: string; value: number }[];
 }) {
   // Only an explicit click is stored; with no stored choice the default is derived from the release's results.
-  const [storedCategory, setStoredCategory] = useUserPref<ModelRole | 'all' | 'formations' | null>(PREF.leaderboardCategory, null);
+  const [storedCategory, setStoredCategory] = useUserPref<LeaderboardCategory | null>(PREF.leaderboardCategory, null);
   const [sortField, setSortField] = useState<LeaderboardSortField>('score');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   const formationRows = useMemo(() => formationLeaderboardRows(evaluations, maxArtifactGiB), [evaluations, maxArtifactGiB]);
-  const formationSuites = Array.from(new Set(formationRows.map((row) => row.suite_id)));
+  const hostedFormations = useMemo(() => {
+    const hostedMembers = new Set(models.filter((model) => isHostedProviderClass(model.backend_provider_class))
+      .map((model) => JSON.stringify([model.dataset_id, model.variant_id])));
+    return hostedFormationRows(evaluations, (datasetId, variantId) => hostedMembers.has(JSON.stringify([datasetId, variantId])), maxArtifactGiB);
+  }, [models, evaluations, maxArtifactGiB]);
+  const formationSuites = Array.from(new Set([...formationRows, ...hostedFormations].map((row) => row.suite_id)));
   const qualifiedRows = useMemo(
     () => modelRoleLeaderboardRows(models, 'all', evaluations),
     [models, evaluations],
   );
-  const allRows = useMemo(
+  const selfHostedRows = useMemo(
     () => modelOverallLeaderboardRows(qualifiedRows),
     [qualifiedRows],
+  );
+  const overallRows = useMemo(
+    () => modelCombinedOverallLeaderboardRows(models, evaluations),
+    [models, evaluations],
+  );
+  const remoteHostedRows = useMemo(
+    () => modelRemoteHostedLeaderboardRows(models, evaluations),
+    [models, evaluations],
   );
   const rowsByRole = useMemo(() => {
     const forRole = (role: ModelRole) => qualifiedRows
@@ -249,12 +314,31 @@ export function RoleLeadersPanel({
       .map((row, index) => ({ ...row, rank: index + 1 }));
     return { primary: forRole('primary'), assistant: forRole('assistant'), lite: forRole('lite') };
   }, [qualifiedRows]);
-  const evaluatedRoles = MODEL_ROLE_WIRE_ORDER.filter((role) => rowsByRole[role].length > 0);
-  const category = storedCategory ?? (qualifiedRows.length === 0 && formationRows.length > 0 ? 'formations' : 'all');
+  const hostedRows = useMemo(() => hostedRoleLeaderboardRows(models, 'all', evaluations), [models, evaluations]);
+  const hostedByRole = useMemo(() => {
+    const forRole = (role: ModelRole) => hostedRows.filter((row) => row.model.role === role);
+    return { primary: forRole('primary'), assistant: forRole('assistant'), lite: forRole('lite') };
+  }, [hostedRows]);
+  const evaluatedRoles = MODEL_ROLE_WIRE_ORDER.filter(
+    (role) => rowsByRole[role].length > 0 || hostedByRole[role].length > 0,
+  );
+  const hasAnyModelRows = overallRows.length > 0 || qualifiedRows.length > 0 || hostedRows.length > 0;
+  const resolvedStoredCategory = storedCategory && VALID_CATEGORIES.has(storedCategory) ? storedCategory : null;
+  const category: LeaderboardCategory = resolvedStoredCategory ?? (!hasAnyModelRows && formationRows.length > 0 ? 'formations' : 'all');
+  const isOverallScope = category === 'all' || category === 'self-hosted' || category === 'remote-hosted';
   // Declared union: an overall row is structurally a role row, so inference would collapse it.
-  const categoryRows: Array<ModelRoleLeaderboardRow | ModelOverallLeaderboardRow> =
-    category === 'all' ? allRows : category === 'formations' ? [] : rowsByRole[category];
-  const columns = LEADERBOARD_COLUMNS.filter((column) => category !== 'all' || column.field !== 'role');
+  const categoryRows: Array<ModelRoleLeaderboardRow | ModelOverallLeaderboardRow | HostedLeaderboardRow> =
+    category === 'all'
+      ? overallRows
+      : category === 'self-hosted'
+        ? selfHostedRows
+        : category === 'remote-hosted'
+          ? remoteHostedRows
+          : category === 'formations'
+            ? []
+            : [...rowsByRole[category], ...hostedByRole[category]];
+  const categoryHostedCount = isOverallScope || category === 'formations' ? 0 : hostedByRole[category].length;
+  const columns = LEADERBOARD_COLUMNS.filter((column) => !isOverallScope || column.field !== 'role');
 
   const sortedRows = useMemo(() => {
     return [...categoryRows].sort((a, b) =>
@@ -272,18 +356,32 @@ export function RoleLeadersPanel({
     }
   };
 
-  const handleCategoryChange = (next: ModelRole | 'all' | 'formations') => {
+  const handleCategoryChange = (next: LeaderboardCategory) => {
     setStoredCategory(next);
     setSortField('score');
     setSortDirection('desc');
   };
 
   const counts = {
-    all: allRows.length,
-    primary: rowsByRole.primary.length,
-    assistant: rowsByRole.assistant.length,
-    lite: rowsByRole.lite.length,
+    all: overallRows.length,
+    selfHosted: selfHostedRows.length,
+    remoteHosted: remoteHostedRows.length,
+    primary: rowsByRole.primary.length + hostedByRole.primary.length,
+    assistant: rowsByRole.assistant.length + hostedByRole.assistant.length,
+    lite: rowsByRole.lite.length + hostedByRole.lite.length,
   };
+  const rankedCount = sortedRows.filter(isRankedRow).length;
+
+  const showingSubject =
+    category === 'formations'
+      ? 'formations'
+      : category === 'all'
+        ? 'models overall'
+        : category === 'self-hosted'
+          ? 'self-hosted models'
+          : category === 'remote-hosted'
+            ? 'remote-hosted models'
+            : `${roleLabel(category)} leaders`;
 
   return (
     <section className="evidence-panel role-leaders-panel" aria-label="Leaderboard">
@@ -322,6 +420,24 @@ export function RoleLeadersPanel({
               </button>
               <button
                 type="button"
+                className={`leaderboard-category-chip${category === 'self-hosted' ? ' active' : ''}`}
+                onClick={() => handleCategoryChange('self-hosted')}
+                aria-pressed={category === 'self-hosted'}
+              >
+                <span>Self-hosted</span>{' '}
+                <span className="leaderboard-count-badge">{counts.selfHosted}</span>
+              </button>
+              <button
+                type="button"
+                className={`leaderboard-category-chip${category === 'remote-hosted' ? ' active' : ''}`}
+                onClick={() => handleCategoryChange('remote-hosted')}
+                aria-pressed={category === 'remote-hosted'}
+              >
+                <span>Remote-hosted</span>{' '}
+                <span className="leaderboard-count-badge">{counts.remoteHosted}</span>
+              </button>
+              <button
+                type="button"
                 className={`leaderboard-category-chip${category === 'primary' ? ' active' : ''}`}
                 onClick={() => handleCategoryChange('primary')}
                 aria-pressed={category === 'primary'}
@@ -349,21 +465,27 @@ export function RoleLeadersPanel({
               </button>
               <button type="button" className={`leaderboard-category-chip${category === 'formations' ? ' active' : ''}`}
                 onClick={() => handleCategoryChange('formations')} aria-pressed={category === 'formations'}>
-                <span>Formations</span>{' '}<span className="leaderboard-count-badge">{formationRows.length}</span>
+                <span>Formations</span>{' '}<span className="leaderboard-count-badge">{formationRows.length + hostedFormations.length}</span>
               </button>
             </div>
             <span className="leaderboard-meta">
-              Showing {category === 'formations' ? formationRows.length : sortedRows.length} {category === 'formations' ? 'formations' : category === 'all' ? 'models overall' : `${roleLabel(category)} leaders`}
+              Showing {category === 'formations' ? formationRows.length : rankedCount} {showingSubject}
+              {(category === 'formations' ? hostedFormations.length : categoryHostedCount) > 0
+                ? ` · ${category === 'formations' ? hostedFormations.length : categoryHostedCount} hosted unranked`
+                : null}
             </span>
           </div>
 
           {category === 'formations' ? (
             <>
-              <p className="panel-note">Each formation is scored as a whole and ranked within its suite. Completed, verified runs contribute in proportion to their judged assignments. Missing security earns zero credit.</p>
+              <p className="panel-note">Each formation is scored as a whole and ranked within its suite. Completed, verified runs contribute in proportion to their judged assignments. Missing security earns zero credit. A formation with a hosted member is listed unranked: hosted providers do not disclose parameter counts, so its size factor and score cannot be computed.</p>
               {formationSuites.length === 0 ? <p className="panel-empty">No fully evaluated, verified formations yet.</p> : formationSuites.map((suite) => (
                 <section key={suite} aria-label={`Formation suite ${suite}`}>
                   <h3>{suite}</h3>
-                  <FormationTable formations={formationRows.filter((row) => row.suite_id === suite)} leaderboard />
+                  <FormationTable formations={[
+                    ...formationRows.filter((row) => row.suite_id === suite),
+                    ...hostedFormations.filter((row) => row.suite_id === suite),
+                  ]} leaderboard />
                 </section>
               ))}
             </>
@@ -371,13 +493,31 @@ export function RoleLeadersPanel({
             <table className="lab-table">
               {category === 'all' ? (
                 <caption className="leaderboard-caption">
-                  Overall score averages Primary, Assistant, and Lite equally. All qualified runs contribute to one row per model. Models must qualify in all three roles.
+                  Side-by-side comparison of self-hosted and remote-hosted models across Primary, Assistant, and Lite using quality and efficiency (no parameter-size penalty or static catalog probe requirement). Models must qualify in all three roles with measured latency and tokens.
+                </caption>
+              ) : category === 'self-hosted' ? (
+                <caption className="leaderboard-caption">
+                  Self-hosted models only: averages Primary, Assistant, and Lite scores including the total-parameter size factor. Models must qualify in all three roles and pass all five catalog capability probes.
+                </caption>
+              ) : category === 'remote-hosted' ? (
+                <caption className="leaderboard-caption">
+                  Remote-hosted models only (Gemini, Anthropic, OpenAI): averages Primary, Assistant, and Lite scores without a parameter-size penalty, normalized within remote-hosted models. Models must qualify in all three roles with measured latency and tokens.
+                </caption>
+              ) : categoryHostedCount > 0 ? (
+                <caption className="leaderboard-caption">
+                  Hosted models are listed unranked in role tabs: their providers do not disclose parameter counts, so the role size factor cannot be computed. They do not change ranked role scores; compare them directly with self-hosted models in Overall.
                 </caption>
               ) : null}
               <thead>
                 <tr>
                   {columns.map((col) => {
                     const isSorted = sortField === col.field;
+                    const headerTitle =
+                      (category === 'all' || category === 'remote-hosted') && col.field === 'score'
+                        ? SIZE_FREE_SCORE_TITLE
+                        : isOverallScope
+                          ? (OVERALL_COLUMN_TITLES[col.field] ?? col.title)
+                          : col.title;
                     return (
                       <th
                         key={col.field}
@@ -390,7 +530,7 @@ export function RoleLeadersPanel({
                               : 'descending'
                             : 'none'
                         }
-                        title={category === 'all' ? OVERALL_COLUMN_TITLES[col.field] ?? col.title : col.title}
+                        title={headerTitle}
                       >
                         <button
                           type="button"
@@ -413,8 +553,12 @@ export function RoleLeadersPanel({
                   <tr className="role-leader-empty">
                     <td colSpan={columns.length}>
                       {category === 'all'
-                        ? qualifiedRows.length === 0 ? 'No fully evaluated, verified models across datasets.' : 'No models have qualified results in all three roles yet.'
-                        : `No fully evaluated, verified ${roleLabel(category)} models yet.`}
+                        ? !hasAnyModelRows ? 'No fully evaluated, verified models across datasets.' : 'No models have qualified results in all three roles yet.'
+                        : category === 'self-hosted'
+                          ? qualifiedRows.length === 0 ? 'No fully evaluated, verified self-hosted models across datasets.' : 'No self-hosted models have qualified results in all three roles yet.'
+                          : category === 'remote-hosted'
+                            ? hostedRows.length === 0 ? 'No fully evaluated, verified remote-hosted models across datasets.' : 'No remote-hosted models have qualified results in all three roles yet.'
+                            : `No fully evaluated, verified ${roleLabel(category)} models yet.`}
                     </td>
                   </tr>
                 ) : (
@@ -423,31 +567,46 @@ export function RoleLeadersPanel({
                     const scoreTitle = 'role_scores' in row
                       ? MODEL_ROLE_WIRE_ORDER.map((role) => `${roleLabel(role)}: ${formatNumber(row.role_scores[role], 1)}`).join(' · ')
                       : undefined;
-                    const displayRank =
-                      sortField === 'rank' || sortField === 'model' || sortField === 'role'
+                    // Positional ranks count ranked rows only; unranked hosted rows take no position.
+                    const rankedBefore = sortedRows.slice(0, index).filter(isRankedRow).length;
+                    const displayRank = !isRankedRow(row)
+                      ? undefined
+                      : sortField === 'rank' || sortField === 'model' || sortField === 'role'
                         ? row.rank
                         : sortDirection === 'desc'
-                          ? index + 1
-                          : sortedRows.length - index;
+                          ? rankedBefore + 1
+                          : rankedCount - rankedBefore;
                     return (
-                      <tr key={`${row.model.dataset_id}:${row.model.variant_id}:${row.model.model_digest ?? ''}:${row.model.role}`}>
+                      <tr
+                        key={`${row.model.dataset_id}:${row.model.variant_id}:${row.model.model_digest ?? ''}:${row.model.role}`}
+                        className={displayRank === undefined ? 'leaderboard-row-unranked' : undefined}
+                      >
                         <td className="leaderboard-rank-cell">
-                          <RankBadge rank={displayRank} />
+                          {displayRank !== undefined ? (
+                            <RankBadge rank={displayRank} />
+                          ) : (
+                            <span className="leaderboard-rank rank-unranked" title={HOSTED_UNRANKED_TITLE} aria-label="Not ranked">—</span>
+                          )}
                         </td>
                         <td>
-                          <Link to={category === 'all' ? modelHref : `${modelHref}?role=${row.model.role}`}>
+                          <Link to={isOverallScope ? modelHref : `${modelHref}?role=${row.model.role}`}>
                             {row.model.display_name}
                           </Link>
                           <div className="model-identity-sub" title="All qualified run assignments contribute; repetitions add observations, not total-time penalties. Frozen versions remain available in run details.">
                             {new Set(row.sources.map((source) => source.dataset_id)).size} runs · {formatNumber(row.sources.reduce((sum, source) => sum + (source.pass_rate?.denominator ?? 0), 0))} judged assignments
                           </div>
+                          {row.model.backend_provider_class ? (
+                            <div className="model-identity-sub">
+                              <span className="model-provider-tag">{formatProviderClassLabel(row.model.backend_provider_class)}</span>
+                            </div>
+                          ) : null}
                           {row.model.model_digest ? <div className="model-identity-sub"><code title={`Frozen model digest: ${row.model.model_digest}`}>{row.model.model_digest.slice(0, 12)}</code></div> : null}
                         </td>
-                        {category !== 'all' ? (
+                        {!isOverallScope ? (
                           <td><RoleBadge role={row.model.role} /></td>
                         ) : null}
-                        <td className="role-leader-score" title={scoreTitle}>
-                          {formatNumber(row.score, 1)}
+                        <td className="role-leader-score" title={row.score !== undefined ? scoreTitle : HOSTED_UNRANKED_TITLE}>
+                          {row.score !== undefined ? formatNumber(row.score, 1) : <span className="unavailable-value">Not ranked</span>}
                         </td>
                         <td className="role-leader-accuracy">{formatPercent(row.pass_rate, 1)}<ModelScoreCoverage models={row.sources} /></td>
                         <td>
@@ -471,7 +630,13 @@ export function RoleLeadersPanel({
                           {formatTokens(row.output_tokens)}
                         </td>
                         <td className="role-leader-size">
-                          {formatParameterCount(row.parameter_count)}
+                          {row.parameter_count !== undefined ? (
+                            formatParameterCount(row.parameter_count)
+                          ) : isHostedProviderClass(row.model.backend_provider_class) ? (
+                            <span className="unavailable-value" title="The hosted provider does not disclose a parameter count.">Undisclosed</span>
+                          ) : (
+                            <UnavailableValue />
+                          )}
                         </td>
                         <td>
                           {row.throughput_p50 !== undefined ? (

@@ -23,6 +23,14 @@ import { TaskExpectationSection, TaskPromptSection, TaskProvidedSection, TaskRol
 import { UnifiedGradeBadges } from '../components/UnifiedGradeBadges';
 import { DetailLayout, EvidenceChain, NON_VERDICT_NOTE, PageHero, PanelSection, TonePill } from '../components/evidence';
 import { SCENARIO_CATEGORY_COPY, SCENARIO_TASK_BY_ID } from '../content/scenario-task';
+import {
+  HOSTED_NO_TELEMETRY_LABEL,
+  formatProviderClassLabel,
+  formatTelemetryUnavailableReason,
+  isHostedProviderClass,
+  isLocalProviderClass,
+  resolveVariantProviderClass,
+} from '../content/provider';
 import { useActiveDatasetId, useSelectedRelease } from '../state/dataset';
 import { recordKey, useStoreState } from '../state/store';
 import { useRunAssignments } from '../state/use-run-assignments';
@@ -380,14 +388,18 @@ function measureGroups(assignment: AssignmentResult): Array<{ title: string; mea
     .filter((group) => group.measures.length > 0);
 }
 
-function MeasuredStrip({ groups }: { groups: ReturnType<typeof measureGroups> }) {
+function MeasuredStrip({ groups, isHostedCell }: { groups: ReturnType<typeof measureGroups>; isHostedCell: boolean }) {
   const measures = groups.flatMap((group) => group.measures);
-  if (measures.length === 0) return null;
+  const showHostedNoTelemetry = isHostedCell && !groups.some((group) => group.title === 'Memory & GPU');
+  if (measures.length === 0 && !showHostedNoTelemetry) return null;
   return (
     <div className="signal-metrics assignment-resources" aria-label="Measured values">
       {measures.map((measure) => (
         <StatTile key={measure.label} label={measure.label} value={measure.format(measure.value!)} />
       ))}
+      {showHostedNoTelemetry ? (
+        <StatTile label="Provider-boundary telemetry" value={HOSTED_NO_TELEMETRY_LABEL} />
+      ) : null}
     </div>
   );
 }
@@ -422,6 +434,7 @@ export function AssignmentDetailView() {
     assignmentId ? state.assignmentSources.get(recordKey(activeDatasetId, assignmentId)) : undefined,
   );
   const siblingAssignments = assignment ? siblingRepetitions(assignment, runAssignments.assignments) : [];
+  const models = useStoreState((state) => state.models);
   const connection = useStoreState((state) => state.connection);
   const { hash } = useLocation();
   const loadedAssignmentId = assignment?.assignment_id;
@@ -459,9 +472,29 @@ export function AssignmentDetailView() {
   const hasSignals = assignmentSecuritySignals(assignment).length > 0;
   const hasAside =
     hasProof || hasSignals || assignment.stage_summary.length > 0 || lifecycleEvents.length > 0 || siblingAssignments.length > 0;
+  const resolveProvider = (variantId: string, role?: AssignmentResult['role']) =>
+    resolveVariantProviderClass(models, activeDatasetId, variantId, role);
+  const providerClass = resolveProvider(assignment.variant_id, assignment.role);
+  const activityClasses =
+    assignment.activity_summary?.model_activity.availability === 'observed'
+      ? assignment.activity_summary.model_activity.records
+          .map((record) => resolveProvider(record.variant_id, record.model_role))
+          .filter((value): value is string => Boolean(value))
+      : [];
+  const hostedActivityClass = activityClasses.find((value) => isHostedProviderClass(value));
+  const isHostedCell = isHostedProviderClass(providerClass)
+    || (!providerClass && Boolean(hostedActivityClass) && !activityClasses.some((value) => isLocalProviderClass(value)));
+  const telemetryProviderClass = providerClass ?? hostedActivityClass;
+  const unavailableReasons = Array.from(
+    new Set(
+      (assignment.benchmark_observations?.unavailable_reasons ?? []).map((reason) =>
+        formatTelemetryUnavailableReason(reason, isHostedCell ? telemetryProviderClass : providerClass),
+      ),
+    ),
+  );
   const limitation = failureDiagnosisShowsMissingness(assignment)
-    ? assignment.benchmark_observations?.unavailable_reasons.join(' · ')
-    : assignment.missingness_reason ?? assignment.benchmark_observations?.unavailable_reasons.join(' · ');
+    ? unavailableReasons.join(' · ')
+    : assignment.missingness_reason ?? unavailableReasons.join(' · ');
 
   const chainTargets: Partial<Record<EvidenceChainStep['key'], string>> = {
     scenario: hasFixture ? SECTION.fixture : task ? SECTION.task : undefined,
@@ -490,6 +523,11 @@ export function AssignmentDetailView() {
         tone={tone}
         meta={<>
               <Link to={`/models/${activeDatasetId}/${assignment.variant_id}`}>{assignment.variant_id}</Link>
+              {providerClass ? (
+                <span className="assignment-provider-class" data-testid="assignment-provider-class" title="Inference provider class">
+                  {formatProviderClassLabel(providerClass)}
+                </span>
+              ) : null}
               <span>{roleLabel(assignment.role)}</span>
               <span>Repetition {assignment.repetition}</span>
               <span>{formatRelativeTime(assignment.observed_at)}</span>
@@ -516,7 +554,7 @@ export function AssignmentDetailView() {
       >
 
         <FailureDiagnosis assignment={assignment} />
-        <MeasuredStrip groups={groups} />
+        <MeasuredStrip groups={groups} isHostedCell={isHostedCell} />
         <ScenarioContextCard scenario={assignment.scenario_summary} />
         {task ? <TaskRoleCriterion task={task} role={assignment.role} /> : null}
 
@@ -598,7 +636,7 @@ export function AssignmentDetailView() {
         </Anchor> : null}
         <ScenarioFixtureSection id={SECTION.fixture} bindings={assignment.evidence_bindings} scenarioId={assignment.scenario_id} />
         <ModelResponseSection assignment={assignment} />
-        <Anchor id={SECTION.governance}><AssignmentActivitySummary activity={assignment.activity_summary} /></Anchor>
+        <Anchor id={SECTION.governance}><AssignmentActivitySummary activity={assignment.activity_summary} resolveProviderClass={resolveProvider} /></Anchor>
         {task ? <Anchor id={SECTION.criteria}><TaskExpectationSection task={task} className="assignment-task-expected" fold showRoleCriteria={false} /></Anchor> : null}
         <ScoresSection assignment={assignment} />
         <AssignmentEvidenceData assignment={assignment} events={lifecycleEvents} source={sourceRecord} />

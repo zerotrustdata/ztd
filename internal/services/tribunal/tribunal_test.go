@@ -139,9 +139,12 @@ func testConfig(inferer Inferer) Config {
 }
 
 const (
-	lowRisk     = `{"risk": "LOW", "rationale": "read-only", "feedback": ""}`
-	approve     = `{"verdict": "APPROVE", "rationale": "correct"}`
-	testRequest = "list listening TCP ports"
+	lowRisk = `{"risk": "LOW", "rationale": "read-only", "feedback": ""}`
+	// approve answers an Auditor offered no SWAP (a unanimous panel, or no
+	// alternative cluster); approveSplit answers one that is.
+	approve      = `{"verdict": "APPROVE", "revised_arguments": null, "rationale": "correct"}`
+	approveSplit = `{"verdict": "APPROVE", "revised_arguments": null, "swap_to_cluster": null, "rationale": "correct"}`
+	testRequest  = "list listening TCP ports"
 )
 
 func candidatesFor(commands map[Member]string) []Candidate {
@@ -264,7 +267,7 @@ func TestAudit(t *testing.T) {
 		MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "netstat -tlpn", MemberPragma: "lsof -i", MemberNemesis: "ps",
 	}))
 	unanimous := vote(1, candidatesFor(map[Member]string{
-		MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "ss -tlpn", MemberNemesis: "ps",
+		MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "ss -tlpn", MemberNemesis: "ss -tlpn",
 	}))
 	tests := []struct {
 		name     string
@@ -275,7 +278,7 @@ func TestAudit(t *testing.T) {
 		failed   bool
 		attempts int
 	}{
-		{name: "approve", vote: split, answers: []string{approve}, verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_APPROVE, command: "ss -tlpn", attempts: 1},
+		{name: "approve", vote: split, answers: []string{approveSplit}, verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_APPROVE, command: "ss -tlpn", attempts: 1},
 		{
 			name: "revise", vote: unanimous,
 			answers: []string{`{"verdict": "REVISE", "revised_arguments": {"command":"ss","args":["-tlpn"]}, "rationale": "x"}`},
@@ -283,22 +286,22 @@ func TestAudit(t *testing.T) {
 		},
 		{
 			name: "swap to an alternative cluster", vote: split,
-			answers: []string{`{"verdict": "SWAP", "swap_to_cluster": "cluster_c", "rationale": "x"}`},
+			answers: []string{`{"verdict": "SWAP", "revised_arguments": null, "swap_to_cluster": "cluster_c", "rationale": "x"}`},
 			verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_SWAP, command: "lsof -i", attempts: 1,
 		},
 		{
 			name: "invalid swap retried once", vote: split,
-			answers: []string{`{"verdict": "SWAP", "swap_to_cluster": "cluster_a"}`, approve},
+			answers: []string{`{"verdict": "SWAP", "revised_arguments": null, "swap_to_cluster": "cluster_a", "rationale": "x"}`, approveSplit},
 			verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_APPROVE, command: "ss -tlpn", attempts: 2,
 		},
 		{
 			name: "swap on a unanimous panel fails closed", vote: unanimous,
-			answers: []string{`{"verdict": "SWAP", "swap_to_cluster": "cluster_b"}`},
+			answers: []string{`{"verdict": "SWAP", "revised_arguments": null, "swap_to_cluster": "cluster_b", "rationale": "x"}`},
 			failed:  true, attempts: 2,
 		},
 		{
 			name: "revise without a command fails closed", vote: split,
-			answers: []string{`{"verdict": "REVISE", "revised_arguments": {"command":" ","args":[]}}`},
+			answers: []string{`{"verdict": "REVISE", "revised_arguments": {"command":" ","args":[]}, "swap_to_cluster": null, "rationale": "x"}`},
 			failed:  true, attempts: 2,
 		},
 		{name: "free text fails closed", vote: split, answers: []string{"APPROVE"}, failed: true, attempts: 2},
@@ -341,7 +344,7 @@ func TestRunApproved(t *testing.T) {
 			MemberAxiom: "ss -tlpn", MemberConcord: "ss -tlpn", MemberVariance: "ss -tlpn", MemberPragma: "netstat -tlpn", MemberNemesis: "lsof -i",
 		}),
 		marshal: lowRisk,
-		audit:   []string{approve},
+		audit:   []string{approveSplit},
 	}
 	result, err := Run(context.Background(), testConfig(inferer), Request{Request: testRequest}, 3)
 	require.NoError(t, err)
@@ -384,7 +387,7 @@ func TestRunRegeneratesOnceWithAnonymizedClusters(t *testing.T) {
 			return proposalAnswer(distinct[member])
 		},
 		marshal: lowRisk,
-		audit:   []string{approve},
+		audit:   []string{approveSplit},
 	}
 	result, err := Run(context.Background(), testConfig(inferer), Request{Request: testRequest}, 0)
 	require.NoError(t, err)
@@ -444,30 +447,30 @@ func TestRunAssessesCommandTheAuditorChanged(t *testing.T) {
 	}{
 		{
 			name:    "revision back to the winner is not reassessed",
-			audit:   `{"verdict":"REVISE","revised_arguments":{"command":"ss","args":["-tlpn"]},"rationale":"correct"}`,
+			audit:   `{"verdict":"REVISE","revised_arguments":{"command":"ss","args":["-tlpn"]},"swap_to_cluster":null,"rationale":"correct"}`,
 			outcome: OutcomeApproved, command: "ss -tlpn", subject: "ss -tlpn", riskLevel: RiskLow, marshalCalls: 1,
 		},
 		{
 			name:         "revision Marshal rates LOW is approved",
-			audit:        `{"verdict":"REVISE","revised_arguments":{"command":"ss","args":["-tlpn","-p"]},"rationale":"correct"}`,
+			audit:        `{"verdict":"REVISE","revised_arguments":{"command":"ss","args":["-tlpn","-p"]},"swap_to_cluster":null,"rationale":"correct"}`,
 			marshalFinal: lowRisk,
 			outcome:      OutcomeApproved, command: "ss -tlpn -p", subject: "ss -tlpn -p", riskLevel: RiskLow, marshalCalls: 2,
 		},
 		{
 			name:         "revision Marshal rates HIGH is blocked",
-			audit:        `{"verdict":"REVISE","revised_arguments":{"command":"rm","args":["./build/file"]},"rationale":"cleanup"}`,
+			audit:        `{"verdict":"REVISE","revised_arguments":{"command":"rm","args":["./build/file"]},"swap_to_cluster":null,"rationale":"cleanup"}`,
 			marshalFinal: highRisk,
 			outcome:      OutcomeBlocked, subject: "rm ./build/file", riskLevel: RiskHigh, marshalCalls: 2,
 		},
 		{
 			name:         "swap to another cluster Marshal rates HIGH is blocked",
-			audit:        `{"verdict": "SWAP", "swap_to_cluster": "cluster_b", "rationale":"alternative"}`,
+			audit:        `{"verdict": "SWAP", "revised_arguments": null, "swap_to_cluster": "cluster_b", "rationale":"alternative"}`,
 			marshalFinal: highRisk,
 			outcome:      OutcomeBlocked, subject: "netstat -tlpn", riskLevel: RiskHigh, marshalCalls: 2,
 		},
 		{
 			name:    "swap to another cluster Marshal rates LOW is approved",
-			audit:   `{"verdict": "SWAP", "swap_to_cluster": "cluster_b", "rationale":"alternative"}`,
+			audit:   `{"verdict": "SWAP", "revised_arguments": null, "swap_to_cluster": "cluster_b", "rationale":"alternative"}`,
 			outcome: OutcomeApproved, command: "netstat -tlpn", subject: "netstat -tlpn", riskLevel: RiskLow, marshalCalls: 2,
 		},
 	}
@@ -556,7 +559,7 @@ func TestGatewayOwnedContextIsComposedBeforeReview(t *testing.T) {
 	inferer := &fakeInferer{
 		generate: proposals(map[Member]string{MemberAxiom: "ss -l", MemberConcord: "ss -l", MemberVariance: "x", MemberPragma: "y", MemberNemesis: "z"}),
 		marshal:  lowRisk,
-		audit:    []string{`{"verdict":"REVISE","revised_arguments":{"command":"ss","args":["-l","-p"]},"rationale":"correct"}`},
+		audit:    []string{`{"verdict":"REVISE","revised_arguments":{"command":"ss","args":["-l","-p"]},"swap_to_cluster":null,"rationale":"correct"}`},
 	}
 	req := Request{Request: testRequest, WorkingDirectory: "/srv/work", TimeoutSeconds: 23}
 	result, err := Run(context.Background(), testConfig(inferer), req, 0)

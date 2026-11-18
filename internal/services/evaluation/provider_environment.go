@@ -43,7 +43,7 @@ func (r *CampaignProviderObservationReader) ObservedProviderEnvironment(ctx cont
 	vramTotals := map[uint64]struct{}{}
 	hostRAMTotals := map[uint64]struct{}{}
 	for _, result := range results {
-		for _, inferenceRecord := range scoredModelInferences(result) {
+		for _, inferenceRecord := range observableModelInferences(result) {
 			attemptID := inferenceRecord.GetProviderAttemptId()
 			if attemptID == "" {
 				continue

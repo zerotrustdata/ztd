@@ -101,6 +101,11 @@ func (g *GatewayService) HandleMCP(w http.ResponseWriter, r *http.Request) {
 			governance.NewIngressRefusal(fmt.Errorf("mcp endpoint: %w", constants.ErrMethodNotAllowed)))
 		return
 	}
+	// A governed tools/call can outlast http.Server.WriteTimeout: L2 votes,
+	// their transient retries, and the L3 wait all run before the response.
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		g.logger.Warn("mcp_endpoint: failed to clear WriteTimeout, governed call may be killed by server deadline", "error", err)
+	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, g.maxPayloadBytes)
 	body, err := io.ReadAll(r.Body)

@@ -236,7 +236,7 @@ func (r *CampaignProviderObservationReader) VerifyAssignmentProviderObservations
 	}
 	failures := make([]string, 0)
 	unavailable := make([]string, 0)
-	for _, inferenceRecord := range scoredModelInferences(result) {
+	for _, inferenceRecord := range observableModelInferences(result) {
 		attemptID := inferenceRecord.GetProviderAttemptId()
 		if attemptID == "" {
 			continue
@@ -275,7 +275,7 @@ func (r *CampaignProviderObservationReader) VerifyAssignmentProviderObservations
 }
 
 func publicUnavailableMetricReasons(result *evalv1.EvaluationAssignmentResult) []string {
-	for _, inference := range result.GetModelInferences() {
+	for _, inference := range scoredInferenceRecords(result.GetModelInferences()) {
 		if inference.GetUsageAvailability() == evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_UNAVAILABLE {
 			return []string{"source_unavailable"}
 		}
@@ -324,11 +324,16 @@ func (r *CampaignProviderObservationReader) buildPublicBenchmarkObservations(ctx
 		}
 	}
 	if r == nil {
-		observations.UnavailableReasons = appendUniqueStrings(observations.UnavailableReasons, "source_not_captured")
+		if len(observableModelInferences(result)) > 0 {
+			observations.UnavailableReasons = appendUniqueStrings(observations.UnavailableReasons, "source_not_captured")
+		}
+		if len(observations.UnavailableReasons) == 0 {
+			observations.UnavailableReasons = nil
+		}
 		return observations, nil
 	}
 	gpu := &gpuAggregate{}
-	for _, inferenceRecord := range scoredModelInferences(result) {
+	for _, inferenceRecord := range observableModelInferences(result) {
 		attemptID := inferenceRecord.GetProviderAttemptId()
 		if attemptID == "" {
 			continue
@@ -449,7 +454,60 @@ func publicVerdictStatus(status evalv1.EvaluationVerdictStatus) string {
 	}
 }
 
-func scoredModelInferences(result *evalv1.EvaluationAssignmentResult) []*evalv1.ModelInferenceRecord {
+// ProviderObservable reports whether a provider-boundary observer can witness
+// the inference. A hosted provider runs on no host the platform observes, so a
+// hosted inference has no provider attempt record or observation window; its
+// evidence is the hosted provenance window built from its Inference Operator's
+// signed hosted attestation.
+func ProviderObservable(record *evalv1.ModelInferenceRecord) bool {
+	return !constants.IsHostedInferenceProvider(record.GetModelVariant().GetProviderClass())
+}
+
+// ModelProvenanceRequired is the single rule for which scored inferences must
+// hold a sealed model provenance window. A governance-rejected inference never
+// reached a provider and has no attempt. A hosted attempt the Gateway returned
+// no result for carries no signed hosted attestation, so no hosted window can
+// exist for it; its empty result digest is bound to that failed call through
+// the trace the verifier rebuilds the record from and the call's signed
+// receipt. Every other attempt needs one, including a locally served attempt
+// that failed, whose provenance Operator brackets it either way.
+func ModelProvenanceRequired(record *evalv1.ModelInferenceRecord) bool {
+	if record.GetProviderAttemptId() == "" {
+		return false
+	}
+	return ProviderObservable(record) || record.GetResultDigest() != ""
+}
+
+// provenanceModelInferences returns the inferences, retried attempts
+// included, that must hold a model provenance window (ModelProvenanceRequired).
+func provenanceModelInferences(result *evalv1.EvaluationAssignmentResult) []*evalv1.ModelInferenceRecord {
+	evidence := evidenceModelInferences(result)
+	records := make([]*evalv1.ModelInferenceRecord, 0, len(evidence))
+	for _, record := range evidence {
+		if ModelProvenanceRequired(record) {
+			records = append(records, record)
+		}
+	}
+	return records
+}
+
+// observableModelInferences returns the inferences, retried attempts
+// included, a provider-boundary observer can witness (ProviderObservable).
+func observableModelInferences(result *evalv1.EvaluationAssignmentResult) []*evalv1.ModelInferenceRecord {
+	evidence := evidenceModelInferences(result)
+	records := make([]*evalv1.ModelInferenceRecord, 0, len(evidence))
+	for _, record := range evidence {
+		if ProviderObservable(record) {
+			records = append(records, record)
+		}
+	}
+	return records
+}
+
+// evidenceModelInferences returns every inference record of a result, a
+// RETRIED attempt included: each provider attempt carries its own evidence.
+// Metrics select scoredInferenceRecords instead.
+func evidenceModelInferences(result *evalv1.EvaluationAssignmentResult) []*evalv1.ModelInferenceRecord {
 	if result == nil {
 		return nil
 	}
@@ -472,7 +530,7 @@ type benchmarkTimingAggregate struct {
 
 func deriveBenchmarkTiming(result *evalv1.EvaluationAssignmentResult) benchmarkTimingAggregate {
 	aggregate := benchmarkTimingAggregate{}
-	for _, record := range scoredModelInferences(result) {
+	for _, record := range scoredInferenceRecords(result.GetModelInferences()) {
 		if record.GetLoadDurationNanos() > 0 {
 			aggregate.modelLoadMS = maxFloatPtr(aggregate.modelLoadMS, nanosToMillis(record.GetLoadDurationNanos()))
 		}

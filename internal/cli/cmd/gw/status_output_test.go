@@ -286,6 +286,8 @@ func TestGatewayStatusListsEveryOperatorWithTypeCapabilitiesAndStartValues(t *te
 				Capabilities:            []string{string(constants.OperatorCapabilityInference)},
 				InferenceOllamaEndpoint: "http://gpu-host:11434", LocalDir: "/srv/ztd/inference", HttpPort: 8080,
 				LogLevel: "debug",
+				// Discovered from the API keys set when it enrolled.
+				InferenceHostedProviders: []string{constants.InferenceProviderGemini, constants.InferenceProviderOpenAI},
 			},
 		},
 		{
@@ -312,6 +314,7 @@ func TestGatewayStatusListsEveryOperatorWithTypeCapabilitiesAndStartValues(t *te
 			RuntimeConfig: &operatorv1.OperatorRuntimeConfig{
 				Capabilities:                       []string{string(constants.OperatorCapabilityInference), string(constants.OperatorCapabilityProvenance)},
 				InferenceOllamaEndpoint:            "http://192.168.1.2:11434",
+				InferenceHostedProviders:           []string{constants.InferenceProviderGemini},
 				ProvenanceOperatorModelStorageRoot: "/mnt/models", LocalDir: "/home/me/ztd", HttpPort: 8081,
 			},
 		},
@@ -336,6 +339,7 @@ func TestGatewayStatusListsEveryOperatorWithTypeCapabilitiesAndStartValues(t *te
 		{"inference", "--inference-llamacpp-endpoint", "(default)"},
 		{"inference", "--inference-llamacpp-model-root", "(default)"},
 		{"inference", "--inference-keep-alive", "30m"},
+		{"inference", "hosted-providers", "gemini"},
 		{"provenance", "--model-storage-root", "/mnt/models"},
 		{"provenance", "--model-storage-format", "(default)"},
 		{"provenance", "--provenance-operator-id", "(default)"},
@@ -345,6 +349,7 @@ func TestGatewayStatusListsEveryOperatorWithTypeCapabilitiesAndStartValues(t *te
 	require.Equal(t, [][]string{
 		{"all", "--log", "debug"},
 		{"inference", "--inference-ollama-endpoint", "http://gpu-host:11434"},
+		{"inference", "hosted-providers", "gemini,openai"},
 	}, flagRowsFor(out, "op-inf"))
 	require.Equal(t, [][]string{
 		{"provenance", "--model-storage-root", "/srv/models"},

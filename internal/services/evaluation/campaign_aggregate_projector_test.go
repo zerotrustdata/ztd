@@ -720,6 +720,7 @@ func TestCampaignPublicationCoordinatorPublishRunAggregates(t *testing.T) {
 func scoredInferenceCall(tokens uint32, durationNanos uint64) *evalv1.ModelInferenceRecord {
 	return &evalv1.ModelInferenceRecord{
 		InferenceRecordId:       "inference-1",
+		Classification:          evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
 		UsageAvailability:       evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_REPORTED,
 		CompletionTokens:        tokens,
 		GenerationDurationNanos: durationNanos,
@@ -1026,6 +1027,7 @@ func TestCollectRunHeadlineMetricsOutputThroughputIncompleteContributors(t *test
 			name: "usage not reported",
 			calls: []*evalv1.ModelInferenceRecord{{
 				InferenceRecordId:       "inference-1",
+				Classification:          evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
 				UsageAvailability:       evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_UNAVAILABLE,
 				CompletionTokens:        20,
 				GenerationDurationNanos: 1_000_000_000,
@@ -1035,6 +1037,7 @@ func TestCollectRunHeadlineMetricsOutputThroughputIncompleteContributors(t *test
 			name: "zero generation duration",
 			calls: []*evalv1.ModelInferenceRecord{{
 				InferenceRecordId:       "inference-1",
+				Classification:          evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
 				UsageAvailability:       evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_REPORTED,
 				CompletionTokens:        20,
 				GenerationDurationNanos: 0,
@@ -1046,6 +1049,7 @@ func TestCollectRunHeadlineMetricsOutputThroughputIncompleteContributors(t *test
 				scoredInferenceCall(20, 1_000_000_000),
 				{
 					InferenceRecordId:       "inference-2",
+					Classification:          evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
 					UsageAvailability:       evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_UNAVAILABLE,
 					CompletionTokens:        20,
 					GenerationDurationNanos: 1_000_000_000,

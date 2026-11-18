@@ -87,6 +87,7 @@
     - [InferenceNoulQuestion](#ztd-operator-v1-InferenceNoulQuestion)
     - [InferenceProgressEvent](#ztd-operator-v1-InferenceProgressEvent)
     - [InferenceProviderAttemptRecord](#ztd-operator-v1-InferenceProviderAttemptRecord)
+    - [InferenceProviderReasoning](#ztd-operator-v1-InferenceProviderReasoning)
     - [InferenceRequested](#ztd-operator-v1-InferenceRequested)
     - [InferenceResponseFormat](#ztd-operator-v1-InferenceResponseFormat)
     - [InferenceResponsePart](#ztd-operator-v1-InferenceResponsePart)
@@ -555,6 +556,8 @@ signed evidence; they never replace the subject&#39;s L2 quorum proof.
 | receipt | [EventReceipt](#ztd-operator-v1-EventReceipt) |  |  |
 | failure | [InferenceDispatchFailure](#ztd-operator-v1-InferenceDispatchFailure) |  |  |
 | observation_receipts | [EventReceipt](#ztd-operator-v1-EventReceipt) | repeated |  |
+| retry_count | [uint32](#uint32) |  | retry_count is the vote attempt&#39;s retry ordinal: 0 for the first attempt, n for the nth retry after the provider asked to retry later. It equals the dispatched request&#39;s and the signed result&#39;s retry_count, and provider_attempt_id is governance.ConsensusVoteAttemptID for it. |
+| superseded_attempts | [ConsensusVoteInference](#ztd-operator-v1-ConsensusVoteInference) | repeated | superseded_attempts are the member&#39;s earlier vote attempts this one retries, in order (retry_count 0..n-1). Each did not complete, carries the Inference Operator&#39;s signed FAILED receipt with RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT, and has no superseded_attempts of its own. Every one is execution evidence; only this record casts the vote. |
 
 
 
@@ -1716,6 +1719,7 @@ inference request to the Inference Node.
 | retry_count | [uint32](#uint32) |  | Zero-based retry ordinal for this provider attempt. |
 | seed | [int32](#int32) | optional | Optional deterministic generation seed forwarded to the provider when supported. Absent means use the provider default. |
 | decision | [InferenceDecisionRequest](#ztd-operator-v1-InferenceDecisionRequest) |  | Exclusive with messages, tools, streaming and generation controls. |
+| provider_class | [string](#string) |  | Hosted provider class that serves model; empty selects the local provider. See InferenceRequested.provider_class. |
 
 
 
@@ -1789,15 +1793,25 @@ verified completion after the HTTP response has started.
 
 ### InferenceHostedEgressAttestation
 Included in result_digest and therefore bound by the Operator&#39;s signed L5 receipt.
+For hosted generation it is the Inference Operator&#39;s model provenance record:
+the provider cannot attest weights, so the Operator records what the provider
+reported serving and the exact bytes it received.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | provider_origin | [string](#string) |  |  |
-| model_version | [string](#string) |  |  |
+| model_version | [string](#string) |  | Model the provider reported serving (Gemini modelVersion). |
 | provenance | [string](#string) |  |  |
 | normalized_request_hash | [string](#string) |  |  |
 | explicit_consent | [bool](#bool) |  |  |
+| provider_class | [string](#string) |  | Hosted provider class that served the attempt (gemini, anthropic, openai). |
+| requested_model | [string](#string) |  | Model the governed request named. |
+| provider_model_version | [string](#string) |  | Provider metadata version of requested_model, read immediately before the call. |
+| model_identity_digest | [string](#string) |  | Hosted model identity digest of (provider_class, provider_origin, requested_model, provider_model_version); models.ComputeHostedModelIdentityDigest. |
+| provider_response_id | [string](#string) |  | Provider-assigned response identifier (Gemini responseId). |
+| raw_response_digest | [string](#string) |  | Hex SHA-256 of the provider&#39;s 200 response byte stream. |
+| raw_response_size_bytes | [uint64](#uint64) |  |  |
 
 
 
@@ -1831,6 +1845,7 @@ InferenceMessagePart carries exactly one typed part of a conversation turn.
 | text | [string](#string) |  |  |
 | tool_call | [InferenceToolCall](#ztd-operator-v1-InferenceToolCall) |  |  |
 | tool_result | [InferenceToolResult](#ztd-operator-v1-InferenceToolResult) |  |  |
+| provider_reasoning | [InferenceProviderReasoning](#ztd-operator-v1-InferenceProviderReasoning) |  | Only in an assistant turn of a request to the issuing provider class. |
 
 
 
@@ -1917,6 +1932,29 @@ finalized only after terminal receipt/result evidence is available.
 
 
 
+<a name="ztd-operator-v1-InferenceProviderReasoning"></a>
+
+### InferenceProviderReasoning
+InferenceProviderReasoning is one reasoning item a hosted provider returned
+in opaque form: an Anthropic thinking or redacted_thinking block, or an
+OpenAI encrypted reasoning item. The provider binds it to the conversation
+that produced it, so a later turn of that conversation returns it to the same
+provider class verbatim, in its original position. It carries no readable
+text: the client requests none and refuses an item that holds any, so the
+scrubber, which never reads it, has nothing to scrub. The result digest
+covers it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| provider_class | [string](#string) |  | Hosted provider class that issued the item (anthropic, openai). |
+| item_json | [string](#string) |  | The provider&#39;s item as canonical JSON, returned to it unchanged. |
+
+
+
+
+
+
 <a name="ztd-operator-v1-InferenceRequested"></a>
 
 ### InferenceRequested
@@ -1954,6 +1992,7 @@ finalized only after terminal receipt/result evidence is available.
 | retry_count | [uint32](#uint32) |  | Zero-based retry ordinal for this provider attempt. Each retry uses a distinct provider_attempt_id and is durably retained. |
 | seed | [int32](#int32) | optional | Optional deterministic generation seed forwarded to the provider when supported. Absent means use the provider default. |
 | decision | [InferenceDecisionRequest](#ztd-operator-v1-InferenceDecisionRequest) |  | Exclusive with messages, tools, streaming and generation controls. |
+| provider_class | [string](#string) |  | Hosted provider class (gemini, anthropic, openai) that serves model. Empty selects the Operator&#39;s local provider (Ollama or llama.cpp). A hosted class is the envelope&#39;s explicit consent to hosted egress: the Operator serves it only when its runtime config lists that class, discovered from the class&#39;s API key when the Operator started. |
 
 
 
@@ -1987,6 +2026,7 @@ InferenceResponsePart carries exactly one typed model response part.
 | text | [string](#string) |  |  |
 | tool_call | [InferenceToolCall](#ztd-operator-v1-InferenceToolCall) |  |  |
 | thinking | [string](#string) |  |  |
+| provider_reasoning | [InferenceProviderReasoning](#ztd-operator-v1-InferenceProviderReasoning) |  |  |
 
 
 
@@ -2101,6 +2141,7 @@ InferenceToolCall carries a model-requested function invocation. arguments_json 
 | call_id | [string](#string) |  |  |
 | name | [string](#string) |  |  |
 | arguments_json | [string](#string) |  |  |
+| provider_signature | [string](#string) |  | Opaque continuation token the provider attached to this call (a Gemini thought signature). It is not content: the scrubber never reads it, the result digest covers it, and a later turn returns it to the same provider verbatim, which a hosted provider requires to continue a tool call. |
 
 
 
@@ -2473,6 +2514,7 @@ provider.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | execution_id | [string](#string) |  |  |
+| provider_classes | [string](#string) | repeated | Provider classes to list: the Operator&#39;s local provider class and/or the hosted classes it serves. Empty lists every class the Operator serves. A named class the Operator does not serve fails the request closed, and the local provider is read only when its class is listed, so a hosted-only listing never depends on a reachable local provider. |
 
 
 
@@ -2700,6 +2742,7 @@ OperatorDocument.runtime_config.
 | inference_llamacpp_endpoint | [string](#string) |  | Approved remote llama.cpp llama-server URL (--inference-llamacpp-endpoint). |
 | inference_llamacpp_model_root | [string](#string) |  | llama-server --models-dir as seen by this Operator (--inference-llamacpp-model-root). |
 | provenance_operator_model_storage_format | [string](#string) |  | Model store layout under provenance_operator_model_storage_root (--model-storage-format: ollama or llamacpp). |
+| inference_hosted_providers | [string](#string) | repeated | Hosted inference provider classes this Operator serves, discovered from the provider API keys set when it starts and bound at enrollment. |
 
 
 
@@ -3559,6 +3602,7 @@ the error text.
 | INFERENCE_DISPATCH_FAILURE_CODE_PROVIDER_STREAM_ERROR | 48 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_REHYDRATION_FAILED | 49 |  |
 | INFERENCE_DISPATCH_FAILURE_CODE_REQUEST_TOO_LARGE | 50 |  |
+| INFERENCE_DISPATCH_FAILURE_CODE_BACKEND_TRANSIENT | 51 |  |
 
 
 
@@ -3772,6 +3816,7 @@ string-matching the result_summary. It is bound into the receipt signature.
 | RECEIPT_FAILURE_CODE_HOSTED_NOT_ALLOWED | 25 |  |
 | RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR | 26 | The provider accepted the request, then ended its response stream with an error event instead of a done event, such as when its own tool-call parser rejected the model&#39;s output. The provider&#39;s message is never signed. |
 | RECEIPT_FAILURE_CODE_REQUEST_TOO_LARGE | 27 | The request exceeded the Inference Operator&#39;s request size bound, so it was rejected before the provider was called. |
+| RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT | 28 | The provider asked to be retried later (a rate limit, an overload, or a transient server failure) before returning a result. A new provider attempt can succeed; authentication, permission and billing failures are BACKEND_UNAVAILABLE instead. |
 
 
  

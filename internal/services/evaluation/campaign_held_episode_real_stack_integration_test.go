@@ -395,7 +395,7 @@ func TestRealStackHeldRepetition_ReboundDataOperatorIsAHarnessFailure(t *testing
 		if err != nil {
 			return false
 		}
-		top, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, inferenceWorkload.OperatorSessionID, replacementWorkload.OperatorID)
+		top, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, inferenceWorkload.OperatorSessionID, replacementWorkload.OperatorID, nil)
 		if err != nil || top.DataWorkingDirectory == "" {
 			return false
 		}

@@ -3,7 +3,7 @@
 
 import { RELEASES_PATH } from './src/layout.js';
 import { BUY_PATH, paymentLink } from './src/payments.js';
-import { RELEASE_NOTES_PATH, RELEASE_VERSION, listReleases, readManifest, releasePath, renderReleasePage, renderReleasesIndex } from './src/releases.js';
+import { RELEASE_NOTES_PATH, RELEASE_VERSION, downloadable, listReleases, readManifest, releasePath, renderReleasePage, renderReleasesIndex } from './src/releases.js';
 
 const RELEASE_PATH = /^(?:ztd-(?:linux-(?:amd64|arm64|386)|darwin-(?:amd64|arm64)|windows-(?:amd64|arm64)\.exe)(?:\.sha256|\.sigstore\.json)?|checksums-sha256\.txt|ztd-binaries\.json)$/;
 const TEXT_ARTIFACT = /\.(?:sha256|sig)$|^checksums-sha256\.txt$/;
@@ -95,10 +95,11 @@ async function readLatestVersion(env) {
   return { version };
 }
 
-// /v/<version>/<file> serves the immutable set for one version. Anything under /v/ that does not validate is a 404.
+// /v/<version>/<file> serves the immutable set for one version. Anything under /v/ that does not validate, or names
+// a version below the download floor, is a 404.
 async function versionedResponse(request, env, pathname) {
   const match = VERSIONED_PATH.exec(pathname);
-  if (!match || !RELEASE_VERSION.test(match[1]) || !RELEASE_PATH.test(match[2])) return notFound();
+  if (!match || !RELEASE_VERSION.test(match[1]) || !downloadable(match[1]) || !RELEASE_PATH.test(match[2])) return notFound();
   const [, version, file] = match;
   return earlyResponse(request, file) ?? objectResponse(request, env, `v${version}/${file}`, file, IMMUTABLE_CACHE);
 }

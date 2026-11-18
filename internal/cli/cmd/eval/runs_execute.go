@@ -298,7 +298,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	if err != nil {
 		return 0, err
 	}
-	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", investigation.GetDataOperatorId())
+	topology, err := evaluation.ResolveCampaignOperatorTopologyForDataOperator(operators, "", investigation.GetDataOperatorId(), evaluation.HostedProviderClasses(spec.GetModelRegistry(), spec.GetJudgeVariant()))
 	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}
@@ -355,7 +355,10 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		ModelVariants:       spec.GetModelRegistry(),
 		JudgeVariant:        spec.GetJudgeVariant(),
 	}
-	if err := gwremote.PreflightProviderObservationDelivery(fileSvc, cfg); err != nil {
+	// A run whose models are all hosted has no provider host to observe.
+	if err := preflightRunProviderObservation(spec, func() error {
+		return gwremote.PreflightProviderObservationDelivery(fileSvc, cfg)
+	}); err != nil {
 		return executed, fmt.Errorf("evaluation: run execute: %w", err)
 	}
 	witness, err := gwremote.NewCampaignWitnessCapture(fileSvc, store, cfg)
@@ -373,7 +376,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		if runErr == nil || finished {
 			return
 		}
-		cleanupErr := releaseRunModels(cmd, residency, opts)
+		cleanupErr := releaseRunModels(cmd, residency, spec, opts)
 		if cleanupErr == nil {
 			return
 		}
@@ -447,7 +450,7 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		return executed, fmt.Errorf("evaluation: run execute: run %s stopped after %d assignment(s) with %d queued: %w", opts.RunID, executed, summary.QueuedCount, constants.ErrEvaluationRunStopped)
 	}
 	if summary.QueuedCount == 0 && summary.RunningCount == 0 {
-		finalPubErrs, err := finalizeRunExecution(cmd, deps, opts, residency, witness, publication, strictProvenance, strictObservation)
+		finalPubErrs, err := finalizeRunExecution(cmd, deps, opts, spec, residency, witness, publication, strictProvenance, strictObservation)
 		if err != nil {
 			return executed, err
 		}
@@ -457,10 +460,21 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 	return executed, errors.Join(publicationErrs...)
 }
 
+// preflightRunProviderObservation runs the provider-observation preflight when
+// the campaign dispatches any local model (candidate or judge), and skips it
+// for a hosted-only campaign.
+func preflightRunProviderObservation(spec *evalv1.EvaluationCampaignSpec, preflight func() error) error {
+	if !evaluation.DispatchesLocalModels(spec.GetModelRegistry(), spec.GetJudgeVariant()) {
+		return nil
+	}
+	return preflight()
+}
+
 func finalizeRunExecution(
 	cmd *cobra.Command,
 	deps nativeEvalDeps,
 	opts runExecuteOptions,
+	spec *evalv1.EvaluationCampaignSpec,
 	residency evaluation.ModelResidencyReleaser,
 	witness *evaluation.CampaignWitnessCapture,
 	publication *evaluation.CampaignPublicationCoordinator,
@@ -489,7 +503,7 @@ func finalizeRunExecution(
 			return nil, fmt.Errorf("evaluation: run execute: %w", err)
 		}
 	}
-	if err := releaseRunModels(cmd, residency, opts); err != nil {
+	if err := releaseRunModels(cmd, residency, spec, opts); err != nil {
 		return nil, fmt.Errorf("evaluation: run execute: %w", err)
 	}
 	var publicationErrs []error
@@ -543,8 +557,12 @@ func newRunModelResidency(cfg *config.Config, authContext *auth.ClientAuthContex
 }
 
 // releaseRunModels releases every model the run left resident on the provider
-// once the run is done.
-func releaseRunModels(cmd *cobra.Command, residency evaluation.ModelResidencyReleaser, opts runExecuteOptions) error {
+// once the run is done. A campaign that dispatches no local model (candidate or
+// judge) left nothing resident and never reads the local provider.
+func releaseRunModels(cmd *cobra.Command, residency evaluation.ModelResidencyReleaser, spec *evalv1.EvaluationCampaignSpec, opts runExecuteOptions) error {
+	if !evaluation.DispatchesLocalModels(spec.GetModelRegistry(), spec.GetJudgeVariant()) {
+		return nil
+	}
 	released, err := residency.ReleaseAllExcept(cmd.Context(), evaluation.ModelResidencyRelease{RunID: opts.RunID})
 	if err != nil {
 		return err

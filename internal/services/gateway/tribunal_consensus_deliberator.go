@@ -70,7 +70,8 @@ const tribunalVoteStagePrefix = "tribunal vote\n"
 
 // TribunalConsensusDeliberator produces L2 votes from the Gateway-hosted
 // Tribunal panel. Each bound member votes through one governed INFERENCE on
-// the binding's pinned model, under its own app identity, and signs
+// the binding's pinned model, served by the local provider or by the hosted
+// provider class the binding names, under its own app identity, and signs
 // "<tx_hash>|<decision>" with its sealed app signing key. INFERENCE changes no
 // state, so a member's vote inference is never itself voted on. The envelope it returns differs from the input in L2 only.
 type TribunalConsensusDeliberator struct {
@@ -79,14 +80,17 @@ type TribunalConsensusDeliberator struct {
 	inference consensusVoteInferer
 	votes     consensusVoteRecorder
 	signer    ConsensusMemberSigner
+	retry     dispatch.TransientRetry
 	logger    *slog.Logger
 	voteFeed  func() consensusVoteFeed
 }
 
 // NewTribunalConsensusDeliberator returns the Tribunal vote producer. signer
 // may be nil until the Gateway host supplies it; without it no member votes
-// and L4 rejects the envelope for quorum.
-func NewTribunalConsensusDeliberator(store consensusBindingReader, policies consensusMemberPolicies, inference consensusVoteInferer, votes consensusVoteRecorder, signer ConsensusMemberSigner, logger *slog.Logger) (*TribunalConsensusDeliberator, error) {
+// and L4 rejects the envelope for quorum. retry is the policy a member's vote
+// follows when its provider asks to retry later; production passes
+// dispatch.DefaultTransientRetry().
+func NewTribunalConsensusDeliberator(store consensusBindingReader, policies consensusMemberPolicies, inference consensusVoteInferer, votes consensusVoteRecorder, signer ConsensusMemberSigner, retry dispatch.TransientRetry, logger *slog.Logger) (*TribunalConsensusDeliberator, error) {
 	if store == nil {
 		return nil, fmt.Errorf("tribunal consensus: store: %w", constants.ErrMissingRequiredField)
 	}
@@ -99,17 +103,23 @@ func NewTribunalConsensusDeliberator(store consensusBindingReader, policies cons
 	if votes == nil {
 		return nil, fmt.Errorf("tribunal consensus: vote recorder: %w", constants.ErrMissingRequiredField)
 	}
+	if retry.Wait == nil {
+		return nil, fmt.Errorf("tribunal consensus: retry wait: %w", constants.ErrMissingRequiredField)
+	}
 	if logger == nil {
 		return nil, fmt.Errorf("tribunal consensus: logger: %w", constants.ErrMissingRequiredField)
 	}
-	return &TribunalConsensusDeliberator{store: store, policies: policies, inference: inference, votes: votes, signer: signer, logger: logger}, nil
+	return &TribunalConsensusDeliberator{store: store, policies: policies, inference: inference, votes: votes, signer: signer, retry: retry, logger: logger}, nil
 }
 
 // Deliberate collects the outcome of all bound Tribunal members before returning,
 // subject to context cancellation and existing inference, signing, and audit failures.
 // Members are asked in binding order and stop once the context ends. A member that
 // cannot run its inference or sign casts no vote; an answer that is not a
-// strict approve is a signed deny. Every
+// strict approve is a signed deny. A member whose provider asked to retry later
+// is asked again under the retry policy while the subject envelope still has
+// time to be admitted; each member yields one vote record, which carries its
+// earlier attempts as superseded_attempts. Every
 // member's outcome, with its stated reason, is recorded as a
 // ztd.v1.consensus.vote.recorded audit event before its vote counts.
 func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeBytes []byte) (*governance.ConsensusDeliberation, error) {
@@ -139,15 +149,21 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 		return nil, fmt.Errorf("tribunal consensus: binding provider: %w", constants.ErrTxL2ConsensusNotConfigured)
 	}
 
-	if bound.EffectiveVoteKind() != models.ConsensusVoteKindGenerative {
-		if _, err := models.ResolveConsensusBinding(models.ConsensusBindingSpec{Provider: constants.ConsensusProviderTribunal, AppID: bound.PrimaryAppID(), MemberAppIDs: bound.MemberAppIDs, Quorum: bound.Quorum, ModelTag: bound.ModelTag, ModelDigest: bound.ModelDigest, VoteKind: bound.VoteKind, InferenceOperatorID: bound.InferenceOperatorID, VoteThresholds: bound.VoteThresholds, AllowHosted: bound.AllowHosted}); err != nil {
-			return nil, fmt.Errorf("tribunal consensus: decision binding: %w", err)
-		}
+	// The stored binding is re-validated before any member is asked, so a
+	// binding that names no admissible vote model or provider class casts no
+	// vote rather than reaching a provider it was never admitted for.
+	if _, err := models.ResolveConsensusBinding(models.ConsensusBindingSpec{Provider: constants.ConsensusProviderTribunal, AppID: bound.PrimaryAppID(), MemberAppIDs: bound.MemberAppIDs, Quorum: bound.Quorum, ModelTag: bound.ModelTag, ModelDigest: bound.ModelDigest, ModelProviderClass: bound.ModelProviderClass, VoteKind: bound.VoteKind, InferenceOperatorID: bound.InferenceOperatorID, VoteThresholds: bound.VoteThresholds, AllowHosted: bound.AllowHosted}); err != nil {
+		return nil, fmt.Errorf("tribunal consensus: binding: %w", err)
 	}
 
 	subject, err := consensusSubject(&env)
 	if err != nil {
 		return nil, err
+	}
+	// A missing expiry stays the zero time, which no retry wait can end before.
+	var expiresAt time.Time
+	if env.GetExpiresAt() != nil {
+		expiresAt = env.GetExpiresAt().AsTime()
 	}
 	votes := make([]*commonv1.L2Vote, 0, len(bound.MemberAppIDs))
 	var inferences []*operatorv1.ConsensusVoteInference
@@ -161,10 +177,12 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 		}
 		end := min(i+batchSize, len(bound.MemberAppIDs))
 		batch := bound.MemberAppIDs[i:end]
-		for j, vote := range d.castVotes(ctx, bound, batch, computed, subject) {
+		for j, vote := range d.castVotes(ctx, bound, batch, computed, subject, expiresAt) {
 			if vote.inference != nil {
-				vote.inference.SubjectTransactionId = env.GetId()
-				vote.inference.SubjectTransactionHash = computed
+				for _, attempt := range governance.ConsensusVoteAttempts(vote.inference) {
+					attempt.SubjectTransactionId = env.GetId()
+					attempt.SubjectTransactionHash = computed
+				}
 				inferences = append(inferences, vote.inference)
 			}
 			if _, signed := d.countVote(ctx, &env, bound, batch[j], computed, vote); signed != nil {
@@ -188,14 +206,14 @@ func (d *TribunalConsensusDeliberator) Deliberate(ctx context.Context, envelopeB
 // the approvals still needed for quorum, so it never overshoots quorum; one
 // member's deny or failure can leave the rest of its batch moot, and those
 // votes are still recorded. Results return in batch order.
-func (d *TribunalConsensusDeliberator) castVotes(ctx context.Context, bound *models.ConsensusPolicy, batch []string, txHash string, subject tribunal.ConsensusSubject) []memberVote {
+func (d *TribunalConsensusDeliberator) castVotes(ctx context.Context, bound *models.ConsensusPolicy, batch []string, txHash string, subject tribunal.ConsensusSubject, expiresAt time.Time) []memberVote {
 	out := make([]memberVote, len(batch))
 	var wg sync.WaitGroup
 	for i, memberAppID := range batch {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			out[i] = d.castVote(ctx, bound, memberAppID, txHash, subject)
+			out[i] = d.castVote(ctx, bound, memberAppID, txHash, subject, expiresAt)
 		}()
 	}
 	wg.Wait()
@@ -231,8 +249,10 @@ type memberVote struct {
 	evidence      []models.ConsensusDecisionEvidence
 	answer        tribunal.ConsensusVoteAnswer
 	inferenceTxID string
-	attemptID     string
-	failure       error
+	// attemptID and retryCount name the member's final attempt.
+	attemptID  string
+	retryCount uint32
+	failure    error
 }
 
 // recordVote appends memberAppID's vote to the Gateway audit chain under the
@@ -246,7 +266,9 @@ func (d *TribunalConsensusDeliberator) recordVote(ctx context.Context, env *comm
 		Reason:                 vote.answer.Reason,
 		InferenceTransactionID: vote.inferenceTxID,
 		ProviderAttemptID:      vote.attemptID,
+		RetryCount:             vote.retryCount,
 		ModelTag:               bound.ModelTag,
+		ModelProviderClass:     bound.ModelProviderClass,
 		Quorum:                 bound.Quorum,
 		VoteKind:               bound.EffectiveVoteKind(), DecisionEvidence: vote.evidence,
 		RecordedAt: time.Now().UTC(),
@@ -354,8 +376,10 @@ func (d *TribunalConsensusDeliberator) publishVote(ctx context.Context, env *com
 	return nil
 }
 
-// castVote runs memberAppID's vote inference.
-func (d *TribunalConsensusDeliberator) castVote(ctx context.Context, bound *models.ConsensusPolicy, memberAppID, txHash string, subject tribunal.ConsensusSubject) memberVote {
+// castVote runs memberAppID's vote inference. expiresAt is the subject
+// envelope's expiry: a retry wait never runs into the time L4 and L5 need to
+// admit and dispatch it.
+func (d *TribunalConsensusDeliberator) castVote(ctx context.Context, bound *models.ConsensusPolicy, memberAppID, txHash string, subject tribunal.ConsensusSubject, expiresAt time.Time) memberVote {
 	member, found := tribunalMemberForAppID(memberAppID)
 	if !found || d.signer == nil || !d.signer.HasKey(memberAppID) {
 		d.logger.Warn("tribunal consensus: member key unavailable", slog.String("member_app_id", memberAppID), logging.ErrorKind(constants.ErrConsensusMemberKeyUnavailable))
@@ -370,7 +394,6 @@ func (d *TribunalConsensusDeliberator) castVote(ctx context.Context, bound *mode
 		d.logger.Warn("tribunal consensus: member owner unavailable", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
 		return memberVote{failure: fmt.Errorf("member owner: %w", err)}
 	}
-	attemptID := governance.ConsensusVoteAttemptID(txHash, memberAppID)
 	system, user, err := tribunal.ConsensusVotePrompt(member, subject)
 	if err != nil {
 		return memberVote{failure: err}
@@ -386,11 +409,11 @@ func (d *TribunalConsensusDeliberator) castVote(ctx context.Context, bound *mode
 			MediaType:  "application/json",
 			JsonSchema: tribunal.ConsensusVoteJSONSchema,
 		},
-		Model:             bound.ModelTag,
-		ModelDigest:       bound.ModelDigest,
-		ProviderAttemptID: attemptID,
-		RequestorUserID:   policy.OwnerUserID,
-		ActingAppID:       memberAppID,
+		Model:           bound.ModelTag,
+		ModelDigest:     bound.ModelDigest,
+		ProviderClass:   bound.ModelProviderClass,
+		RequestorUserID: policy.OwnerUserID,
+		ActingAppID:     memberAppID,
 	}
 	request.TargetOperatorID = bound.InferenceOperatorID
 	if bound.EffectiveVoteKind() == models.ConsensusVoteKindDecision {
@@ -402,26 +425,10 @@ func (d *TribunalConsensusDeliberator) castVote(ctx context.Context, bound *mode
 		request.Messages = nil
 		request.ResponseFormat = nil
 	}
-	result, err := d.inference.DispatchInference(ctx, request)
-	if err == nil && (result == nil || result.Result == nil) {
-		err = constants.ErrInferenceCompletionNoResult
-	}
-	inference := &operatorv1.ConsensusVoteInference{MemberAppId: memberAppID, ProviderAttemptId: attemptID}
-	if result != nil {
-		inference.TransactionId = result.TransactionID
-		inference.Result = result.Result
-		inference.Receipt = result.Receipt
-		inference.ObservationReceipts = result.ObservationReceipts
-	}
+	result, inference, err := d.dispatchVote(ctx, request, memberAppID, txHash, expiresAt)
 	if err != nil {
-		_, inference.Failure = inferenceDispatchFailure(err)
-		inference.Receipt = inference.Failure.GetReceipt()
-		inference.TransactionId = inference.Receipt.GetTransactionId()
-		inference.ObservationReceipts = inference.Failure.GetObservationReceipts()
-	}
-	if err != nil {
-		d.logger.Warn("tribunal consensus: member inference failed", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
-		return memberVote{inference: inference, inferenceTxID: inference.GetTransactionId(), attemptID: attemptID, failure: fmt.Errorf("member inference: %w", err)}
+		d.logger.Warn("tribunal consensus: member inference failed", slog.String("member_app_id", memberAppID), slog.Uint64("retry_count", uint64(inference.GetRetryCount())), logging.ErrorKind(err))
+		return memberVote{inference: inference, inferenceTxID: inference.GetTransactionId(), attemptID: inference.GetProviderAttemptId(), retryCount: inference.GetRetryCount(), failure: fmt.Errorf("member inference: %w", err)}
 	}
 	if bound.EffectiveVoteKind() == models.ConsensusVoteKindDecision {
 		threshold := 0.0
@@ -431,16 +438,80 @@ func (d *TribunalConsensusDeliberator) castVote(ctx context.Context, bound *mode
 			}
 		}
 		if threshold < 0.5 || threshold > 1 {
-			return memberVote{inference: inference, attemptID: attemptID, failure: constants.ErrConsensusDecisionBindingInvalid}
+			return memberVote{inference: inference, attemptID: inference.GetProviderAttemptId(), retryCount: inference.GetRetryCount(), failure: constants.ErrConsensusDecisionBindingInvalid}
 		}
 		answer, evidence := tribunal.EvaluateConsensusDecision(member, request.Decision, result.Result.GetDecision(), threshold)
-		return memberVote{inference: inference, answer: answer, evidence: evidence, inferenceTxID: result.TransactionID, attemptID: attemptID}
+		return memberVote{inference: inference, answer: answer, evidence: evidence, inferenceTxID: result.TransactionID, attemptID: inference.GetProviderAttemptId(), retryCount: inference.GetRetryCount()}
 	}
 	return memberVote{inference: inference,
 		answer:        tribunal.ParseConsensusVote(models.InferenceResultText(result.Result)),
 		inferenceTxID: result.TransactionID,
-		attemptID:     attemptID,
+		attemptID:     inference.GetProviderAttemptId(),
+		retryCount:    inference.GetRetryCount(),
 	}
+}
+
+// dispatchVote dispatches memberAppID's vote inference. When the Inference
+// Operator signed a FAILED receipt saying the provider asked to retry later
+// (governance.IsTransientFailureReceipt), the failed attempt is kept and the
+// vote is asked again as a new provider attempt with the next retry_count,
+// under the retry policy. A transient error without that receipt, any other
+// failure, and any decision-kind vote are never retried. It returns the final
+// attempt's result and record; the record carries every earlier attempt, in
+// order, as superseded_attempts.
+func (d *TribunalConsensusDeliberator) dispatchVote(ctx context.Context, request dispatch.DispatchInferenceRequest, memberAppID, txHash string, expiresAt time.Time) (*dispatch.DispatchInferenceResult, *operatorv1.ConsensusVoteInference, error) {
+	var superseded []*operatorv1.ConsensusVoteInference
+	for retryCount := uint32(0); ; retryCount++ {
+		attemptID := governance.ConsensusVoteAttemptID(txHash, memberAppID, retryCount)
+		request.ProviderAttemptID = attemptID
+		request.RetryCount = retryCount
+		result, err := d.inference.DispatchInference(ctx, request)
+		if err == nil && (result == nil || result.Result == nil) {
+			err = constants.ErrInferenceCompletionNoResult
+		}
+		inference := &operatorv1.ConsensusVoteInference{MemberAppId: memberAppID, ProviderAttemptId: attemptID, RetryCount: retryCount}
+		if result != nil {
+			inference.TransactionId = result.TransactionID
+			inference.Result = result.Result
+			inference.Receipt = result.Receipt
+			inference.ObservationReceipts = result.ObservationReceipts
+		}
+		if err != nil {
+			_, inference.Failure = inferenceDispatchFailure(err)
+			inference.Receipt = inference.Failure.GetReceipt()
+			inference.TransactionId = inference.Receipt.GetTransactionId()
+			inference.ObservationReceipts = inference.Failure.GetObservationReceipts()
+			if request.Decision == nil && governance.IsTransientFailureReceipt(inference.Receipt) && d.awaitVoteRetry(ctx, retryCount+1, expiresAt) {
+				d.logger.Info("tribunal consensus: provider asked to retry later; asking the member again",
+					slog.String("member_app_id", memberAppID), slog.Uint64("retry_count", uint64(retryCount)+1), logging.ErrorKind(err))
+				superseded = append(superseded, inference)
+				continue
+			}
+		}
+		inference.SupersededAttempts = superseded
+		return result, inference, err
+	}
+}
+
+// awaitVoteRetry waits out the delay before the vote attempt with retry_count
+// retry and reports whether to dispatch it. A wait the policy does not allow
+// is never started, and neither is one that would not end before both ctx's
+// deadline and the subject envelope's expiry less DispatchTimeout, the margin
+// the Operator's L4 and L5 need to admit and run the envelope. A subject
+// without an expiry has no provable lifetime, so it is never retried.
+func (d *TribunalConsensusDeliberator) awaitVoteRetry(ctx context.Context, retry uint32, expiresAt time.Time) bool {
+	delay, ok := d.retry.Delay(retry)
+	if !ok || ctx.Err() != nil || expiresAt.IsZero() {
+		return false
+	}
+	ends := time.Now().Add(delay)
+	if !ends.Before(expiresAt.Add(-DispatchTimeout)) {
+		return false
+	}
+	if deadline, bounded := ctx.Deadline(); bounded && !ends.Before(deadline) {
+		return false
+	}
+	return d.retry.Wait(ctx, delay) == nil
 }
 
 // consensusSubject renders the envelope fields a member votes on, including the

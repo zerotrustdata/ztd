@@ -34,7 +34,14 @@ import {
   formatThroughput,
   formatNumber,
 } from '../components/shared';
-import type { VerifierState } from '../contract/types';
+import type { ModelRole, VerifierState } from '../contract/types';
+import {
+  formatProviderClassLabel,
+  formatTelemetryUnavailableReason,
+  isHostedProviderClass,
+  isLocalProviderClass,
+  resolveVariantProviderClass,
+} from '../content/provider';
 import { evaluationPassRate } from '../utils/run-metrics';
 import { campaignTerminalProgress, lifecycleStateTone, nativeResultTone, nativeScenarioTone, roleLabel, verifierStateTone } from './derived';
 
@@ -70,12 +77,27 @@ export function EvaluationDetailView() {
   );
   const runAssignments = useRunAssignments(activeDatasetId, runId);
   const assignments = runAssignments.assignments;
+  const models = useStoreState((state) => state.models);
   const connection = useStoreState((state) => state.connection);
   if (!runId) return <ErrorState message="No run selected." />;
   if (!run) return <EmptyState hasRecords={false} hasFilters={false} connection={connection} />;
 
+  const mappedProviderClasses = Object.entries(run.model_role_mapping ?? {})
+    .map(([role, variantId]) => resolveVariantProviderClass(models, activeDatasetId, variantId, role as ModelRole))
+    .filter((value): value is string => Boolean(value));
+  const assignmentProviderClasses = assignments
+    .map((item) => resolveVariantProviderClass(models, activeDatasetId, item.variant_id, item.role))
+    .filter((value): value is string => Boolean(value));
+  const runProviderClasses = mappedProviderClasses.length > 0 ? mappedProviderClasses : assignmentProviderClasses;
+  const hostedRunClass = runProviderClasses.find((value) => isHostedProviderClass(value));
+  const isHostedOnlyRun = Boolean(hostedRunClass) && !runProviderClasses.some((value) => isLocalProviderClass(value));
+
   const passRate = evaluationPassRate(run);
-  const headlineLimitations = new Set(run.benchmark_unavailable_reasons ?? []);
+  const headlineLimitations = new Set(
+    (run.benchmark_unavailable_reasons ?? []).map((reason) =>
+      formatTelemetryUnavailableReason(reason, isHostedOnlyRun ? hostedRunClass : undefined),
+    ),
+  );
   for (const [label, metric] of [
     ['Pass rate', passRate],
     ['Latency p50', run.headline_metrics.latency_p50_ms],
@@ -200,12 +222,18 @@ export function EvaluationDetailView() {
       {run.model_role_mapping && Object.keys(run.model_role_mapping).length > 0 ? (
         <PanelSection title="Model-role mapping" collapsed signal={Object.values(run.model_role_mapping).join(' · ')}>
           <ul className="role-mapping">
-            {Object.entries(run.model_role_mapping).map(([role, variantId]) => (
-              <li key={role}>
-                <span className="role-label">{roleLabel(role)}</span>
-                <Link to={`/models/${activeDatasetId}/${variantId}`}>{variantId}</Link>
-              </li>
-            ))}
+            {Object.entries(run.model_role_mapping).map(([role, variantId]) => {
+              const providerClass = resolveVariantProviderClass(models, activeDatasetId, variantId, role as ModelRole);
+              return (
+                <li key={role}>
+                  <span className="role-label">{roleLabel(role)}</span>
+                  <Link to={`/models/${activeDatasetId}/${variantId}`}>{variantId}</Link>
+                  {providerClass ? (
+                    <span className="model-provider-tag">{formatProviderClassLabel(providerClass)}</span>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </PanelSection>
       ) : null}

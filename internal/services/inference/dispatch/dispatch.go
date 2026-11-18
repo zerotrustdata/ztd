@@ -28,6 +28,8 @@ import (
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/inference"
+	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
+	"github.com/zerotrustdata/ztd/internal/services/logging"
 	"github.com/zerotrustdata/ztd/internal/services/operatorcapability"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -137,6 +139,13 @@ type ProvenanceObservationNotifier interface {
 	NotifyAttemptFinalize(ctx context.Context, requestorUserID, providerAttemptID, inferenceTransactionID, servedModelTag, expectedModelDigest, modelRegistryDigest, campaignID string, startedAtUnixMs, completedAtUnixMs int64, failed bool, retryCount uint32) (*operatorv1.EventReceipt, error)
 }
 
+// HostedProvenanceRecorder records the model provenance window of a completed
+// hosted attempt, derived from the hosted egress attestation the Inference
+// Operator signed into its result.
+type HostedProvenanceRecorder interface {
+	RecordHostedAttempt(ctx context.Context, requestorUserID string, attempt model_provenance.HostedAttempt) error
+}
+
 type inferenceOperatorSessionKey struct{}
 
 // WithInferenceOperatorSession attaches the resolved inference Operator
@@ -170,6 +179,7 @@ type DispatchService struct {
 	operatorList        OperatorLister
 	observationNotifier ProviderObservationNotifier
 	provenanceNotifier  ProvenanceObservationNotifier
+	hostedProvenance    HostedProvenanceRecorder
 	logger              *slog.Logger
 }
 
@@ -201,6 +211,15 @@ func (s *DispatchService) SetProvenanceObservationNotifier(notifier ProvenanceOb
 	s.provenanceNotifier = notifier
 }
 
+// SetHostedProvenanceRecorder wires the recorder of hosted attempts' model
+// provenance windows.
+func (s *DispatchService) SetHostedProvenanceRecorder(recorder HostedProvenanceRecorder) {
+	if s == nil {
+		return
+	}
+	s.hostedProvenance = recorder
+}
+
 // DispatchInferenceRequest is the input to DispatchInference. Role and ordered messages are required; optional fields override the Inference Node's config defaults when non-zero/non-empty.
 type DispatchInferenceRequest struct {
 	Decision         *operatorv1.InferenceDecisionRequest
@@ -215,6 +234,12 @@ type DispatchInferenceRequest struct {
 	// Model selects an exact frozen registry entry in campaign mode. Standard
 	// inference accepts only the configured model for the role.
 	Model string
+
+	// ProviderClass names the hosted provider class (gemini, anthropic,
+	// openai) serving Model. Empty selects the Inference Operator's local
+	// provider. A hosted class routes only to an Operator whose enrolled
+	// runtime config lists it (inference_hosted_providers).
+	ProviderClass string
 
 	// Temperature overrides the backend's default temperature. Zero means
 	// use the backend default.
@@ -337,19 +362,24 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 	if err := validateCampaignModelRegistry(req); err != nil {
 		return nil, fmt.Errorf("inference dispatch: %w", err)
 	}
+	if err := validateHostedRequest(req); err != nil {
+		return nil, fmt.Errorf("inference dispatch: %w", err)
+	}
 
 	// Resolve the Inference Node's operator session from the requestor's
 	// enrolled operators. The Inference Node advertises the inference
 	// capability at enrollment time; the dispatch service filters by it.
-	operatorSessionID, err := s.resolveInferenceOperator(ctx, req)
+	inferenceOperator, err := s.resolveInferenceOperator(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("inference dispatch: %w", err)
 	}
+	operatorSessionID := inferenceOperator.GetOperatorSessionId()
 
 	// Construct the InferenceRequested proto payload.
 	infReq := &operatorv1.InferenceRequested{
 		Role:                 req.Role.ToProto(),
 		Decision:             req.Decision,
+		ProviderClass:        req.ProviderClass,
 		Model:                req.Model,
 		Messages:             req.Messages,
 		Tools:                req.Tools,
@@ -459,6 +489,11 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 		return nil, WithObservationReceipts(append(observationReceipts, finalized...), err)
 	}
 	observationReceipts = append(observationReceipts, finalized...)
+	if !failed {
+		if err := s.recordHostedProvenance(ctx, req, inferenceOperator.GetId(), result.TransactionID, attemptStartedAt, infResult); err != nil {
+			return nil, WithObservationReceipts(observationReceipts, err)
+		}
+	}
 
 	s.logger.Info("Governed inference dispatch completed",
 		"transaction_id", result.TransactionID,
@@ -500,6 +535,12 @@ type attemptState struct {
 func (s *DispatchService) beginAttempt(ctx context.Context, req DispatchInferenceRequest, attempt *attemptState) error {
 	attempt.ctx = ctx
 	attempt.startedAt = time.Now().UTC().UnixMilli()
+	if req.ProviderClass != "" {
+		// A hosted provider runs on no host the platform can witness: no
+		// observer or storage window opens. Its provenance is the hosted
+		// attestation the Inference Operator signs into the result.
+		return nil
+	}
 	observationBegin, observed, err := s.notifyObservationBegin(ctx, req, attempt.startedAt)
 	attempt.receipts = appendObservationReceipt(attempt.receipts, observationBegin)
 	if err != nil {
@@ -683,6 +724,54 @@ func (s *DispatchService) notifyProvenanceFinalize(
 	return receipt, fmt.Errorf("inference dispatch: %w", err)
 }
 
+// validateHostedRequest admits a hosted provider class only for a generation
+// that names its model.
+func validateHostedRequest(req DispatchInferenceRequest) error {
+	if req.ProviderClass == "" {
+		return nil
+	}
+	if !constants.IsHostedInferenceProvider(req.ProviderClass) {
+		return fmt.Errorf("provider class %q: %w", req.ProviderClass, constants.ErrInferenceHostedNotAllowed)
+	}
+	if req.Decision != nil {
+		return constants.ErrInferenceDecisionUnsupported
+	}
+	if req.Model == "" {
+		return constants.ErrInferenceModelRefInvalid
+	}
+	return nil
+}
+
+// recordHostedProvenance records the model provenance window of a completed,
+// digest-pinned hosted attempt, as a Provenance Operator's FINALIZE does for a
+// local one. Without a recorder the attempt is unattested and the campaign's
+// model provenance policy decides; a campaign attempt whose window cannot be
+// recorded fails closed.
+func (s *DispatchService) recordHostedProvenance(ctx context.Context, req DispatchInferenceRequest, inferenceOperatorID, transactionID string, startedAtUnixMs int64, result *operatorv1.InferenceResult) error {
+	if req.ProviderClass == "" || req.ModelDigest == "" || s.hostedProvenance == nil {
+		return nil
+	}
+	err := s.hostedProvenance.RecordHostedAttempt(ctx, req.RequestorUserID, model_provenance.HostedAttempt{
+		InferenceOperatorID:    inferenceOperatorID,
+		InferenceTransactionID: transactionID,
+		ProviderAttemptID:      req.ProviderAttemptID,
+		ExpectedModelDigest:    req.ModelDigest,
+		StartedAtUnixMs:        startedAtUnixMs,
+		CompletedAtUnixMs:      time.Now().UTC().UnixMilli(),
+		Result:                 result,
+	})
+	if err == nil {
+		return nil
+	}
+	if req.hasCampaignAuthority() {
+		return fmt.Errorf("inference dispatch: hosted model provenance: %w", err)
+	}
+	s.logger.Warn("inference dispatch: hosted model provenance window not recorded",
+		slog.String("provider_attempt_id", req.ProviderAttemptID),
+		logging.ErrorKind(err))
+	return nil
+}
+
 func validateCampaignModelRegistry(req DispatchInferenceRequest) error {
 	if !req.hasCampaignAuthority() {
 		return nil
@@ -700,6 +789,11 @@ func validateCampaignModelRegistry(req DispatchInferenceRequest) error {
 func validateInferenceResult(result *operatorv1.InferenceResult, req DispatchInferenceRequest) error {
 	if err := models.ValidateDecisionCompletion(req.Decision, result); err != nil {
 		return err
+	}
+	if req.Decision == nil {
+		if err := models.ValidateHostedEgress(req.ProviderClass, result.GetRequestedModel(), req.ModelDigest, result); err != nil {
+			return err
+		}
 	}
 	if result.GetModel() == "" || result.GetRequestedModel() == "" {
 		return constants.ErrInferenceProviderResponseInvalid
@@ -775,7 +869,7 @@ func validateInferenceResult(result *operatorv1.InferenceResult, req DispatchInf
 	return nil
 }
 
-// resolveInferenceOperator resolves the Inference Node's operator session
+// resolveInferenceOperator resolves the Inference Node's operator document
 // from the requestor's enrolled operators. With an explicit
 // TargetOperatorSessionID the target must appear in the requestor's
 // operator list (ownership) and carry inference capability; without one,
@@ -788,10 +882,10 @@ func validateInferenceResult(result *operatorv1.InferenceResult, req DispatchInf
 // ErrInferenceOperatorNotCapable for an explicit target that lacks the
 // capability, and ErrInferenceOperatorAmbiguous for multiple matches with
 // no explicit target.
-func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req DispatchInferenceRequest) (string, error) {
+func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req DispatchInferenceRequest) (*operatorv1.OperatorDocument, error) {
 	operators, err := s.operatorList.ListUserOperators(ctx, req.RequestorUserID)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	capable := func(op *operatorv1.OperatorDocument) bool {
@@ -805,6 +899,9 @@ func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req Disp
 		} else if op.GetRuntimeConfig().GetInferenceDecisionOnly() {
 			return false
 		}
+		if req.ProviderClass != "" && !slices.Contains(op.GetRuntimeConfig().GetInferenceHostedProviders(), req.ProviderClass) {
+			return false
+		}
 		return op.RuntimeConfig != nil &&
 			operatorcapability.GetOperatorCapabilities(op).Has(constants.OperatorCapabilityInference) &&
 			op.OperatorSessionId != "" &&
@@ -812,7 +909,7 @@ func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req Disp
 	}
 
 	if req.TargetOperatorID != "" {
-		var selected string
+		var selected *operatorv1.OperatorDocument
 		for _, op := range operators {
 			if op.GetId() != req.TargetOperatorID || !capable(op) {
 				continue
@@ -820,13 +917,13 @@ func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req Disp
 			if req.TargetOperatorSessionID != "" && op.GetOperatorSessionId() != req.TargetOperatorSessionID {
 				continue
 			}
-			if selected != "" {
-				return "", constants.ErrInferenceOperatorAmbiguous
+			if selected != nil {
+				return nil, constants.ErrInferenceOperatorAmbiguous
 			}
-			selected = op.GetOperatorSessionId()
+			selected = op
 		}
-		if selected == "" {
-			return "", constants.ErrInferenceOperatorNotFound
+		if selected == nil {
+			return nil, constants.ErrInferenceOperatorNotFound
 		}
 		return selected, nil
 	}
@@ -834,15 +931,15 @@ func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req Disp
 		for i := range operators {
 			if operators[i].OperatorSessionId == req.TargetOperatorSessionID {
 				if !capable(operators[i]) {
-					return "", constants.ErrInferenceOperatorNotCapable
+					return nil, constants.ErrInferenceOperatorNotCapable
 				}
-				return operators[i].OperatorSessionId, nil
+				return operators[i], nil
 			}
 		}
 		// The target is not in the requestor's operator list. Report
 		// not-found rather than a distinct ownership error so the response
 		// does not disclose whether the session exists for another user.
-		return "", constants.ErrInferenceOperatorNotFound
+		return nil, constants.ErrInferenceOperatorNotFound
 	}
 
 	var matches []*operatorv1.OperatorDocument
@@ -854,10 +951,10 @@ func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req Disp
 	matches = operatorcapability.PreferEmbedded(matches)
 	switch len(matches) {
 	case 0:
-		return "", constants.ErrInferenceOperatorNotFound
+		return nil, constants.ErrInferenceOperatorNotFound
 	case 1:
-		return matches[0].OperatorSessionId, nil
+		return matches[0], nil
 	default:
-		return "", constants.ErrInferenceOperatorAmbiguous
+		return nil, constants.ErrInferenceOperatorAmbiguous
 	}
 }

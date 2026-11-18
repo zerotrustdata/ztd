@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -78,6 +79,9 @@ type CampaignAgentExecutor struct {
 	catalog    *agentToolCatalog
 	now        func() time.Time
 	newID      func(string) string
+	// retry is the policy an inference attempt the provider asked to retry
+	// later is retried under.
+	retry inferencedispatch.TransientRetry
 }
 
 // NewCampaignAgentExecutor constructs the homogeneous agent executor. The
@@ -95,7 +99,7 @@ func NewCampaignAgentExecutor(inference AgentInferenceDispatcher, residency Mode
 	if now == nil {
 		now = time.Now
 	}
-	return &CampaignAgentExecutor{inference: inference, residency: residency, tools: tools, sentinel: sentinel, traceStore: traceStore, catalog: catalog, now: now, newID: newID}, nil
+	return &CampaignAgentExecutor{inference: inference, residency: residency, tools: tools, sentinel: sentinel, traceStore: traceStore, catalog: catalog, now: now, newID: newID, retry: inferencedispatch.DefaultTransientRetry()}, nil
 }
 
 // agentRun is the per-assignment state of one tool loop.
@@ -117,6 +121,9 @@ type agentRun struct {
 	target             Target
 	trace              *AgentTrace
 	marshalStrikeCount int
+	// budget is the scenario's wall-clock budget, when it has one; a retry
+	// wait is credited to it.
+	budget *scenarioBudget
 }
 
 // ExecuteAssignment runs one homogeneous assignment to a terminal result. A
@@ -131,7 +138,7 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	}
 	// Residency commands are governed actions with their own receipts, so the
 	// provider is set for this assignment before the ledger sentinel opens.
-	if err := e.releaseAllExcept(ctx, req, "assignment", run.modelTags()); err != nil {
+	if err := e.releaseAllExcept(ctx, req, "assignment", run.modelVariants()); err != nil {
 		return nil, assignmentExecutionError("evaluation: assignment residency", err)
 	}
 	assignment := req.Assignment
@@ -157,7 +164,8 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	loopCtx := ctx
 	if budget := req.ScenarioInput.Budget; budget != nil {
 		var cancel context.CancelFunc
-		loopCtx, cancel = context.WithTimeout(ctx, time.Duration(budget.WallClockLimitMS)*time.Millisecond)
+		run.budget, cancel = newScenarioBudget(ctx, time.Duration(budget.WallClockLimitMS)*time.Millisecond)
+		loopCtx = run.budget
 		defer cancel()
 	}
 	loopErr := run.loop(loopCtx)
@@ -246,25 +254,31 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	return result, nil
 }
 
-// releaseAllExcept releases every provider model outside retain before the
-// named phase dispatches. The caller classifies a failed release: inside an
-// assignment it is a harness failure, never graded against the model; before
-// the tool-calling probe it stops the run.
-func (e *CampaignAgentExecutor) releaseAllExcept(ctx context.Context, req AssignmentExecutionRequest, phase string, retain []string) error {
-	if _, err := e.residency.ReleaseAllExcept(ctx, ModelResidencyRelease{RunID: req.Assignment.GetRunId(), Retain: retain}); err != nil {
+// releaseAllExcept releases every local provider model outside retain before
+// the named phase dispatches. A phase whose models are all hosted holds no
+// local residency, so it reads and releases nothing: the run never depends on
+// a local provider it does not dispatch. The caller classifies a failed
+// release: inside an assignment it is a harness failure, never graded against
+// the model; before the tool-calling probe it stops the run.
+func (e *CampaignAgentExecutor) releaseAllExcept(ctx context.Context, req AssignmentExecutionRequest, phase string, retain []*evalv1.ModelVariant) error {
+	if !DispatchesLocalModels(retain, nil) {
+		return nil
+	}
+	if _, err := e.residency.ReleaseAllExcept(ctx, ModelResidencyRelease{RunID: req.Assignment.GetRunId(), Retain: distinctServedModelTags(retain)}); err != nil {
 		return fmt.Errorf("evaluation: release provider models before %s: %w", phase, err)
 	}
 	return nil
 }
 
 // releaseAllExceptJudge leaves only the campaign's frozen judge resident. A
-// judge that is one of the assignment's own models stays loaded.
+// judge that is one of the assignment's own models stays loaded, and a hosted
+// judge releases nothing.
 func (e *CampaignAgentExecutor) releaseAllExceptJudge(ctx context.Context, req AssignmentExecutionRequest) error {
 	variant, err := judgeVariant(req)
 	if err != nil {
 		return assignmentExecutionError("evaluation: judge residency", err)
 	}
-	return assignmentExecutionError("evaluation: judge residency", e.releaseAllExcept(ctx, req, "judge", []string{variant.GetServedModelTag()}))
+	return assignmentExecutionError("evaluation: judge residency", e.releaseAllExcept(ctx, req, "judge", []*evalv1.ModelVariant{variant}))
 }
 
 // qualityJudgeRequired reports whether scoreWithJudge dispatches the judge for
@@ -289,7 +303,10 @@ func (e *CampaignAgentExecutor) shouldScoreWithJudge(req AssignmentExecutionRequ
 // qualityJudgments is what the quality judge adds to a result: one semantic
 // grade per judged subject, the decomposed score of each counted grade, and the
 // grader call and governed action of each judge inference whose receipt
-// verified.
+// verified. A judgment that was retried after the provider asked to retry later
+// records the attempts it superseded on its grader call; a judgment that ends
+// in a failed dispatch has no signed result, so it has no grader call and
+// those attempts are not persisted.
 type qualityJudgments struct {
 	grades          []*evalv1.SemanticGrade
 	scores          []*evalv1.DecomposedScoreRecord
@@ -401,6 +418,8 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 				TransactionId:      sc.TransactionID,
 				InferenceResult:    proto.Clone(sc.Result).(*operatorv1.InferenceResult),
 				Receipt:            proto.Clone(sc.Receipt).(*operatorv1.EventReceipt),
+				RetryCount:         sc.RetryCount,
+				SupersededAttempts: supersededRecords(sc.Superseded),
 			})
 			out.governedActions = append(out.governedActions, &evalv1.GovernedActionBinding{
 				BindingId:         e.newID("judge-binding"),
@@ -412,6 +431,22 @@ func (e *CampaignAgentExecutor) scoreWithJudge(ctx context.Context, req Assignme
 				PolicyDecision:    agentPolicyDecisionAllow,
 				ActionType:        string(constants.ActionTypeInference),
 			})
+			// Each superseded attempt is a governed inference the judge's runtime
+			// executed and signed; receipts.verify checked its chain above.
+			for _, attempt := range sc.Superseded {
+				attemptRef := proto.Clone(graderCallRef).(*compliancev1.ComplianceEvidenceReference)
+				attemptRef.ArtifactId = "receipt:" + attempt.TransactionID
+				out.governedActions = append(out.governedActions, &evalv1.GovernedActionBinding{
+					BindingId:         e.newID("judge-binding"),
+					AssignmentId:      assignmentID,
+					TransactionId:     attempt.TransactionID,
+					OperatorId:        trace.Inference.OperatorID,
+					OperatorSessionId: trace.Inference.SessionID,
+					ReceiptRef:        attemptRef,
+					PolicyDecision:    agentPolicyDecisionAllow,
+					ActionType:        string(constants.ActionTypeInference),
+				})
+			}
 		}
 		var (
 			status evalv1.EvaluationVerdictStatus
@@ -584,8 +619,18 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 // resolved, sorted and without duplicates. A formation keeps all of its slots
 // resident, so its turns never reload one another's models.
 func (r *agentRun) modelTags() []string {
-	tags := make([]string, 0, len(r.variants))
-	for _, variant := range r.variants {
+	return distinctServedModelTags(r.modelVariants())
+}
+
+// modelVariants returns the frozen variants the assignment dispatches.
+func (r *agentRun) modelVariants() []*evalv1.ModelVariant {
+	return slices.Collect(maps.Values(r.variants))
+}
+
+// distinctServedModelTags returns the sorted, distinct served tags of variants.
+func distinctServedModelTags(variants []*evalv1.ModelVariant) []string {
+	tags := make([]string, 0, len(variants))
+	for _, variant := range variants {
 		tags = append(tags, variant.GetServedModelTag())
 	}
 	slices.Sort(tags)
@@ -718,10 +763,7 @@ func (r *agentRun) loop(ctx context.Context) error {
 			r.trace.TerminalClassification = classifyTerminalState(r.trace)
 			return nil
 		}
-		assistant := &operatorv1.InferenceMessage{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT}
-		if text != "" {
-			assistant.Parts = append(assistant.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_Text{Text: text}})
-		}
+		executedArgs := make([]string, 0, len(toolCalls))
 		results := make([]*operatorv1.InferenceMessage, 0, len(toolCalls))
 		for _, toolCall := range toolCalls {
 			if err := ctx.Err(); err != nil {
@@ -753,9 +795,7 @@ func (r *agentRun) loop(ctx context.Context) error {
 				r.trace.TerminalClassification = AgentTerminalClassificationHarnessFailure
 				return nil
 			}
-			assistant.Parts = append(assistant.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
-				CallId: toolCall.GetCallId(), Name: toolCall.GetName(), ArgumentsJson: executed.ArgumentsJSON,
-			}}})
+			executedArgs = append(executedArgs, executed.ArgumentsJSON)
 			results = append(results, &operatorv1.InferenceMessage{
 				Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_TOOL,
 				Parts: []*operatorv1.InferenceMessagePart{{Part: &operatorv1.InferenceMessagePart_ToolResult{ToolResult: &operatorv1.InferenceToolResult{
@@ -763,7 +803,7 @@ func (r *agentRun) loop(ctx context.Context) error {
 				}}}},
 			})
 		}
-		messages = append(messages, assistant)
+		messages = append(messages, agentAssistantMessage(result, text, toolCalls, executedArgs))
 		messages = append(messages, results...)
 		if len(messages) > agentMaxMessages {
 			break
@@ -772,6 +812,45 @@ func (r *agentRun) loop(ctx context.Context) error {
 	r.trace.ToolTurnLimitReached = true
 	r.trace.TerminalClassification = AgentTerminalClassificationBudgetExhaustion
 	return nil
+}
+
+// agentAssistantMessage builds the live continuation after every tool call has
+// executed. Opaque reasoning binds the provider's ordered assistant turn, so its
+// text boundaries and reasoning items survive unchanged. Calls always carry the
+// arguments actually executed. The signed result itself is never mutated.
+func agentAssistantMessage(result *operatorv1.InferenceResult, text string, toolCalls []*operatorv1.InferenceToolCall, executedArgs []string) *operatorv1.InferenceMessage {
+	assistant := &operatorv1.InferenceMessage{Role: operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT}
+	callIndex := 0
+	appendCall := func(call *operatorv1.InferenceToolCall) {
+		cloned := proto.Clone(call).(*operatorv1.InferenceToolCall)
+		cloned.ArgumentsJson = executedArgs[callIndex]
+		callIndex++
+		assistant.Parts = append(assistant.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_ToolCall{ToolCall: cloned}})
+	}
+	if slices.ContainsFunc(result.GetParts(), func(part *operatorv1.InferenceResponsePart) bool {
+		return part.GetProviderReasoning() != nil
+	}) {
+		for _, part := range result.GetParts() {
+			switch value := part.GetPart().(type) {
+			case *operatorv1.InferenceResponsePart_Text:
+				assistant.Parts = append(assistant.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_Text{Text: value.Text}})
+			case *operatorv1.InferenceResponsePart_ProviderReasoning:
+				assistant.Parts = append(assistant.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_ProviderReasoning{
+					ProviderReasoning: proto.Clone(value.ProviderReasoning).(*operatorv1.InferenceProviderReasoning),
+				}})
+			case *operatorv1.InferenceResponsePart_ToolCall:
+				appendCall(value.ToolCall)
+			}
+		}
+		return assistant
+	}
+	if text != "" {
+		assistant.Parts = append(assistant.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_Text{Text: text}})
+	}
+	for _, call := range toolCalls {
+		appendCall(call)
+	}
+	return assistant
 }
 
 // agentCallContext lets an admitted call return its signed outcome after the
@@ -1076,37 +1155,81 @@ func agentResponseParts(result *operatorv1.InferenceResult) (string, string, []*
 // it on the trace whenever the Inference runtime executed it, so its ledger
 // commitment is always claimed. A provider failure is a scored outcome, not an
 // execution error: it is recorded on the trace and reported as a nil call so
-// the caller stops the turn. call names the inference (purpose, loop turn, and
-// for a Tribunal call its tool call and persona); dispatch fills the rest.
+// the caller stops the turn. An attempt whose signed FAILED receipt says the
+// provider asked to retry later is recorded and retried under the executor's
+// transient retry policy: the retry is a new provider attempt with the next
+// retry_count, and its retry_of names the attempt it supersedes. Only the
+// last attempt's failure is the trace's provider failure. call names the
+// inference (purpose, loop turn, and for an Interrogator call its persona and
+// input); dispatch fills the rest.
 func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, *AgentModelCall) {
-	callCtx, cancel := agentCallContext(ctx)
-	defer cancel()
-	result, call, err := r.dispatchInference(callCtx, call, messages, tools)
-	if err != nil && call.Receipt != nil && isL2GovernanceDenial(call.Receipt.EventReceipt, err) {
-		// Required L2 refused the turn and the Inference runtime signed that
-		// rejection: a governance outcome, not a provider failure.
-		call.Error = modelCallGovernanceRejected
-		r.trace.ModelCalls = append(r.trace.ModelCalls, call)
-		r.trace.TerminalClassification = AgentTerminalClassificationPolicyDenial
-		return nil, nil
-	}
-	if err != nil {
+	for {
+		result, attempt, err := r.inferAttempt(ctx, call, messages, tools)
+		if err == nil {
+			r.trace.ModelCalls = append(r.trace.ModelCalls, attempt)
+			return result, &r.trace.ModelCalls[len(r.trace.ModelCalls)-1]
+		}
+		if attempt.Receipt != nil && isL2GovernanceDenial(attempt.Receipt.EventReceipt, err) {
+			// Required L2 refused the turn and the Inference runtime signed that
+			// rejection: a governance outcome, not a provider failure.
+			attempt.Error = modelCallGovernanceRejected
+			r.trace.ModelCalls = append(r.trace.ModelCalls, attempt)
+			r.trace.TerminalClassification = AgentTerminalClassificationPolicyDenial
+			return nil, nil
+		}
+		if attempt.Receipt != nil && governance.IsTransientFailureReceipt(attempt.Receipt.EventReceipt) && r.awaitRetry(ctx, attempt.RetryCount+1) {
+			attempt.Error = string(ClassifyExecutionFailure(err))
+			r.trace.ModelCalls = append(r.trace.ModelCalls, attempt)
+			call.RetryCount = attempt.RetryCount + 1
+			call.RetryOf = attempt.ProviderAttemptID
+			continue
+		}
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			r.trace.TerminalClassification = AgentTerminalClassificationTimeout
-			call.Error = string(ExecutionFailureTimeout)
+			attempt.Error = string(ExecutionFailureTimeout)
 		} else {
 			r.trace.ProviderFailure = string(ClassifyExecutionFailure(err))
 			r.trace.ProviderFailureClass = string(ProviderFailureClass(err))
-			call.Error = r.trace.ProviderFailure
+			attempt.Error = r.trace.ProviderFailure
 		}
-	}
-	if err == nil || call.Receipt != nil {
-		r.trace.ModelCalls = append(r.trace.ModelCalls, call)
-	}
-	if err != nil {
+		if attempt.Receipt != nil {
+			r.trace.ModelCalls = append(r.trace.ModelCalls, attempt)
+		}
 		return nil, nil
 	}
-	return result, &r.trace.ModelCalls[len(r.trace.ModelCalls)-1]
+}
+
+// inferAttempt dispatches one provider attempt of call under its own call
+// context, so an admitted attempt returns its signed outcome even past the
+// loop deadline.
+func (r *agentRun) inferAttempt(ctx context.Context, call AgentModelCall, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, AgentModelCall, error) {
+	callCtx, cancel := agentCallContext(ctx)
+	defer cancel()
+	return r.dispatchInference(callCtx, call, messages, tools)
+}
+
+// awaitRetry waits out the delay before the attempt with retry_count retry
+// and reports whether to dispatch it. The wait is the provider's, not the
+// model's: it is credited to the scenario budget before it starts. A wait the
+// policy does not allow, the budget cannot credit in full, or that would pass
+// the assignment deadline is never started, so the last transient failure
+// stands as the provider failure rather than a model timeout.
+func (r *agentRun) awaitRetry(ctx context.Context, retry uint32) bool {
+	policy := r.executor.retry
+	delay, ok := policy.Delay(retry)
+	if !ok || ctx.Err() != nil {
+		return false
+	}
+	if r.budget != nil {
+		// The credit is refused, never granted in part, when the moved
+		// deadline would pass the assignment's.
+		if !r.budget.credit(delay) {
+			return false
+		}
+	} else if deadline, ok := ctx.Deadline(); ok && time.Now().Add(delay).After(deadline) {
+		return false
+	}
+	return policy.Wait(ctx, delay) == nil
 }
 
 // dispatchInference dispatches one governed inference for the designated model
@@ -1161,9 +1284,11 @@ func (r *agentRun) bindInference(call *AgentModelCall, modelRole evalv1.ModelCam
 	}
 	probe := InferenceProbeRequest{
 		ProviderAttemptID:       attemptID,
+		RetryCount:              call.RetryCount,
 		Role:                    inferenceRole,
 		Model:                   variant.GetServedModelTag(),
 		ModelDigest:             variant.GetModelDigest(),
+		ProviderClass:           models.HostedDispatchProviderClass(variant.GetProviderClass()),
 		TargetOperatorSessionID: r.trace.Inference.SessionID,
 		Messages:                messages,
 		Tools:                   tools,
@@ -1240,11 +1365,12 @@ func recordInferenceResponse(call *AgentModelCall, probe InferenceProbeRequest, 
 // result; only a harness failure returns an error.
 func (r *agentRun) runTool(ctx context.Context, turn int, modelCallID string, toolCall *operatorv1.InferenceToolCall) (AgentToolCall, error) {
 	record := AgentToolCall{
-		CallID:         r.executor.newID("tool-call"),
-		ModelCallID:    modelCallID,
-		ProviderCallID: toolCall.GetCallId(),
-		ToolName:       toolCall.GetName(),
-		LoopTurn:       turn,
+		CallID:            r.executor.newID("tool-call"),
+		ModelCallID:       modelCallID,
+		ProviderCallID:    toolCall.GetCallId(),
+		ProviderSignature: toolCall.GetProviderSignature(),
+		ToolName:          toolCall.GetName(),
+		LoopTurn:          turn,
 	}
 	spec, declared := r.tools.Spec(toolCall.GetName())
 	request := decodeAgentToolRequest(spec, declared, toolCall.GetArgumentsJson())
@@ -1479,7 +1605,15 @@ func (r *agentRun) injectEventReceiptListDefaults(args *agentToolArguments) {
 // rejection or an ingress refusal.
 func (r *agentRun) dispatch(ctx context.Context, record *AgentToolCall, action constants.ActionType, resource string, payload []byte) (GovernedToolDispatch, bool, error) {
 	assignment := r.req.Assignment
+	// L2 vote retries wait on the Gateway; that wait is the provider's, so the
+	// scenario budget is held through the dispatch and credited it after.
+	r.budget.hold()
 	dispatched, err := r.executor.tools.DispatchAgentTool(ctx, r.target, assignment.GetRunId(), assignment.GetAssignmentId(), r.trace.InvestigationID, r.req.AttemptID, action, resource, payload)
+	var votes []*operatorv1.ConsensusVoteInference
+	if dispatched.Outcome != nil {
+		votes = dispatched.Outcome.ConsensusInferences
+	}
+	r.budget.release(voteRetryWait(votes))
 	if err != nil {
 		return GovernedToolDispatch{}, false, fmt.Errorf("tool %s: %w", record.ToolName, err)
 	}
@@ -1901,8 +2035,9 @@ func agentToolCallOutcome(success bool) evalv1.EvaluationVerdictStatus {
 
 // modelInferenceRecordsFromAgentTrace maps every governed agent inference to
 // a SCORED_CHAIN record: a scored turn of the tool loop, or a Tribunal
-// inference under its persona and stage call site. The scored span is the
-// summed generation time.
+// inference under its persona and stage call site. An attempt a later retry
+// superseded is a RETRIED record: still evidence, never a metric. The scored
+// span is the summed generation time.
 func modelInferenceRecordsFromAgentTrace(req AssignmentExecutionRequest, trace *AgentTrace, newID func(string) string) ([]*evalv1.ModelInferenceRecord, *uint64, error) {
 	assignment := req.Assignment
 	resolved, err := ResolveAssignmentModels(req)
@@ -1910,8 +2045,13 @@ func modelInferenceRecordsFromAgentTrace(req AssignmentExecutionRequest, trace *
 		return nil, nil, fmt.Errorf("evaluation: model inference records: resolve assignment models: %w", err)
 	}
 	records := make([]*evalv1.ModelInferenceRecord, 0, len(trace.ModelCalls))
+	superseded := trace.supersededAttempts()
 	var span uint64
 	for _, call := range trace.ModelCalls {
+		classification := evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN
+		if superseded[call.ProviderAttemptID] {
+			classification = evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_RETRIED
+		}
 		usage := evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_UNAVAILABLE
 		if call.UsageReported {
 			usage = evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_REPORTED
@@ -1942,7 +2082,7 @@ func modelInferenceRecordsFromAgentTrace(req AssignmentExecutionRequest, trace *
 		}
 		record := &evalv1.ModelInferenceRecord{
 			InferenceRecordId:       newID("inference"),
-			Classification:          evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
+			Classification:          classification,
 			ProviderAttemptId:       attemptID,
 			AssignmentId:            assignment.GetAssignmentId(),
 			EvaluationAttemptId:     trace.EvaluationAttemptID,

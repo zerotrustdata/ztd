@@ -307,9 +307,14 @@ func modelsAddCmd(deps nativeEvalDeps) *cobra.Command {
 		Short: "Add or update one model in the registry (or the catalog with --catalog)",
 		Long: `Add or update one model, recalculating the registry digest and matrix size.
 
+A hosted model (--provider gemini, anthropic, or openai) is read from the
+governed Inference Operator's live inventory and binds the hosted model
+identity digest it reports; the other descriptive flags do not apply to it.
+
 Examples:
   ztd eval models add gemma4:12b --family gemma4 --parameters 12b
-  ztd eval models add granite4.2:8b --family granite --parameters 8b --catalog`,
+  ztd eval models add granite4.2:8b --family granite --parameters 8b --catalog
+  ztd eval models add gemini-3.6-flash --provider gemini`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			tag := strings.TrimSpace(args[0])
@@ -320,25 +325,40 @@ Examples:
 			if err != nil {
 				return err
 			}
-			var parameterCount uint64
-			if parametersRaw != "" {
-				if parameterCount, err = evaluation.ParseParameterCount(parametersRaw); err != nil {
-					return err
+			var variant *evalv1.ModelVariant
+			if constants.IsHostedInferenceProvider(providerClass) {
+				env, err := resolveGovernedModelMaintenance(cmd, deps, []string{providerClass})
+				if err != nil {
+					return fmt.Errorf("evaluation: models add: %w", err)
 				}
-			}
-			if digest == "" {
-				sum := sha256.Sum256([]byte(providerClass + ":" + tag))
-				digest = hex.EncodeToString(sum[:])
-			}
-			variant := &evalv1.ModelVariant{
-				VariantId:      inference.NormalizeProviderModelVariantID(tag),
-				ProviderClass:  providerClass,
-				ServedModelTag: tag,
-				ModelDigest:    digest,
-				ModelFamily:    family,
-				ParameterCount: parameterCount,
-				Quantization:   quant,
-				ContextLimit:   contextLimit,
+				entries, err := evaluation.ListOllamaProviderInventory(cmd.Context(), env.ModelDispatcher, env.Maintenance, []string{providerClass})
+				if err != nil {
+					return fmt.Errorf("evaluation: models add: read provider: %w", err)
+				}
+				if variant, err = evaluation.HostedModelVariant(entries, providerClass, tag, digest); err != nil {
+					return fmt.Errorf("evaluation: models add: %w", err)
+				}
+			} else {
+				var parameterCount uint64
+				if parametersRaw != "" {
+					if parameterCount, err = evaluation.ParseParameterCount(parametersRaw); err != nil {
+						return err
+					}
+				}
+				if digest == "" {
+					sum := sha256.Sum256([]byte(providerClass + ":" + tag))
+					digest = hex.EncodeToString(sum[:])
+				}
+				variant = &evalv1.ModelVariant{
+					VariantId:      inference.NormalizeProviderModelVariantID(tag),
+					ProviderClass:  providerClass,
+					ServedModelTag: tag,
+					ModelDigest:    digest,
+					ModelFamily:    family,
+					ParameterCount: parameterCount,
+					Quantization:   quant,
+					ContextLimit:   contextLimit,
+				}
 			}
 			scope := targetScope(catalog)
 			inventories := newModelInventories(fileSvc, cfg.ProjectRoot)
@@ -372,7 +392,7 @@ Examples:
 	cmd.Flags().StringVar(&quant, "quant", "Q4_K_M", "Quantization format")
 	cmd.Flags().StringVar(&digest, "digest", "", "SHA-256 model digest (derived from provider and tag when omitted)")
 	cmd.Flags().Uint32Var(&contextLimit, "context", 0, "Model context token limit")
-	cmd.Flags().StringVar(&providerClass, "provider", constants.InferenceProviderOllama, "Inference provider class: ollama or llamacpp")
+	cmd.Flags().StringVar(&providerClass, "provider", constants.InferenceProviderOllama, "Inference provider class: ollama, llamacpp, or a hosted class (gemini, anthropic, openai)")
 	cmd.Flags().BoolVar(&catalog, flagCatalog, false, "Target the checked-in catalog instead of the registry")
 	return cmd
 }
@@ -528,18 +548,33 @@ func modelsFreezeCmd(deps nativeEvalDeps) *cobra.Command {
 		Short: "Freeze the live provider inventory into the registry",
 		Long: `Query the governed inference provider and replace the registry with what it serves.
 
-The registry then binds to the provider's exact model digests.`,
+The registry then binds to the provider's exact model digests. Hosted models
+(added with ztd eval models add --provider gemini) are kept and rebound to the
+model version the provider reports now; a hosted model the provider no longer
+lists fails the freeze.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 			if err != nil {
 				return err
 			}
-			env, err := resolveGovernedModelMaintenance(cmd, deps)
+			inventories := newModelInventories(fileSvc, cfg.ProjectRoot)
+			registry, err := inventories.freezeOrEmpty(cmd.Context(), modelScopeRegistry)
+			if err != nil {
+				return fmt.Errorf("evaluation: models freeze: %w", err)
+			}
+			// The Inference Operator re-reads every hosted model the registry
+			// keeps, so it must serve each of their classes.
+			env, err := resolveGovernedModelMaintenance(cmd, deps, evaluation.HostedProviderClasses(registry.Variants, nil))
 			if err != nil {
 				return fmt.Errorf("evaluation: models freeze: %w", err)
 			}
 			opts := evaluation.ModelInventoryOptions{RunCapabilityProbes: probeCapabilities}
+			for _, variant := range registry.Variants {
+				if constants.IsHostedInferenceProvider(variant.GetProviderClass()) {
+					opts.HostedVariants = append(opts.HostedVariants, variant)
+				}
+			}
 			if probeCapabilities {
 				probeRunner, err := env.ResolveProbeRunner()
 				if err != nil {
@@ -551,7 +586,7 @@ The registry then binds to the provider's exact model digests.`,
 			if err != nil {
 				return fmt.Errorf("evaluation: models freeze: %w", err)
 			}
-			if err := newModelInventories(fileSvc, cfg.ProjectRoot).save(cmd.Context(), modelScopeRegistry, freeze); err != nil {
+			if err := inventories.save(cmd.Context(), modelScopeRegistry, freeze); err != nil {
 				return err
 			}
 			if output.JSONEnabled(cmd) {
@@ -674,19 +709,31 @@ func modelsDiffCmd(deps nativeEvalDeps) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("evaluation: models diff: read registry: %w", err)
 			}
-			env, err := resolveGovernedModelMaintenance(cmd, deps)
+			// The frozen registry's hosted classes must be served; a catalog-only
+			// hosted model with no serving Operator shows as a difference.
+			env, err := resolveGovernedModelMaintenance(cmd, deps, evaluation.HostedProviderClasses(registryVariants, nil))
 			if err != nil {
 				return fmt.Errorf("evaluation: models diff: %w", err)
 			}
-			entries, err := evaluation.ListOllamaProviderInventory(cmd.Context(), env.ModelDispatcher, env.Maintenance)
+			entries, err := evaluation.ListOllamaProviderInventory(cmd.Context(), env.ModelDispatcher, env.Maintenance, nil)
 			if err != nil {
 				return fmt.Errorf("evaluation: models diff: read provider: %w", err)
 			}
+			catalog, registry := variantDigests(catalogVariants), variantDigests(registryVariants)
 			provider := make(map[string]string, len(entries))
 			for _, entry := range entries {
+				// A hosted inventory is the vendor's whole catalog; only the
+				// hosted models the catalog or registry names are compared.
+				if constants.IsHostedInferenceProvider(entry.ProviderClass) {
+					_, inCatalog := catalog[entry.ServedModelTag]
+					_, inRegistry := registry[entry.ServedModelTag]
+					if !inCatalog && !inRegistry {
+						continue
+					}
+				}
 				provider[entry.ServedModelTag] = entry.ModelDigest
 			}
-			rows := diffModelScopes(variantDigests(catalogVariants), variantDigests(registryVariants), provider)
+			rows := diffModelScopes(catalog, registry, provider)
 			inSync := 0
 			for _, row := range rows {
 				if row.Status == "in-sync" {

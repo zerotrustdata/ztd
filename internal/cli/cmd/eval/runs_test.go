@@ -18,8 +18,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -170,4 +173,105 @@ func TestRunsRejectNegativeAssignmentTimeoutBeforeLoadingRuntime(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
 	_, err = executeRun(cmd, nativeEvalDeps{}, runExecuteOptions{AssignmentTimeout: -time.Second})
 	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
+}
+
+func TestPreflightRunProviderObservation(t *testing.T) {
+	hostedCandidate := &evalv1.ModelVariant{VariantId: "gemini-3-6-flash", ServedModelTag: "gemini-3.6-flash", ProviderClass: constants.InferenceProviderGemini}
+	hostedJudge := &evalv1.ModelVariant{VariantId: "gemini-2-5-flash", ServedModelTag: "gemini-2.5-flash", ProviderClass: constants.InferenceProviderGemini}
+	localCandidate := &evalv1.ModelVariant{VariantId: "qwen3-4b", ServedModelTag: "qwen3:4b", ProviderClass: constants.InferenceProviderOllama}
+	localJudge := &evalv1.ModelVariant{VariantId: "gemma4-e4b", ServedModelTag: "gemma4:e4b", ProviderClass: constants.InferenceProviderOllama}
+
+	tests := []struct {
+		name            string
+		spec            *evalv1.EvaluationCampaignSpec
+		expectPreflight bool
+	}{
+		{
+			name: "hosted-only spec with hosted judge skips observer preflight",
+			spec: &evalv1.EvaluationCampaignSpec{
+				ModelRegistry: []*evalv1.ModelVariant{hostedCandidate},
+				JudgeVariant:  hostedJudge,
+			},
+			expectPreflight: false,
+		},
+		{
+			name: "hosted-only spec without judge skips observer preflight",
+			spec: &evalv1.EvaluationCampaignSpec{
+				ModelRegistry: []*evalv1.ModelVariant{hostedCandidate},
+			},
+			expectPreflight: false,
+		},
+		{
+			name: "hosted candidate with local judge keeps observer preflight",
+			spec: &evalv1.EvaluationCampaignSpec{
+				ModelRegistry: []*evalv1.ModelVariant{hostedCandidate},
+				JudgeVariant:  localJudge,
+			},
+			expectPreflight: true,
+		},
+		{
+			name: "local candidate with hosted judge keeps observer preflight",
+			spec: &evalv1.EvaluationCampaignSpec{
+				ModelRegistry: []*evalv1.ModelVariant{localCandidate},
+				JudgeVariant:  hostedJudge,
+			},
+			expectPreflight: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fileSvc, cfg := cmdtest.NewCmdTestEnv(t)
+			gwremote.WithConfiguredGatewayHealthCheck(t, false)
+
+			called := false
+			err := preflightRunProviderObservation(tc.spec, func() error {
+				called = true
+				return gwremote.PreflightProviderObservationDelivery(fileSvc, cfg)
+			})
+			assert.Equal(t, tc.expectPreflight, called)
+			if tc.expectPreflight {
+				require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+// countingModelResidency counts end-of-run releases.
+type countingModelResidency struct {
+	releases []evaluation.ModelResidencyRelease
+}
+
+func (r *countingModelResidency) ReleaseAllExcept(_ context.Context, release evaluation.ModelResidencyRelease) ([]string, error) {
+	r.releases = append(r.releases, release)
+	return nil, nil
+}
+
+func TestReleaseRunModels_ReadsTheLocalProviderOnlyWhenTheCampaignDispatchesALocalModel(t *testing.T) {
+	hosted := &evalv1.ModelVariant{ProviderClass: constants.InferenceProviderGemini}
+	local := &evalv1.ModelVariant{ProviderClass: constants.InferenceProviderOllama}
+	for name, tc := range map[string]struct {
+		spec    *evalv1.EvaluationCampaignSpec
+		release bool
+	}{
+		"hosted candidate and hosted judge": {spec: &evalv1.EvaluationCampaignSpec{ModelRegistry: []*evalv1.ModelVariant{hosted}, JudgeVariant: hosted}},
+		"hosted candidate and local judge":  {spec: &evalv1.EvaluationCampaignSpec{ModelRegistry: []*evalv1.ModelVariant{hosted}, JudgeVariant: local}, release: true},
+		"local candidate and hosted judge":  {spec: &evalv1.EvaluationCampaignSpec{ModelRegistry: []*evalv1.ModelVariant{local}, JudgeVariant: hosted}, release: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			residency := &countingModelResidency{}
+			cmd := &cobra.Command{}
+			cmd.SetContext(t.Context())
+
+			require.NoError(t, releaseRunModels(cmd, residency, tc.spec, runExecuteOptions{RunID: "run-1", JSONOutput: true}))
+
+			if tc.release {
+				assert.Equal(t, []evaluation.ModelResidencyRelease{{RunID: "run-1"}}, residency.releases)
+				return
+			}
+			assert.Empty(t, residency.releases, "a hosted-only campaign never reads a local provider it does not dispatch")
+		})
+	}
 }

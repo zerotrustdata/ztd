@@ -29,6 +29,7 @@ type consensusStatus struct {
 	Provider            string            `json:"provider,omitempty"`
 	Quorum              int               `json:"quorum,omitempty"`
 	ModelTag            string            `json:"model_tag,omitempty"`
+	ModelProviderClass  string            `json:"model_provider_class,omitempty"`
 	Members             []string          `json:"members"`
 	Usable              int               `json:"usable"`
 	Ready               bool              `json:"ready"`
@@ -41,7 +42,7 @@ func statusCmd(newClient func() (authcmd.APIClient, error)) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show the bound consensus, signer readiness, and posture",
-		Long: `Show the Gateway's bound L2 consensus: provider, quorum K-of-N, pinned model tag (tribunal),
+		Long: `Show the Gateway's bound L2 consensus: provider, quorum K-of-N, pinned model tag and hosted provider class (tribunal),
 member application IDs, usable signers, governance posture, and whether L2 is enforced.
 
 Exits non-zero when the posture requires L2 consensus and no application is bound.`,
@@ -104,6 +105,7 @@ func buildStatus(binding *models.ConsensusPolicy, health models.HealthResponse) 
 	status.Provider = string(provider)
 	status.Quorum = binding.Quorum
 	status.ModelTag = binding.ModelTag
+	status.ModelProviderClass = binding.ModelProviderClass
 	if provider == constants.ConsensusProviderTribunal {
 		status.VoteKind = binding.EffectiveVoteKind()
 	}
@@ -126,7 +128,7 @@ func writeStatusText(w io.Writer, s consensusStatus) {
 			fmt.Fprintf(w, "Inference  %s\n", s.InferenceOperatorID)
 		}
 		if s.ModelTag != "" {
-			fmt.Fprintf(w, "Model      %s\n", s.ModelTag)
+			fmt.Fprintf(w, "Model      %s\n", models.ConsensusModelLabel(s.ModelTag, s.ModelProviderClass))
 		}
 		fmt.Fprintf(w, "Members    %s\n", strings.Join(s.Members, ", "))
 		readiness := "not ready"

@@ -590,6 +590,34 @@ func TestVerifyV7EpisodeOutputs_BindsToolArgumentsThroughTypedRequest(t *testing
 	})
 }
 
+func TestVerifyV7EpisodeOutputs_RequiresMatchingProviderSignature(t *testing.T) {
+	tests := []struct {
+		name          string
+		dispatchedSig string
+		recordedSig   string
+		wantErr       bool
+	}{
+		{name: "matching provider signature", dispatchedSig: "sig-dispatched", recordedSig: "sig-dispatched"},
+		{name: "differing provider signature", dispatchedSig: "sig-dispatched", recordedSig: "sig-forged", wantErr: true},
+		{name: "dropped provider signature", dispatchedSig: "sig-dispatched", recordedSig: "", wantErr: true},
+		{name: "injected provider signature", dispatchedSig: "", recordedSig: "sig-injected", wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			trace := shellEpisodeTrace(t, `{"command":"echo"}`, `{"command":"echo"}`)
+			trace.ModelCalls[0].InferenceResult.GetParts()[0].GetToolCall().ProviderSignature = test.dispatchedSig
+			trace.ToolCalls[0].ProviderSignature = test.recordedSig
+
+			err := verifyV7EpisodeOutputs(trace)
+			if !test.wantErr {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorIs(t, err, constants.ErrEvaluationEvidenceTraceMismatch)
+		})
+	}
+}
+
 func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsConsensusVotes(t *testing.T) {
 	for _, test := range []struct {
 		name    string
@@ -611,7 +639,7 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsConsensusVotes(t *testing.T
 			before := ledger.executed("before", string(constants.ActionTypeFsRead))
 			model := ledger.inference("turn")
 			members := constants.TribunalConsensusMemberAppIDs()
-			result := &operatorv1.InferenceResult{ProviderAttemptId: governance.ConsensusVoteAttemptID("hash-tool", members[0])}
+			result := &operatorv1.InferenceResult{ProviderAttemptId: governance.ConsensusVoteAttemptID("hash-tool", members[0], 0)}
 			digest, err := models.ComputeInferenceResultDigest(result)
 			require.NoError(t, err)
 			result.ResultDigest = digest
@@ -637,7 +665,7 @@ func TestVerifyAgentTraceEvidence_SharedRuntimeClaimsConsensusVotes(t *testing.T
 			trace.ToolCalls = []AgentToolCall{allowedToolCall("tool", tool)}
 			// Binding order differs from the order concurrent members committed.
 			trace.ToolCalls[0].ConsensusInferences = governance.WrapConsensusInferences([]*operatorv1.ConsensusVoteInference{
-				{SubjectTransactionId: "tool", SubjectTransactionHash: "hash-tool", MemberAppId: members[1], ProviderAttemptId: governance.ConsensusVoteAttemptID("hash-tool", members[1]), TransactionId: "vote-failed", Receipt: failed, Failure: &operatorv1.InferenceDispatchFailure{Receipt: failed}},
+				{SubjectTransactionId: "tool", SubjectTransactionHash: "hash-tool", MemberAppId: members[1], ProviderAttemptId: governance.ConsensusVoteAttemptID("hash-tool", members[1], 0), TransactionId: "vote-failed", Receipt: failed, Failure: &operatorv1.InferenceDispatchFailure{Receipt: failed}},
 				{SubjectTransactionId: "tool", SubjectTransactionHash: "hash-tool", MemberAppId: members[0], ProviderAttemptId: result.ProviderAttemptId, TransactionId: "vote-completed", Receipt: completed, Result: result, ObservationReceipts: []*operatorv1.EventReceipt{observation}},
 			})
 			if test.corrupt != nil {

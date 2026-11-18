@@ -59,7 +59,7 @@ const triageResultJSONSchema = `{"additionalProperties":false,"properties":{` +
 	`"complexity_confidence":{"enum":["high","low"],"type":"string"},` +
 	`"intent":{"enum":["information","action","unknown"],"type":"string"},` +
 	`"intent_confidence":{"enum":["high","low"],"type":"string"},` +
-	`"intent_summary":{"minLength":1,"type":"string"},` +
+	`"intent_summary":{"type":"string"},` +
 	`"posture_confidence":{"enum":["high","low"],"type":"string"},` +
 	`"request_posture":{"enum":["normal","escalated","adversarial","confused"],"type":"string"}},` +
 	`"required":["complexity","complexity_confidence","intent","intent_confidence","intent_summary","request_posture","posture_confidence"],` +
@@ -71,10 +71,11 @@ func triageResultResponseFormat() *operatorv1.InferenceResponseFormat {
 }
 
 func singleTriageResultCall(trace *AgentTrace) bool {
-	if trace == nil || len(trace.ModelCalls) != 1 || len(trace.ToolCalls) != 0 || len(trace.Clarifications) != 0 || trace.ToolTurnLimitReached {
+	calls := trace.scoredModelCalls()
+	if trace == nil || len(calls) != 1 || len(trace.ToolCalls) != 0 || len(trace.Clarifications) != 0 || trace.ToolTurnLimitReached {
 		return false
 	}
-	call := trace.ModelCalls[0]
+	call := calls[0]
 	if !call.Completed() || !call.IsTurn() || call.LoopTurn != 1 || call.ToolCallCount != 0 || len(call.ToolsDeclared) != 0 ||
 		trace.FinalOutput != call.Text {
 		return false

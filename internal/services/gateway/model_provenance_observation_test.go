@@ -21,6 +21,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/inference/model_provenance"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
@@ -258,4 +259,47 @@ func TestModelProvenanceObservationCoordinator_SelectsExecutingInferenceSessionA
 	require.NoError(t, coordinator.synchronizeOperatorSubscription(dispatch.WithInferenceOperatorSession(context.Background(), "sess-2")))
 	require.NotNil(t, coordinator.operator)
 	assert.Equal(t, "sess-2", coordinator.operator.OperatorSessionID)
+}
+
+// A hosted attempt's window is derived from the Inference Operator's signed
+// hosted attestation, saved, and announced like a Provenance Operator's.
+func TestModelProvenanceObservationCoordinator_RecordHostedAttemptSavesAndAnnounces(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+	fileSvc := storagetest.NewTestFileSvc(t, testutil.TempDir(t))
+	windowStore, err := model_provenance.NewWindowStore(fileSvc)
+	require.NoError(t, err)
+	announcer := &recordingEvidenceAnnouncer{}
+	coordinator := NewModelProvenanceObservationCoordinator(&DispatchService{}, &stubModelProvenanceOperatorLister{}, NewGatewayWebSocketHandler(logger), windowStore, announcer, logger)
+
+	origin, _ := constants.HostedInferenceProviderOrigin(constants.InferenceProviderGemini)
+	digest, err := models.ComputeHostedModelIdentityDigest(constants.InferenceProviderGemini, origin, "gemini-3.6-flash", "3.6-flash-07-2026")
+	require.NoError(t, err)
+	err = coordinator.RecordHostedAttempt(context.Background(), "owner-1", model_provenance.HostedAttempt{
+		InferenceOperatorID:    "embedded-operator",
+		InferenceTransactionID: "tx-1",
+		ProviderAttemptID:      "attempt-hosted-1",
+		ExpectedModelDigest:    digest,
+		StartedAtUnixMs:        1000,
+		CompletedAtUnixMs:      2000,
+		Result: &operatorv1.InferenceResult{
+			ResultDigest: strings.Repeat("b", 64),
+			HostedEgress: &operatorv1.InferenceHostedEgressAttestation{
+				ProviderOrigin:       origin,
+				ModelVersion:         "gemini-3.6-flash",
+				ProviderClass:        constants.InferenceProviderGemini,
+				RequestedModel:       "gemini-3.6-flash",
+				ProviderModelVersion: "3.6-flash-07-2026",
+				ModelIdentityDigest:  digest,
+				RawResponseDigest:    strings.Repeat("c", 64),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	loaded, err := windowStore.Load(context.Background(), "attempt-hosted-1")
+	require.NoError(t, err)
+	assert.Equal(t, evalv1.ModelManifestVerificationStatus_MODEL_MANIFEST_VERIFICATION_STATUS_HOSTED_PROVIDER_REPORTED, loaded.GetManifestVerificationStatus())
+	assert.True(t, loaded.GetDigestMatch())
+	assert.Equal(t, "embedded-operator", loaded.GetProvenanceOperatorId())
+	assert.Equal(t, []string{string(constants.EventModelProvenanceAttestationRecorded) + "/owner-1/attempt-hosted-1"}, announcer.recorded)
 }

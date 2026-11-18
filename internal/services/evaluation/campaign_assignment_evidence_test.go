@@ -20,6 +20,7 @@ import (
 func TestBuildPublicAssignmentEvidence(t *testing.T) {
 	result := &evalv1.EvaluationAssignmentResult{
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
+			Classification:    evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
 			ModelRole:         evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
 			AgentPersona:      "primary",
 			ModelVariant:      &evalv1.ModelVariant{VariantId: "variant-a"},
@@ -55,6 +56,7 @@ func TestBuildPublicAssignmentEvidence_ProjectsOptionalThinkingAndCachePresence(
 	cache := uint32(4)
 	result := &evalv1.EvaluationAssignmentResult{
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
+			Classification:    evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
 			ModelRole:         evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
 			AgentPersona:      "primary",
 			ModelVariant:      &evalv1.ModelVariant{VariantId: "variant-a"},
@@ -76,6 +78,7 @@ func TestBuildPublicAssignmentEvidence_ProjectsOptionalThinkingAndCachePresence(
 
 	absent := &evalv1.EvaluationAssignmentResult{
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
+			Classification:    evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
 			ModelRole:         evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
 			AgentPersona:      "primary",
 			ModelVariant:      &evalv1.ModelVariant{VariantId: "variant-a"},

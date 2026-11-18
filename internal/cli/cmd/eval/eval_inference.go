@@ -62,12 +62,16 @@ func gatesInferenceEvalCmd(deps nativeEvalDeps) *cobra.Command {
 	var model string
 	var role string
 	var casesCSV string
+	var providerClass string
 	cmd := &cobra.Command{
 		Use:   "inference",
 		Short: "Inference-only vertical acceptance matrix",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if model == "" {
 				return fmt.Errorf("evaluation: gates inference: %w", constants.ErrEvaluationModelRequired)
+			}
+			if err := validateProbeProviderClass(providerClass); err != nil {
+				return fmt.Errorf("evaluation: gates inference: %w", err)
 			}
 			caseIDs, err := parseInferenceAcceptanceCases(casesCSV)
 			if err != nil {
@@ -93,7 +97,7 @@ func gatesInferenceEvalCmd(deps nativeEvalDeps) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("evaluation: list operators: %w", err)
 			}
-			selected, err := evaluation.SelectInferenceOperator(operators, "")
+			selected, err := evaluation.SelectInferenceOperator(operators, "", probeHostedClasses(providerClass))
 			if err != nil {
 				return fmt.Errorf("evaluation: gates inference: %w", err)
 			}
@@ -113,6 +117,7 @@ func gatesInferenceEvalCmd(deps nativeEvalDeps) *cobra.Command {
 				ProviderAttemptID:       providerAttemptID,
 				Role:                    probeRole,
 				Model:                   model,
+				ProviderClass:           providerClass,
 				TargetOperatorSessionID: selected.OperatorSessionID,
 			}
 			results := make([]inferenceAcceptanceResultJSON, 0, len(cases))
@@ -187,7 +192,28 @@ func gatesInferenceEvalCmd(deps nativeEvalDeps) *cobra.Command {
 	cmd.Flags().StringVar(&model, "model", "", "Requested provider model tag")
 	cmd.Flags().StringVar(&role, "role", "primary", "Default governed model role for cases that do not override it")
 	cmd.Flags().StringVar(&casesCSV, "cases", "", "Comma-separated case IDs (default: every inference acceptance case)")
+	cmd.Flags().StringVar(&providerClass, "provider", "", probeProviderFlagUsage)
 	return cmd
+}
+
+const probeProviderFlagUsage = "Hosted provider class serving the model (gemini, anthropic, openai); omit for the Operator's local provider"
+
+// probeHostedClasses is the hosted class a probe's Inference Operator must
+// serve: none for the Operator's local provider.
+func probeHostedClasses(providerClass string) []string {
+	if providerClass == "" {
+		return nil
+	}
+	return []string{providerClass}
+}
+
+// validateProbeProviderClass admits an empty class (the Operator's local
+// provider) or a hosted provider class.
+func validateProbeProviderClass(providerClass string) error {
+	if providerClass != "" && !constants.IsHostedInferenceProvider(providerClass) {
+		return fmt.Errorf("--provider %q: %w", providerClass, constants.ErrInferenceHostedProviderInvalid)
+	}
+	return nil
 }
 
 func gatesProbeEvalCmd(deps nativeEvalDeps) *cobra.Command {
@@ -196,12 +222,16 @@ func gatesProbeEvalCmd(deps nativeEvalDeps) *cobra.Command {
 	var seed int32 = -1
 	var stream bool
 	var operatorSessionID string
+	var providerClass string
 	cmd := &cobra.Command{
 		Use:   "probe <model>",
 		Short: "Single non-scored governed inference probe",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			model := args[0]
+			if err := validateProbeProviderClass(providerClass); err != nil {
+				return fmt.Errorf("evaluation: gates probe: %w", err)
+			}
 			cfg, fileSvc, err := nativeEvalEnvironment(cmd, deps)
 			if err != nil {
 				return err
@@ -218,7 +248,7 @@ func gatesProbeEvalCmd(deps nativeEvalDeps) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("evaluation: list operators: %w", err)
 			}
-			selected, err := evaluation.SelectInferenceOperator(operators, operatorSessionID)
+			selected, err := evaluation.SelectInferenceOperator(operators, operatorSessionID, probeHostedClasses(providerClass))
 			if err != nil {
 				return fmt.Errorf("evaluation: gates probe: %w", err)
 			}
@@ -238,6 +268,7 @@ func gatesProbeEvalCmd(deps nativeEvalDeps) *cobra.Command {
 				ProviderAttemptID:       providerAttemptID,
 				Role:                    probeRole,
 				Model:                   model,
+				ProviderClass:           providerClass,
 				TargetOperatorSessionID: selected.OperatorSessionID,
 				Prompt:                  prompt,
 				Stream:                  stream,
@@ -272,6 +303,7 @@ func gatesProbeEvalCmd(deps nativeEvalDeps) *cobra.Command {
 	cmd.Flags().Int32Var(&seed, "seed", -1, "Optional deterministic generation seed (omit for provider default)")
 	cmd.Flags().BoolVar(&stream, "stream", false, "Request live NDJSON progress telemetry during generation")
 	cmd.Flags().StringVar(&operatorSessionID, "operator-session-id", "", "Target Operator session ID")
+	cmd.Flags().StringVar(&providerClass, "provider", "", probeProviderFlagUsage)
 	return cmd
 }
 

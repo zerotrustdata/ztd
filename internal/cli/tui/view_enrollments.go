@@ -101,10 +101,17 @@ func (m Model) enrollmentDetail(width int) []string {
 			detailRow("Instance ID", req.InstanceID),
 			detailRow("Hostname", req.Hostname),
 			detailRow("System FP", shortHash(req.SystemFingerprint)),
+		}
+		if len(req.Capabilities) > 0 {
+			lines = append(lines,
+				detailRow("Capabilities", req.Capabilities.String()),
+				detailRow("Hosted", auth.PlatformEnrollmentHostedProviders(req.HostedProviders)))
+		}
+		lines = append(lines,
 			detailRow("State", string(req.State)),
 			detailRow("Created", req.CreatedAt.Format(detailTimeFormat)),
 			detailRow("Expires", req.ExpiresAt.Format(detailTimeFormat)),
-		}
+		)
 		if fingerprints := auth.PlatformEnrollmentFingerprints(req.Fingerprints); len(fingerprints) > 0 {
 			lines = append(lines, "", detailStyle.Render("Key fingerprints (compare with the workload output):"))
 			for _, fp := range fingerprints {

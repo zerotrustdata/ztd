@@ -253,6 +253,7 @@ func TestCampaignPublication_PublishesNativeLiveEventsFromTerminalResult(t *test
 		LifecycleStatus: evalv1.EvaluationAssignmentLifecycleStatus_EVALUATION_ASSIGNMENT_LIFECYCLE_STATUS_COMPLETED,
 		CompletedAt:     timestamppb.New(time.Unix(1_700_000_010, 0).UTC()),
 		ModelInferences: []*evalv1.ModelInferenceRecord{{
+			Classification:    evalv1.EvaluationCallClassification_EVALUATION_CALL_CLASSIFICATION_SCORED_CHAIN,
 			ModelRole:         evalv1.ModelCampaignRole_MODEL_CAMPAIGN_ROLE_PRIMARY,
 			ModelVariant:      &evalv1.ModelVariant{VariantId: "qwen3-4b"},
 			UsageAvailability: evalv1.EvaluationUsageAvailability_EVALUATION_USAGE_AVAILABILITY_REPORTED,

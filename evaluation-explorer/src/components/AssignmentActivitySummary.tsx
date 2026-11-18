@@ -4,6 +4,7 @@
 import type { ReactNode } from 'react';
 import { activityFamilySummaryText } from '../contract/activity-family';
 import type {
+  ModelRole,
   PublicActivityFamily,
   PublicAssignmentActivity,
   PublicGovernedActionActivityRecord,
@@ -12,6 +13,7 @@ import type {
   PublicToolCallActivityRecord,
   PublicToolDecisionActivityRecord,
 } from '../contract/types';
+import { formatProviderClassLabel } from '../content/provider';
 import { formatNumber, formatTokens, formatLatency, DetailRow, UnavailableValue } from './shared';
 
 function label(value: string): string {
@@ -34,14 +36,22 @@ function policyTone(outcome: string): RecordTone {
   return outcome === 'allow' ? 'ok' : 'warn';
 }
 
-function ModelRecord({ record }: { record: PublicModelActivityRecord }) {
-  const summary = `${record.variant_id} · ${label(record.model_role)}${record.agent_persona ? ` · ${record.agent_persona}` : ''}`;
+function ModelRecord({
+  record,
+  providerClass,
+}: {
+  record: PublicModelActivityRecord;
+  providerClass?: string;
+}) {
+  const providerSummary = providerClass ? ` · ${formatProviderClassLabel(providerClass)}` : '';
+  const summary = `${record.variant_id} · ${label(record.model_role)}${record.agent_persona ? ` · ${record.agent_persona}` : ''}${providerSummary}`;
   return (
     <details className="activity-record-details" data-tone="neutral">
       <summary className="activity-record-summary">{summary}</summary>
       <div className="activity-record-expanded">
         <DetailRow label="Variant">{record.variant_id}</DetailRow>
         <DetailRow label="Role">{label(record.model_role)}</DetailRow>
+        {providerClass ? <DetailRow label="Provider class">{formatProviderClassLabel(providerClass)}</DetailRow> : null}
         {record.agent_persona ? <DetailRow label="Persona">{record.agent_persona}</DetailRow> : null}
         <DetailRow label="Usage availability">{label(record.usage_availability)}</DetailRow>
         <DetailRow label="Input tokens">
@@ -175,12 +185,30 @@ function inLoopTurnOrder(
   return { ...family, records };
 }
 
-export function AssignmentActivitySummary({ activity }: { activity: PublicAssignmentActivity | undefined }) {
+export function AssignmentActivitySummary({
+  activity,
+  resolveProviderClass,
+}: {
+  activity: PublicAssignmentActivity | undefined;
+  resolveProviderClass?: (variantId: string, role?: ModelRole) => string | undefined;
+}) {
   return (
     <section className="assignment-activity">
       <h2>What happened</h2>
       <div className="activity-families">
-        <ActivityFamily title="Model activity" family={activity?.model_activity} renderRecord={(record) => <ModelRecord record={record as PublicModelActivityRecord} />} />
+        <ActivityFamily
+          title="Model activity"
+          family={activity?.model_activity}
+          renderRecord={(record) => {
+            const modelRecord = record as PublicModelActivityRecord;
+            return (
+              <ModelRecord
+                record={modelRecord}
+                providerClass={resolveProviderClass?.(modelRecord.variant_id, modelRecord.model_role)}
+              />
+            );
+          }}
+        />
         <ActivityFamily title="Tool decisions" family={activity?.tool_decisions} renderRecord={(record) => <ToolDecisionRecord record={record as PublicToolDecisionActivityRecord} />} />
         <ActivityFamily title="Tool calls" family={activity ? inLoopTurnOrder(activity.tool_calls) : undefined} renderRecord={(record) => <ToolCallRecord record={record as PublicToolCallActivityRecord} />} />
         <ActivityFamily title="Policy decisions" family={activity?.policy_decisions} renderRecord={(record) => <PolicyRecord record={record as PublicPolicyDecisionActivityRecord} />} />

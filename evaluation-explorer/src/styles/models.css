@@ -119,6 +119,19 @@
   color: var(--fg-muted);
 }
 
+.spec-provider[data-hosted='true'] {
+  color: var(--tone-info);
+}
+
+.model-provider-tag,
+.model-provider-class,
+.assignment-provider-class,
+.assignment-model-provider {
+  font-family: var(--mono);
+  font-size: var(--fs-label);
+  color: var(--fg-muted);
+}
+
 .spec-trust {
   color: var(--tone-ok);
   background: transparent;

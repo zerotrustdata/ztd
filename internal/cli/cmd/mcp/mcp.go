@@ -35,6 +35,7 @@ import (
 	authcmd "github.com/zerotrustdata/ztd/internal/cli/cmd/auth"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/mcptransport"
+	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/cli/platform"
 	"github.com/zerotrustdata/ztd/internal/cli/serve"
 	ztdconfig "github.com/zerotrustdata/ztd/internal/config"
@@ -720,17 +721,20 @@ func l3Suspension(resp JSONRPCResponse) (*mcp.GovernedSuspension, error) {
 
 // ─── agent show config printers ─────────────────────────────────────────────
 
-func printMCPConfigStdio(cmd *cobra.Command) error {
+func buildStdioConfig() (*mcp.SimpleConfig, error) {
 	binaryPath, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrPathNotFound, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrPathNotFound, err)
 	}
 
 	mcpConfig, err := mcp.NewStdioConfigSimple(binaryPath)
 	if err != nil {
-		return fmt.Errorf("%w: %w", constants.ErrGatewayURLRequired, err)
+		return nil, fmt.Errorf("%w: %w", constants.ErrGatewayURLRequired, err)
 	}
+	return mcpConfig, nil
+}
 
+func writeMCPConfigStdio(cmd *cobra.Command, mcpConfig *mcp.SimpleConfig) error {
 	configJSON, err := json.MarshalIndent(mcpConfig, "", "  ")
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrHTTPRequestMarshalFailed, err)
@@ -738,6 +742,14 @@ func printMCPConfigStdio(cmd *cobra.Command) error {
 
 	cmd.Println(string(configJSON))
 	return nil
+}
+
+func printMCPConfigStdio(cmd *cobra.Command) error {
+	mcpConfig, err := buildStdioConfig()
+	if err != nil {
+		return err
+	}
+	return writeMCPConfigStdio(cmd, mcpConfig)
 }
 
 // ─── agent subcommands ───────────────────────────────────────────────────────
@@ -766,23 +778,43 @@ generated JSON to your agent's MCP settings file.`,
 }
 
 func agentVerifyCmd(fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)) *cobra.Command {
+	return agentVerifyCmdWithConfig(shared.LoadConfig, authcmd.DefaultAPIClientFactory, fileSvcFactory)
+}
+
+func agentVerifyCmdWithConfig(
+	configLoader func(string) (*config.Config, error),
+	clientFactory authcmd.APIClientFactory,
+	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error),
+) *cobra.Command {
 	return &cobra.Command{
 		Use:   "verify <agent>",
 		Short: "Verify an agent's launcher config and tool lockdown without starting it",
 		Long: `Write the agent's MCP config into an isolated scratch home directory under .ztd/tmp/, compute
-its launch arguments, and run the registry's tool-interception checks. The agent
-binary is never started and your real agent config is never touched, so this is
+its launch arguments, and run the registry's tool-interception checks. For agents with a
+matching hosted inference provider class, also reports whether an active Gateway Inference
+Operator serves that class and which models of that class are in the eval registry. The
+agent binary is never started and your real agent config is never touched, so this is
 safe to run in CI without the agent installed.`,
 		Args:          cobra.ExactArgs(1),
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runAgentVerify(cmd, args[0], fileSvcFactory)
+			return runAgentVerifyWithConfig(cmd, args[0], configLoader, clientFactory, fileSvcFactory)
 		},
 	}
 }
 
 func runAgentVerify(cmd *cobra.Command, agentID string, fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error)) error {
+	return runAgentVerifyWithConfig(cmd, agentID, shared.LoadConfig, authcmd.DefaultAPIClientFactory, fileSvcFactory)
+}
+
+func runAgentVerifyWithConfig(
+	cmd *cobra.Command,
+	agentID string,
+	configLoader func(string) (*config.Config, error),
+	clientFactory authcmd.APIClientFactory,
+	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error),
+) error {
 	integration, err := agent.Lookup(agentID)
 	if err != nil {
 		return fmt.Errorf("mcp: agent verify: %w", err)
@@ -798,11 +830,29 @@ func runAgentVerify(cmd *cobra.Command, agentID string, fileSvcFactory func(stri
 		return fmt.Errorf("%w: %w", constants.ErrPathNotFound, err)
 	}
 
-	if err := integration.VerifyIsolated(cmd.Context(), fileSvc, binaryPath); err != nil {
+	if err := integration.VerifyIsolated(shared.CommandContext(cmd), fileSvc, binaryPath); err != nil {
 		return fmt.Errorf("mcp: agent verify: %w", err)
 	}
 
+	report, err := inspectAgentHostedProvider(shared.CommandContext(cmd), integration.ID, configLoader, clientFactory, fileSvc)
+	if err != nil {
+		return fmt.Errorf("mcp: agent verify: %w", err)
+	}
+
+	if output.JSONEnabled(cmd) {
+		return output.WriteJSON(cmd.OutOrStdout(), agentVerifyJSON{
+			Agent:          string(integration.ID),
+			DisplayName:    integration.DisplayName,
+			ToolLockdown:   string(integration.ToolLockdown),
+			Passed:         true,
+			HostedProvider: report,
+		})
+	}
+
 	cmd.Printf("PASS %s: ztd is the only MCP server (%s tool lockdown)\n", integration.ID, integration.ToolLockdown)
+	if report != nil {
+		printAgentHostedVerifyReport(cmd, report)
+	}
 	return nil
 }
 
@@ -825,21 +875,68 @@ func agentListCmd() *cobra.Command {
 }
 
 func agentShowCmd() *cobra.Command {
+	return agentShowCmdWithConfig(shared.LoadConfig, authcmd.DefaultAPIClientFactory, shared.NewFileSvc)
+}
+
+func agentShowCmdWithConfig(
+	configLoader func(string) (*config.Config, error),
+	clientFactory authcmd.APIClientFactory,
+	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error),
+) *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <agent>",
 		Short: "Print MCP client configuration for the Gateway",
-		Long:  `Print the MCP client configuration for connecting to the ztd Gateway from local coding tools. Displays the Stdio Transport configuration, which runs the ztd binary as a local bridge that unseals the enrolled CLI identity in process.`,
-		Args:  cobra.ExactArgs(1),
+		Long: `Print the MCP client configuration for connecting to the ztd Gateway from local coding tools.
+Displays the Stdio Transport configuration, which runs the ztd binary as a local bridge that
+unseals the enrolled CLI identity in process. For agents with a matching hosted inference
+provider class, also reports whether an active Gateway Inference Operator serves that class
+and which models of that class are in the eval registry.`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return printAgentShow(cmd, args[0])
+			return printAgentShowWithConfig(cmd, args[0], configLoader, clientFactory, fileSvcFactory)
 		},
 	}
 }
 
 func printAgentShow(cmd *cobra.Command, agentID string) error {
+	return printAgentShowWithConfig(cmd, agentID, shared.LoadConfig, authcmd.DefaultAPIClientFactory, shared.NewFileSvc)
+}
+
+func printAgentShowWithConfig(
+	cmd *cobra.Command,
+	agentID string,
+	configLoader func(string) (*config.Config, error),
+	clientFactory authcmd.APIClientFactory,
+	fileSvcFactory func(string, *slog.Logger) (fs.RuntimeFileService, error),
+) error {
 	integration, err := agent.Lookup(agentID)
 	if err != nil {
 		return fmt.Errorf("mcp: agent show: %w", err)
+	}
+
+	fileSvc, err := fileSvcFactory("", slog.Default())
+	if err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrFileServiceInit, err)
+	}
+
+	mcpConfig, err := buildStdioConfig()
+	if err != nil {
+		return fmt.Errorf("mcp: print stdio config: %w", err)
+	}
+
+	report, err := inspectAgentHostedProvider(shared.CommandContext(cmd), integration.ID, configLoader, clientFactory, fileSvc)
+	if err != nil {
+		return fmt.Errorf("mcp: agent show: %w", err)
+	}
+
+	if output.JSONEnabled(cmd) {
+		return output.WriteJSON(cmd.OutOrStdout(), agentShowJSON{
+			Agent:          string(integration.ID),
+			DisplayName:    integration.DisplayName,
+			ToolLockdown:   string(integration.ToolLockdown),
+			MCPConfig:      mcpConfig,
+			HostedProvider: report,
+		})
 	}
 
 	cmd.Println("╔═════════════════════════════════════════════════════════════════════════")
@@ -854,8 +951,12 @@ func printAgentShow(cmd *cobra.Command, agentID string) error {
 	cmd.Println("│ Apps: Claude Code, Codex, Goose, Gemini CLI")
 	cmd.Println("│ Requires: ztd binary in PATH or full path in config")
 	cmd.Println("└─────────────────────────────────────────────────────────────────────────────")
-	if err := printMCPConfigStdio(cmd); err != nil {
+	if err := writeMCPConfigStdio(cmd, mcpConfig); err != nil {
 		return fmt.Errorf("mcp: print stdio config: %w", err)
+	}
+
+	if report != nil {
+		printAgentHostedShowBox(cmd, report)
 	}
 
 	return nil

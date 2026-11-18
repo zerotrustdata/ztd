@@ -36,7 +36,7 @@ func TestGenerationReplacesL1BlockedCandidatesBeforeVoting(t *testing.T) {
 				return proposalAnswer("pwd")
 			}
 		},
-		marshal: lowRisk, audit: []string{approve},
+		marshal: lowRisk, audit: []string{approveSplit},
 	}
 	result, err := Run(context.Background(), testConfig(inferer), Request{Request: "inspect the system"}, 0)
 	require.NoError(t, err)
@@ -83,9 +83,9 @@ func TestGenerationNeverApprovesPersistentL1Violations(t *testing.T) {
 func TestAuditorRechecksL1BeforeApproval(t *testing.T) {
 	for _, retry := range []bool{false, true} {
 		t.Run(map[bool]string{false: "persistent violation", true: "safe replacement"}[retry], func(t *testing.T) {
-			answers := []string{`{"verdict":"REVISE","revised_arguments":{"command":"rm","args":["-rf","/"]},"rationale":"cleanup"}`}
+			answers := []string{`{"verdict":"REVISE","revised_arguments":{"command":"rm","args":["-rf","/"]},"swap_to_cluster":null,"rationale":"cleanup"}`}
 			if retry {
-				answers = append(answers, approve)
+				answers = append(answers, approveSplit)
 			}
 			inferer := &fakeInferer{
 				generate: proposals(map[Member]string{MemberAxiom: "pwd", MemberConcord: "pwd", MemberVariance: "pwd", MemberPragma: "pwd", MemberNemesis: "ls"}),

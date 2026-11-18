@@ -21,14 +21,18 @@ import (
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/httpclient"
 )
 
-// providerHTTP is the bounded HTTP plumbing shared by the local provider
-// clients. component names the client in every error it returns.
+// providerHTTP is the bounded HTTP plumbing shared by the provider clients.
+// component names the client in every error it returns. headers are set on
+// every request; a hosted client carries its API key there, never in the URL,
+// so a transport error that quotes the URL cannot leak it.
 type providerHTTP struct {
 	component        string
 	base             *url.URL
 	client           *http.Client
+	headers          http.Header
 	maxResponseBytes int64
 }
 
@@ -53,6 +57,33 @@ func newProviderHTTP(component, endpoint string) (providerHTTP, error) {
 	}, nil
 }
 
+// newHostedProviderHTTP is newProviderHTTP for a hosted provider API: an https
+// origin, credential headers on every request, and redirects refused, because
+// Go forwards custom credential headers across a redirect to another host.
+func newHostedProviderHTTP(component, endpoint string, headers http.Header) (providerHTTP, error) {
+	p, err := newProviderHTTP(component, endpoint)
+	if err != nil {
+		return providerHTTP{}, err
+	}
+	p.client = httpclient.WithoutRedirects(p.client, http.ErrUseLastResponse)
+	p.headers = headers.Clone()
+	return p, nil
+}
+
+// newRequest builds a provider request carrying the client's headers.
+func (p *providerHTTP) newRequest(ctx context.Context, method, target string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, target, body)
+	if err != nil {
+		return nil, err
+	}
+	for name, values := range p.headers {
+		for _, value := range values {
+			req.Header.Add(name, value)
+		}
+	}
+	return req, nil
+}
+
 // getJSON issues a GET against a provider API path and decodes the bounded
 // JSON response into out. A non-200 status is ErrInferenceBackendUnavailable;
 // the error body is drained for connection reuse and never surfaced.
@@ -64,7 +95,7 @@ func (p *providerHTTP) getJSON(ctx context.Context, op string, out any, apiPath 
 func (p *providerHTTP) getJSONQuery(ctx context.Context, op string, out any, query url.Values, apiPath ...string) error {
 	target := p.base.JoinPath(apiPath...)
 	target.RawQuery = query.Encode()
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
+	httpReq, err := p.newRequest(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
 		return fmt.Errorf("%s: %s: build request: %w", p.component, op, err)
 	}
@@ -87,7 +118,7 @@ func (p *providerHTTP) postJSON(ctx context.Context, op string, in any, apiPath 
 	if err != nil {
 		return nil, fmt.Errorf("%s: %s: marshal request: %w", p.component, op, err)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.apiURL(apiPath...), bytes.NewReader(body))
+	httpReq, err := p.newRequest(ctx, http.MethodPost, p.apiURL(apiPath...), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("%s: %s: build request: %w", p.component, op, err)
 	}

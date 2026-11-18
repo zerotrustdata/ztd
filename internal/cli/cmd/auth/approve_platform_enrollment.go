@@ -503,8 +503,9 @@ func selectPendingRequests(requests []models.PlatformEnrollmentPendingRequest, s
 
 // printPlatformEnrollmentRequestDetails displays the owner-visible metadata for
 // a pending platform enrollment request: component kind, instance ID, hostname,
-// system fingerprint (if present), state, creation time, expiry, and CSR
-// fingerprints. It never prints requester tokens, CSR PEM, or certificates.
+// system fingerprint (if present), an Operator's capabilities and hosted
+// inference providers, state, creation time, expiry, and CSR fingerprints. It
+// never prints requester tokens, CSR PEM, or certificates.
 func PrintPlatformEnrollmentRequestDetails(cmd *cobra.Command, req *models.PlatformEnrollmentPendingRequest) {
 	cmd.Printf("Platform Enrollment Request\n")
 	cmd.Printf("  Request ID:    %s\n", req.RequestID)
@@ -513,6 +514,10 @@ func PrintPlatformEnrollmentRequestDetails(cmd *cobra.Command, req *models.Platf
 	cmd.Printf("  Hostname:      %s\n", req.Hostname)
 	if req.SystemFingerprint != "" {
 		cmd.Printf("  System FP:     %s\n", req.SystemFingerprint)
+	}
+	if len(req.Capabilities) > 0 {
+		cmd.Printf("  Capabilities:  %s\n", req.Capabilities.String())
+		cmd.Printf("  Hosted:        %s\n", auth.PlatformEnrollmentHostedProviders(req.HostedProviders))
 	}
 	cmd.Printf("  State:         %s\n", string(req.State))
 	cmd.Printf("  Created:       %s\n", req.CreatedAt.Format("2006-01-02 15:04:05 MST"))

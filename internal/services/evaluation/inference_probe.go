@@ -19,10 +19,13 @@ import (
 // InferenceProbeRequest carries a non-scored governed inference probe through
 // the exact Inference Operator session. It is not a scored campaign evaluation.
 type InferenceProbeRequest struct {
-	ProviderAttemptID       string
-	Role                    models.InferenceModelRole
-	Model                   string
-	ModelDigest             string
+	ProviderAttemptID string
+	Role              models.InferenceModelRole
+	Model             string
+	ModelDigest       string
+	// ProviderClass is the hosted provider class serving Model; empty selects
+	// the Inference Operator's local provider (models.HostedDispatchProviderClass).
+	ProviderClass           string
 	TargetOperatorSessionID string
 	Prompt                  string
 	Messages                []*operatorv1.InferenceMessage
@@ -35,6 +38,9 @@ type InferenceProbeRequest struct {
 	Seed                    *int32
 	Stream                  bool
 	Thinking                *operatorv1.InferenceThinkingControl
+	// RetryCount is the zero-based retry ordinal of this provider attempt; the
+	// signed result must echo it.
+	RetryCount uint32
 }
 
 // BuildInferenceProbeDispatchRequest constructs the canonical governed dispatch
@@ -61,6 +67,7 @@ func BuildInferenceProbeDispatchRequest(req InferenceProbeRequest) (*operatorv1.
 		RequestSchemaVersion:    constants.InferenceRequestSchemaVersion,
 		Role:                    req.Role.ToProto(),
 		Model:                   req.Model,
+		ProviderClass:           req.ProviderClass,
 		Messages:                messages,
 		Tools:                   req.Tools,
 		ToolChoice:              req.ToolChoice,
@@ -74,6 +81,7 @@ func BuildInferenceProbeDispatchRequest(req InferenceProbeRequest) (*operatorv1.
 		ModelDigest:             req.ModelDigest,
 		Stream:                  req.Stream,
 		Thinking:                req.Thinking,
+		RetryCount:              req.RetryCount,
 	}
 	if req.Seed != nil {
 		dispatch.Seed = req.Seed
@@ -108,6 +116,9 @@ func ValidateInferenceProbeResponse(req InferenceProbeRequest, resp *operatorv1.
 	}
 	if result.GetRequestedModel() != req.Model {
 		return fmt.Errorf("evaluation: validate inference probe response: %w", constants.ErrInferenceModelOverrideDenied)
+	}
+	if result.GetRetryCount() != req.RetryCount {
+		return fmt.Errorf("evaluation: validate inference probe response: retry ordinal: %w", constants.ErrIdentityBindingFailed)
 	}
 	if result.GetResultDigest() == "" || receipt.GetResultSummary() != result.GetResultDigest() {
 		return fmt.Errorf("evaluation: validate inference probe response: %w", constants.ErrInferenceResultDigest)

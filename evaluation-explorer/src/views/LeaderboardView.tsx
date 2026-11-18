@@ -110,12 +110,14 @@ export function LeaderboardView() {
         <details className="models-score-notes">
           <summary>Scoring & model notes</summary>
           <ul>
-            <li>Primary and Assistant rank only models whose run's tool-calling probe excluded no task. A model that cannot call tools is not ranked there, however accurate its text answers. Lite has no tools and requires none. Overall also requires every other capability probe to pass.</li>
+            <li>Primary and Assistant rank only models whose run&apos;s tool-calling probe excluded no task. A model that cannot call tools is not ranked there, however accurate its text answers. Lite has no tools and requires none.</li>
+            <li>Overall compares self-hosted and remote-hosted models side by side across all three roles using quality and efficiency (no parameter-size factor or static catalog probe requirement). Remote-hosted scores hosted models only, normalized within hosted models. Self-hosted averages the size-adjusted role scores and requires all five catalog capability probes to pass.</li>
             <li>{LEADERBOARD_SECURITY_SCORING_DESCRIPTION}.</li>
-            <li>Doublings = log<sub>2</sub>(total parameters ÷ smallest in role). Each doubling costs 10%. This is not measured resource cost.</li>
+            <li>Doublings = log<sub>2</sub>(total parameters ÷ smallest in role). Each doubling costs 10% in Self-hosted, role rankings, and Formations. This is not measured resource cost.</li>
             <li>Speed and tokens are best-in-role ÷ model; lower latency and fewer tokens score higher.</li>
             <li>Specifications describe the frozen provider variant. Artifact size is storage, not runtime memory.</li>
             <li>Formations use the same formula within each suite, with whole-stack accuracy and security and total parameters across unique member variants.</li>
+            <li>In Primary, Assistant, Lite, and Formations, hosted models (Gemini, Anthropic, OpenAI) and formations with a hosted member are listed unranked because hosted providers do not disclose parameter counts and the size factor cannot be computed; their measurements never change size-adjusted ranked scores. A hosted call&apos;s latency is the Inference Operator&apos;s span from sending the request to the last response byte, so it includes prompt processing and network transfer; a local call&apos;s latency is the provider&apos;s reported generation time.</li>
           </ul>
         </details>
       </header>

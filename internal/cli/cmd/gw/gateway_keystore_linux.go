@@ -109,7 +109,7 @@ func recoverGatewayKeystore(cmd *cobra.Command, recovery gatewayKeystoreRecovery
 	cmd.PrintErrf("  ssh-add -t %s %s\n", constants.KeyStoreSSHAgentKeyLifetime, sshutil.QuoteArg(keyPath))
 	cmd.PrintErrln("  ssh-add -l")
 	cmd.PrintErrln("  " + gatewayKeystoreRetryCommand(cmd))
-	cmd.PrintErrln("[ztd] Enter the SSH key's passphrase if asked. The key expires from the agent after 8 hours; the running Gateway keeps its unlocked key until it stops.")
+	cmd.PrintErrf("[ztd] Enter the SSH key's passphrase if asked. The key expires from the agent after %s; the running Gateway keeps its unlocked key until it stops.\n", constants.KeyStoreSSHAgentKeyLifetime)
 
 	// An unavailable agent requires a shell export, which a child cannot apply
 	// to its parent. Never silently create another agent or change SSH_AUTH_SOCK.
@@ -118,7 +118,7 @@ func recoverGatewayKeystore(cmd *cobra.Command, recovery gatewayKeystoreRecovery
 	}
 	previousOut := cmd.OutOrStdout()
 	cmd.SetOut(cmd.ErrOrStderr())
-	approved := shared.AskYesNo(cmd, bufio.NewReader(cmd.InOrStdin()), "Load this key into the current ssh-agent for 8 hours and continue?", false)
+	approved := shared.AskYesNo(cmd, bufio.NewReader(cmd.InOrStdin()), "Load this key into the current ssh-agent for "+constants.KeyStoreSSHAgentKeyLifetime+" and continue?", false)
 	cmd.SetOut(previousOut)
 	if !approved {
 		return fmt.Errorf("gateway: unlock master key: %w", unlockErr)

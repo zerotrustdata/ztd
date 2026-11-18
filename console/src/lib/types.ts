@@ -32,6 +32,10 @@ export type OperatorType = 'embedded' | 'remote';
 
 export type OperatorCapability = 'data' | 'inference' | 'provenance' | 'observer';
 
+export interface OperatorRuntimeConfig {
+  inference_hosted_providers?: string[];
+}
+
 export interface Operator {
   id: string;
   user_id: string;
@@ -39,6 +43,7 @@ export interface Operator {
   status: OperatorStatus;
   operator_type?: OperatorType;
   operator_capabilities?: OperatorCapability[];
+  runtime_config?: OperatorRuntimeConfig;
   operator_session_id?: string;
   bound_web_session_id?: string;
   current_hostname?: string;
@@ -74,6 +79,10 @@ export interface PlatformEnrollmentRequest {
   instance_id?: string;
   hostname?: string;
   system_fingerprint?: string;
+  /** Operator requests only: what the owner approves the Operator to run. */
+  capabilities?: OperatorCapability[];
+  /** Hosted inference provider classes discovered from the API keys the Operator holds. */
+  hosted_providers?: string[];
   state: string;
   created_at?: string;
   expires_at?: string;

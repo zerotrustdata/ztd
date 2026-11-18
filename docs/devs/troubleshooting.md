@@ -187,7 +187,7 @@ go tool trace .ztd/tmp/pprof/gw.trace
 ./ztd gw start
 ```
 
-When the original sealing key is missing, `gw start` and `gw restart` print its SHA-256 fingerprint, the matching local key path when found, and exact copy-and-paste commands. Copy those commands into the same terminal. They include `ssh-add -t 8h` for that specific key, `eval "$(ssh-agent -s)"` if a new agent is needed, and a retry command preserving explicit Gateway flags. In a terminal, a reachable current agent can be loaded after a default-no confirmation; OpenSSH asks for the SSH key's passphrase, then ztd verifies that the existing master key decrypts before continuing. `--quiet` still shows recovery instructions. A restart that cannot unlock leaves the running Gateway alone.
+When the original sealing key is missing, `gw start` and `gw restart` print its SHA-256 fingerprint, the matching local key path when found, and exact copy-and-paste commands. Copy those commands into the same terminal. They include `ssh-add -t 24h` for that specific key, `eval "$(ssh-agent -s)"` if a new agent is needed, and a retry command preserving explicit Gateway flags. In a terminal, a reachable current agent can be loaded after a default-no confirmation; OpenSSH asks for the SSH key's passphrase, then ztd verifies that the existing master key decrypts before continuing. `--quiet` still shows recovery instructions. A restart that cannot unlock leaves the running Gateway alone.
 
 If the key is not found under `~/.ssh`, compare public fingerprints:
 

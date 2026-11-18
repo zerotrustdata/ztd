@@ -64,6 +64,25 @@ func TestNewRunGovernance_ProjectsTheBindingIdentity(t *testing.T) {
 	assert.Equal(t, "consensus | consensus tribunal 3-of-5 sam860/LFM2:700m decision", DescribeRunGovernance(frozenRun(t, governance)))
 }
 
+// TestNewRunGovernance_FreezesTheHostedVoteProvider: a run freezes which
+// provider class serves the vote model, so moving the same tag between a
+// local and a hosted provider is a governance change the run refuses.
+func TestNewRunGovernance_FreezesTheHostedVoteProvider(t *testing.T) {
+	hosted := testTribunalBinding()
+	hosted.VoteKind, hosted.ModelTag, hosted.ModelProviderClass = "", "gemini-3.6-flash", constants.InferenceProviderGemini
+	governance, err := NewRunGovernance(consensusPosture, hosted)
+	require.NoError(t, err)
+	assert.Equal(t, constants.InferenceProviderGemini, governance.Consensus.GetModelProviderClass())
+	assert.Equal(t, "consensus | consensus tribunal 3-of-5 gemini-3.6-flash (hosted: gemini)", DescribeRunGovernance(frozenRun(t, governance)))
+
+	local := testTribunalBinding()
+	local.VoteKind, local.ModelTag = "", "gemini-3.6-flash"
+	live, err := NewRunGovernance(consensusPosture, local)
+	require.NoError(t, err)
+	assert.Empty(t, live.Consensus.GetModelProviderClass())
+	require.ErrorIs(t, ValidateRunGovernance(frozenRun(t, governance), live), constants.ErrEvaluationRunGovernanceChanged)
+}
+
 func TestNewRunGovernance_BindingDigestIgnoresTimestampsOnly(t *testing.T) {
 	base, err := NewRunGovernance(consensusPosture, testTribunalBinding())
 	require.NoError(t, err)

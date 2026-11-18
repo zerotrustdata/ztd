@@ -21,6 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
+	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/inference"
 	"github.com/zerotrustdata/ztd/internal/services/storage/storagetest"
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
@@ -58,6 +60,96 @@ func TestOllamaMaintenanceService_HandleInventoryRequest_PublishesTypedInventory
 	assert.Equal(t, []string{"completion", "tools"}, result.Entries[0].AdvertisedCapabilities)
 	assert.Equal(t, "alias-two:latest", result.Entries[1].ServedModelTag, "distinct served tags must stay distinct entries")
 	assert.Equal(t, ollamaTestDigestB, result.Entries[1].ModelDigest)
+}
+
+// stubHostedInventory is a hosted provider client whose catalog is fixed.
+type stubHostedInventory struct {
+	entries []inference.ProviderModelInventoryEntry
+	err     error
+}
+
+func (s stubHostedInventory) Generate(context.Context, models.GenerateRequest) (*models.GenerateResponse, error) {
+	return nil, constants.ErrInferenceGenerateFailed
+}
+
+func (s stubHostedInventory) Status(context.Context) (*models.BackendStatus, error) {
+	return &models.BackendStatus{}, nil
+}
+
+func (s stubHostedInventory) ProviderClass() string { return constants.InferenceProviderGemini }
+
+func (s stubHostedInventory) ListProviderModelInventory(context.Context) ([]inference.ProviderModelInventoryEntry, error) {
+	return s.entries, s.err
+}
+
+func TestOllamaMaintenanceService_HandleInventoryRequest_IncludesHostedModels(t *testing.T) {
+	hosted := stubHostedInventory{entries: []inference.ProviderModelInventoryEntry{{
+		ServedModelTag: "gemini-3.6-flash", ModelDigest: ollamaTestDigestB, ProviderClass: constants.InferenceProviderGemini, Format: constants.HostedModelFormat,
+	}}}
+	env := newOllamaMaintenanceEnvWithEventsStore(t, fakeOllama(t, ollamaInventoryRoutes()), storagetest.NewTestEventsStore(t, ollamaTestSessionID), []inference.HostedBackend{hosted})
+
+	env.svc.HandleInventoryRequest(t.Context(), ollamaInventoryMessage(t, "exec-hosted"))
+
+	var result operatorv1.OllamaModelInventoryResult
+	env.publishedResult(t, &result)
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status)
+	require.Len(t, result.Entries, 3)
+	assert.Equal(t, "gemini-3.6-flash", result.Entries[2].ServedModelTag)
+	assert.Equal(t, constants.InferenceProviderGemini, result.Entries[2].ProviderClass)
+	assert.Equal(t, ollamaTestDigestB, result.Entries[2].ModelDigest)
+}
+
+func TestOllamaMaintenanceService_HandleInventoryRequest_FailsWhenAHostedCatalogFails(t *testing.T) {
+	hosted := stubHostedInventory{err: constants.ErrInferenceBackendUnavailable}
+	env := newOllamaMaintenanceEnvWithEventsStore(t, fakeOllama(t, ollamaInventoryRoutes()), storagetest.NewTestEventsStore(t, ollamaTestSessionID), []inference.HostedBackend{hosted})
+
+	env.svc.HandleInventoryRequest(t.Context(), ollamaInventoryMessage(t, "exec-hosted"))
+
+	var result operatorv1.OllamaModelInventoryResult
+	envelope := env.publishedResult(t, &result)
+	assert.Equal(t, string(constants.Event.Operator.OllamaModelInventory.Failed), envelope.EventType)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
+	assert.Contains(t, result.ErrorMessage, constants.InferenceProviderGemini, "a partial inventory is never published")
+}
+
+// scopedInventoryMessage is an inventory request listing only classes.
+func scopedInventoryMessage(t *testing.T, executionID string, classes ...string) *PubSubCommandMessage {
+	t.Helper()
+	msg := ollamaInventoryMessage(t, executionID)
+	msg.Payload = mustMarshalProto(t, &operatorv1.OllamaModelInventoryRequested{ExecutionId: executionID, ProviderClasses: classes})
+	return msg
+}
+
+func TestOllamaMaintenanceService_HandleInventoryRequest_HostedScopeNeverReadsTheLocalProvider(t *testing.T) {
+	hosted := stubHostedInventory{entries: []inference.ProviderModelInventoryEntry{{
+		ServedModelTag: "gemini-3.6-flash", ModelDigest: ollamaTestDigestB, ProviderClass: constants.InferenceProviderGemini, Format: constants.HostedModelFormat,
+	}}}
+	unreachable := fakeOllama(t, map[string]http.HandlerFunc{"/api/tags": ollamaStatus(http.StatusInternalServerError)})
+	env := newOllamaMaintenanceEnvWithEventsStore(t, unreachable, storagetest.NewTestEventsStore(t, ollamaTestSessionID), []inference.HostedBackend{hosted})
+
+	env.svc.HandleInventoryRequest(t.Context(), scopedInventoryMessage(t, "exec-hosted", constants.InferenceProviderGemini))
+
+	var result operatorv1.OllamaModelInventoryResult
+	env.publishedResult(t, &result)
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status, "a hosted-only listing never depends on a reachable local provider")
+	require.Len(t, result.Entries, 1)
+	assert.Equal(t, constants.InferenceProviderGemini, result.Entries[0].ProviderClass)
+}
+
+func TestOllamaMaintenanceService_HandleInventoryRequest_UnservedClassFailsClosed(t *testing.T) {
+	hosted := stubHostedInventory{entries: []inference.ProviderModelInventoryEntry{{
+		ServedModelTag: "gemini-3.6-flash", ModelDigest: ollamaTestDigestB, ProviderClass: constants.InferenceProviderGemini, Format: constants.HostedModelFormat,
+	}}}
+	env := newOllamaMaintenanceEnvWithEventsStore(t, fakeOllama(t, ollamaInventoryRoutes()), storagetest.NewTestEventsStore(t, ollamaTestSessionID), []inference.HostedBackend{hosted})
+
+	env.svc.HandleInventoryRequest(t.Context(), scopedInventoryMessage(t, "exec-unserved", constants.InferenceProviderGemini, constants.InferenceProviderAnthropic))
+
+	var result operatorv1.OllamaModelInventoryResult
+	envelope := env.publishedResult(t, &result)
+	assert.Equal(t, string(constants.Event.Operator.OllamaModelInventory.Failed), envelope.EventType)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
+	assert.Contains(t, result.ErrorMessage, constants.InferenceProviderAnthropic)
+	assert.Empty(t, result.Entries, "a partial inventory is never published")
 }
 
 func TestOllamaMaintenanceService_HandleInventoryRequest_ExecutionIDFallsBackToMessageID(t *testing.T) {
@@ -167,7 +259,7 @@ func TestOllamaMaintenanceService_HandleInventoryRequest_RecordsObservedStateEvi
 
 	t.Run("evidence failure never blocks the published result", func(t *testing.T) {
 		// The session is never created, so the real store rejects the evidence event.
-		env := newOllamaMaintenanceEnvWithEventsStore(t, fakeOllama(t, ollamaInventoryRoutes()), storagetest.NewTestEventsStore(t))
+		env := newOllamaMaintenanceEnvWithEventsStore(t, fakeOllama(t, ollamaInventoryRoutes()), storagetest.NewTestEventsStore(t), nil)
 
 		env.svc.HandleInventoryRequest(t.Context(), ollamaInventoryMessage(t, "exec-1"))
 

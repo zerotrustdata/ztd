@@ -76,15 +76,16 @@ func consensusIdentity(binding *models.ConsensusPolicy) (*evalv1.EvaluationConse
 		return nil, fmt.Errorf("evaluation: run governance: encode binding: %w", err)
 	}
 	return &evalv1.EvaluationConsensusIdentity{
-		Bound:         true,
-		BindingId:     binding.ID,
-		Provider:      string(provider),
-		VoteKind:      binding.VoteKind,
-		ModelTag:      binding.ModelTag,
-		ModelDigest:   binding.ModelDigest,
-		Quorum:        uint32(binding.Quorum),
-		MemberAppIds:  slices.Clone(binding.MemberAppIDs),
-		BindingDigest: models.SHA256Hex(encoded),
+		Bound:              true,
+		BindingId:          binding.ID,
+		Provider:           string(provider),
+		VoteKind:           binding.VoteKind,
+		ModelTag:           binding.ModelTag,
+		ModelDigest:        binding.ModelDigest,
+		ModelProviderClass: binding.ModelProviderClass,
+		Quorum:             uint32(binding.Quorum),
+		MemberAppIds:       slices.Clone(binding.MemberAppIDs),
+		BindingDigest:      models.SHA256Hex(encoded),
 	}, nil
 }
 
@@ -122,7 +123,7 @@ func describeConsensusIdentity(identity *evalv1.EvaluationConsensusIdentity) str
 	}
 	line := fmt.Sprintf("%s %d-of-%d", identity.GetProvider(), identity.GetQuorum(), len(identity.GetMemberAppIds()))
 	if identity.GetModelTag() != "" {
-		line += " " + identity.GetModelTag()
+		line += " " + models.ConsensusModelLabel(identity.GetModelTag(), identity.GetModelProviderClass())
 	}
 	if identity.GetVoteKind() != "" {
 		line += " " + identity.GetVoteKind()

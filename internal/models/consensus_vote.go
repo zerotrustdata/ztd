@@ -41,11 +41,20 @@ type ConsensusVoteRecord struct {
 	// Failure explains a deny read from an invalid answer, or why no vote was cast.
 	Failure string `json:"failure,omitempty"`
 	// InferenceTransactionID is the member's governed INFERENCE transaction.
-	InferenceTransactionID string    `json:"inference_transaction_id,omitempty"`
-	ProviderAttemptID      string    `json:"provider_attempt_id,omitempty"`
-	ModelTag               string    `json:"model_tag,omitempty"`
-	Quorum                 int       `json:"quorum"`
-	RecordedAt             time.Time `json:"recorded_at"`
+	InferenceTransactionID string `json:"inference_transaction_id,omitempty"`
+	// ProviderAttemptID and InferenceTransactionID name the member's final
+	// attempt. RetryCount is that attempt's retry ordinal: the number of
+	// earlier attempts a provider's transient failure superseded. It is absent
+	// for a vote that needed no retry, and so for every record written before
+	// vote retries.
+	ProviderAttemptID string `json:"provider_attempt_id,omitempty"`
+	RetryCount        uint32 `json:"retry_count,omitempty"`
+	ModelTag          string `json:"model_tag,omitempty"`
+	// ModelProviderClass is the hosted provider class that served ModelTag;
+	// empty when the vote model is served by a local provider.
+	ModelProviderClass string    `json:"model_provider_class,omitempty"`
+	Quorum             int       `json:"quorum"`
+	RecordedAt         time.Time `json:"recorded_at"`
 }
 
 // ConsensusVotesResponse is the typed response for GET /api/v1/audit/consensus-votes.

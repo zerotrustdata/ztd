@@ -127,7 +127,7 @@ Choose a stricter posture only after configuring required proofs. `consensus` en
 
 Under `consensus` and `notary`, L2 consensus is required. If the Gateway starts without a bound consensus, it logs a warning and continues; L2-gated transactions are rejected until a consensus is bound.
 
-The Gateway-hosted Tribunal panel is one provider. `./ztd consensus enroll tribunal --model <tag>` resolves the local model tag through the frozen model registry, pins it by digest, and enrolls the five `tribunal-*` member applications. `--model` is required. Each member gets a sealed signing key unless its key already exists locally, so a re-run resumes. `--quorum` accepts 3 to 5 and defaults to 3. Then run `./ztd consensus status` to confirm the binding:
+The Gateway-hosted Tribunal panel is one provider. `./ztd consensus enroll tribunal --model <tag>` resolves the registry model tag through the frozen model registry, local or hosted, pins it by digest, and enrolls the five `tribunal-*` member applications. For a hosted model, the binding also records its provider class (`gemini`, `anthropic`, or `openai`), and the Inference Operator that serves the votes must serve that class: its API key (`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENAI_API_KEY`) must be set in its environment or `.env` when it starts, and the enrollment approval must bind that class to the Operator. `--model` is required. Each member gets a sealed signing key unless its key already exists locally, so a re-run resumes. `--quorum` accepts 3 to 5 and defaults to 3. Then run `./ztd consensus status` to confirm the binding:
 
 ```bash
 ./ztd consensus enroll tribunal --model <tag>

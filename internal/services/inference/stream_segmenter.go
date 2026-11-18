@@ -19,7 +19,8 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// segmentKind is the part kind of one run of buffered text, or segmentToolCall for a tool-call item.
+// segmentKind is the part kind of one run of buffered text, or segmentToolCall or
+// segmentProviderReasoning for an item that occupies no bytes.
 type segmentKind uint8
 
 const (
@@ -27,6 +28,7 @@ const (
 	segmentText
 	segmentThinking
 	segmentToolCall
+	segmentProviderReasoning
 )
 
 var (
@@ -34,12 +36,14 @@ var (
 	pemEndMarker   = []byte("-----END")
 )
 
-// streamItem is one ordered entry of the stream: a run of text of one kind, or a tool call. A run
-// starts at offset in the buffer and ends where the next item starts. A tool call occupies no bytes.
+// streamItem is one ordered entry of the stream: a run of text of one kind, a tool call, or an opaque
+// provider reasoning item. A run starts at offset in the buffer and ends where the next item starts. A
+// tool call or reasoning item occupies no bytes.
 type streamItem struct {
-	offset int
-	kind   segmentKind
-	call   *operatorv1.InferenceToolCall
+	offset    int
+	kind      segmentKind
+	call      *operatorv1.InferenceToolCall
+	reasoning *operatorv1.InferenceProviderReasoning
 }
 
 // streamSegmenter is the source-side egress of a streamed inference response. It holds the stream
@@ -50,7 +54,9 @@ type streamItem struct {
 //     number of blank lines, are therefore scrubbed whole.
 //   - While a PEM block is open (a BEGIN marker with no END line followed by a newline), everything
 //     from its BEGIN marker onward is held. The block is released once its END line completes.
-//   - A tool call is released after all text before it, so the order of parts is kept.
+//   - A tool call or provider reasoning item is released after all text before it, so the order of
+//     parts is kept. A reasoning item is opaque provider state with no readable text and is released
+//     unchanged.
 //   - Nothing is ever released on a timer or by size. A stream that never emits a newline is held until
 //     its terminal event. That costs streaming latency, never safety.
 //
@@ -100,6 +106,12 @@ func (g *streamSegmenter) accept(ctx context.Context, parts []*operatorv1.Infere
 			}
 			g.items = append(g.items, streamItem{offset: len(g.buf), kind: segmentToolCall, call: v.ToolCall})
 			out = g.release(ctx, out, false)
+		case *operatorv1.InferenceResponsePart_ProviderReasoning:
+			if v.ProviderReasoning == nil {
+				return nil, fmt.Errorf("inference stream: provider reasoning: %w", constants.ErrInferenceProviderResponseInvalid)
+			}
+			g.items = append(g.items, streamItem{offset: len(g.buf), kind: segmentProviderReasoning, reasoning: v.ProviderReasoning})
+			out = g.release(ctx, out, false)
 		default:
 			return nil, fmt.Errorf("inference stream: response part: %w", constants.ErrInferenceProviderResponseInvalid)
 		}
@@ -140,11 +152,15 @@ func (g *streamSegmenter) release(ctx context.Context, out []*operatorv1.Inferen
 	consumed := 0
 	for consumed < len(g.items) {
 		item := g.items[consumed]
-		if item.kind == segmentToolCall {
+		if item.kind == segmentToolCall || item.kind == segmentProviderReasoning {
 			if item.offset > cut {
 				break
 			}
-			out = append(out, g.toolCallPart(ctx, item.call))
+			if item.kind == segmentToolCall {
+				out = append(out, g.toolCallPart(ctx, item.call))
+			} else {
+				out = append(out, &operatorv1.InferenceResponsePart{Part: &operatorv1.InferenceResponsePart_ProviderReasoning{ProviderReasoning: item.reasoning}})
+			}
 			consumed++
 			continue
 		}
@@ -263,13 +279,15 @@ func (g *streamSegmenter) segment(ctx context.Context, kind segmentKind, raw str
 	return &operatorv1.InferenceResponsePart{Part: &operatorv1.InferenceResponsePart_Text{Text: scrubbed}}
 }
 
-// toolCallPart scrubs the name and arguments of one tool call and keeps its call ID.
+// toolCallPart scrubs the name and arguments of one tool call and keeps its
+// call ID and opaque provider signature.
 func (g *streamSegmenter) toolCallPart(ctx context.Context, call *operatorv1.InferenceToolCall) *operatorv1.InferenceResponsePart {
 	return &operatorv1.InferenceResponsePart{Part: &operatorv1.InferenceResponsePart_ToolCall{
 		ToolCall: &operatorv1.InferenceToolCall{
-			CallId:        call.GetCallId(),
-			Name:          g.scrubValue(ctx, call.GetName()),
-			ArgumentsJson: g.scrubValue(ctx, call.GetArgumentsJson()),
+			CallId:            call.GetCallId(),
+			Name:              g.scrubValue(ctx, call.GetName()),
+			ArgumentsJson:     g.scrubValue(ctx, call.GetArgumentsJson()),
+			ProviderSignature: call.GetProviderSignature(),
 		},
 	}}
 }

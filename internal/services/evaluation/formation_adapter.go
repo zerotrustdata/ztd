@@ -165,6 +165,15 @@ func bindFormationRole(stackID string, role FormationRole, slot *evalv1.RoleAssi
 	return model, nil
 }
 
+// FormationTrustForProviderClass is the trust class a provider class implies:
+// delegated for a hosted provider, sovereign for a local one.
+func FormationTrustForProviderClass(providerClass string) FormationTrust {
+	if constants.IsHostedInferenceProvider(providerClass) {
+		return FormationTrustDelegated
+	}
+	return FormationTrustSovereign
+}
+
 // FormationModelFromVariant derives a role binding from one model-inventory
 // variant. Provider defaults to the model family, and sovereign VRAM is
 // estimated from the parameter count and quantization.
@@ -172,11 +181,8 @@ func FormationModelFromVariant(variant *evalv1.ModelVariant) FormationModel {
 	if variant == nil {
 		return FormationModel{}
 	}
-	trust := FormationTrustSovereign
 	providerClass := variant.GetProviderClass()
-	if providerClass == "gemini" {
-		trust = FormationTrustDelegated
-	}
+	trust := FormationTrustForProviderClass(providerClass)
 	provider := variant.GetModelFamily()
 	if provider == "" {
 		provider = variant.GetVariantId()

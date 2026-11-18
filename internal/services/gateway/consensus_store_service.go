@@ -163,6 +163,7 @@ func (s *ConsensusStoreService) ConsensusReadiness(ctx context.Context, signer C
 		Quorum:              policy.Quorum,
 		ModelTag:            policy.ModelTag,
 		ModelDigest:         policy.ModelDigest,
+		ModelProviderClass:  policy.ModelProviderClass,
 		InferenceOperatorID: policy.InferenceOperatorID,
 		Members:             make([]models.ConsensusMemberReadiness, 0, len(policy.MemberAppIDs)),
 	}

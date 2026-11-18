@@ -45,7 +45,9 @@ func scoredAgentInference(calls []*evalv1.ModelInferenceRecord) *evalv1.ModelInf
 // resource aggregates, preserving nil entries so callers still reject them.
 // A call counts only when its producer classified it as part of the scored
 // chain; post-turn calls such as the memory write are real production behavior
-// outside the measured assignment and are excluded (R9).
+// outside the measured assignment and are excluded (R9), and so is a RETRIED
+// attempt, which the retry that superseded it stands for. Every metric
+// collector selects these records; evidence walks every record.
 func scoredInferenceRecords(calls []*evalv1.ModelInferenceRecord) []*evalv1.ModelInferenceRecord {
 	scored := make([]*evalv1.ModelInferenceRecord, 0, len(calls))
 	for _, call := range calls {

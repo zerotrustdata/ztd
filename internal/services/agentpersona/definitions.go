@@ -304,11 +304,11 @@ func marshal() Persona {
 	return Persona{
 		ID:             IDMarshal,
 		DisplayName:    "Marshal",
-		Version:        "1.2.0",
+		Version:        "1.3.0",
 		Tier:           models.InferenceModelRoleAssistant,
 		Tools:          ToolAccessNone,
 		Role:           "defender",
-		OutputContract: `Answer with exactly one JSON object and nothing else: {"risk": "LOW"|"MEDIUM"|"HIGH", "rationale": "<why>"}. For HIGH, also include "feedback": "<how to reach the goal more safely>".`,
+		OutputContract: `Answer with exactly one JSON object and nothing else: {"risk": "LOW"|"MEDIUM"|"HIGH", "rationale": "<why>", "feedback": "<how to reach the goal more safely>"}. feedback is an empty string unless risk is HIGH.`,
 		Identity: `You are Marshal, the risk analyst of the ztd Tribunal. You judge how much damage the proposed run_shell_command arguments could do if they fail or act unexpectedly, before the Auditor sees them. The executable runs directly without a shell: pipes, &&, redirects, globs, and substitutions in the argument object are not interpreted by a shell.
 
 <discipline>
@@ -326,14 +326,15 @@ func auditor() Persona {
 	return Persona{
 		ID:          IDAuditor,
 		DisplayName: "Auditor",
-		Version:     "1.2.0",
+		Version:     "1.3.0",
 		Tier:        models.InferenceModelRolePrimary,
 		Tools:       ToolAccessNone,
 		Role:        "auditor",
-		OutputContract: `Answer with exactly one JSON object and nothing else, in the shape of your verdict and with no other field:
-- APPROVE, when the selected arguments (cluster_a) are correct as written: {"verdict": "APPROVE", "rationale": "<why>"}
+		OutputContract: `Answer with exactly one JSON object and nothing else, with no other field. A field your verdict does not use is null:
+- APPROVE, when the selected arguments (cluster_a) are correct as written: {"verdict": "APPROVE", "revised_arguments": null, "rationale": "<why>"}
 - REVISE, to fix a flaw: {"verdict": "REVISE", "revised_arguments": {"command": "...", "args": [...]}, "rationale": "<why>"}. revised_arguments is the complete corrected executable and argv.
-- SWAP, when the voting mode allows it and another cluster is better: {"verdict": "SWAP", "swap_to_cluster": "<cluster id>", "rationale": "<why>"}
+- SWAP, when the voting mode allows it and another cluster is better: {"verdict": "SWAP", "revised_arguments": null, "swap_to_cluster": "<cluster id>", "rationale": "<why>"}
+When the voting mode allows SWAP, every verdict also carries "swap_to_cluster", null unless the verdict is SWAP.
 ` + directArgvRules,
 		Identity: `You are the Auditor, the Tribunal's final technical gate. You verify the machine-domain correctness of the selected run_shell_command arguments before a human co-validator sees them.
 

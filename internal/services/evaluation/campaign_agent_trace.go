@@ -30,9 +30,11 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// agentTraceSchemaVersion is the version every new trace is sealed with. v12
-// records a content judgment the pinned judge failed to decide, with its typed
-// failure, so the trace persists when grading fails; v11
+// agentTraceSchemaVersion is the version every new trace is sealed with. v13
+// records retried provider attempts: a call that retries an attempt the
+// provider asked to retry later carries retry_of, the attempt it supersedes;
+// v12 records a content judgment the pinned judge failed to decide, with its
+// typed failure, so the trace persists when grading fails; v11
 // records the frozen persona (ID, version, digest) the designated role ran
 // under; v10 records each pinned-judge verdict on a judged content criterion with its
 // dispatched prompt and signed inference result; v9
@@ -45,7 +47,8 @@ import (
 // remain valid evidence; a v3 trace's model input was not captured and is
 // never reconstructed.
 const (
-	agentTraceSchemaVersion    = "agent-trace.v12"
+	agentTraceSchemaVersion    = "agent-trace.v13"
+	agentTraceSchemaVersionV12 = "agent-trace.v12"
 	agentTraceSchemaVersionV11 = "agent-trace.v11"
 	agentTraceSchemaVersionV10 = "agent-trace.v10"
 	agentTraceSchemaVersionV9  = "agent-trace.v9"
@@ -134,7 +137,13 @@ type AgentModelCall struct {
 	GenerationDurationNanos uint64              `json:"generation_duration_nanos,omitempty"`
 	FinishReason            string              `json:"finish_reason,omitempty"`
 	LoadState               string              `json:"load_state,omitempty"`
-	RetryCount              uint32              `json:"retry_count"`
+	// RetryCount is the zero-based retry ordinal of this provider attempt. A
+	// completed attempt's signed result echoes it.
+	RetryCount uint32 `json:"retry_count"`
+	// RetryOf is the provider attempt this call retries (v13): an earlier
+	// attempt of the same call whose signed FAILED receipt says the provider
+	// asked to retry later. It is set exactly when RetryCount is above zero.
+	RetryOf string `json:"retry_of,omitempty"`
 	// Thinking is the reasoning text the provider returned as thinking parts,
 	// in order. It is never sent back to the model.
 	Thinking      string `json:"thinking,omitempty"`
@@ -183,6 +192,40 @@ func (c AgentModelCall) IsTurn() bool {
 	return c.Purpose == agentModelCallPurposeTurn
 }
 
+// supersededAttempts returns the provider attempts a later call retried. A
+// superseded attempt stays evidence (its receipt, ledger claim, inference
+// record, and observation windows), but it is not part of the conversation,
+// the step count, or any metric: the retry that superseded it is the call.
+// verifyRetryChains proves every retry_of link before a trace is trusted.
+func (t *AgentTrace) supersededAttempts() map[string]bool {
+	superseded := make(map[string]bool)
+	if t == nil {
+		return superseded
+	}
+	for _, call := range t.ModelCalls {
+		if call.RetryOf != "" {
+			superseded[call.RetryOf] = true
+		}
+	}
+	return superseded
+}
+
+// scoredModelCalls returns the model calls no later attempt superseded, in
+// trace order.
+func (t *AgentTrace) scoredModelCalls() []AgentModelCall {
+	if t == nil {
+		return nil
+	}
+	superseded := t.supersededAttempts()
+	calls := make([]AgentModelCall, 0, len(t.ModelCalls))
+	for _, call := range t.ModelCalls {
+		if !superseded[call.ProviderAttemptID] {
+			calls = append(calls, call)
+		}
+	}
+	return calls
+}
+
 // AgentToolCall is one tool call the model made and what it returned. An
 // operator tool's CallID is the governed transaction ID when the Gateway
 // admitted the dispatch, so governed actions resolve to their call.
@@ -193,7 +236,10 @@ type AgentToolCall struct {
 	ModelCallID         string                          `json:"model_call_id"`
 	// ProviderCallID is the call ID the model returned; the assistant and tool
 	// result messages sent on the next turn carry it.
-	ProviderCallID        string `json:"provider_call_id,omitempty"`
+	ProviderCallID string `json:"provider_call_id,omitempty"`
+	// ProviderSignature is the opaque signature a hosted provider issued with
+	// the call; the next turn's assistant message returns it verbatim.
+	ProviderSignature     string `json:"provider_signature,omitempty"`
 	ToolName              string `json:"tool_name"`
 	ArgumentsJSON         string `json:"arguments_json"`
 	ApprovedArgumentsJSON string `json:"approved_arguments_json,omitempty"`
@@ -264,7 +310,7 @@ type AgentTrace struct {
 	// Input is the exact model input of the first turn after any HeldContext.
 	// Every later turn sent this input followed, per earlier turn, by one
 	// assistant message (the call's Text, then its tool calls with
-	// ProviderCallID, ToolName and ArgumentsJSON) and one tool message per
+	// ProviderCallID, ProviderSignature, ToolName and ArgumentsJSON) and one tool message per
 	// call carrying ResultJSON. v3 traces have none.
 	Input                  *AgentTraceInput         `json:"input,omitempty"`
 	ModelCalls             []AgentModelCall         `json:"model_calls"`
@@ -314,6 +360,26 @@ type AgentContentJudgment struct {
 	// verdict, and carries the signed result and receipt only when its failure
 	// is read from the judge's own output (verdict invalid, repetition).
 	Failure string `json:"failure,omitempty"`
+	// RetryCount is the retry ordinal of the judgment's final attempt (v13): 0
+	// for a first attempt, n for the nth retry after the provider asked to
+	// retry later. It equals len(SupersededAttempts) and, when the judgment
+	// carries a signed result, that result's retry_count.
+	RetryCount uint32 `json:"retry_count,omitempty"`
+	// SupersededAttempts are the judgment's earlier attempts its retries
+	// replaced, in order (retry_count 0..RetryCount-1). Each carries the
+	// Inference Operator's signed transient FAILED receipt and no result or
+	// verdict; none is ever a scored judge call.
+	SupersededAttempts []AgentJudgeSupersededAttempt `json:"superseded_attempts,omitempty"`
+}
+
+// AgentJudgeSupersededAttempt is one judge provider attempt a retry replaced:
+// the provider asked to retry later, so the attempt did not complete and the
+// Inference Operator signed a FAILED receipt for it.
+type AgentJudgeSupersededAttempt struct {
+	ProviderAttemptID string             `json:"provider_attempt_id"`
+	TransactionID     string             `json:"transaction_id"`
+	RetryCount        uint32             `json:"retry_count"`
+	Receipt           *AgentTraceReceipt `json:"receipt"`
 }
 
 // AgentTraceInput is the rendered conversation and the complete tool
@@ -352,7 +418,8 @@ type AgentTraceHeldContext struct {
 
 // AgentTraceContextMessage is one message of a held conversation. Role is the
 // InferenceMessageRole enum name. An assistant message carries its Text and
-// any ToolCalls; a tool message carries exactly one ToolResult.
+// any ToolCalls; a tool message carries exactly one ToolResult. Opaque provider
+// reasoning is excluded because held context can change the persona or prompt.
 type AgentTraceContextMessage struct {
 	Role       string                       `json:"role"`
 	Text       string                       `json:"text,omitempty"`
@@ -362,9 +429,10 @@ type AgentTraceContextMessage struct {
 
 // AgentTraceContextToolCall is one tool call of a held assistant message.
 type AgentTraceContextToolCall struct {
-	CallID        string `json:"call_id,omitempty"`
-	Name          string `json:"name"`
-	ArgumentsJSON string `json:"arguments_json"`
+	CallID            string `json:"call_id,omitempty"`
+	ProviderSignature string `json:"provider_signature,omitempty"`
+	Name              string `json:"name"`
+	ArgumentsJSON     string `json:"arguments_json"`
 }
 
 // AgentTraceContextToolResult is the result a held tool message returned.
@@ -386,10 +454,10 @@ func (t *AgentTrace) clarificationAt(loopTurn int) (AgentClarificationTurn, bool
 	return AgentClarificationTurn{}, false
 }
 
-// Conversation rebuilds the complete conversation this trace's model saw and
-// produced: its held context, its input, and per completed turn the assistant
-// message and its tool results, ending with the final answer. A v3 trace
-// recorded no input and cannot be rebuilt.
+// Conversation rebuilds the conversation for held context: its previous held
+// context, input, and per completed turn the assistant message and tool results,
+// ending with the final answer. It omits opaque provider reasoning, which binds
+// the original live conversation. A v3 trace recorded no input and cannot be rebuilt.
 func (t *AgentTrace) Conversation() ([]AgentTraceContextMessage, error) {
 	if t == nil || t.Input == nil || len(t.Input.Messages) == 0 {
 		return nil, fmt.Errorf("evaluation: agent trace conversation: input: %w", constants.ErrMissingRequiredField)
@@ -404,7 +472,7 @@ func (t *AgentTrace) Conversation() ([]AgentTraceContextMessage, error) {
 	assistantRole := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_ASSISTANT.String()
 	toolRole := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_TOOL.String()
 	userRole := operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER.String()
-	for _, call := range t.ModelCalls {
+	for _, call := range t.scoredModelCalls() {
 		if !call.IsTurn() {
 			continue
 		}
@@ -433,7 +501,7 @@ func (t *AgentTrace) Conversation() ([]AgentTraceContextMessage, error) {
 			if tool.ModelCallID != call.ProviderAttemptID {
 				continue
 			}
-			assistant.ToolCalls = append(assistant.ToolCalls, AgentTraceContextToolCall{CallID: tool.ProviderCallID, Name: tool.ToolName, ArgumentsJSON: tool.ArgumentsJSON})
+			assistant.ToolCalls = append(assistant.ToolCalls, AgentTraceContextToolCall{CallID: tool.ProviderCallID, ProviderSignature: tool.ProviderSignature, Name: tool.ToolName, ArgumentsJSON: tool.ArgumentsJSON})
 			results = append(results, AgentTraceContextMessage{Role: toolRole, ToolResult: &AgentTraceContextToolResult{CallID: tool.ProviderCallID, Name: tool.ToolName, ResultJSON: tool.ResultJSON}})
 		}
 		if len(assistant.ToolCalls) < call.ToolCallCount && t.ProviderFailure != "" {
@@ -463,7 +531,7 @@ func (m AgentTraceContextMessage) inferenceMessage() (*operatorv1.InferenceMessa
 	}
 	for _, call := range m.ToolCalls {
 		message.Parts = append(message.Parts, &operatorv1.InferenceMessagePart{Part: &operatorv1.InferenceMessagePart_ToolCall{ToolCall: &operatorv1.InferenceToolCall{
-			CallId: call.CallID, Name: call.Name, ArgumentsJson: call.ArgumentsJSON,
+			CallId: call.CallID, Name: call.Name, ArgumentsJson: call.ArgumentsJSON, ProviderSignature: call.ProviderSignature,
 		}}})
 	}
 	if m.ToolResult != nil {
@@ -591,7 +659,19 @@ func (t *AgentTrace) carriesContentJudgments() bool {
 // persona the designated role ran under and the Interrogator's exact input
 // (v11 and later).
 func (t *AgentTrace) carriesPersona() bool {
-	return t != nil && (t.SchemaVersion == agentTraceSchemaVersion || t.SchemaVersion == agentTraceSchemaVersionV11)
+	return t != nil && (t.carriesFailedJudgments() || t.SchemaVersion == agentTraceSchemaVersionV11)
+}
+
+// carriesFailedJudgments reports whether the trace's schema records a content
+// judgment the pinned judge failed to decide (v12 and later).
+func (t *AgentTrace) carriesFailedJudgments() bool {
+	return t != nil && (t.carriesRetries() || t.SchemaVersion == agentTraceSchemaVersionV12)
+}
+
+// carriesRetries reports whether the trace's schema records retried provider
+// attempts (v13 and later).
+func (t *AgentTrace) carriesRetries() bool {
+	return t != nil && t.SchemaVersion == agentTraceSchemaVersion
 }
 
 // SharedRuntime reports whether both roles executed on one runtime.
@@ -876,7 +956,7 @@ func validateAgentTraceRules(trace *AgentTrace) error {
 		return fmt.Errorf("evaluation: validate agent trace: evidence_digest: %w", constants.ErrMissingRequiredField)
 	}
 	switch trace.SchemaVersion {
-	case agentTraceSchemaVersion, agentTraceSchemaVersionV11, agentTraceSchemaVersionV10, agentTraceSchemaVersionV9, agentTraceSchemaVersionV8, agentTraceSchemaVersionV7, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
+	case agentTraceSchemaVersion, agentTraceSchemaVersionV12, agentTraceSchemaVersionV11, agentTraceSchemaVersionV10, agentTraceSchemaVersionV9, agentTraceSchemaVersionV8, agentTraceSchemaVersionV7, agentTraceSchemaVersionV6, agentTraceSchemaVersionV5, agentTraceSchemaVersionV4:
 		if trace.Input == nil || len(trace.Input.Messages) == 0 {
 			return fmt.Errorf("evaluation: validate agent trace: input: %w", constants.ErrMissingRequiredField)
 		}
@@ -901,13 +981,28 @@ func validateAgentTraceRules(trace *AgentTrace) error {
 		if (call.Purpose == agentModelCallPurposeInterrogation) != (len(call.Input) > 0) || (!trace.carriesPersona() && len(call.Input) > 0) {
 			return fmt.Errorf("evaluation: validate agent trace: model call %q input: %w", call.ProviderAttemptID, constants.ErrEvidenceArtifactMalformed)
 		}
+		if !trace.carriesRetries() && (call.RetryOf != "" || call.RetryCount != 0) {
+			return fmt.Errorf("evaluation: validate agent trace: historical trace carries a retried model call %q: %w", call.ProviderAttemptID, constants.ErrEvidenceArtifactMalformed)
+		}
+	}
+	if !trace.carriesRetries() {
+		for _, tool := range trace.ToolCalls {
+			for _, vote := range tool.ConsensusInferences {
+				if vote.GetRetryCount() != 0 || len(vote.GetSupersededAttempts()) > 0 {
+					return fmt.Errorf("evaluation: validate agent trace: historical trace carries a retried L2 vote %q: %w", vote.GetProviderAttemptId(), constants.ErrEvidenceArtifactMalformed)
+				}
+			}
+		}
 	}
 	if !trace.carriesContentJudgments() && len(trace.ContentJudgments) > 0 {
 		return fmt.Errorf("evaluation: validate agent trace: historical trace carries content judgments: %w", constants.ErrEvidenceArtifactMalformed)
 	}
 	for _, judgment := range trace.ContentJudgments {
-		if judgment.Failure != "" && trace.SchemaVersion != agentTraceSchemaVersion {
+		if judgment.Failure != "" && !trace.carriesFailedJudgments() {
 			return fmt.Errorf("evaluation: validate agent trace: historical trace carries a failed content judgment: %w", constants.ErrEvidenceArtifactMalformed)
+		}
+		if !trace.carriesRetries() && (judgment.RetryCount != 0 || len(judgment.SupersededAttempts) > 0) {
+			return fmt.Errorf("evaluation: validate agent trace: historical trace carries a retried content judgment %q: %w", judgment.CriterionID, constants.ErrEvidenceArtifactMalformed)
 		}
 	}
 	if !trace.carriesObservationEvidence() && len(trace.Observations) > 0 {

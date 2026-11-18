@@ -5,7 +5,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { describe, it, expect } from 'vitest';
-import type { Operator } from './types';
+import type { Operator, OperatorRuntimeConfig } from './types';
 
 describe('Operator interface contract', () => {
   it('matches the canonical protobuf OperatorDocument fixture', () => {
@@ -24,6 +24,7 @@ describe('Operator interface contract', () => {
       status: true,
       operator_type: true,
       operator_capabilities: true,
+      runtime_config: true,
       operator_session_id: true,
       bound_web_session_id: true,
       current_hostname: true,
@@ -39,6 +40,15 @@ describe('Operator interface contract', () => {
     for (const key of Object.keys(keys)) {
       expect(fixture).toHaveProperty(key);
     }
+
+    const runtimeConfigKeys: Record<keyof OperatorRuntimeConfig, true> = {
+      inference_hosted_providers: true,
+    };
+
+    for (const key of Object.keys(runtimeConfigKeys)) {
+      expect(fixture.runtime_config).toHaveProperty(key);
+    }
+    expect(Array.isArray(fixture.runtime_config.inference_hosted_providers)).toBe(true);
 
     // Verify created_at is a valid ISO8601 timestamp
     expect(fixture.created_at).toBeDefined();

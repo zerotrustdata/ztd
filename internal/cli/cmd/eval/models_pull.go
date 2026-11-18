@@ -82,7 +82,7 @@ Examples:
 					variantIDs = append(variantIDs, variant.GetVariantId())
 				}
 			}
-			env, err := resolveGovernedModelMaintenance(cmd, deps)
+			env, err := resolveGovernedModelMaintenance(cmd, deps, nil)
 			if err != nil {
 				return fmt.Errorf("evaluation: models pull: %w", err)
 			}

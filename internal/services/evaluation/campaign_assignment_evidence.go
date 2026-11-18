@@ -60,7 +60,7 @@ func BuildPublicAssignmentEvidence(input PublicAssignmentEvidenceInput) (*Public
 }
 
 func buildPublicActivity(result *evalv1.EvaluationAssignmentResult) (*PublicAssignmentActivity, error) {
-	model, err := buildPublicModelActivity(result.GetModelInferences())
+	model, err := buildPublicModelActivity(scoredInferenceRecords(result.GetModelInferences()))
 	if err != nil {
 		return nil, err
 	}

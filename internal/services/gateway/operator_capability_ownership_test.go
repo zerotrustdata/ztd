@@ -49,6 +49,31 @@ func TestOperatorRuntimeConfigAllowsManyOperatorsWithAllCapabilities(t *testing.
 	}
 }
 
+func TestOperatorRuntimeConfigRejectsHostedProvidersTheOperatorCannotServe(t *testing.T) {
+	store := newOperatorOwnershipStore(t)
+	reg := &RegistrationService{docStore: store}
+	id := string(constants.DocIDEmbeddedOperator)
+	inference := []string{string(constants.OperatorCapabilityInference)}
+
+	require.NoError(t, reg.UpdateOperatorRuntimeConfig(t.Context(), id, &operatorv1.OperatorRuntimeConfig{
+		Capabilities: inference, InferenceHostedProviders: []string{constants.InferenceProviderGemini, constants.InferenceProviderOpenAI},
+	}))
+	err := reg.UpdateOperatorRuntimeConfig(t.Context(), id, &operatorv1.OperatorRuntimeConfig{
+		Capabilities: []string{string(constants.OperatorCapabilityData)}, InferenceHostedProviders: []string{constants.InferenceProviderGemini},
+	})
+	require.ErrorIs(t, err, constants.ErrInferenceHostedRequiresInference)
+	err = reg.UpdateOperatorRuntimeConfig(t.Context(), id, &operatorv1.OperatorRuntimeConfig{
+		Capabilities: inference, InferenceHostedProviders: []string{constants.InferenceProviderOllama},
+	})
+	require.ErrorIs(t, err, constants.ErrInferenceHostedProviderInvalid)
+
+	doc, err := store.DocGet(t.Context(), marshaler.CollectionName(constants.CollectionOperators), id)
+	require.NoError(t, err)
+	op, err := models.OperatorDocumentFromStore(doc)
+	require.NoError(t, err)
+	require.Equal(t, []string{constants.InferenceProviderGemini, constants.InferenceProviderOpenAI}, op.GetRuntimeConfig().GetInferenceHostedProviders(), "a rejected write leaves the stored classes")
+}
+
 func newOperatorOwnershipStore(t *testing.T) *DocumentStoreService {
 	t.Helper()
 	store := newDocumentStoreService(t)
