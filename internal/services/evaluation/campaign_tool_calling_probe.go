@@ -46,7 +46,7 @@ func (e *CampaignAgentExecutor) ProbeToolCalling(ctx context.Context, req Assign
 	if err != nil {
 		return nil, err
 	}
-	if err := e.releaseAllExcept(ctx, req, "tool-calling probe", run.modelTags()); err != nil {
+	if err := e.releaseAllExcept(ctx, req, "tool-calling probe", run.modelVariants()); err != nil {
 		return nil, toolCallingProbeError("residency", err)
 	}
 	role, err := tribunal.InferenceRoleForTier(run.designated)

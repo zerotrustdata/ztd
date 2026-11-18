@@ -2514,6 +2514,7 @@ provider.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | execution_id | [string](#string) |  |  |
+| provider_classes | [string](#string) | repeated | Provider classes to list: the Operator&#39;s local provider class and/or the hosted classes it serves. Empty lists every class the Operator serves. A named class the Operator does not serve fails the request closed, and the local provider is read only when its class is listed, so a hosted-only listing never depends on a reachable local provider. |
 
 
 

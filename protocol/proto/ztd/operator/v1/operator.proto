@@ -1086,6 +1086,12 @@ message PortCheckResult {
 
 message OllamaModelInventoryRequested {
   string execution_id = 1;
+  // Provider classes to list: the Operator's local provider class and/or the
+  // hosted classes it serves. Empty lists every class the Operator serves. A
+  // named class the Operator does not serve fails the request closed, and the
+  // local provider is read only when its class is listed, so a hosted-only
+  // listing never depends on a reachable local provider.
+  repeated string provider_classes = 2;
 }
 
 // ParameterCountSource distinguishes exact provider metadata from rounded labels.

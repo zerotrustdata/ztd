@@ -129,3 +129,22 @@ func TestFormationsCreate_RequiresEveryRoleTag(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
 	assert.Contains(t, err.Error(), "--lite-tag is required")
 }
+
+func TestFormationsCreate_HostedProviderClassImpliesDelegatedTrust(t *testing.T) {
+	root := testutil.TempDir(t)
+	seedModelScopes(t, root)
+
+	_, err := runFormationsCmd(t, root, "create", "mixed",
+		"--max-vram", "40gb",
+		"--primary-tag", "gemini-3.6-flash",
+		"--primary-provider-class", constants.InferenceProviderGemini,
+		"--primary-family", "gemini",
+		"--assistant-tag", "granite4.2:8b",
+		"--lite-tag", "gemma3:1b")
+	require.NoError(t, err, "a hosted role needs no --primary-trust")
+
+	formation := overlayFormation(t, root, "mixed")
+	assert.Equal(t, evaluation.FormationTrustDelegated, formation.Primary.Trust)
+	assert.Zero(t, formation.Primary.EstimatedModelVRAMMiB+formation.Primary.EstimatedKVCacheMiB, "a hosted role holds no local memory")
+	assert.Equal(t, evaluation.FormationTrustSovereign, formation.Assistant.Trust)
+}

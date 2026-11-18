@@ -112,6 +112,46 @@ func TestOllamaMaintenanceService_HandleInventoryRequest_FailsWhenAHostedCatalog
 	assert.Contains(t, result.ErrorMessage, constants.InferenceProviderGemini, "a partial inventory is never published")
 }
 
+// scopedInventoryMessage is an inventory request listing only classes.
+func scopedInventoryMessage(t *testing.T, executionID string, classes ...string) *PubSubCommandMessage {
+	t.Helper()
+	msg := ollamaInventoryMessage(t, executionID)
+	msg.Payload = mustMarshalProto(t, &operatorv1.OllamaModelInventoryRequested{ExecutionId: executionID, ProviderClasses: classes})
+	return msg
+}
+
+func TestOllamaMaintenanceService_HandleInventoryRequest_HostedScopeNeverReadsTheLocalProvider(t *testing.T) {
+	hosted := stubHostedInventory{entries: []inference.ProviderModelInventoryEntry{{
+		ServedModelTag: "gemini-3.6-flash", ModelDigest: ollamaTestDigestB, ProviderClass: constants.InferenceProviderGemini, Format: constants.HostedModelFormat,
+	}}}
+	unreachable := fakeOllama(t, map[string]http.HandlerFunc{"/api/tags": ollamaStatus(http.StatusInternalServerError)})
+	env := newOllamaMaintenanceEnvWithEventsStore(t, unreachable, storagetest.NewTestEventsStore(t, ollamaTestSessionID), []inference.HostedBackend{hosted})
+
+	env.svc.HandleInventoryRequest(t.Context(), scopedInventoryMessage(t, "exec-hosted", constants.InferenceProviderGemini))
+
+	var result operatorv1.OllamaModelInventoryResult
+	env.publishedResult(t, &result)
+	require.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_COMPLETED, result.Status, "a hosted-only listing never depends on a reachable local provider")
+	require.Len(t, result.Entries, 1)
+	assert.Equal(t, constants.InferenceProviderGemini, result.Entries[0].ProviderClass)
+}
+
+func TestOllamaMaintenanceService_HandleInventoryRequest_UnservedClassFailsClosed(t *testing.T) {
+	hosted := stubHostedInventory{entries: []inference.ProviderModelInventoryEntry{{
+		ServedModelTag: "gemini-3.6-flash", ModelDigest: ollamaTestDigestB, ProviderClass: constants.InferenceProviderGemini, Format: constants.HostedModelFormat,
+	}}}
+	env := newOllamaMaintenanceEnvWithEventsStore(t, fakeOllama(t, ollamaInventoryRoutes()), storagetest.NewTestEventsStore(t, ollamaTestSessionID), []inference.HostedBackend{hosted})
+
+	env.svc.HandleInventoryRequest(t.Context(), scopedInventoryMessage(t, "exec-unserved", constants.InferenceProviderGemini, constants.InferenceProviderAnthropic))
+
+	var result operatorv1.OllamaModelInventoryResult
+	envelope := env.publishedResult(t, &result)
+	assert.Equal(t, string(constants.Event.Operator.OllamaModelInventory.Failed), envelope.EventType)
+	assert.Equal(t, operatorv1.ExecutionStatus_EXECUTION_STATUS_FAILED, result.Status)
+	assert.Contains(t, result.ErrorMessage, constants.InferenceProviderAnthropic)
+	assert.Empty(t, result.Entries, "a partial inventory is never published")
+}
+
 func TestOllamaMaintenanceService_HandleInventoryRequest_ExecutionIDFallsBackToMessageID(t *testing.T) {
 	tests := []struct {
 		name        string

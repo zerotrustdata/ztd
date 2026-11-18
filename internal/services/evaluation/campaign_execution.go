@@ -121,7 +121,8 @@ type CampaignAssignmentExecutor interface {
 
 // DispatchesLocalModels reports whether a campaign dispatches any model a local
 // provider serves: a registry model or its judge. Only those inferences run on
-// a host a provider-boundary observer can witness.
+// a host a provider-boundary observer can witness, and only those hold local
+// residency a run must release.
 func DispatchesLocalModels(registry []*evalv1.ModelVariant, judge *evalv1.ModelVariant) bool {
 	if judge != nil && !constants.IsHostedInferenceProvider(judge.GetProviderClass()) {
 		return true

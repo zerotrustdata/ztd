@@ -7414,10 +7414,16 @@ func (x *PortCheckResult) GetErrorType() string {
 }
 
 type OllamaModelInventoryRequested struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ExecutionId   string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	ExecutionId string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	// Provider classes to list: the Operator's local provider class and/or the
+	// hosted classes it serves. Empty lists every class the Operator serves. A
+	// named class the Operator does not serve fails the request closed, and the
+	// local provider is read only when its class is listed, so a hosted-only
+	// listing never depends on a reachable local provider.
+	ProviderClasses []string `protobuf:"bytes,2,rep,name=provider_classes,json=providerClasses,proto3" json:"provider_classes,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *OllamaModelInventoryRequested) Reset() {
@@ -7455,6 +7461,13 @@ func (x *OllamaModelInventoryRequested) GetExecutionId() string {
 		return x.ExecutionId
 	}
 	return ""
+}
+
+func (x *OllamaModelInventoryRequested) GetProviderClasses() []string {
+	if x != nil {
+		return x.ProviderClasses
+	}
+	return nil
 }
 
 type ProviderModelInventoryEntry struct {
@@ -15390,9 +15403,10 @@ const file_ztd_operator_v1_operator_proto_rawDesc = "" +
 	"\aresults\x18\x03 \x03(\v2\x1f.ztd.operator.v1.PortCheckEntryR\aresults\x12#\n" +
 	"\rerror_message\x18\x04 \x01(\tR\ferrorMessage\x12\x1d\n" +
 	"\n" +
-	"error_type\x18\x05 \x01(\tR\terrorType\"B\n" +
+	"error_type\x18\x05 \x01(\tR\terrorType\"m\n" +
 	"\x1dOllamaModelInventoryRequested\x12!\n" +
-	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\"\xab\x04\n" +
+	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\x12)\n" +
+	"\x10provider_classes\x18\x02 \x03(\tR\x0fproviderClasses\"\xab\x04\n" +
 	"\x1bProviderModelInventoryEntry\x12%\n" +
 	"\x0eprovider_class\x18\x01 \x01(\tR\rproviderClass\x12(\n" +
 	"\x10served_model_tag\x18\x02 \x01(\tR\x0eservedModelTag\x12!\n" +

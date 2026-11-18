@@ -71,7 +71,7 @@ func FreezeModelInventoryFromProvider(
 	if campaignID == "" {
 		return nil, fmt.Errorf("evaluation: freeze model inventory: %w", constants.ErrMissingRequiredField)
 	}
-	listed, err := ListOllamaProviderInventory(ctx, dispatcher, maintenance)
+	listed, err := ListOllamaProviderInventory(ctx, dispatcher, maintenance, nil)
 	if err != nil {
 		return nil, fmt.Errorf("evaluation: freeze model inventory: %w", err)
 	}

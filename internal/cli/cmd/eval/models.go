@@ -331,7 +331,7 @@ Examples:
 				if err != nil {
 					return fmt.Errorf("evaluation: models add: %w", err)
 				}
-				entries, err := evaluation.ListOllamaProviderInventory(cmd.Context(), env.ModelDispatcher, env.Maintenance)
+				entries, err := evaluation.ListOllamaProviderInventory(cmd.Context(), env.ModelDispatcher, env.Maintenance, []string{providerClass})
 				if err != nil {
 					return fmt.Errorf("evaluation: models add: read provider: %w", err)
 				}
@@ -715,7 +715,7 @@ func modelsDiffCmd(deps nativeEvalDeps) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("evaluation: models diff: %w", err)
 			}
-			entries, err := evaluation.ListOllamaProviderInventory(cmd.Context(), env.ModelDispatcher, env.Maintenance)
+			entries, err := evaluation.ListOllamaProviderInventory(cmd.Context(), env.ModelDispatcher, env.Maintenance, nil)
 			if err != nil {
 				return fmt.Errorf("evaluation: models diff: read provider: %w", err)
 			}

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -96,16 +97,26 @@ func (s *OllamaMaintenanceService) HandleInventoryRequest(ctx context.Context, m
 		executionID = executionIDFromMessage(msg)
 	}
 
-	backend, err := s.inferenceProvider()
-	if err != nil {
+	classes := request.GetProviderClasses()
+	if err := s.validateInventoryClasses(classes); err != nil {
 		return fail(executionID, err)
 	}
+	listed := func(class string) bool { return len(classes) == 0 || slices.Contains(classes, class) }
 
-	entries, err := backend.ListProviderModelInventory(ctx)
-	if err != nil {
-		return fail(executionID, err)
+	var entries []inference.ProviderModelInventoryEntry
+	if listed(s.config.Inference.Provider) {
+		backend, err := s.inferenceProvider()
+		if err != nil {
+			return fail(executionID, err)
+		}
+		if entries, err = backend.ListProviderModelInventory(ctx); err != nil {
+			return fail(executionID, err)
+		}
 	}
 	for _, hosted := range s.hosted {
+		if !listed(hosted.ProviderClass()) {
+			continue
+		}
 		hostedEntries, err := hosted.ListProviderModelInventory(ctx)
 		if err != nil {
 			return fail(executionID, fmt.Errorf("%s: %w", hosted.ProviderClass(), err))
@@ -314,6 +325,21 @@ func validateReleaseModelTags(modelTags []string) error {
 	for _, modelTag := range modelTags {
 		if err := operatorcapability.ValidateServedModelTag(modelTag); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// validateInventoryClasses fails closed when an inventory request names a
+// provider class this Operator does not serve.
+func (s *OllamaMaintenanceService) validateInventoryClasses(classes []string) error {
+	for _, class := range classes {
+		served := s.provider != nil && class == s.config.Inference.Provider
+		for _, hosted := range s.hosted {
+			served = served || class == hosted.ProviderClass()
+		}
+		if !served {
+			return fmt.Errorf("%w: provider class %q is not served by this Operator", constants.ErrInferenceOperatorNotCapable, class)
 		}
 	}
 	return nil

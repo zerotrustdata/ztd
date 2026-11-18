@@ -229,3 +229,83 @@ func TestCampaignAgentExecutor_QualityJudgeRequiredMatchesScoreWithJudge(t *test
 	assert.True(t, executor.qualityJudgeRequired(rubric, &AgentTrace{FinalOutput: "answer"}))
 	assert.False(t, executor.qualityJudgeRequired(deterministic, &AgentTrace{FinalOutput: "answer"}), "a deterministic cell never loads the judge")
 }
+
+// hostedFormationRequest is heterogeneousLiteRequest with every formation
+// member served by a hosted provider class.
+func hostedFormationRequest(t *testing.T) AssignmentExecutionRequest {
+	t.Helper()
+	req := heterogeneousLiteRequest(t)
+	for _, variant := range req.Binding.ModelVariants {
+		variant.ProviderClass = constants.InferenceProviderGemini
+		variant.Quantization = ""
+	}
+	return req
+}
+
+func hostedResidencyTestJudge() *evalv1.ModelVariant {
+	judge := residencyTestJudge()
+	judge.ProviderClass = constants.InferenceProviderAnthropic
+	return judge
+}
+
+func TestCampaignAgentExecutor_HostedFormationNeverReadsLocalResidency(t *testing.T) {
+	catalog, err := newAgentToolCatalog()
+	require.NoError(t, err)
+	var steps []residencyStep
+	residency := &recordingModelResidency{steps: &steps, err: constants.ErrInferenceBackendUnavailable}
+	executor := &CampaignAgentExecutor{
+		inference: &inferenceUnavailable{}, residency: residency, tools: &failingWorkspaceWriter{steps: &steps},
+		sentinel: unusedSentinel{}, traceStore: unusedTraceStore{}, catalog: catalog, now: time.Now,
+		newID: func(prefix string) string { return prefix + "-test" },
+	}
+
+	_, err = executor.ExecuteAssignment(t.Context(), hostedFormationRequest(t))
+
+	require.ErrorIs(t, err, constants.ErrEvaluationAssignmentExecutionFailed)
+	require.NotErrorIs(t, err, constants.ErrInferenceBackendUnavailable, "an unreachable local provider never fails a hosted assignment")
+	assert.Equal(t, []residencyStep{{kind: "write"}}, steps)
+}
+
+func TestCampaignAgentExecutor_MixedFormationStillReleasesFailClosed(t *testing.T) {
+	catalog, err := newAgentToolCatalog()
+	require.NoError(t, err)
+	residency := &recordingModelResidency{err: constants.ErrInferenceBackendUnavailable}
+	executor := &CampaignAgentExecutor{inference: &inferenceUnavailable{}, residency: residency, catalog: catalog, newID: func(prefix string) string { return prefix + "-test" }}
+	req := hostedFormationRequest(t)
+	primary := req.Assignment.GetHeterogeneous().GetStack().GetPrimarySlot().GetVariantId()
+	for _, variant := range req.Binding.ModelVariants {
+		if variant.GetVariantId() == primary {
+			variant.ProviderClass = constants.InferenceProviderOllama
+		}
+	}
+
+	_, err = executor.ProbeToolCalling(t.Context(), req)
+
+	require.ErrorIs(t, err, constants.ErrInferenceBackendUnavailable, "a formation with a local member keeps the local provider's residency")
+	require.Len(t, residency.releases, 1)
+	assert.Equal(t, formationTags(req), residency.releases[0].Retain)
+}
+
+func TestCampaignAgentExecutor_HostedToolCallingProbeNeverReadsLocalResidency(t *testing.T) {
+	catalog, err := newAgentToolCatalog()
+	require.NoError(t, err)
+	residency := &recordingModelResidency{err: constants.ErrInferenceBackendUnavailable}
+	executor := &CampaignAgentExecutor{inference: &inferenceUnavailable{}, residency: residency, catalog: catalog, newID: func(prefix string) string { return prefix + "-test" }}
+
+	_, err = executor.ProbeToolCalling(t.Context(), hostedFormationRequest(t))
+
+	require.NotErrorIs(t, err, constants.ErrInferenceBackendUnavailable)
+	assert.Empty(t, residency.releases)
+}
+
+func TestCampaignAgentExecutor_HostedJudgeReleasesNothing(t *testing.T) {
+	residency := &recordingModelResidency{err: constants.ErrInferenceBackendUnavailable}
+	executor := &CampaignAgentExecutor{residency: residency}
+	req := AssignmentExecutionRequest{
+		Assignment: &evalv1.EvaluationAssignment{RunId: "run-1"},
+		Binding:    CampaignExecutionBinding{JudgeVariant: hostedResidencyTestJudge()},
+	}
+
+	require.NoError(t, executor.releaseAllExceptJudge(t.Context(), req))
+	assert.Empty(t, residency.releases, "a hosted judge needs no local provider memory")
+}

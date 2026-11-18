@@ -177,11 +177,13 @@ func MarshalOllamaModelCopyPayload(executionID, source, destination string) ([]b
 }
 
 // MarshalOllamaModelInventoryPayload builds the typed inventory query payload.
-func MarshalOllamaModelInventoryPayload(executionID string) ([]byte, error) {
+// providerClasses scopes the listing; empty lists every class the Operator
+// serves.
+func MarshalOllamaModelInventoryPayload(executionID string, providerClasses []string) ([]byte, error) {
 	if executionID == "" {
 		return nil, fmt.Errorf("%w: execution ID is required", constants.ErrMissingRequiredField)
 	}
-	payload, err := proto.Marshal(&operatorv1.OllamaModelInventoryRequested{ExecutionId: executionID})
+	payload, err := proto.Marshal(&operatorv1.OllamaModelInventoryRequested{ExecutionId: executionID, ProviderClasses: providerClasses})
 	if err != nil {
 		return nil, fmt.Errorf("%w: marshal Ollama model inventory request: %v", constants.ErrEvaluationDispatchFailed, err)
 	}
@@ -330,10 +332,12 @@ func CopyOllamaModel(ctx context.Context, dispatcher OllamaModelCommandDispatche
 }
 
 // ListOllamaProviderInventory queries provider inventory through the exact
-// Inference Operator session.
-func ListOllamaProviderInventory(ctx context.Context, dispatcher OllamaModelCommandDispatcher, maintenance OllamaModelMaintenanceContext) ([]inference.ProviderModelInventoryEntry, error) {
+// Inference Operator session. providerClasses scopes the listing to those
+// classes, so a hosted-only listing never reads the local provider; empty
+// lists every class the Operator serves.
+func ListOllamaProviderInventory(ctx context.Context, dispatcher OllamaModelCommandDispatcher, maintenance OllamaModelMaintenanceContext, providerClasses []string) ([]inference.ProviderModelInventoryEntry, error) {
 	executionID := maintenance.NewID("ollama-inventory")
-	payload, err := MarshalOllamaModelInventoryPayload(executionID)
+	payload, err := MarshalOllamaModelInventoryPayload(executionID, providerClasses)
 	if err != nil {
 		return nil, err
 	}

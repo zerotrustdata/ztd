@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -137,7 +138,7 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	}
 	// Residency commands are governed actions with their own receipts, so the
 	// provider is set for this assignment before the ledger sentinel opens.
-	if err := e.releaseAllExcept(ctx, req, "assignment", run.modelTags()); err != nil {
+	if err := e.releaseAllExcept(ctx, req, "assignment", run.modelVariants()); err != nil {
 		return nil, assignmentExecutionError("evaluation: assignment residency", err)
 	}
 	assignment := req.Assignment
@@ -253,25 +254,31 @@ func (e *CampaignAgentExecutor) ExecuteAssignment(ctx context.Context, req Assig
 	return result, nil
 }
 
-// releaseAllExcept releases every provider model outside retain before the
-// named phase dispatches. The caller classifies a failed release: inside an
-// assignment it is a harness failure, never graded against the model; before
-// the tool-calling probe it stops the run.
-func (e *CampaignAgentExecutor) releaseAllExcept(ctx context.Context, req AssignmentExecutionRequest, phase string, retain []string) error {
-	if _, err := e.residency.ReleaseAllExcept(ctx, ModelResidencyRelease{RunID: req.Assignment.GetRunId(), Retain: retain}); err != nil {
+// releaseAllExcept releases every local provider model outside retain before
+// the named phase dispatches. A phase whose models are all hosted holds no
+// local residency, so it reads and releases nothing: the run never depends on
+// a local provider it does not dispatch. The caller classifies a failed
+// release: inside an assignment it is a harness failure, never graded against
+// the model; before the tool-calling probe it stops the run.
+func (e *CampaignAgentExecutor) releaseAllExcept(ctx context.Context, req AssignmentExecutionRequest, phase string, retain []*evalv1.ModelVariant) error {
+	if !DispatchesLocalModels(retain, nil) {
+		return nil
+	}
+	if _, err := e.residency.ReleaseAllExcept(ctx, ModelResidencyRelease{RunID: req.Assignment.GetRunId(), Retain: distinctServedModelTags(retain)}); err != nil {
 		return fmt.Errorf("evaluation: release provider models before %s: %w", phase, err)
 	}
 	return nil
 }
 
 // releaseAllExceptJudge leaves only the campaign's frozen judge resident. A
-// judge that is one of the assignment's own models stays loaded.
+// judge that is one of the assignment's own models stays loaded, and a hosted
+// judge releases nothing.
 func (e *CampaignAgentExecutor) releaseAllExceptJudge(ctx context.Context, req AssignmentExecutionRequest) error {
 	variant, err := judgeVariant(req)
 	if err != nil {
 		return assignmentExecutionError("evaluation: judge residency", err)
 	}
-	return assignmentExecutionError("evaluation: judge residency", e.releaseAllExcept(ctx, req, "judge", []string{variant.GetServedModelTag()}))
+	return assignmentExecutionError("evaluation: judge residency", e.releaseAllExcept(ctx, req, "judge", []*evalv1.ModelVariant{variant}))
 }
 
 // qualityJudgeRequired reports whether scoreWithJudge dispatches the judge for
@@ -612,8 +619,18 @@ func (e *CampaignAgentExecutor) newRun(req AssignmentExecutionRequest) (*agentRu
 // resolved, sorted and without duplicates. A formation keeps all of its slots
 // resident, so its turns never reload one another's models.
 func (r *agentRun) modelTags() []string {
-	tags := make([]string, 0, len(r.variants))
-	for _, variant := range r.variants {
+	return distinctServedModelTags(r.modelVariants())
+}
+
+// modelVariants returns the frozen variants the assignment dispatches.
+func (r *agentRun) modelVariants() []*evalv1.ModelVariant {
+	return slices.Collect(maps.Values(r.variants))
+}
+
+// distinctServedModelTags returns the sorted, distinct served tags of variants.
+func distinctServedModelTags(variants []*evalv1.ModelVariant) []string {
+	tags := make([]string, 0, len(variants))
+	for _, variant := range variants {
 		tags = append(tags, variant.GetServedModelTag())
 	}
 	slices.Sort(tags)

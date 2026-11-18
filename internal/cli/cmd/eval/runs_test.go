@@ -22,6 +22,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/models"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	evalv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/eval/v1"
 )
 
@@ -234,6 +235,43 @@ func TestPreflightRunProviderObservation(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+		})
+	}
+}
+
+// countingModelResidency counts end-of-run releases.
+type countingModelResidency struct {
+	releases []evaluation.ModelResidencyRelease
+}
+
+func (r *countingModelResidency) ReleaseAllExcept(_ context.Context, release evaluation.ModelResidencyRelease) ([]string, error) {
+	r.releases = append(r.releases, release)
+	return nil, nil
+}
+
+func TestReleaseRunModels_ReadsTheLocalProviderOnlyWhenTheCampaignDispatchesALocalModel(t *testing.T) {
+	hosted := &evalv1.ModelVariant{ProviderClass: constants.InferenceProviderGemini}
+	local := &evalv1.ModelVariant{ProviderClass: constants.InferenceProviderOllama}
+	for name, tc := range map[string]struct {
+		spec    *evalv1.EvaluationCampaignSpec
+		release bool
+	}{
+		"hosted candidate and hosted judge": {spec: &evalv1.EvaluationCampaignSpec{ModelRegistry: []*evalv1.ModelVariant{hosted}, JudgeVariant: hosted}},
+		"hosted candidate and local judge":  {spec: &evalv1.EvaluationCampaignSpec{ModelRegistry: []*evalv1.ModelVariant{hosted}, JudgeVariant: local}, release: true},
+		"local candidate and hosted judge":  {spec: &evalv1.EvaluationCampaignSpec{ModelRegistry: []*evalv1.ModelVariant{local}, JudgeVariant: hosted}, release: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			residency := &countingModelResidency{}
+			cmd := &cobra.Command{}
+			cmd.SetContext(t.Context())
+
+			require.NoError(t, releaseRunModels(cmd, residency, tc.spec, runExecuteOptions{RunID: "run-1", JSONOutput: true}))
+
+			if tc.release {
+				assert.Equal(t, []evaluation.ModelResidencyRelease{{RunID: "run-1"}}, residency.releases)
+				return
+			}
+			assert.Empty(t, residency.releases, "a hosted-only campaign never reads a local provider it does not dispatch")
 		})
 	}
 }
