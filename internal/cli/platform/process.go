@@ -406,6 +406,10 @@ const maxHealthResponseBytes = 8192
 // background-start error. The complete output remains in ztd.log.
 const maxStartupDiagnosticBytes = 64 * 1024
 
+// logFollowPollInterval is how long `gw logs -f` waits at end of file before
+// reading again.
+const logFollowPollInterval = 100 * time.Millisecond
+
 // healthResponseIsFromChild reports whether a 200 health response was
 // produced by the just-started child process. The gateway reports its own
 // PID in the health body; a foreign listener on the same port must not
@@ -498,6 +502,9 @@ func (pm *ProcessManager) StartOperator(ctx context.Context, opts *OperatorStart
 		return err
 	}
 
+	if err := pm.logSvc.RotateLogBeforeStart(context.Background()); err != nil {
+		return fmt.Errorf("%w: %w", constants.ErrProcessStartFailed, err)
+	}
 	logHandle, err := pm.logSvc.OpenLogForAppend(context.Background())
 	if err != nil {
 		return fmt.Errorf("%w: %w", constants.ErrPathValidation, err)
@@ -900,12 +907,12 @@ func (pm *ProcessManager) Clean() (string, error) {
 // The caller opens the file via the file service and passes the handle; the
 // nonexistent-file case is handled by the caller through LogFileExists /
 // OpenLogForRead returning constants.ErrNotFound.
-func TailLog(r io.ReadSeeker, follow bool) error {
+func TailLog(f *os.File, follow bool) error {
 	// Print existing content
-	if _, err := r.Seek(0, io.SeekStart); err != nil {
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return fmt.Errorf("%w: seek to start: %w", constants.ErrDirectoryRead, err)
 	}
-	if _, err := io.Copy(os.Stdout, r); err != nil {
+	if _, err := io.Copy(os.Stdout, f); err != nil {
 		return fmt.Errorf("%w: print content: %w", constants.ErrDirectoryRead, err)
 	}
 
@@ -914,7 +921,8 @@ func TailLog(r io.ReadSeeker, follow bool) error {
 	}
 
 	// Follow mode: seek to end and watch for new content
-	if _, err := r.Seek(0, io.SeekEnd); err != nil {
+	offset, err := f.Seek(0, io.SeekEnd)
+	if err != nil {
 		return fmt.Errorf("%w: seek to end: %w", constants.ErrDirectoryRead, err)
 	}
 
@@ -922,30 +930,14 @@ func TailLog(r io.ReadSeeker, follow bool) error {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigChan)
 
-	// Use a goroutine to read lines and send to channel
 	lineChan := make(chan string)
 	errChan := make(chan error, 1)
 	done := make(chan struct{})
 
 	go func() {
 		defer close(lineChan)
-		reader := bufio.NewReader(r)
-		for {
-			select {
-			case <-done:
-				return
-			default:
-				line, err := reader.ReadString('\n')
-				if err != nil {
-					if err == io.EOF {
-						time.Sleep(100 * time.Millisecond)
-						continue
-					}
-					errChan <- fmt.Errorf("%w: read line: %w", constants.ErrDirectoryRead, err)
-					return
-				}
-				lineChan <- line
-			}
+		if err := followLog(f, offset, done, lineChan); err != nil {
+			errChan <- err
 		}
 	}()
 
@@ -972,6 +964,58 @@ func TailLog(r io.ReadSeeker, follow bool) error {
 				close(done)
 				return nil
 			}
+		}
+	}
+}
+
+// followLog sends each line appended to f after offset until done closes.
+// When the file shrinks below the read position, ztd.log has rotated (its
+// content was copied into ztd.log.1 and the file truncated), so it resumes
+// from the start of the file. Records written after the last read and before
+// the truncation, including a partial line, are not printed; they are in the
+// backup.
+func followLog(f *os.File, offset int64, done <-chan struct{}, lines chan<- string) error {
+	reader := bufio.NewReader(f)
+	pos := offset
+	var partial strings.Builder
+	for {
+		select {
+		case <-done:
+			return nil
+		default:
+		}
+		chunk, err := reader.ReadString('\n')
+		pos += int64(len(chunk))
+		partial.WriteString(chunk)
+		if err == nil {
+			select {
+			case lines <- partial.String():
+			case <-done:
+				return nil
+			}
+			partial.Reset()
+			continue
+		}
+		if !errors.Is(err, io.EOF) {
+			return fmt.Errorf("%w: read line: %w", constants.ErrDirectoryRead, err)
+		}
+		info, err := f.Stat()
+		if err != nil {
+			return fmt.Errorf("%w: stat log: %w", constants.ErrDirectoryRead, err)
+		}
+		if info.Size() < pos {
+			if _, err := f.Seek(0, io.SeekStart); err != nil {
+				return fmt.Errorf("%w: seek to start after rotation: %w", constants.ErrDirectoryRead, err)
+			}
+			reader.Reset(f)
+			pos = 0
+			partial.Reset()
+			continue
+		}
+		select {
+		case <-done:
+			return nil
+		case <-time.After(logFollowPollInterval):
 		}
 	}
 }

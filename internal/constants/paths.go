@@ -345,6 +345,9 @@ const (
 	SwaggerFilename          = "swagger.json"
 	ComplianceReportFilename = "compliance-report.json"
 	ZtdLogFilename           = "ztd.log"
+	// ZtdLogBackupFilenameFormat names a rotated ztd.log copy; %d is 1 for
+	// the newest backup up to ZtdLogMaxBackups for the oldest.
+	ZtdLogBackupFilenameFormat = "ztd.log.%d"
 	// ConformanceMCPStdioLogFilename receives the stderr of the `ztd mcp stdio`
 	// child the conformance MCP_STDIO driver spawns.
 	ConformanceMCPStdioLogFilename = "conformance-mcp-stdio.log"
@@ -563,6 +566,17 @@ const (
 	ExecutionMaxStreamSize = 10 * 1024 * 1024 // 10MB per stream
 	ExecutionMaxLines      = 50               // Max lines for terminal output preview
 	FileEditMaxSize        = 50 * 1024 * 1024 // 50MB max file size for operations
+
+	// ZtdLogMaxBytes is the size at which ztd.log rotates, and
+	// ZtdLogMaxBackups is how many rotated copies are kept; the oldest beyond
+	// that is removed.
+	ZtdLogMaxBytes   = 50 * 1024 * 1024
+	ZtdLogMaxBackups = 5
+	// ZtdLogStartHeadroomBytes is the room a background Gateway start needs
+	// below ZtdLogMaxBytes. A log closer to the threshold rotates before the
+	// child starts, so the child's startup output does not rotate away from
+	// the offset the starting process reads it at.
+	ZtdLogStartHeadroomBytes = 4 * 1024 * 1024
 
 	// SSEClientInitialLineSize and SSEClientMaxLineSize bound one line of the
 	// CLI's Gateway SSE stream. An approval.completed event carries the resumed

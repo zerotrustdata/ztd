@@ -80,6 +80,7 @@ var (
 	ErrEvaluationInvestigationInvalid      = errors.New("evaluation: investigation configuration is invalid")
 	ErrMCPEventReceiptListInvestigationReq = errors.New("MCP event receipt list requires an investigation ID")
 	ErrInvalidLogLevel                     = errors.New("invalid log level")
+	ErrLogRotate                           = errors.New("rotate log file")
 
 	// Keystore errors
 	ErrKeyStoreKeyNotFound        = errors.New("master key not found in OS key store")

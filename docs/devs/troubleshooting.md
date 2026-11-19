@@ -7,6 +7,7 @@ version: v1.10.0
 last_updated: 2026-11-11
 owners:
   - internal/cli/cmd/
+  - internal/services/logging/
   - internal/services/gateway/
   - internal/services/auth/
   - internal/services/vault/
@@ -148,6 +149,8 @@ make proto-generate
 ./ztd gw stop
 ./ztd gw start --follow --log debug
 ```
+
+`./ztd gw logs` prints `.ztd/logs/ztd.log`, the current file only. The Gateway rotates it by size ([internal/services/logging/log_rotation.go](../../internal/services/logging/log_rotation.go)). When a record would take the file past `constants.ZtdLogMaxBytes` (50 MiB), its content is copied into `ztd.log.1`, older backups shift up to `ztd.log.5` (`constants.ZtdLogMaxBackups`), the oldest is removed, and `ztd.log` is truncated in place, so a background Gateway's inherited stdout and stderr keep writing to the current file. Read earlier records from the backups. `./ztd gw logs --follow` continues from the start of the file after a rotation. `./ztd gw start` also rotates `ztd.log` before it launches a background Gateway when the file is within `constants.ZtdLogStartHeadroomBytes` (4 MiB) of the threshold.
 
 `./ztd gw status` prints a `Consensus` row that describes the bound L2 consensus and the posture the Gateway reports. Start the Gateway and each Operator against a new runtime root rather than one left by an earlier release: an existing `.ztd/data/ztd.db` is not migrated, because the `CREATE TABLE` statements are the whole schema (`INV-STOR-SCHEMA-01` in [Developer Guidelines](devs.md)).
 

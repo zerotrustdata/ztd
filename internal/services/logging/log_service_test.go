@@ -149,7 +149,8 @@ func TestLogService_ConfigureFileLogger(t *testing.T) {
 	logger, handle, err := svc.ConfigureFileLogger(context.Background(), "info")
 	require.NoError(t, err)
 	require.NotNil(t, logger)
-	assert.Same(t, f, handle)
+	require.IsType(t, &rotatingLogFile{}, handle)
+	assert.Same(t, f, handle.(*rotatingLogFile).handle)
 
 	// The logger writes through newLogHandler to the file handle. We can't
 	// easily read back from the same handle (append mode), but the call
@@ -252,7 +253,8 @@ func TestLogService_NewLoggerWritesToHandle(t *testing.T) {
 	logger, handle, err := svc.ConfigureFileLogger(context.Background(), "info")
 	require.NoError(t, err)
 	require.NotNil(t, logger)
-	assert.Same(t, w, handle)
+	require.IsType(t, &rotatingLogFile{}, handle)
+	assert.Same(t, w, handle.(*rotatingLogFile).handle)
 
 	logger.Info("pipe-test-message")
 	_ = handle.Close()

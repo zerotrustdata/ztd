@@ -877,8 +877,10 @@ func gatewayLogsCmdWithConfig(
 	cmd := &cobra.Command{
 		Use:   "logs",
 		Short: "View Gateway logs",
-		Long: `View the ztd Gateway log file. Use --follow to continuously tail the log
-output (like tail -f).`,
+		Long: `View the ztd Gateway log file (.ztd/logs/ztd.log). Use --follow to
+continuously tail the log output (like tail -f); following continues across a
+rotation. The Gateway rotates ztd.log by size into ztd.log.1 (newest) through
+ztd.log.5; read earlier records from those backups.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, err := configLoader("")
 			if err != nil {
