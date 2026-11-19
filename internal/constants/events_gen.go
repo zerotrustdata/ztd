@@ -24,6 +24,7 @@ const EventAiEvalModelRoleInvoked EventType = "ztd.v1.ai.eval.model_role.invoked
 const EventAiEvalProofAvailable EventType = "ztd.v1.ai.eval.proof.available"
 const EventAiEvalPublicationCompleted EventType = "ztd.v1.ai.eval.publication.completed"
 const EventAiEvalStopRequested EventType = "ztd.v1.ai.eval.stop.requested"
+const EventAiEvalToolCallFannedOut EventType = "ztd.v1.ai.eval.tool_call.fanned_out"
 const EventAiEvalVerifierCompleted EventType = "ztd.v1.ai.eval.verifier.completed"
 const EventAiLLMChatFilterEvent EventType = "ztd.v1.ai.llm.chat.filter.updated"
 const EventAppAgentStatusUpdated EventType = "ztd.v1.app.agent.status.updated"
@@ -388,6 +389,13 @@ var Registry = EventRegistry{byType: map[EventType]EventRegistryEntry{
 		Transport:   []string{"sse"},
 		Producers:   []string{"gateway"},
 		Persistence: "ephemeral",
+	},
+	EventAiEvalToolCallFannedOut: {
+		Key:         "AiEvalToolCallFannedOut",
+		Kind:        EventKindFact,
+		Transport:   []string{"sse"},
+		Producers:   []string{"gateway"},
+		Persistence: "gateway.sse_store",
 	},
 	EventAiEvalVerifierCompleted: {
 		Key:         "AiEvalVerifierCompleted",
@@ -2199,6 +2207,7 @@ var EventTransportRegistry = map[EventType][]string{
 	EventAiEvalProofAvailable:                            []string{"sse"},
 	EventAiEvalPublicationCompleted:                      []string{"sse"},
 	EventAiEvalStopRequested:                             []string{"sse"},
+	EventAiEvalToolCallFannedOut:                         []string{"sse"},
 	EventAiEvalVerifierCompleted:                         []string{"sse"},
 	EventAiLLMChatFilterEvent:                            []string{"sse"},
 	EventAppAgentStatusUpdated:                           []string{"sse"},

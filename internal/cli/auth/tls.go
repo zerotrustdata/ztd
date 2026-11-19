@@ -81,20 +81,55 @@ type CLICertificateSource struct {
 	cert    tls.Certificate
 }
 
-// NewCLICertificateSource loads the current CLI certificate and returns a
-// source that follows later renewals.
+// cliIdentityPaths names one CLI identity: its certificate and sealed key.
+type cliIdentityPaths struct {
+	cert string
+	key  string
+}
+
+// heldCLICertificateSources holds the certificate source each CLI identity
+// loaded in this process, keyed by cliIdentityPaths. A process unseals a CLI
+// key once and keeps it in memory until it exits, the way a running Gateway
+// keeps its unlocked master key, so a long-running command (an eval rollout
+// that starts a run every few minutes for hours) does not need the master key
+// store again after it started. A changed certificate on disk is a changed
+// identity, and its key is unsealed again.
+var heldCLICertificateSources sync.Map
+
+// NewCLICertificateSource returns a source for the current CLI certificate
+// that follows later renewals. When this process already loaded the identity
+// that is on disk now, it returns that source without unsealing the key again.
 func NewCLICertificateSource(fileSvc fs.RuntimeFileService, cfg *config.Config) (*CLICertificateSource, error) {
 	s := &CLICertificateSource{fileSvc: fileSvc, cfg: cfg}
 	certPEM, err := s.readCertPEM()
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", constants.ErrFailedToLoadClientCertificate, err)
 	}
+	paths := cliIdentityPaths{cert: cfg.CLICertFile(), key: cfg.CLIKeyFile()}
+	if held, ok := heldCLICertificateSources.Load(paths); ok {
+		source := held.(*CLICertificateSource)
+		if leaf, holds := source.holds(certPEM); holds {
+			if err := checkCLICertificateUnexpired(leaf); err != nil {
+				return nil, err
+			}
+			return source, nil
+		}
+	}
 	cert, err := LoadCLICertificate(fileSvc, cfg)
 	if err != nil {
 		return nil, err
 	}
 	s.certPEM, s.cert = certPEM, cert
+	heldCLICertificateSources.Store(paths, s)
 	return s, nil
+}
+
+// holds reports whether the source presents the certificate certPEM, and
+// returns its leaf when it does.
+func (s *CLICertificateSource) holds(certPEM []byte) (*x509.Certificate, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cert.Leaf, bytes.Equal(s.certPEM, certPEM)
 }
 
 // GetClientCertificate implements tls.Config.GetClientCertificate.

@@ -29,21 +29,21 @@ func TestDecisionPinnedOperatorNeverFallsBack(t *testing.T) {
 	req.TargetOperatorID = pinned.Id
 	lister := &stubOperatorLister{ops: []*operatorv1.OperatorDocument{pinned, other}}
 	service := NewDispatchService(&stubCommandDispatcher{}, lister, testLogger())
-	session, err := service.resolveInferenceOperator(t.Context(), req)
+	session, err := service.ResolveInferenceOperator(t.Context(), req)
 	require.NoError(t, err)
 	require.Equal(t, pinned.OperatorSessionId, session.GetOperatorSessionId())
 	lister.ops = []*operatorv1.OperatorDocument{other}
-	_, err = service.resolveInferenceOperator(t.Context(), req)
+	_, err = service.ResolveInferenceOperator(t.Context(), req)
 	require.ErrorIs(t, err, constants.ErrInferenceOperatorNotFound)
 	lister.ops = []*operatorv1.OperatorDocument{pinned, pinned}
-	_, err = service.resolveInferenceOperator(t.Context(), req)
+	_, err = service.ResolveInferenceOperator(t.Context(), req)
 	require.ErrorIs(t, err, constants.ErrInferenceOperatorAmbiguous)
 	lister.ops = []*operatorv1.OperatorDocument{pinned, other}
 	pinned.RuntimeConfig.InferenceDecisionModels = nil
-	_, err = service.resolveInferenceOperator(t.Context(), req)
+	_, err = service.ResolveInferenceOperator(t.Context(), req)
 	require.ErrorIs(t, err, constants.ErrInferenceOperatorNotFound)
 	pinned.RuntimeConfig.InferenceDecisionModels = []string{req.Model}
 	req.Decision.AllowHosted = true
-	_, err = service.resolveInferenceOperator(t.Context(), req)
+	_, err = service.ResolveInferenceOperator(t.Context(), req)
 	require.ErrorIs(t, err, constants.ErrInferenceOperatorNotFound)
 }

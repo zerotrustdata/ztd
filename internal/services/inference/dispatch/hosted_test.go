@@ -183,16 +183,16 @@ func TestDispatchInference_HostedRoutesOnlyToAnOperatorServingTheClass(t *testin
 	serving := hostedOp("sess-gemini", constants.InferenceProviderGemini)
 
 	svc := NewDispatchService(&stubCommandDispatcher{}, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{local, other, serving}}, testLogger())
-	selected, err := svc.resolveInferenceOperator(t.Context(), req)
+	selected, err := svc.ResolveInferenceOperator(t.Context(), req)
 	require.NoError(t, err)
 	assert.Equal(t, "sess-gemini", selected.GetOperatorSessionId())
 
 	svc = NewDispatchService(&stubCommandDispatcher{}, &stubOperatorLister{ops: []*operatorv1.OperatorDocument{local, other}}, testLogger())
-	_, err = svc.resolveInferenceOperator(t.Context(), req)
+	_, err = svc.ResolveInferenceOperator(t.Context(), req)
 	require.ErrorIs(t, err, constants.ErrInferenceOperatorNotFound)
 
 	req.TargetOperatorSessionID = "sess-local"
-	_, err = svc.resolveInferenceOperator(t.Context(), req)
+	_, err = svc.ResolveInferenceOperator(t.Context(), req)
 	require.ErrorIs(t, err, constants.ErrInferenceOperatorNotCapable)
 }
 

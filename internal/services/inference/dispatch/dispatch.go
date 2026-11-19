@@ -369,7 +369,7 @@ func (s *DispatchService) DispatchInference(ctx context.Context, req DispatchInf
 	// Resolve the Inference Node's operator session from the requestor's
 	// enrolled operators. The Inference Node advertises the inference
 	// capability at enrollment time; the dispatch service filters by it.
-	inferenceOperator, err := s.resolveInferenceOperator(ctx, req)
+	inferenceOperator, err := s.ResolveInferenceOperator(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("inference dispatch: %w", err)
 	}
@@ -869,7 +869,7 @@ func validateInferenceResult(result *operatorv1.InferenceResult, req DispatchInf
 	return nil
 }
 
-// resolveInferenceOperator resolves the Inference Node's operator document
+// ResolveInferenceOperator resolves the Inference Node's operator document
 // from the requestor's enrolled operators. With an explicit
 // TargetOperatorSessionID the target must appear in the requestor's
 // operator list (ownership) and carry inference capability; without one,
@@ -881,8 +881,9 @@ func validateInferenceResult(result *operatorv1.InferenceResult, req DispatchInf
 // Returns ErrInferenceOperatorNotFound for no match,
 // ErrInferenceOperatorNotCapable for an explicit target that lacks the
 // capability, and ErrInferenceOperatorAmbiguous for multiple matches with
-// no explicit target.
-func (s *DispatchService) resolveInferenceOperator(ctx context.Context, req DispatchInferenceRequest) (*operatorv1.OperatorDocument, error) {
+// no explicit target. Consensus readiness resolves each Tribunal vote's
+// route through it, so readiness and the vote dispatch apply one selection.
+func (s *DispatchService) ResolveInferenceOperator(ctx context.Context, req DispatchInferenceRequest) (*operatorv1.OperatorDocument, error) {
 	operators, err := s.operatorList.ListUserOperators(ctx, req.RequestorUserID)
 	if err != nil {
 		return nil, err

@@ -34,7 +34,7 @@ import {
 import type { EvaluationSummary, ModelRole, ModelSummary } from '../contract/types';
 import { ModelScoreCoverage } from './evidence';
 import { FormationTable } from './FormationTable';
-import { formationLeaderboardRows, hostedFormationRows } from '../views/formations';
+import { formationLeaderboardRows, formationOverallRows, formationRemoteHostedRows, type FormationLeaderboardRow } from '../views/formations';
 import { PREF, useUserPref } from '../state/dataset';
 
 export type LeaderboardSortField =
@@ -139,7 +139,10 @@ const OVERALL_COLUMN_TITLES: Partial<Record<LeaderboardSortField, string>> = {
 const SIZE_FREE_SCORE_TITLE =
   `Overall score = (Primary score + Assistant score + Lite score) / 3; all qualified runs are pooled within each role before scoring. ${LEADERBOARD_SIZE_FREE_SCORE_FORMULA} (no parameter-size penalty). ${LEADERBOARD_SECURITY_SCORING_DESCRIPTION}`;
 
-export type LeaderboardCategory = 'all' | 'self-hosted' | 'remote-hosted' | ModelRole | 'formations';
+/** Formation categories: size-free Overall, size-adjusted all-local (self-hosted), and hosted-member (remote-hosted). */
+export type FormationCategory = 'formations-overall' | 'formations' | 'formations-remote-hosted';
+
+export type LeaderboardCategory = 'all' | 'self-hosted' | 'remote-hosted' | ModelRole | FormationCategory;
 
 const VALID_CATEGORIES = new Set<LeaderboardCategory>([
   'all',
@@ -148,8 +151,20 @@ const VALID_CATEGORIES = new Set<LeaderboardCategory>([
   'primary',
   'assistant',
   'lite',
+  'formations-overall',
   'formations',
+  'formations-remote-hosted',
 ]);
+
+const FORMATION_CATEGORY_NOTES: Record<FormationCategory, string> = {
+  'formations-overall': 'Overall ranks every formation side by side, self-hosted and remote-hosted alike, with the size-free score: no parameter-size factor, and efficiency normalized within each suite. Each formation is scored as a whole across its member variants. Completed, verified runs contribute in proportion to their judged assignments. Missing security earns zero credit.',
+  formations: 'Self-hosted formations only: each all-local formation is scored with the total-parameter size factor across unique member variants and ranked within its suite. Formations with a hosted member are excluded, so these scores never change when hosted formations are added.',
+  'formations-remote-hosted': 'Remote-hosted formations only (at least one Gemini, Anthropic, or OpenAI member): scored without a parameter-size factor, normalized within remote-hosted formations of each suite. Hosted providers do not disclose parameter counts, so these formations are not compared against the size-adjusted scores.',
+};
+
+function isFormationCategory(category: LeaderboardCategory): category is FormationCategory {
+  return category === 'formations-overall' || category === 'formations' || category === 'formations-remote-hosted';
+}
 
 /** A ranked role or overall row, or an unranked hosted row shown beside them. */
 type LeaderboardTableRow = ModelLeaderboardRow | HostedLeaderboardRow;
@@ -285,13 +300,14 @@ export function RoleLeadersPanel({
   const [sortField, setSortField] = useState<LeaderboardSortField>('score');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
-  const formationRows = useMemo(() => formationLeaderboardRows(evaluations, maxArtifactGiB), [evaluations, maxArtifactGiB]);
-  const hostedFormations = useMemo(() => {
+  const isHostedMember = useMemo(() => {
     const hostedMembers = new Set(models.filter((model) => isHostedProviderClass(model.backend_provider_class))
       .map((model) => JSON.stringify([model.dataset_id, model.variant_id])));
-    return hostedFormationRows(evaluations, (datasetId, variantId) => hostedMembers.has(JSON.stringify([datasetId, variantId])), maxArtifactGiB);
-  }, [models, evaluations, maxArtifactGiB]);
-  const formationSuites = Array.from(new Set([...formationRows, ...hostedFormations].map((row) => row.suite_id)));
+    return (datasetId: string, variantId: string) => hostedMembers.has(JSON.stringify([datasetId, variantId]));
+  }, [models]);
+  const formationRows = useMemo(() => formationLeaderboardRows(evaluations, isHostedMember, maxArtifactGiB), [evaluations, isHostedMember, maxArtifactGiB]);
+  const overallFormationRows = useMemo(() => formationOverallRows(evaluations, isHostedMember, maxArtifactGiB), [evaluations, isHostedMember, maxArtifactGiB]);
+  const remoteFormationRows = useMemo(() => formationRemoteHostedRows(evaluations, isHostedMember, maxArtifactGiB), [evaluations, isHostedMember, maxArtifactGiB]);
   const qualifiedRows = useMemo(
     () => modelRoleLeaderboardRows(models, 'all', evaluations),
     [models, evaluations],
@@ -324,8 +340,11 @@ export function RoleLeadersPanel({
   );
   const hasAnyModelRows = overallRows.length > 0 || qualifiedRows.length > 0 || hostedRows.length > 0;
   const resolvedStoredCategory = storedCategory && VALID_CATEGORIES.has(storedCategory) ? storedCategory : null;
-  const category: LeaderboardCategory = resolvedStoredCategory ?? (!hasAnyModelRows && formationRows.length > 0 ? 'formations' : 'all');
+  const category: LeaderboardCategory = resolvedStoredCategory ?? (!hasAnyModelRows && overallFormationRows.length > 0 ? 'formations-overall' : 'all');
   const isOverallScope = category === 'all' || category === 'self-hosted' || category === 'remote-hosted';
+  const formationCategoryRows: FormationLeaderboardRow[] = category === 'formations-overall' ? overallFormationRows
+    : category === 'formations-remote-hosted' ? remoteFormationRows
+      : formationRows;
   // Declared union: an overall row is structurally a role row, so inference would collapse it.
   const categoryRows: Array<ModelRoleLeaderboardRow | ModelOverallLeaderboardRow | HostedLeaderboardRow> =
     category === 'all'
@@ -334,10 +353,10 @@ export function RoleLeadersPanel({
         ? selfHostedRows
         : category === 'remote-hosted'
           ? remoteHostedRows
-          : category === 'formations'
+          : isFormationCategory(category)
             ? []
             : [...rowsByRole[category], ...hostedByRole[category]];
-  const categoryHostedCount = isOverallScope || category === 'formations' ? 0 : hostedByRole[category].length;
+  const categoryHostedCount = isOverallScope || isFormationCategory(category) ? 0 : hostedByRole[category].length;
   const columns = LEADERBOARD_COLUMNS.filter((column) => !isOverallScope || column.field !== 'role');
 
   const sortedRows = useMemo(() => {
@@ -366,6 +385,9 @@ export function RoleLeadersPanel({
     all: overallRows.length,
     selfHosted: selfHostedRows.length,
     remoteHosted: remoteHostedRows.length,
+    formationsOverall: overallFormationRows.length,
+    formations: formationRows.length,
+    formationsRemoteHosted: remoteFormationRows.length,
     primary: rowsByRole.primary.length + hostedByRole.primary.length,
     assistant: rowsByRole.assistant.length + hostedByRole.assistant.length,
     lite: rowsByRole.lite.length + hostedByRole.lite.length,
@@ -373,9 +395,13 @@ export function RoleLeadersPanel({
   const rankedCount = sortedRows.filter(isRankedRow).length;
 
   const showingSubject =
-    category === 'formations'
-      ? 'formations'
-      : category === 'all'
+    category === 'formations-overall'
+      ? 'formations overall'
+      : category === 'formations'
+        ? 'self-hosted formations'
+        : category === 'formations-remote-hosted'
+          ? 'remote-hosted formations'
+          : category === 'all'
         ? 'models overall'
         : category === 'self-hosted'
           ? 'self-hosted models'
@@ -389,8 +415,8 @@ export function RoleLeadersPanel({
         <h2>
           Leaderboard{' '}
           <span className="panel-sub">
-            {formationRows.length > 0 && evaluatedRoles.length === 0
-              ? `· ${formationRows.length} ranked ${formationRows.length === 1 ? 'formation' : 'formations'}`
+            {overallFormationRows.length > 0 && evaluatedRoles.length === 0
+              ? `· ${overallFormationRows.length} ranked ${overallFormationRows.length === 1 ? 'formation' : 'formations'}`
               : `· ${evaluatedRoles.length} of ${MODEL_ROLE_WIRE_ORDER.length} roles qualified`}
           </span>
         </h2>
@@ -463,29 +489,32 @@ export function RoleLeadersPanel({
                 <span>Lite</span>{' '}
                 <span className="leaderboard-count-badge">{counts.lite}</span>
               </button>
+              <button type="button" className={`leaderboard-category-chip${category === 'formations-overall' ? ' active' : ''}`}
+                onClick={() => handleCategoryChange('formations-overall')} aria-pressed={category === 'formations-overall'}>
+                <span>Formations overall</span>{' '}<span className="leaderboard-count-badge">{counts.formationsOverall}</span>
+              </button>
               <button type="button" className={`leaderboard-category-chip${category === 'formations' ? ' active' : ''}`}
                 onClick={() => handleCategoryChange('formations')} aria-pressed={category === 'formations'}>
-                <span>Formations</span>{' '}<span className="leaderboard-count-badge">{formationRows.length + hostedFormations.length}</span>
+                <span>Formations self-hosted</span>{' '}<span className="leaderboard-count-badge">{counts.formations}</span>
+              </button>
+              <button type="button" className={`leaderboard-category-chip${category === 'formations-remote-hosted' ? ' active' : ''}`}
+                onClick={() => handleCategoryChange('formations-remote-hosted')} aria-pressed={category === 'formations-remote-hosted'}>
+                <span>Formations remote-hosted</span>{' '}<span className="leaderboard-count-badge">{counts.formationsRemoteHosted}</span>
               </button>
             </div>
             <span className="leaderboard-meta">
-              Showing {category === 'formations' ? formationRows.length : rankedCount} {showingSubject}
-              {(category === 'formations' ? hostedFormations.length : categoryHostedCount) > 0
-                ? ` · ${category === 'formations' ? hostedFormations.length : categoryHostedCount} hosted unranked`
-                : null}
+              Showing {isFormationCategory(category) ? formationCategoryRows.length : rankedCount} {showingSubject}
+              {categoryHostedCount > 0 ? ` · ${categoryHostedCount} hosted unranked` : null}
             </span>
           </div>
 
-          {category === 'formations' ? (
+          {isFormationCategory(category) ? (
             <>
-              <p className="panel-note">Each formation is scored as a whole and ranked within its suite. Completed, verified runs contribute in proportion to their judged assignments. Missing security earns zero credit. A formation with a hosted member is listed unranked: hosted providers do not disclose parameter counts, so its size factor and score cannot be computed.</p>
-              {formationSuites.length === 0 ? <p className="panel-empty">No fully evaluated, verified formations yet.</p> : formationSuites.map((suite) => (
+              <p className="panel-note">{FORMATION_CATEGORY_NOTES[category]}</p>
+              {formationCategoryRows.length === 0 ? <p className="panel-empty">No fully evaluated, verified {showingSubject} yet.</p> : Array.from(new Set(formationCategoryRows.map((row) => row.suite_id))).map((suite) => (
                 <section key={suite} aria-label={`Formation suite ${suite}`}>
                   <h3>{suite}</h3>
-                  <FormationTable formations={[
-                    ...formationRows.filter((row) => row.suite_id === suite),
-                    ...hostedFormations.filter((row) => row.suite_id === suite),
-                  ]} leaderboard />
+                  <FormationTable formations={formationCategoryRows.filter((row) => row.suite_id === suite)} leaderboard />
                 </section>
               ))}
             </>

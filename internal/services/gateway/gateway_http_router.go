@@ -267,6 +267,9 @@ func (h *HTTPHandler) buildPublicRouter() http.Handler {
 	mux.HandleFunc(constants.APIPaths.ObserveProducerAgentState, h.observeProducerController.handleAgentState)
 	mux.HandleFunc(constants.APIPaths.ObserveProducerRunState, h.observeProducerController.handleRunState)
 	mux.HandleFunc(constants.APIPaths.ObserveProducerStop, h.observeProducerController.handleStop)
+	mux.HandleFunc(constants.APIPaths.ObserveProducerAssignmentStarted, h.observeProducerController.handleAssignmentStarted)
+	mux.HandleFunc(constants.APIPaths.ObserveProducerAssignmentCompleted, h.observeProducerController.handleAssignmentCompleted)
+	mux.HandleFunc(constants.APIPaths.ObserveProducerToolCallFannedOut, h.observeProducerController.handleToolCallFannedOut)
 
 	var handler http.Handler = mux
 	if h.authMiddleware != nil {

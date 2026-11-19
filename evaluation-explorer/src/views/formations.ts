@@ -2,7 +2,7 @@
 // Licensed under the Business Source License 1.1 — see LICENSE for details.
 
 import { TERMINAL_STATUSES, type ConfidenceInterval, type EvaluationSummary, type FormationSummary, type TerminalStatus } from '../contract/types';
-import { leaderboardScore } from './derived';
+import { leaderboardScore, leaderboardSizeFreeScore } from './derived';
 
 export interface FormationSource {
   run: EvaluationSummary;
@@ -90,54 +90,46 @@ export function qualifiedFormationRuns(runs: EvaluationSummary[]): EvaluationSum
   return runs.filter((run) => run.evaluation_unit === 'system' && !run.native_result && run.formations?.some((summary) => qualifies({ run, summary })));
 }
 
-export interface FormationLeaderboardRow extends FormationGroup {
-  rank: number;
-  score: number;
-}
-
-/** A formation with a hosted member and complete evidence. Hosted providers do not disclose
- *  parameter counts, so the formation has no total size, score, or rank; it is listed unranked
- *  beside its suite's ranked formations and never enters their best-in-suite minimums. */
-export interface HostedFormationRow extends FormationGroup {
-  hosted_variants: string[];
-}
-
 /** Reports whether a member variant of a run's dataset is served by a hosted provider. */
 export type HostedMemberLookup = (datasetId: string, variantId: string) => boolean;
 
-export function hostedFormationRows(runs: EvaluationSummary[], isHostedMember: HostedMemberLookup, maxArtifactGiB = 0): HostedFormationRow[] {
-  const hostedMembers = ({ run, summary }: FormationSource) =>
-    Object.values(summary.model_role_mapping).filter((variant) => isHostedMember(run.dataset_id, variant));
-  const listed = runs.map((run) => ({ ...run, formations: run.formations?.filter((summary) =>
-    hasFormationEvidence({ run, summary }) && summary.parameter_count === undefined && hostedMembers({ run, summary }).length > 0 &&
-    (!(maxArtifactGiB > 0) ||
-      (summary.artifact_size_bytes !== undefined && summary.artifact_size_bytes <= maxArtifactGiB * 1024 ** 3)),
-  ) }));
-  return formationGroups(listed)
-    .filter(({ summary }) => (summary.pass_rate?.denominator ?? 0) > 0 &&
-      (summary.latency_p50_ms.value ?? 0) > 0 && (summary.output_tokens.value ?? 0) > 0)
-    .map((group) => ({ ...group, hosted_variants: Array.from(new Set(group.sources.flatMap(hostedMembers))).sort() }))
-    .sort((a, b) => a.suite_id.localeCompare(b.suite_id) || b.summary.pass_rate!.estimate - a.summary.pass_rate!.estimate ||
-      a.summary.stack_id.localeCompare(b.summary.stack_id));
+export interface FormationLeaderboardRow extends FormationGroup {
+  rank: number;
+  score: number;
+  /** Hosted member variants, sorted; empty for an all-local formation. */
+  hosted_variants: string[];
 }
 
-export function formationLeaderboardRows(runs: EvaluationSummary[], maxArtifactGiB = 0): FormationLeaderboardRow[] {
+function hostedVariants(sources: FormationSource[], isHostedMember: HostedMemberLookup): string[] {
+  return Array.from(new Set(sources.flatMap(({ run, summary }) =>
+    Object.values(summary.model_role_mapping).filter((variant) => isHostedMember(run.dataset_id, variant))))).sort();
+}
+
+function bySuite<T extends FormationGroup>(groups: T[]): T[][] {
+  const suites = new Map<string, T[]>();
+  for (const group of groups) {
+    const suite = suites.get(group.suite_id) ?? [];
+    suite.push(group);
+    suites.set(group.suite_id, suite);
+  }
+  return Array.from(suites.values());
+}
+
+/** Size-adjusted ranking of all-local formations only. Hosted-member formations never enter
+ *  these suite minimums, so their presence leaves every all-local score unchanged. */
+export function formationLeaderboardRows(runs: EvaluationSummary[], isHostedMember: HostedMemberLookup, maxArtifactGiB = 0): FormationLeaderboardRow[] {
   const qualified = runs.map((run) => ({ ...run, formations: run.formations?.filter((summary) =>
     qualifies({ run, summary }) && (!(maxArtifactGiB > 0) ||
       (summary.artifact_size_bytes !== undefined && summary.artifact_size_bytes <= maxArtifactGiB * 1024 ** 3)),
   ) }));
-  const groups = formationGroups(qualified).filter(({ summary }) =>
-    (summary.parameter_count ?? 0) > 0 && (summary.pass_rate?.denominator ?? 0) > 0);
+  const groups = formationGroups(qualified)
+    .map((group) => ({ ...group, hosted_variants: hostedVariants(group.sources, isHostedMember) }))
+    .filter(({ summary, hosted_variants }) => hosted_variants.length === 0 &&
+      (summary.parameter_count ?? 0) > 0 && (summary.pass_rate?.denominator ?? 0) > 0);
   const measurements = ({ summary }: FormationGroup) => ({
     latency: summary.latency_p50_ms.value!, tokens: summary.output_tokens.value!, size: summary.parameter_count!,
   });
-  const bySuite = new Map<string, FormationGroup[]>();
-  for (const group of groups) {
-    const suite = bySuite.get(group.suite_id) ?? [];
-    suite.push(group);
-    bySuite.set(group.suite_id, suite);
-  }
-  return Array.from(bySuite.values()).flatMap((suite) => {
+  return bySuite(groups).flatMap((suite) => {
     const measured = suite.map(measurements);
     const best = {
       latency: Math.min(...measured.map((m) => m.latency)), tokens: Math.min(...measured.map((m) => m.tokens)), size: Math.min(...measured.map((m) => m.size)),
@@ -149,4 +141,40 @@ export function formationLeaderboardRows(runs: EvaluationSummary[], maxArtifactG
       a.summary.parameter_count! - b.summary.parameter_count! || a.summary.stack_id.localeCompare(b.summary.stack_id))
       .map((group, index) => ({ ...group, rank: index + 1 }));
   });
+}
+
+/** Size-free ranking, normalized within each suite across the given population. */
+function sizeFreeFormationRows(
+  runs: EvaluationSummary[], isHostedMember: HostedMemberLookup, maxArtifactGiB: number, scope: 'all' | 'hosted',
+): FormationLeaderboardRow[] {
+  const admitted = runs.map((run) => ({ ...run, formations: run.formations?.filter((summary) =>
+    hasFormationEvidence({ run, summary }) && (!(maxArtifactGiB > 0) ||
+      (summary.artifact_size_bytes !== undefined && summary.artifact_size_bytes <= maxArtifactGiB * 1024 ** 3)),
+  ) }));
+  const groups = formationGroups(admitted)
+    .map((group) => ({ ...group, hosted_variants: hostedVariants(group.sources, isHostedMember) }))
+    .filter(({ summary, hosted_variants }) => (scope === 'all' || hosted_variants.length > 0) &&
+      (summary.pass_rate?.denominator ?? 0) > 0 && (summary.latency_p50_ms.value ?? 0) > 0 && (summary.output_tokens.value ?? 0) > 0);
+  const measurements = ({ summary }: FormationGroup) => ({ latency: summary.latency_p50_ms.value!, tokens: summary.output_tokens.value! });
+  return bySuite(groups).flatMap((suite) => {
+    const measured = suite.map(measurements);
+    const best = { latency: Math.min(...measured.map((m) => m.latency)), tokens: Math.min(...measured.map((m) => m.tokens)) };
+    return suite.map((group) => ({
+      ...group, rank: 0,
+      score: leaderboardSizeFreeScore(group.summary.pass_rate!.estimate, group.summary.security_pass_rate?.estimate ?? 0, measurements(group), best),
+    })).sort((a, b) => b.score - a.score || b.summary.pass_rate!.estimate - a.summary.pass_rate!.estimate ||
+      a.summary.stack_id.localeCompare(b.summary.stack_id))
+      .map((group, index) => ({ ...group, rank: index + 1 }));
+  });
+}
+
+/** Overall: every formation with complete evidence, all-local and hosted-member alike, ranked side by side
+ *  with the size-free score used by the model Overall leaderboard. */
+export function formationOverallRows(runs: EvaluationSummary[], isHostedMember: HostedMemberLookup, maxArtifactGiB = 0): FormationLeaderboardRow[] {
+  return sizeFreeFormationRows(runs, isHostedMember, maxArtifactGiB, 'all');
+}
+
+/** Remote-hosted: formations with at least one hosted member, normalized among themselves only. */
+export function formationRemoteHostedRows(runs: EvaluationSummary[], isHostedMember: HostedMemberLookup, maxArtifactGiB = 0): FormationLeaderboardRow[] {
+  return sizeFreeFormationRows(runs, isHostedMember, maxArtifactGiB, 'hosted');
 }

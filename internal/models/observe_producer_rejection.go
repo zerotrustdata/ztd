@@ -80,6 +80,9 @@ const (
 	ObserveProducerRejectionEndBeforeStart          ObserveProducerRejectionCode = "end_before_start"
 	ObserveProducerRejectionStopReasonInvalid       ObserveProducerRejectionCode = "stop_reason_invalid"
 	ObserveProducerRejectionStopScopeInvalid        ObserveProducerRejectionCode = "stop_scope_invalid"
+	ObserveProducerRejectionAssignmentIDRequired    ObserveProducerRejectionCode = "assignment_id_required"
+	ObserveProducerRejectionGroupIDRequired         ObserveProducerRejectionCode = "group_id_required"
+	ObserveProducerRejectionTerminalStatusInvalid   ObserveProducerRejectionCode = "terminal_status_invalid"
 	ObserveProducerRejectionRouteUserRequired       ObserveProducerRejectionCode = "route_user_required"
 	ObserveProducerRejectionRouteSessionRequired    ObserveProducerRejectionCode = "route_session_required"
 	ObserveProducerRejectionRouteSessionAmbiguous   ObserveProducerRejectionCode = "route_session_ambiguous"
@@ -115,6 +118,9 @@ var observeProducerRejectionCodes = []struct {
 	{ObserveProducerRejectionEndBeforeStart, constants.ErrObserveEndBeforeStart},
 	{ObserveProducerRejectionStopReasonInvalid, constants.ErrObserveStopReasonInvalid},
 	{ObserveProducerRejectionStopScopeInvalid, constants.ErrObserveStopScopeInvalid},
+	{ObserveProducerRejectionAssignmentIDRequired, constants.ErrObserveAssignmentIDRequired},
+	{ObserveProducerRejectionGroupIDRequired, constants.ErrObserveGroupIDRequired},
+	{ObserveProducerRejectionTerminalStatusInvalid, constants.ErrObserveTerminalStatusInvalid},
 	{ObserveProducerRejectionRouteUserRequired, constants.ErrGatewaySSERouteUserIDRequired},
 	{ObserveProducerRejectionRouteSessionRequired, constants.ErrGatewaySSERouteSessionRequired},
 	{ObserveProducerRejectionRouteSessionAmbiguous, constants.ErrGatewaySSERouteSessionMutuallyExclusive},

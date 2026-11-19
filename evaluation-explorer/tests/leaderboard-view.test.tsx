@@ -557,7 +557,7 @@ describe('LeaderboardView', () => {
     evalStore.loadFixtures([formationRun], []);
     const { unmount } = render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
     const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
-    expect(panel.getByRole('button', { name: 'Formations 1' })).toHaveAttribute('aria-pressed', 'true');
+    expect(panel.getByRole('button', { name: 'Formations overall 1' })).toHaveAttribute('aria-pressed', 'true');
     expect(panel.getByRole('button', { name: 'Overall 0' })).toHaveAttribute('aria-pressed', 'false');
     expect(panel.getByRole('region', { name: 'Formation suite formation-suite' })).toBeInTheDocument();
     expect(panel.queryByText(/0 of 3 roles qualified/)).not.toBeInTheDocument();
@@ -595,7 +595,7 @@ describe('LeaderboardView', () => {
     render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
     const panel = within(screen.getByRole('region', { name: 'Leaderboard' }));
     expect(panel.getByRole('button', { name: 'Overall 0' })).toHaveAttribute('aria-pressed', 'true');
-    expect(panel.getByRole('button', { name: 'Formations 1' })).toHaveAttribute('aria-pressed', 'false');
+    expect(panel.getByRole('button', { name: 'Formations self-hosted 1' })).toHaveAttribute('aria-pressed', 'false');
     expect(panel.getByText('No fully evaluated, verified models across datasets.')).toBeInTheDocument();
   });
 });

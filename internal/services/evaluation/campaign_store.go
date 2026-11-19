@@ -17,6 +17,8 @@ import (
 	"sort"
 	"strings"
 
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"github.com/zerotrustdata/ztd/internal/constants"
 	complianceevidence "github.com/zerotrustdata/ztd/internal/services/compliance/evidence"
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/cases"
@@ -308,12 +310,85 @@ func (s *Store) LoadRun(ctx context.Context, runID string) (*evalv1.EvaluationRu
 	}
 	run := &evalv1.EvaluationRun{}
 	if err := evalv1.UnmarshalCanonical(body, run); err != nil {
+		if _, retired, stripErr := stripRetiredRunBindingField(body); stripErr == nil && retired {
+			return nil, fmt.Errorf("%w: run %s", constants.ErrEvaluationRunRetiredBindingField, runID)
+		}
 		return nil, fmt.Errorf("%w: canonical run: %w", constants.ErrEvidenceArtifactMalformed, err)
 	}
 	if run.GetRunId() != runID {
 		return nil, fmt.Errorf("%w: run ID does not match requested run", constants.ErrEvidenceScopeMismatch)
 	}
 	return run, nil
+}
+
+// retiredRunBindingField is ModelCampaignBinding field 7, the single Data
+// Operator session the harness roster (data_roster) replaced. Run records
+// written before then still carry it.
+const retiredRunBindingField = "data_operator_session_id"
+
+// RepairRunBinding rewrites a run record that carries the retired binding
+// field without it, and reports whether it rewrote the record. The rest of the
+// record must decode strictly once that one field is removed; otherwise the
+// record is left unchanged. The field is not translated into data_roster, so a
+// rewritten run may no longer verify. The caller must hold the run lease.
+func (s *Store) RepairRunBinding(ctx context.Context, runID string) (bool, error) {
+	if err := s.validateAccess(constants.ErrEvidenceArtifactMalformed, runIDElement(runID)); err != nil {
+		return false, err
+	}
+	body, err := s.files.ReadFile(ctx, s.layout.runStatePath(runID))
+	if err != nil {
+		return false, fmt.Errorf("evaluation: read run: %w", err)
+	}
+	stripped, retired, err := stripRetiredRunBindingField(body)
+	if err != nil {
+		return false, fmt.Errorf("%w: run record: %w", constants.ErrEvidenceArtifactMalformed, err)
+	}
+	if !retired {
+		return false, nil
+	}
+	run := &evalv1.EvaluationRun{}
+	if err := (protojson.UnmarshalOptions{DiscardUnknown: false}).Unmarshal(stripped, run); err != nil {
+		return false, fmt.Errorf("%w: run %s without the retired binding field: %w", constants.ErrEvidenceArtifactMalformed, runID, err)
+	}
+	if run.GetRunId() != runID {
+		return false, fmt.Errorf("%w: run ID does not match requested run", constants.ErrEvidenceScopeMismatch)
+	}
+	if err := s.SaveRun(ctx, run); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// stripRetiredRunBindingField returns body with the retired binding field
+// removed, and false when body does not carry it. It touches only that key; the
+// caller decodes the result strictly.
+func stripRetiredRunBindingField(body []byte) ([]byte, bool, error) {
+	var record map[string]json.RawMessage
+	if err := json.Unmarshal(body, &record); err != nil {
+		return nil, false, err
+	}
+	rawBinding, ok := record["campaign_binding"]
+	if !ok {
+		return nil, false, nil
+	}
+	var binding map[string]json.RawMessage
+	if err := json.Unmarshal(rawBinding, &binding); err != nil {
+		return nil, false, err
+	}
+	if _, ok := binding[retiredRunBindingField]; !ok {
+		return nil, false, nil
+	}
+	delete(binding, retiredRunBindingField)
+	encodedBinding, err := json.Marshal(binding)
+	if err != nil {
+		return nil, false, err
+	}
+	record["campaign_binding"] = encodedBinding
+	stripped, err := json.Marshal(record)
+	if err != nil {
+		return nil, false, err
+	}
+	return stripped, true, nil
 }
 
 // CountAssignments returns the number of persisted assignment records for one run.
@@ -726,6 +801,9 @@ func (s *Store) listRunIDsByCampaign(ctx context.Context) (map[string][]string, 
 		return nil, fmt.Errorf("evaluation: list campaign runs: %w", err)
 	}
 	byCampaign := make(map[string][]string)
+	// Every run that still carries the retired binding field is named in one
+	// error, so one listing tells the owner every run to repair.
+	var retired []error
 	for _, entry := range entries {
 		if !entry.IsDir() || !complianceevidence.ValidPathElement(entry.Name()) {
 			continue
@@ -733,6 +811,10 @@ func (s *Store) listRunIDsByCampaign(ctx context.Context) (map[string][]string, 
 		run, err := s.LoadRun(ctx, entry.Name())
 		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, constants.ErrNotFound) {
 			// A run directory whose state record is not written yet is not a run.
+			continue
+		}
+		if errors.Is(err, constants.ErrEvaluationRunRetiredBindingField) {
+			retired = append(retired, err)
 			continue
 		}
 		if err != nil {
@@ -743,6 +825,9 @@ func (s *Store) listRunIDsByCampaign(ctx context.Context) (map[string][]string, 
 			continue
 		}
 		byCampaign[campaignID] = append(byCampaign[campaignID], run.GetRunId())
+	}
+	if len(retired) > 0 {
+		return nil, fmt.Errorf("evaluation: list campaign runs: %w", errors.Join(retired...))
 	}
 	for campaignID := range byCampaign {
 		sort.Strings(byCampaign[campaignID])

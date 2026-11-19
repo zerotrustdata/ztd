@@ -114,6 +114,22 @@ func TestConsensusStatus_BoundTribunalShowsModelText(t *testing.T) {
 	require.Contains(t, text, "L2         enforced")
 }
 
+func TestConsensusStatus_NamesTheHostedClassNoOperatorServes(t *testing.T) {
+	policy := models.ConsensusPolicy{ID: string(constants.DocIDConsensusBinding), AppID: constants.TribunalConsensusMemberAppIDs()[0], MemberAppIDs: constants.TribunalConsensusMemberAppIDs(), Quorum: constants.TribunalConsensusDefaultQuorum, Provider: string(constants.ConsensusProviderTribunal), ModelTag: "gemini-3.6-flash", ModelDigest: "sha256:abc", ModelProviderClass: constants.InferenceProviderGemini, Enabled: true}
+	client := &routedClient{bodies: map[string][]byte{
+		constants.APIPaths.AuthPlatformEnrollmentConsensus: bindingBody(t, policy),
+		constants.APIPaths.Health: healthBody(t, models.HealthResponse{Posture: constants.PostureNotary,
+			Consensus: models.HealthConsensus{Bound: true, Provider: "tribunal", Quorum: 3, Members: 5, Usable: 0, Ready: false, NotReady: constants.ConsensusNotReadyVoteOperator}}),
+	}}
+	cmd := testCmd(t, client)
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetArgs([]string{"status"})
+	require.NoError(t, cmd.Execute())
+	require.Contains(t, output.String(), "Signers    0/5 usable (not ready)")
+	require.Contains(t, output.String(), "Not ready  no active Inference Operator serves gemini")
+}
+
 func TestConsensusStatus_UnboundWithL2PostureFails(t *testing.T) {
 	client := &routedClient{
 		errs: map[string]error{constants.APIPaths.AuthPlatformEnrollmentConsensus: &api.StatusError{StatusCode: http.StatusNotFound, Body: "not bound"}},

@@ -540,6 +540,9 @@ func runsExportCmd(deps nativeEvalDeps) *cobra.Command {
 type runRepairJSON struct {
 	RunID   string `json:"run_id"`
 	Results int    `json:"repaired_results"`
+	// BindingRewritten reports that repair removed the retired campaign
+	// binding field data_operator_session_id from the run record.
+	BindingRewritten bool `json:"binding_rewritten,omitempty"`
 	// Regraded counts the results --regrade re-imported from their sealed
 	// agent traces.
 	Regraded int `json:"regraded_results,omitempty"`
@@ -552,8 +555,12 @@ func runsRepairCmd(deps nativeEvalDeps) *cobra.Command {
 	var projection, regrade bool
 	cmd := &cobra.Command{
 		Use:   "repair <run>",
-		Short: "Backfill or regrade terminal assignment results",
-		Long: `Repair one run's persisted records: every assignment that reached a terminal
+		Short: "Rewrite a retired run binding, and backfill or regrade terminal assignment results",
+		Long: `Repair one run's persisted records. A run record written before the harness
+roster still carries the retired campaign binding field data_operator_session_id,
+which no current command can read; repair rewrites the record without it. The
+field is not carried into the roster, so such a run may no longer verify.
+Every assignment that reached a terminal
 lifecycle without a persisted result gets one, recorded as a
 recovered_without_result failure that keeps the assignment's lifecycle and
 completion time, except that a COMPLETED assignment with no result becomes
@@ -593,6 +600,9 @@ Repair holds the run lease throughout, so it refuses a run a live process holds.
 			controller := evaluation.NewCampaignController(store, nil, deps.now, adaptNewID(deps.newID))
 			payload := runRepairJSON{RunID: runID}
 			if err := withRepairLease(cmd.Context(), deps, fileSvc, store, runID, func(lease repairLease) error {
+				if payload.BindingRewritten, err = store.RepairRunBinding(cmd.Context(), runID); err != nil {
+					return err
+				}
 				if payload.Results, err = controller.RepairAssignmentsWithoutResults(cmd.Context(), runID); err != nil {
 					return err
 				}
@@ -612,6 +622,11 @@ Repair holds the run lease throughout, so it refuses a run a live process holds.
 				return output.WriteJSON(cmd.OutOrStdout(), payload)
 			}
 			out := cmd.OutOrStdout()
+			if payload.BindingRewritten {
+				if _, err := fmt.Fprintf(out, "Removed the retired data_operator_session_id binding field from run %s\n", runID); err != nil {
+					return err
+				}
+			}
 			if _, err := fmt.Fprintf(out, "Repaired %d terminal assignment result(s) for run %s\n", payload.Results, runID); err != nil {
 				return err
 			}

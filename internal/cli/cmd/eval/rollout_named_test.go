@@ -283,6 +283,23 @@ func TestNamedRollout_FailurePolicyAndRetry(t *testing.T) {
 	assert.Len(t, loadTestRollout(t, env, "nightly").Executions[0].Steps[0].Attempts, 2)
 }
 
+func TestNamedRollout_RecordsPublicationAndKeyStoreFailureClasses(t *testing.T) {
+	env := newNamedRolloutEnv(t)
+	env.mustRun(t, "rollout", "create", "nightly", "control", "longitudinal")
+	require.NoError(t, runNamedRollout(env.cmd, env.deps, env.fileSvc(t), "nightly", namedRolloutOptions{Repeat: 1}, func(_ *cobra.Command, campaignID, _ string, _ bool) error {
+		if campaignID == "control" {
+			return fmt.Errorf("evaluation: run execute: %w", fmt.Errorf("%w: run completion: private mirror text", constants.ErrEvaluationPublicationFailed))
+		}
+		return fmt.Errorf("evaluation: open runtime: %w: private fingerprint", constants.ErrKeyStoreSSHAgentKeyMissing)
+	}))
+	steps := loadTestRollout(t, env, "nightly").Executions[0].Steps
+	assert.Equal(t, evaluation.ExecutionFailurePublication, steps[0].Attempts[0].FailureClass)
+	assert.Equal(t, evaluation.ExecutionFailureKeyStore, steps[1].Attempts[0].FailureClass)
+	shown := env.mustRun(t, "rollout", "show", "nightly")
+	assert.NotContains(t, shown, "private mirror text")
+	assert.NotContains(t, shown, "private fingerprint")
+}
+
 func TestNamedRollout_StopResumesSameRunAndNeverStartsLaterCampaign(t *testing.T) {
 	env := newNamedRolloutEnv(t)
 	env.mustRun(t, "rollout", "create", "nightly", "control", "longitudinal")

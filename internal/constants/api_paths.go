@@ -182,10 +182,13 @@ var APIPaths = struct {
 	// never browser-accessible; the RouteAuthMTLS classification is
 	// explicit so the producer sub-prefix does not inherit the
 	// RouteAuthWebSession classification of the observe prefix.
-	ObserveProducerPrefix     string `json:"observe_producer_prefix"`
-	ObserveProducerAgentState string `json:"observe_producer_agent_state"`
-	ObserveProducerRunState   string `json:"observe_producer_run_state"`
-	ObserveProducerStop       string `json:"observe_producer_stop"`
+	ObserveProducerPrefix              string `json:"observe_producer_prefix"`
+	ObserveProducerAgentState          string `json:"observe_producer_agent_state"`
+	ObserveProducerRunState            string `json:"observe_producer_run_state"`
+	ObserveProducerStop                string `json:"observe_producer_stop"`
+	ObserveProducerAssignmentStarted   string `json:"observe_producer_assignment_started"`
+	ObserveProducerAssignmentCompleted string `json:"observe_producer_assignment_completed"`
+	ObserveProducerToolCallFannedOut   string `json:"observe_producer_tool_call_fanned_out"`
 	// WebSocket prefix
 	WSPrefix string `json:"ws_prefix"`
 	// User routes
@@ -352,10 +355,13 @@ var APIPaths = struct {
 	ObserveDownloads:     "/api/v1/observe/downloads",
 	ObserveDownloadsByID: "/api/v1/observe/downloads/",
 	// Observe producer routes (mTLS-authenticated, app-workload-only)
-	ObserveProducerPrefix:     "/api/v1/observe/producer/",
-	ObserveProducerAgentState: "/api/v1/observe/producer/agent-state",
-	ObserveProducerRunState:   "/api/v1/observe/producer/run-state",
-	ObserveProducerStop:       "/api/v1/observe/producer/stop",
+	ObserveProducerPrefix:              "/api/v1/observe/producer/",
+	ObserveProducerAgentState:          "/api/v1/observe/producer/agent-state",
+	ObserveProducerRunState:            "/api/v1/observe/producer/run-state",
+	ObserveProducerStop:                "/api/v1/observe/producer/stop",
+	ObserveProducerAssignmentStarted:   "/api/v1/observe/producer/assignment-started",
+	ObserveProducerAssignmentCompleted: "/api/v1/observe/producer/assignment-completed",
+	ObserveProducerToolCallFannedOut:   "/api/v1/observe/producer/tool-call-fanned-out",
 	// WebSocket prefix
 	WSPrefix: "/ws/",
 	// User routes

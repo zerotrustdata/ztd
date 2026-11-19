@@ -25,6 +25,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/evaluation/conformance/oracle"
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	"github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/publicdisclosure"
 	"github.com/zerotrustdata/ztd/internal/services/tribunal"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
@@ -55,6 +56,7 @@ type retryCall struct {
 // script approves at once. It signs nothing real; its receipts exist so the
 // verifier's checks run on what the deliberator produced.
 type retryInferer struct {
+	routesEveryVote
 	mu     sync.Mutex
 	script map[string][]retryReply
 	calls  []retryCall
@@ -411,6 +413,47 @@ func TestTribunalConsensusVoteRetryWaitIsBoundedByTheEnvelopeExpiry(t *testing.T
 			require.NoError(t, oracle.ValidateConsensusInference(vote))
 		})
 	}
+}
+
+// TestTribunalConsensusVoteRetryWaitLeavesTheAdmissionReserve holds back the
+// share of the envelope lifetime that the L3 wait and the admission review
+// need: the same transient failure is retried when nothing follows L2 and is
+// left standing when the reserve would be spent.
+func TestTribunalConsensusVoteRetryWaitLeavesTheAdmissionReserve(t *testing.T) {
+	member := tribunalTestBinding().MemberAppIDs[0]
+	script := map[string][]retryReply{member: {transientFailure()}}
+	// 45 s of lifetime leaves 15 s past DispatchTimeout: the 5 s wait fits
+	// only while no admission stage holds a share.
+	for _, test := range []struct {
+		name     string
+		reserve  time.Duration
+		waits    []time.Duration
+		attempts int
+	}{
+		{name: "no admission stage follows", reserve: 0, waits: []time.Duration{5 * time.Second}, attempts: 2},
+		{name: "the reserve leaves no room for the wait", reserve: 12 * time.Second, waits: nil, attempts: 1},
+		{name: "an L3 wait and an admission review follow", reserve: admissionReserve(constants.ActionTypeExecuteBash, constants.PostureNotary, true), waits: nil, attempts: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newVoteRetryHarness(t, script)
+			env, _ := tribunalRetryEnvelope(t, 45*time.Second)
+
+			out, _ := h.deliberate(t, governance.WithAdmissionReserve(t.Context(), test.reserve), env)
+
+			assert.Equal(t, test.waits, h.waits.recorded())
+			assert.Len(t, h.inferer.callsFor(member), test.attempts)
+			assert.Equal(t, uint32(test.attempts-1), inferenceFor(t, out, member).GetRetryCount())
+			assert.Equal(t, models.ConsensusVoteOutcomeNoVote, h.recorder.records(t)[0].Outcome)
+		})
+	}
+}
+
+func TestAdmissionReserve_IsTheShareOfEachStageThatFollowsL2(t *testing.T) {
+	assert.Zero(t, admissionReserve(constants.ActionTypeExecuteBash, constants.PostureConsensus, false))
+	assert.Equal(t, AdmissionReviewReserve, admissionReserve(constants.ActionTypeExecuteBash, constants.PostureConsensus, true))
+	assert.Equal(t, mcp.ApprovalRequestTTL, admissionReserve(constants.ActionTypeExecuteBash, constants.PostureNotary, false))
+	assert.Equal(t, mcp.ApprovalRequestTTL+AdmissionReviewReserve, admissionReserve(constants.ActionTypeExecuteBash, constants.PostureNotary, true))
+	assert.Zero(t, governance.AdmissionReserve(t.Context()))
 }
 
 func TestTribunalConsensusVoteWithoutAnExpiryIsNeverRetried(t *testing.T) {

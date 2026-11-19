@@ -56,7 +56,7 @@ var (
 		"unbound": {}, "opened": {}, "closed": {}, "established": {}, "checkpointed": {},
 		"exported": {}, "published": {}, "rotated": {}, "available": {}, "invoked": {},
 		"reached": {}, "detected": {}, "resolved": {}, "appended": {}, "truncated": {},
-		"retry": {}, "heartbeat": {},
+		"retry": {}, "heartbeat": {}, "fanned_out": {},
 		"active": {}, "ai": {}, "answered": {}, "append": {}, "assigned": {},
 		"authenticated": {}, "blocked": {}, "changed": {}, "cleared": {}, "complete": {},
 		"configured": {}, "confirmed": {}, "disabled": {}, "end": {}, "error": {},

@@ -171,6 +171,9 @@ func NewRouteAuthRegistry(jwksEnabled bool) *RouteAuthRegistry {
 	r.addExact(constants.APIPaths.ObserveProducerAgentState, RouteAuthMTLS)
 	r.addExact(constants.APIPaths.ObserveProducerRunState, RouteAuthMTLS)
 	r.addExact(constants.APIPaths.ObserveProducerStop, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.ObserveProducerAssignmentStarted, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.ObserveProducerAssignmentCompleted, RouteAuthMTLS)
+	r.addExact(constants.APIPaths.ObserveProducerToolCallFannedOut, RouteAuthMTLS)
 
 	// mTLS-only operator sub-paths (must precede the browser-capable prefix).
 	r.addExact(constants.APIPaths.OperatorsValidate, RouteAuthMTLS)
@@ -343,7 +346,7 @@ func mtlsIdentityRouteAllowed(identity mtlsIdentityClass, method, path string) b
 	switch identity {
 	case mtlsIdentityApp:
 		switch {
-		case method == http.MethodPost && (path == constants.APIPaths.MCPEndpoint || path == constants.APIPaths.A2ACall || path == constants.APIPaths.GovernanceEnvelopes || path == constants.APIPaths.GovernanceDeliberations || path == constants.APIPaths.OperatorsIntents || path == constants.APIPaths.InferenceDispatch || path == constants.APIPaths.ObserveProducerAgentState || path == constants.APIPaths.ObserveProducerRunState || path == constants.APIPaths.ObserveProducerStop || path == constants.APIPaths.GatewayReputationSign):
+		case method == http.MethodPost && (path == constants.APIPaths.MCPEndpoint || path == constants.APIPaths.A2ACall || path == constants.APIPaths.GovernanceEnvelopes || path == constants.APIPaths.GovernanceDeliberations || path == constants.APIPaths.OperatorsIntents || path == constants.APIPaths.InferenceDispatch || path == constants.APIPaths.ObserveProducerAgentState || path == constants.APIPaths.ObserveProducerRunState || path == constants.APIPaths.ObserveProducerStop || path == constants.APIPaths.ObserveProducerAssignmentStarted || path == constants.APIPaths.ObserveProducerAssignmentCompleted || path == constants.APIPaths.ObserveProducerToolCallFannedOut || path == constants.APIPaths.GatewayReputationSign):
 			return true
 		case method == http.MethodGet && path == constants.APIPaths.AuditEventReceipts:
 			return true

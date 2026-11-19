@@ -7017,6 +7017,50 @@
         "estimated_kv_cache_mib": 512,
         "model_digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72"
       }
+    },
+    {
+      "id": "v1102_formation_hydrogen-ornith-smollm2",
+      "display_name": "v1102_formation_hydrogen-ornith-smollm2",
+      "description": "gemini-4-hydrogen primary, ornith-1.5:9b assistant, smollm2:135m lite",
+      "max_vram_mib": 12288,
+      "primary": {
+        "variant_id": "gemini-4-hydrogen",
+        "display_name": "gemini-4-hydrogen",
+        "provider": "gemini",
+        "family": "gemini",
+        "provider_class": "gemini",
+        "served_model_tag": "gemini-4-hydrogen",
+        "trust": "delegated",
+        "model_digest": "806ec0f6c3686d6a5234002e883d7da0521016723d9236541ff5bbc139408b44"
+      },
+      "assistant": {
+        "variant_id": "ornith-1-5-9b",
+        "display_name": "ornith-1.5:9b",
+        "provider": "qwen35",
+        "family": "qwen35",
+        "provider_class": "ollama",
+        "served_model_tag": "ornith-1.5:9b",
+        "trust": "sovereign",
+        "quantization": "Q4_K_M",
+        "parameter_count": 8953803264,
+        "estimated_model_vram_mib": 5337,
+        "estimated_kv_cache_mib": 512,
+        "model_digest": "e5df7dcdd8a263994df62d610317e07be0d6af23f96fcbd8543273058fce575e"
+      },
+      "lite": {
+        "variant_id": "smollm2-135m",
+        "display_name": "smollm2:135m",
+        "provider": "llama",
+        "family": "llama",
+        "provider_class": "ollama",
+        "served_model_tag": "smollm2:135m",
+        "trust": "sovereign",
+        "quantization": "F16",
+        "parameter_count": 134515008,
+        "estimated_model_vram_mib": 257,
+        "estimated_kv_cache_mib": 256,
+        "model_digest": "9077fe9d2ae1a4a41a868836b56b8163731a8fe16621397028c2c76f838c6907"
+      }
     }
   ],
   "removed_formation_ids": [

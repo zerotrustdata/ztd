@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -252,7 +253,13 @@ func runPublicLoop(ctx context.Context, candidatePath, outputPath string) error 
 	if err := publisher.ExportBatch(ctx, []models.PublicFeedRecord{finalRecord}); err != nil {
 		return err
 	}
-	if err := verifyPublicLoopReads(ctx, finalPublicServer, sourceID, manifest.Artifacts[0].ImmutableURL); err != nil {
+	if err := verifyPublicLoopReads(ctx, finalPublicServer, sourceID); err != nil {
+		return err
+	}
+	if err := verifyPublicLoopProofHead(ctx, finalPrivateServer, ingestToken, sourceID, manifest); err != nil {
+		return err
+	}
+	if err := verifyPublicLoopProofRouteAbsent(ctx, finalPublicServer, manifest.Artifacts[0].ImmutableURL); err != nil {
 		return err
 	}
 	if err := verifyPublicLoopMutationRoutesAbsent(ctx, finalPublicServer); err != nil {
@@ -339,12 +346,11 @@ func readPublicLoopCandidate(path string) (publicLoopCandidate, error) {
 	return candidate, nil
 }
 
-func verifyPublicLoopReads(ctx context.Context, server *httptest.Server, sourceID, proofPath string) error {
+func verifyPublicLoopReads(ctx context.Context, server *httptest.Server, sourceID string) error {
 	paths := []string{
 		"/bootstrap?source=" + sourceID,
 		"/history?source=" + sourceID + "&cursor=0&limit=100",
 		"/snapshot?source=" + sourceID,
-		proofPath,
 	}
 	for _, path := range paths {
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+path, nil)
@@ -443,6 +449,62 @@ func getPublicLoopBody(ctx context.Context, server *httptest.Server, path, accep
 		return nil, fmt.Errorf("public read %s failed with status %d", path, response.StatusCode)
 	}
 	return body, nil
+}
+
+// verifyPublicLoopProofHead reads the private, token-authenticated proof head
+// after the mirror restarts and requires it to match the pushed signed segment
+// and its single artifact, proving the proof package was durably accepted.
+func verifyPublicLoopProofHead(ctx context.Context, server *httptest.Server, ingestToken, sourceID string, manifest models.PublicProofManifest) error {
+	path := "/proof-root?source=" + url.QueryEscape(sourceID)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+path, nil)
+	if err != nil {
+		return fmt.Errorf("build private proof head request: %w", err)
+	}
+	request.Header.Set(constants.HeaderAuthorization, constants.BearerScheme+ingestToken)
+	response, err := server.Client().Do(request)
+	if err != nil {
+		return fmt.Errorf("private read %s: %w", path, err)
+	}
+	body, readErr := io.ReadAll(response.Body)
+	closeErr := response.Body.Close()
+	if readErr != nil || closeErr != nil || response.StatusCode != http.StatusOK {
+		return fmt.Errorf("private read %s failed with status %d", path, response.StatusCode)
+	}
+	var head models.PublicProofRootResponse
+	if err := json.Unmarshal(body, &head); err != nil {
+		return fmt.Errorf("private read %s returned invalid JSON: %w", path, err)
+	}
+	if head.SourceID != sourceID || head.SegmentIndex != manifest.SegmentIndex || head.ProofRootSHA256 != manifest.ProofRootSHA256 || head.ArtifactCount != len(manifest.Artifacts) {
+		return fmt.Errorf("mirror proof head segment %d root %s with %d artifacts, want segment %d root %s with %d artifacts",
+			head.SegmentIndex, head.ProofRootSHA256, head.ArtifactCount, manifest.SegmentIndex, manifest.ProofRootSHA256, len(manifest.Artifacts))
+	}
+	return nil
+}
+
+// verifyPublicLoopProofRouteAbsent requires the public listener to return 404
+// for an accepted proof artifact's immutable URL: internal proof downloads are
+// not served anonymously.
+func verifyPublicLoopProofRouteAbsent(ctx context.Context, server *httptest.Server, proofPath string) error {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+proofPath, nil)
+	if err != nil {
+		return fmt.Errorf("build public proof route request: %w", err)
+	}
+	response, err := server.Client().Do(request)
+	if err != nil {
+		return fmt.Errorf("public read %s: %w", proofPath, err)
+	}
+	_, readErr := io.Copy(io.Discard, response.Body)
+	closeErr := response.Body.Close()
+	if readErr != nil {
+		return fmt.Errorf("read public proof route %s response: %w", proofPath, readErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close public proof route %s response: %w", proofPath, closeErr)
+	}
+	if response.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("public proof route %s returned status %d", proofPath, response.StatusCode)
+	}
+	return nil
 }
 
 func verifyPublicLoopMutationRoutesAbsent(ctx context.Context, server *httptest.Server) error {

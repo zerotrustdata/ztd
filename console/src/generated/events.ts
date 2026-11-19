@@ -14,6 +14,7 @@ export const EventType = Object.freeze({
     AI_EVAL_PROOF_AVAILABLE: 'ztd.v1.ai.eval.proof.available',
     AI_EVAL_PUBLICATION_COMPLETED: 'ztd.v1.ai.eval.publication.completed',
     AI_EVAL_STOP_REQUESTED: 'ztd.v1.ai.eval.stop.requested',
+    AI_EVAL_TOOL_CALL_FANNED_OUT: 'ztd.v1.ai.eval.tool_call.fanned_out',
     AI_EVAL_VERIFIER_COMPLETED: 'ztd.v1.ai.eval.verifier.completed',
     AI_LLM_CHAT_FILTER_EVENT: 'ztd.v1.ai.llm.chat.filter.updated',
     APP_AGENT_STATUS_UPDATED: 'ztd.v1.app.agent.status.updated',
@@ -305,6 +306,12 @@ export const EventRegistry = Object.freeze({
         transport: ['sse'],
         producers: ['gateway'],
         persistence: 'ephemeral',
+    }),
+    AI_EVAL_TOOL_CALL_FANNED_OUT: Object.freeze({
+        kind: 'fact',
+        transport: ['sse'],
+        producers: ['gateway'],
+        persistence: 'gateway.sse_store',
     }),
     AI_EVAL_VERIFIER_COMPLETED: Object.freeze({
         kind: 'outcome',

@@ -32,6 +32,7 @@ import { AssignmentDetailView } from '../src/views/AssignmentDetailView';
 import { EvaluationDetailView } from '../src/views/EvaluationDetailView';
 import { JudgeActivity } from '../src/components/JudgeActivity';
 import { RoleLeadersPanel } from '../src/components/RoleLeadersPanel';
+import { formationRun } from './formation-fixture';
 import { LeaderboardView } from '../src/views/LeaderboardView';
 import {
   defaultLeaderboardRelease,
@@ -576,6 +577,27 @@ describe('hosted models on the leaderboard', () => {
     expect(rows().map((row) => within(row).getAllByRole('link')[0]!.textContent)).toEqual(['Gemini 3.6 Flash']);
     expect(screen.queryByRole('link', { name: 'Qwen 3 4B' })).not.toBeInTheDocument();
     expect(within(rows()[0]!).getByText('1st')).toBeInTheDocument();
+  });
+
+  it('places a formation with a hosted member in Remote-hosted and never in Self-hosted formations', async () => {
+    const user = userEvent.setup();
+    const hostedFormation: EvaluationSummary = {
+      ...formationRun, dataset_id: DATASET_ID, run_id: 'hosted-formation-run',
+      formations: [{
+        ...formationRun.formations![0]!, stack_id: 'hosted-formation', stack_digest: 'f'.repeat(64),
+        parameter_count: undefined, artifact_size_bytes: undefined,
+        model_role_mapping: { primary: 'gemini-3-6-flash', assistant: 'current-assistant', lite: 'current-lite' },
+      }],
+    };
+    render(
+      <MemoryRouter>
+        <RoleLeadersPanel models={[timedHosted({ role: 'primary' })]} evaluations={[hostedFormation]} />
+      </MemoryRouter>,
+    );
+    await user.click(screen.getByRole('button', { name: 'Formations remote-hosted 1' }));
+    expect(screen.getByRole('link', { name: 'hosted-formation' }).closest('tr')!).toHaveTextContent('Undisclosed');
+    await user.click(screen.getByRole('button', { name: 'Formations self-hosted 0' }));
+    expect(screen.queryByRole('link', { name: 'hosted-formation' })).not.toBeInTheDocument();
   });
 
   it('renders the hosted row unranked beside ranked rows and keeps ranks for ranked rows when sorted', async () => {

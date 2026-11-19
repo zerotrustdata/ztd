@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/hex"
+	"fmt"
 	"testing"
 	"time"
 
@@ -573,6 +574,13 @@ func (s readinessSigner) Sign(string, []byte) ([]byte, error) {
 
 func (s readinessSigner) HasKey(memberAppID string) bool { return s.keys[memberAppID] }
 
+// readinessRouter answers every member's vote route with err.
+type readinessRouter struct{ err error }
+
+func (r readinessRouter) VoteRoute(context.Context, *models.ConsensusPolicy, string) error {
+	return r.err
+}
+
 func addReadinessSigner(t *testing.T, infra *TestInfrastructure, id string, enabled bool) {
 	t.Helper()
 	pub, _, err := ed25519.GenerateKey(nil)
@@ -599,7 +607,7 @@ func bindReadinessConsensus(t *testing.T, infra *TestInfrastructure, policy mode
 func TestConsensusStoreService_ConsensusReadiness(t *testing.T) {
 	t.Run("unbound reports not bound", func(t *testing.T) {
 		infra := setupTestInfrastructure(t, false)
-		got, err := infra.ConsensusStore.ConsensusReadiness(t.Context(), nil)
+		got, err := infra.ConsensusStore.ConsensusReadiness(t.Context(), nil, nil)
 		require.NoError(t, err)
 		assert.Equal(t, models.ConsensusReadiness{}, got)
 	})
@@ -618,7 +626,7 @@ func TestConsensusStoreService_ConsensusReadiness(t *testing.T) {
 
 		// The application provider never reads local keys, even when the signer holds them.
 		signer := readinessSigner{keys: map[string]bool{"app-1": true, "app-2": true, "app-3": true}}
-		got, err := infra.ConsensusStore.ConsensusReadiness(t.Context(), signer)
+		got, err := infra.ConsensusStore.ConsensusReadiness(t.Context(), signer, readinessRouter{})
 		require.NoError(t, err)
 		assert.True(t, got.Bound)
 		assert.Equal(t, constants.ConsensusProviderApplication, got.Provider)
@@ -647,7 +655,7 @@ func TestConsensusStoreService_ConsensusReadiness(t *testing.T) {
 		// AddConsensus only binds enabled members, so disable one after binding.
 		addReadinessSigner(t, infra, "app-3", false)
 
-		got, err := infra.ConsensusStore.ConsensusReadiness(t.Context(), nil)
+		got, err := infra.ConsensusStore.ConsensusReadiness(t.Context(), nil, nil)
 		require.NoError(t, err)
 		assert.Equal(t, 2, got.Usable)
 		assert.False(t, got.Ready)
@@ -670,7 +678,7 @@ func TestConsensusStoreService_ConsensusReadiness(t *testing.T) {
 		})
 
 		signer := readinessSigner{keys: map[string]bool{members[0]: true, members[1]: true}}
-		got, err := infra.ConsensusStore.ConsensusReadiness(t.Context(), signer)
+		got, err := infra.ConsensusStore.ConsensusReadiness(t.Context(), signer, readinessRouter{})
 		require.NoError(t, err)
 		assert.Equal(t, constants.ConsensusProviderTribunal, got.Provider)
 		assert.Equal(t, "tribunal-test-model", got.ModelTag)
@@ -682,6 +690,80 @@ func TestConsensusStoreService_ConsensusReadiness(t *testing.T) {
 		assert.True(t, got.Members[1].LocalKey)
 		assert.False(t, got.Members[2].LocalKey)
 		assert.True(t, got.Members[2].SignerEnabled)
+		assert.Equal(t, constants.ConsensusNotReadySigners, got.NotReady)
+	})
+
+	bindTribunal := func(t *testing.T, providerClass string) (*TestInfrastructure, readinessSigner) {
+		t.Helper()
+		infra := setupTestInfrastructure(t, false)
+		members := constants.TribunalConsensusMemberAppIDs()
+		keys := make(map[string]bool, len(members))
+		for _, id := range members {
+			addReadinessSigner(t, infra, id, true)
+			keys[id] = true
+		}
+		bindReadinessConsensus(t, infra, models.ConsensusPolicy{
+			MemberAppIDs:       members,
+			Quorum:             constants.TribunalConsensusDefaultQuorum,
+			Provider:           string(constants.ConsensusProviderTribunal),
+			ModelTag:           "tribunal-test-model",
+			ModelDigest:        "sha256:test",
+			ModelProviderClass: providerClass,
+		})
+		return infra, readinessSigner{keys: keys}
+	}
+
+	t.Run("tribunal is ready when every keyed member's vote routes", func(t *testing.T) {
+		infra, signer := bindTribunal(t, constants.InferenceProviderGemini)
+		got, err := infra.ConsensusStore.ConsensusReadiness(t.Context(), signer, readinessRouter{})
+		require.NoError(t, err)
+		assert.True(t, got.Ready)
+		assert.Empty(t, got.NotReady)
+		assert.Equal(t, len(got.Members), got.Usable)
+		for _, member := range got.Members {
+			assert.True(t, member.VoteRouted)
+		}
+		assert.Equal(t, got.NotReady, got.Summary().NotReady)
+	})
+
+	for name, tc := range map[string]struct {
+		providerClass string
+		err           error
+		want          constants.ConsensusNotReadyReason
+	}{
+		"hosted binding with no Operator serving its class":   {constants.InferenceProviderGemini, fmt.Errorf("vote route: %w", constants.ErrInferenceOperatorNotFound), constants.ConsensusNotReadyVoteOperator},
+		"local binding with no Operator serving the provider": {"", fmt.Errorf("vote route: %w", constants.ErrInferenceOperatorNotFound), constants.ConsensusNotReadyVoteOperator},
+		"pinned Operator that does not serve the vote":        {"", fmt.Errorf("vote route: %w", constants.ErrInferenceOperatorNotCapable), constants.ConsensusNotReadyVoteOperator},
+		"more than one Operator serves the vote":              {"", fmt.Errorf("vote route: %w", constants.ErrInferenceOperatorAmbiguous), constants.ConsensusNotReadyVoteOperatorAmbiguous},
+		"member with no enrolled owner":                       {"", fmt.Errorf("member owner: %w", constants.ErrConsensusAppNotEnrolled), constants.ConsensusNotReadyMemberOwner},
+	} {
+		t.Run("tribunal is not ready: "+name, func(t *testing.T) {
+			infra, signer := bindTribunal(t, tc.providerClass)
+			got, err := infra.ConsensusStore.ConsensusReadiness(t.Context(), signer, readinessRouter{err: tc.err})
+			require.NoError(t, err)
+			assert.False(t, got.Ready)
+			assert.Zero(t, got.Usable)
+			assert.Equal(t, tc.want, got.NotReady)
+			assert.Equal(t, tc.want, got.Summary().NotReady)
+			for _, member := range got.Members {
+				assert.True(t, member.LocalKey)
+				assert.False(t, member.VoteRouted)
+			}
+		})
+	}
+
+	t.Run("tribunal with no vote router is not ready", func(t *testing.T) {
+		infra, signer := bindTribunal(t, constants.InferenceProviderGemini)
+		got, err := infra.ConsensusStore.ConsensusReadiness(t.Context(), signer, nil)
+		require.NoError(t, err)
+		assert.False(t, got.Ready)
+		assert.Equal(t, constants.ConsensusNotReadyVoteOperator, got.NotReady)
+	})
+
+	t.Run("a vote route store failure is an error, not a reason", func(t *testing.T) {
+		infra, signer := bindTribunal(t, constants.InferenceProviderGemini)
+		_, err := infra.ConsensusStore.ConsensusReadiness(t.Context(), signer, readinessRouter{err: constants.ErrDocumentStoreUnmarshalData})
+		require.ErrorIs(t, err, constants.ErrDocumentStoreUnmarshalData)
 	})
 }
 

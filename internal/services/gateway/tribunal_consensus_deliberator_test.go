@@ -91,11 +91,20 @@ type inferCall struct {
 	messages    []*operatorv1.InferenceMessage
 }
 
+// routesEveryVote resolves every vote route; fakes embed it when the test is
+// about the vote, not its Operator selection.
+type routesEveryVote struct{}
+
+func (routesEveryVote) ResolveInferenceOperator(context.Context, dispatch.DispatchInferenceRequest) (*operatorv1.OperatorDocument, error) {
+	return &operatorv1.OperatorDocument{}, nil
+}
+
 // fakeInferer answers each member's vote from a script keyed by ActingAppID.
 // A member with no script entry fails, so unexpected calls are visible. With
 // barrier set, a call answers only once barrier.want calls are in flight.
 // onCall, when set, runs before the reply.
 type fakeInferer struct {
+	routesEveryVote
 	mu      sync.Mutex
 	replies map[string]inferReply
 	calls   []inferCall

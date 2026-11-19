@@ -25,6 +25,7 @@ import (
 )
 
 type decisionVoteInferer struct {
+	routesEveryVote
 	probability float64
 	fail        bool
 }

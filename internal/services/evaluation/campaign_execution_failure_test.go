@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -657,6 +658,19 @@ func TestClassifyExecutionFailure_MapsSentinelsToClosedClasses(t *testing.T) {
 		{name: "request too large", err: fmt.Errorf("infer: %w", constants.ErrInferenceRequestTooLarge), want: ExecutionFailureRequestTooLarge},
 		{name: "campaign judge invalid", err: fmt.Errorf("judge: %w", constants.ErrEvaluationCampaignJudgeInvalid), want: ExecutionFailureGrader},
 		{name: "judge response invalid", err: fmt.Errorf("judge: %w", constants.ErrJudgeResponseInvalid), want: ExecutionFailureGrader},
+		{name: "publication", err: fmt.Errorf("run execute: %w", fmt.Errorf("%w: run completion: write mirror", constants.ErrEvaluationPublicationFailed)), want: ExecutionFailurePublication},
+		{name: "publication whose cause timed out", err: fmt.Errorf("%w: assignment a1: %w", constants.ErrEvaluationPublicationFailed, context.DeadlineExceeded), want: ExecutionFailurePublication},
+		{name: "publication whose cause is the key store", err: fmt.Errorf("%w: run completion: %w", constants.ErrEvaluationPublicationFailed, constants.ErrKeyStoreSSHAgentKeyMissing), want: ExecutionFailurePublication},
+		{name: "joined publication failures", err: errors.Join(fmt.Errorf("%w: assignment a1: %w", constants.ErrEvaluationPublicationFailed, context.Canceled), fmt.Errorf("%w: run completion: write mirror", constants.ErrEvaluationPublicationFailed)), want: ExecutionFailurePublication},
+		{name: "verification beside publication", err: errors.Join(fmt.Errorf("verify: %w", constants.ErrEvalRunVerificationFailed), fmt.Errorf("%w: run completion: %w", constants.ErrEvaluationPublicationFailed, context.DeadlineExceeded)), want: ExecutionFailureVerification},
+		{name: "provider failure beside wrapped publication", err: fmt.Errorf("run: %w", errors.Join(fmt.Errorf("run execute: %w", fmt.Errorf("%w: assignment a1: mirror", constants.ErrEvaluationPublicationFailed)), fmt.Errorf("infer: %w", constants.ErrInferenceBackendUnavailable))), want: ExecutionFailureProvider},
+		{name: "opaque failure beside publication", err: errors.Join(fmt.Errorf("opaque failure"), fmt.Errorf("%w: run completion: mirror", constants.ErrEvaluationPublicationFailed)), want: ExecutionFailureInternal},
+		{name: "ssh-agent key missing", err: fmt.Errorf("open vault: %w: SHA256:abc", constants.ErrKeyStoreSSHAgentKeyMissing), want: ExecutionFailureKeyStore},
+		{name: "ssh-agent unavailable", err: fmt.Errorf("open vault: %w", constants.ErrKeyStoreSSHAgentUnavailable), want: ExecutionFailureKeyStore},
+		{name: "key store locked", err: fmt.Errorf("open vault: %w", constants.ErrKeyStoreLocked), want: ExecutionFailureKeyStore},
+		{name: "master key not found", err: fmt.Errorf("open vault: %w", constants.ErrKeyStoreKeyNotFound), want: ExecutionFailureKeyStore},
+		{name: "secret service down", err: fmt.Errorf("open vault: %w", constants.ErrKeyStoreSecretServiceDown), want: ExecutionFailureKeyStore},
+		{name: "evidence vault required", err: fmt.Errorf("evidence: %w", constants.ErrEvaluationEvidenceVaultRequired), want: ExecutionFailureKeyStore},
 		{name: "unrecognized", err: fmt.Errorf("opaque failure"), want: ExecutionFailureInternal},
 	}
 	for _, tt := range tests {

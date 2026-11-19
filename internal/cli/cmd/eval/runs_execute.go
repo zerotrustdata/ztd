@@ -238,10 +238,10 @@ func executeRun(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions)
 		}
 	}
 
-	return executeAssignments(cmd, deps, opts, watcher, publication)
+	return executeAssignments(cmd, deps, opts, watcher, publication, liveEventSession{client: appClient, cliSessionID: authContext.CLISessionID})
 }
 
-func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions, watcher *runStopWatcher, publication *evaluation.CampaignPublicationCoordinator) (executed int, runErr error) {
+func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecuteOptions, watcher *runStopWatcher, publication *evaluation.CampaignPublicationCoordinator, live evaluation.LiveEventReporter) (executed int, runErr error) {
 	if opts.Daemon {
 		opts.Limit = ^uint32(0)
 	} else if opts.Limit == 0 {
@@ -344,11 +344,12 @@ func executeAssignments(cmd *cobra.Command, deps nativeEvalDeps, opts runExecute
 		Topology:    topology,
 		Store:       store,
 		Residency:   residency,
+		LiveEvents:  live,
 	})
 	if err != nil {
 		return 0, fmt.Errorf("evaluation: run execute: %w", err)
 	}
-	controller := controllerFactory(executor)
+	controller := controllerFactory(executor).WithLiveEvents(live)
 	if publication != nil {
 		controller = controller.WithPublication(publication)
 	}
@@ -589,6 +590,8 @@ type campaignAgentExecutorInputs struct {
 	Store       *evaluation.Store
 	// Residency releases provider models between the phases of an assignment.
 	Residency evaluation.ModelResidencyReleaser
+	// LiveEvents receives the executor's live fan-out events, best effort.
+	LiveEvents evaluation.LiveEventReporter
 }
 
 // campaignAgentExecutorFactory builds the executor campaign execution runs
@@ -620,6 +623,7 @@ func newProductionCampaignAgentExecutor(in campaignAgentExecutorInputs) (evaluat
 	executor.WithDeployJoinerFactory(func(ctx context.Context) (evaluation.RosterDeployJoiner, error) {
 		return newProductionDeployJoiner(ctx, in, gatewayClient)
 	})
+	executor.WithLiveEvents(in.LiveEvents)
 	return executor, nil
 }
 
@@ -669,6 +673,36 @@ func reconcileStopRequest(ctx context.Context, store *evaluation.Store, runID st
 // The harness client is the production reporter.
 type runStateReporter interface {
 	UpdateRunState(ctx context.Context, req models.ObserveProducerRunStateRequest) error
+}
+
+// liveEventReporter is the Gateway observe producer a run pushes its live
+// assignment and fan-out events to. The harness client is the production one.
+type liveEventReporter interface {
+	StartAssignment(ctx context.Context, req models.ObserveProducerAssignmentRequest) error
+	CompleteAssignment(ctx context.Context, req models.ObserveProducerAssignmentRequest) error
+	RecordToolCallFannedOut(ctx context.Context, req models.ObserveProducerToolCallFannedOutRequest) error
+}
+
+// liveEventSession routes a run's live events to the owner's CLI session
+// under the ztd-eval identity, as runLifecycle routes its run state.
+type liveEventSession struct {
+	client       liveEventReporter
+	cliSessionID string
+}
+
+func (l liveEventSession) StartAssignment(ctx context.Context, req models.ObserveProducerAssignmentRequest) error {
+	req.CLISessionID = l.cliSessionID
+	return l.client.StartAssignment(ctx, req)
+}
+
+func (l liveEventSession) CompleteAssignment(ctx context.Context, req models.ObserveProducerAssignmentRequest) error {
+	req.CLISessionID = l.cliSessionID
+	return l.client.CompleteAssignment(ctx, req)
+}
+
+func (l liveEventSession) RecordToolCallFannedOut(ctx context.Context, req models.ObserveProducerToolCallFannedOutRequest) error {
+	req.CLISessionID = l.cliSessionID
+	return l.client.RecordToolCallFannedOut(ctx, req)
 }
 
 // runLifecycle reports one execution's lifecycle to the Gateway run projection

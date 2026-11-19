@@ -33,10 +33,12 @@ import (
 	operatorv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/operator/v1"
 )
 
-// consensusVoteInferer runs one member's vote as governed inference.
+// consensusVoteInferer runs one member's vote as governed inference, and
+// resolves the Inference Operator a vote would dispatch to without running it.
 // *dispatch.DispatchService satisfies it.
 type consensusVoteInferer interface {
 	DispatchInference(ctx context.Context, req dispatch.DispatchInferenceRequest) (*dispatch.DispatchInferenceResult, error)
+	ResolveInferenceOperator(ctx context.Context, req dispatch.DispatchInferenceRequest) (*operatorv1.OperatorDocument, error)
 }
 
 // consensusBindingReader reads the bound consensus policy.
@@ -376,6 +378,57 @@ func (d *TribunalConsensusDeliberator) publishVote(ctx context.Context, env *com
 	return nil
 }
 
+// memberOwner returns the owner of a member application. App policies are
+// keyed by the member's SPIFFE ID, as enrollment persists them.
+func (d *TribunalConsensusDeliberator) memberOwner(ctx context.Context, memberAppID string) (string, error) {
+	policy, err := d.policies.GetAppPolicy(ctx, protocol.NewWorkloadIdentity().AppSPIFFEID(memberAppID))
+	if err != nil {
+		return "", err
+	}
+	if policy == nil || policy.OwnerUserID == "" {
+		return "", constants.ErrConsensusAppNotEnrolled
+	}
+	return policy.OwnerUserID, nil
+}
+
+// consensusVoteRoute is the part of a member's vote request that selects its
+// Inference Operator: the pinned model, its provider class (empty for the
+// local provider), the member owner's Operators, the pinned Operator, and
+// for a decision vote the decision path. castVote and VoteRoute build their
+// requests from it, so readiness checks the route the vote takes.
+func consensusVoteRoute(bound *models.ConsensusPolicy, ownerUserID, memberAppID string) dispatch.DispatchInferenceRequest {
+	request := dispatch.DispatchInferenceRequest{
+		RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
+		Role:                 models.InferenceModelRoleLite,
+		Model:                bound.ModelTag,
+		ModelDigest:          bound.ModelDigest,
+		ProviderClass:        bound.ModelProviderClass,
+		RequestorUserID:      ownerUserID,
+		ActingAppID:          memberAppID,
+		TargetOperatorID:     bound.InferenceOperatorID,
+	}
+	if bound.EffectiveVoteKind() == models.ConsensusVoteKindDecision {
+		request.Decision = &operatorv1.InferenceDecisionRequest{AllowHosted: bound.AllowHosted}
+	}
+	return request
+}
+
+// VoteRoute reports whether memberAppID's vote on bound would reach an
+// Inference Operator now. It resolves the member's owner and the vote's
+// Operator exactly as castVote does, and dispatches nothing. It returns
+// ErrInferenceOperatorNotFound, ErrInferenceOperatorNotCapable, or
+// ErrInferenceOperatorAmbiguous when the vote would fail to route.
+func (d *TribunalConsensusDeliberator) VoteRoute(ctx context.Context, bound *models.ConsensusPolicy, memberAppID string) error {
+	ownerUserID, err := d.memberOwner(ctx, memberAppID)
+	if err != nil {
+		return fmt.Errorf("tribunal consensus: member owner: %w", err)
+	}
+	if _, err := d.inference.ResolveInferenceOperator(ctx, consensusVoteRoute(bound, ownerUserID, memberAppID)); err != nil {
+		return fmt.Errorf("tribunal consensus: vote route: %w", err)
+	}
+	return nil
+}
+
 // castVote runs memberAppID's vote inference. expiresAt is the subject
 // envelope's expiry: a retry wait never runs into the time L4 and L5 need to
 // admit and dispatch it.
@@ -385,45 +438,31 @@ func (d *TribunalConsensusDeliberator) castVote(ctx context.Context, bound *mode
 		d.logger.Warn("tribunal consensus: member key unavailable", slog.String("member_app_id", memberAppID), logging.ErrorKind(constants.ErrConsensusMemberKeyUnavailable))
 		return memberVote{failure: constants.ErrConsensusMemberKeyUnavailable}
 	}
-	// App policies are keyed by the member's SPIFFE ID, as enrollment persists them.
-	policy, err := d.policies.GetAppPolicy(ctx, protocol.NewWorkloadIdentity().AppSPIFFEID(memberAppID))
-	if err == nil && (policy == nil || policy.OwnerUserID == "") {
-		err = constants.ErrConsensusAppNotEnrolled
-	}
+	ownerUserID, err := d.memberOwner(ctx, memberAppID)
 	if err != nil {
 		d.logger.Warn("tribunal consensus: member owner unavailable", slog.String("member_app_id", memberAppID), logging.ErrorKind(err))
 		return memberVote{failure: fmt.Errorf("member owner: %w", err)}
 	}
-	system, user, err := tribunal.ConsensusVotePrompt(member, subject)
-	if err != nil {
-		return memberVote{failure: err}
-	}
-	request := dispatch.DispatchInferenceRequest{
-		RequestSchemaVersion: constants.InferenceRequestSchemaVersion,
-		Role:                 models.InferenceModelRoleLite,
-		Messages: []*operatorv1.InferenceMessage{
-			consensusVoteMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, system),
-			consensusVoteMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, user),
-		},
-		ResponseFormat: &operatorv1.InferenceResponseFormat{
-			MediaType:  "application/json",
-			JsonSchema: tribunal.ConsensusVoteJSONSchema,
-		},
-		Model:           bound.ModelTag,
-		ModelDigest:     bound.ModelDigest,
-		ProviderClass:   bound.ModelProviderClass,
-		RequestorUserID: policy.OwnerUserID,
-		ActingAppID:     memberAppID,
-	}
-	request.TargetOperatorID = bound.InferenceOperatorID
+	request := consensusVoteRoute(bound, ownerUserID, memberAppID)
 	if bound.EffectiveVoteKind() == models.ConsensusVoteKindDecision {
 		decision, err := tribunal.ConsensusDecisionRequest(member, subject, bound.AllowHosted)
 		if err != nil {
 			return memberVote{failure: err}
 		}
 		request.Decision = decision
-		request.Messages = nil
-		request.ResponseFormat = nil
+	} else {
+		system, user, err := tribunal.ConsensusVotePrompt(member, subject)
+		if err != nil {
+			return memberVote{failure: err}
+		}
+		request.Messages = []*operatorv1.InferenceMessage{
+			consensusVoteMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_SYSTEM, system),
+			consensusVoteMessage(operatorv1.InferenceMessageRole_INFERENCE_MESSAGE_ROLE_USER, user),
+		}
+		request.ResponseFormat = &operatorv1.InferenceResponseFormat{
+			MediaType:  "application/json",
+			JsonSchema: tribunal.ConsensusVoteJSONSchema,
+		}
 	}
 	result, inference, err := d.dispatchVote(ctx, request, memberAppID, txHash, expiresAt)
 	if err != nil {
@@ -496,16 +535,19 @@ func (d *TribunalConsensusDeliberator) dispatchVote(ctx context.Context, request
 // awaitVoteRetry waits out the delay before the vote attempt with retry_count
 // retry and reports whether to dispatch it. A wait the policy does not allow
 // is never started, and neither is one that would not end before both ctx's
-// deadline and the subject envelope's expiry less DispatchTimeout, the margin
-// the Operator's L4 and L5 need to admit and run the envelope. A subject
-// without an expiry has no provable lifetime, so it is never retried.
+// deadline and the subject envelope's expiry less DispatchTimeout (the margin
+// the Operator's L4 and L5 need to admit and run the envelope) and less the
+// admission reserve (governance.AdmissionReserve: the share the L3 wait and the
+// admission review still need). A refused wait leaves the last transient
+// failure standing. A subject without an expiry has no provable lifetime, so
+// it is never retried.
 func (d *TribunalConsensusDeliberator) awaitVoteRetry(ctx context.Context, retry uint32, expiresAt time.Time) bool {
 	delay, ok := d.retry.Delay(retry)
 	if !ok || ctx.Err() != nil || expiresAt.IsZero() {
 		return false
 	}
 	ends := time.Now().Add(delay)
-	if !ends.Before(expiresAt.Add(-DispatchTimeout)) {
+	if !ends.Before(expiresAt.Add(-DispatchTimeout - governance.AdmissionReserve(ctx))) {
 		return false
 	}
 	if deadline, bounded := ctx.Deadline(); bounded && !ends.Before(deadline) {

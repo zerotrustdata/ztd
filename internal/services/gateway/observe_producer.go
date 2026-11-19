@@ -546,14 +546,22 @@ func (s *ObserveProducerService) emitLiveSSEEvent(route SSERoute, eventType stri
 	return s.emitSSEEvent(route, eventType, payload)
 }
 
+// liveProjectionID is a live projection's document key: the owner's user ID
+// and the projection's own ID.
+func liveProjectionID(userID, docID string) string {
+	return userID + "/" + docID
+}
+
 // persistLiveProjection persists a live campaign projection to the document
-// store with the user_id ownership field.
-func (s *ObserveProducerService) persistLiveProjection(ctx context.Context, collection string, docID string, proj any) error {
+// store with the user_id ownership field, under the owner's key
+// (liveProjectionID): campaign, cycle and assignment IDs come from each user's
+// own campaign, so two users can hold the same one.
+func (s *ObserveProducerService) persistLiveProjection(ctx context.Context, collection, userID, docID string, proj any) error {
 	projBytes, err := json.Marshal(proj)
 	if err != nil {
 		return fmt.Errorf("marshal projection: %w", err)
 	}
-	if err := s.docStore.DocSet(ctx, collection, docID, projBytes); err != nil {
+	if err := s.docStore.DocSet(ctx, collection, liveProjectionID(userID, docID), projBytes); err != nil {
 		return fmt.Errorf("persist projection: %w", err)
 	}
 	return nil
@@ -585,7 +593,7 @@ func (s *ObserveProducerService) StartCycle(ctx context.Context, userID string, 
 		UserID string `json:"user_id"`
 		models.CycleStateProjection
 	}{UserID: userID, CycleStateProjection: proj}
-	if err := s.persistLiveProjection(ctx, collection, proj.CycleID, wrapped); err != nil {
+	if err := s.persistLiveProjection(ctx, collection, userID, proj.CycleID, wrapped); err != nil {
 		return fmt.Errorf("observe producer: start cycle: %w", err)
 	}
 
@@ -636,7 +644,7 @@ func (s *ObserveProducerService) CompleteCycle(ctx context.Context, userID strin
 		UserID string `json:"user_id"`
 		models.CycleStateProjection
 	}{UserID: userID, CycleStateProjection: proj}
-	if err := s.persistLiveProjection(ctx, collection, proj.CycleID, wrapped); err != nil {
+	if err := s.persistLiveProjection(ctx, collection, userID, proj.CycleID, wrapped); err != nil {
 		return fmt.Errorf("observe producer: complete cycle: %w", err)
 	}
 
@@ -691,7 +699,7 @@ func (s *ObserveProducerService) StartAssignment(ctx context.Context, userID str
 		UserID string `json:"user_id"`
 		models.AssignmentProgressProjection
 	}{UserID: userID, AssignmentProgressProjection: proj}
-	if err := s.persistLiveProjection(ctx, collection, proj.AssignmentID, wrapped); err != nil {
+	if err := s.persistLiveProjection(ctx, collection, userID, proj.AssignmentID, wrapped); err != nil {
 		return fmt.Errorf("observe producer: start assignment: %w", err)
 	}
 
@@ -746,7 +754,7 @@ func (s *ObserveProducerService) CompleteAssignment(ctx context.Context, userID 
 		UserID string `json:"user_id"`
 		models.AssignmentProgressProjection
 	}{UserID: userID, AssignmentProgressProjection: proj}
-	if err := s.persistLiveProjection(ctx, collection, proj.AssignmentID, wrapped); err != nil {
+	if err := s.persistLiveProjection(ctx, collection, userID, proj.AssignmentID, wrapped); err != nil {
 		return fmt.Errorf("observe producer: complete assignment: %w", err)
 	}
 
@@ -800,7 +808,7 @@ func (s *ObserveProducerService) RecordModelRoleInvocation(ctx context.Context, 
 		UserID string `json:"user_id"`
 		models.AssignmentProgressProjection
 	}{UserID: userID, AssignmentProgressProjection: proj}
-	if err := s.persistLiveProjection(ctx, collection, proj.AssignmentID, wrapped); err != nil {
+	if err := s.persistLiveProjection(ctx, collection, userID, proj.AssignmentID, wrapped); err != nil {
 		return fmt.Errorf("observe producer: record model role: %w", err)
 	}
 
@@ -862,6 +870,37 @@ func (s *ObserveProducerService) RecordMetricAvailability(ctx context.Context, u
 	return nil
 }
 
+// RecordToolCallFannedOut emits an ai.eval.tool_call.fanned_out SSE event for
+// one tool call the harness fanned out across roster targets. Like a metric, it
+// persists no projection: the signed agent trace is the record of the group.
+func (s *ObserveProducerService) RecordToolCallFannedOut(ctx context.Context, userID string, route SSERoute, payload models.EvalToolCallFannedOutPayload) error {
+	if payload.CampaignID == "" {
+		return fmt.Errorf("observe producer: record tool call fan-out: %w", constants.ErrObserveCampaignIDRequired)
+	}
+	if payload.AssignmentID == "" {
+		return fmt.Errorf("observe producer: record tool call fan-out: %w", constants.ErrObserveAssignmentIDRequired)
+	}
+	if payload.GroupID == "" {
+		return fmt.Errorf("observe producer: record tool call fan-out: %w", constants.ErrObserveGroupIDRequired)
+	}
+	if err := route.validate(); err != nil {
+		return fmt.Errorf("observe producer: record tool call fan-out: %w", err)
+	}
+
+	payload.SchemaVersion = constants.ObserveEventPayloadSchemaVersion
+	payload.SourceSequence = s.nextSourceSequence()
+	eventID, err := uuid.NewString()
+	if err != nil {
+		return fmt.Errorf("observe producer: record tool call fan-out: %w", err)
+	}
+	payload.EventID = eventID
+	payload.ObservedAt = time.Now().UTC()
+	if err := s.emitLiveSSEEvent(route, string(constants.EventAiEvalToolCallFannedOut), eventID, payload); err != nil {
+		return fmt.Errorf("observe producer: record tool call fan-out: emit sse: %w", err)
+	}
+	return nil
+}
+
 // CompleteVerifier persists the verification progress projection and emits an
 // ai.eval.verifier.completed SSE event after successful persistence.
 func (s *ObserveProducerService) CompleteVerifier(ctx context.Context, userID string, route SSERoute, proj models.VerificationProgressProjection) error {
@@ -887,7 +926,7 @@ func (s *ObserveProducerService) CompleteVerifier(ctx context.Context, userID st
 		UserID string `json:"user_id"`
 		models.VerificationProgressProjection
 	}{UserID: userID, VerificationProgressProjection: proj}
-	if err := s.persistLiveProjection(ctx, collection, proj.CycleID, wrapped); err != nil {
+	if err := s.persistLiveProjection(ctx, collection, userID, proj.CycleID, wrapped); err != nil {
 		return fmt.Errorf("observe producer: complete verifier: %w", err)
 	}
 
@@ -944,7 +983,7 @@ func (s *ObserveProducerService) RecordProofAvailability(ctx context.Context, us
 		UserID string `json:"user_id"`
 		models.PublicationProgressProjection
 	}{UserID: userID, PublicationProgressProjection: pubProj}
-	if err := s.persistLiveProjection(ctx, collection, cycleID, wrapped); err != nil {
+	if err := s.persistLiveProjection(ctx, collection, userID, cycleID, wrapped); err != nil {
 		return fmt.Errorf("observe producer: record proof: %w", err)
 	}
 
@@ -996,7 +1035,7 @@ func (s *ObserveProducerService) CompletePublication(ctx context.Context, userID
 		UserID string `json:"user_id"`
 		models.PublicationProgressProjection
 	}{UserID: userID, PublicationProgressProjection: proj}
-	if err := s.persistLiveProjection(ctx, collection, proj.CycleID, wrapped); err != nil {
+	if err := s.persistLiveProjection(ctx, collection, userID, proj.CycleID, wrapped); err != nil {
 		return fmt.Errorf("observe producer: complete publication: %w", err)
 	}
 
@@ -1049,7 +1088,7 @@ func (s *ObserveProducerService) EmitHeartbeat(ctx context.Context, userID strin
 		UserID string `json:"user_id"`
 		models.SourceFreshnessProjection
 	}{UserID: userID, SourceFreshnessProjection: freshProj}
-	if err := s.persistLiveProjection(ctx, collection, sourceID, wrapped); err != nil {
+	if err := s.persistLiveProjection(ctx, collection, userID, sourceID, wrapped); err != nil {
 		return fmt.Errorf("observe producer: emit heartbeat: %w", err)
 	}
 
@@ -1116,7 +1155,7 @@ func (s *ObserveProducerService) RequestStop(ctx context.Context, userID string,
 		UserID string `json:"user_id"`
 		models.SupervisorStateProjection
 	}{UserID: userID, SupervisorStateProjection: supProj}
-	if err := s.persistLiveProjection(ctx, collection, docID, wrapped); err != nil {
+	if err := s.persistLiveProjection(ctx, collection, userID, docID, wrapped); err != nil {
 		return fmt.Errorf("observe producer: request stop: %w", err)
 	}
 

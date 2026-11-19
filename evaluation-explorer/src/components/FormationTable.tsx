@@ -8,28 +8,18 @@ import { useStoreState } from '../state/store';
 import { MODEL_ROLE_WIRE_ORDER } from '../content/roles';
 import { formatParameterCount } from '../content/framework-catalog';
 import { roleLabel } from '../views/derived';
-import type { FormationGroup, FormationLeaderboardRow, HostedFormationRow } from '../views/formations';
+import type { FormationGroup, FormationLeaderboardRow } from '../views/formations';
 import { formatDuration, formatLatency, formatNumber, formatPercent, formatTokens, UnavailableValue } from './shared';
 import { formatCompact } from '../utils/format';
 import { OutcomeBreakdown } from './evidence';
 
-const HOSTED_FORMATION_UNRANKED_TITLE =
-  'Not ranked: a hosted member\'s provider does not disclose its parameter count, so the formation size factor and score cannot be computed.';
-
-function isHostedFormation(row: FormationGroup): row is HostedFormationRow {
-  return 'hosted_variants' in row;
-}
-
-export function FormationTable({ formations, leaderboard = false }: { formations: Array<FormationGroup | FormationLeaderboardRow | HostedFormationRow>; leaderboard?: boolean }) {
+export function FormationTable({ formations, leaderboard = false }: { formations: Array<FormationGroup | FormationLeaderboardRow>; leaderboard?: boolean }) {
   const models = useStoreState((state) => Array.from(state.models.values()));
   const columns = useMemo<DataTableColumn<FormationGroup | FormationLeaderboardRow>[]>(() => [
     ...(leaderboard ? [{
       id: 'rank', header: 'Rank',
-      // Unranked hosted formations sort after every rank.
       accessorFn: (row: FormationGroup | FormationLeaderboardRow) => 'rank' in row ? row.rank : Number.POSITIVE_INFINITY,
-      cell: ({ row }: { row: { original: FormationGroup | FormationLeaderboardRow } }) => 'rank' in row.original
-        ? row.original.rank
-        : <span className="leaderboard-rank rank-unranked" title={HOSTED_FORMATION_UNRANKED_TITLE} aria-label="Not ranked">—</span>,
+      cell: ({ row }: { row: { original: FormationGroup | FormationLeaderboardRow } }) => 'rank' in row.original ? row.original.rank : <UnavailableValue />,
     }] : []),
     {
       id: 'formation', header: 'Formation', accessorFn: (row) => row.summary.stack_id,
@@ -65,9 +55,7 @@ export function FormationTable({ formations, leaderboard = false }: { formations
       id: 'score', header: 'Score', accessorFn: (row: FormationGroup | FormationLeaderboardRow) => 'score' in row ? row.score : -1,
       cell: ({ row }: { row: { original: FormationGroup | FormationLeaderboardRow } }) => 'score' in row.original
         ? formatNumber(row.original.score, 1)
-        : isHostedFormation(row.original)
-          ? <span className="unavailable-value" title={HOSTED_FORMATION_UNRANKED_TITLE}>Not ranked</span>
-          : <UnavailableValue />,
+        : <UnavailableValue />,
     }] : []),
     {
       id: 'accuracy', header: 'Accuracy', accessorFn: (group) => group.summary.pass_rate?.estimate ?? -1,
@@ -93,7 +81,7 @@ export function FormationTable({ formations, leaderboard = false }: { formations
       id: 'size', header: 'Parameters', accessorFn: (group) => group.summary.parameter_count,
       cell: ({ row }) => row.original.summary.parameter_count !== undefined
         ? formatParameterCount(row.original.summary.parameter_count)
-        : isHostedFormation(row.original)
+        : 'hosted_variants' in row.original && row.original.hosted_variants.length > 0
           ? <span className="unavailable-value" title={`Hosted members do not disclose parameter counts: ${row.original.hosted_variants.join(', ')}`}>Undisclosed</span>
           : <UnavailableValue />,
     },

@@ -23,19 +23,20 @@ import (
 
 // consensusStatus is the typed output of `ztd consensus status`.
 type consensusStatus struct {
-	VoteKind            string            `json:"vote_kind,omitempty"`
-	InferenceOperatorID string            `json:"inference_operator_id,omitempty"`
-	Bound               bool              `json:"bound"`
-	Provider            string            `json:"provider,omitempty"`
-	Quorum              int               `json:"quorum,omitempty"`
-	ModelTag            string            `json:"model_tag,omitempty"`
-	ModelProviderClass  string            `json:"model_provider_class,omitempty"`
-	Members             []string          `json:"members"`
-	Usable              int               `json:"usable"`
-	Ready               bool              `json:"ready"`
-	Posture             constants.Posture `json:"posture"`
-	GovernanceReady     bool              `json:"governance_ready"`
-	L2Enforced          bool              `json:"l2_enforced"`
+	VoteKind            string                            `json:"vote_kind,omitempty"`
+	InferenceOperatorID string                            `json:"inference_operator_id,omitempty"`
+	Bound               bool                              `json:"bound"`
+	Provider            string                            `json:"provider,omitempty"`
+	Quorum              int                               `json:"quorum,omitempty"`
+	ModelTag            string                            `json:"model_tag,omitempty"`
+	ModelProviderClass  string                            `json:"model_provider_class,omitempty"`
+	Members             []string                          `json:"members"`
+	Usable              int                               `json:"usable"`
+	Ready               bool                              `json:"ready"`
+	NotReady            constants.ConsensusNotReadyReason `json:"not_ready,omitempty"`
+	Posture             constants.Posture                 `json:"posture"`
+	GovernanceReady     bool                              `json:"governance_ready"`
+	L2Enforced          bool                              `json:"l2_enforced"`
 }
 
 func statusCmd(newClient func() (authcmd.APIClient, error)) *cobra.Command {
@@ -90,6 +91,7 @@ func buildStatus(binding *models.ConsensusPolicy, health models.HealthResponse) 
 		Members:         []string{},
 		Usable:          health.Consensus.Usable,
 		Ready:           health.Consensus.Ready,
+		NotReady:        health.Consensus.NotReady,
 		Posture:         health.Posture,
 		GovernanceReady: health.GovernanceReady,
 		L2Enforced:      health.Posture.RequiresL2(),
@@ -136,6 +138,9 @@ func writeStatusText(w io.Writer, s consensusStatus) {
 			readiness = "ready"
 		}
 		fmt.Fprintf(w, "Signers    %d/%d usable (%s)\n", s.Usable, len(s.Members), readiness)
+		if reason := models.ConsensusNotReadyText(s.NotReady, s.ModelProviderClass); !s.Ready && reason != "" {
+			fmt.Fprintf(w, "Not ready  %s\n", reason)
+		}
 	}
 	l2 := "not enforced"
 	if s.L2Enforced {

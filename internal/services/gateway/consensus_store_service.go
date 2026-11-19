@@ -12,11 +12,11 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -144,8 +144,19 @@ func (s *ConsensusStoreService) OperatorL2Trust(ctx context.Context, id ...strin
 	return trust, nil
 }
 
-// ConsensusReadiness reports which members of the bound consensus can vote on this host.
-func (s *ConsensusStoreService) ConsensusReadiness(ctx context.Context, signer ConsensusMemberSigner) (models.ConsensusReadiness, error) {
+// ConsensusVoteRouter reports whether a Tribunal member's vote on bound would
+// reach an Inference Operator now, without dispatching it.
+// *TribunalConsensusDeliberator satisfies it.
+type ConsensusVoteRouter interface {
+	VoteRoute(ctx context.Context, bound *models.ConsensusPolicy, memberAppID string) error
+}
+
+// ConsensusReadiness reports which members of the bound consensus can vote on
+// this host. A Tribunal member is usable only when its signer is enabled, its
+// sealed key is present, and router resolves its vote to an active Inference
+// Operator that serves the binding's model provider, as the vote dispatch
+// would. A nil router routes no vote, so a Tribunal binding is not ready.
+func (s *ConsensusStoreService) ConsensusReadiness(ctx context.Context, signer ConsensusMemberSigner, router ConsensusVoteRouter) (models.ConsensusReadiness, error) {
 	policy, err := s.GetBoundConsensusApp(ctx)
 	if err != nil {
 		return models.ConsensusReadiness{}, fmt.Errorf("consensus store: readiness: %w", err)
@@ -171,6 +182,7 @@ func (s *ConsensusStoreService) ConsensusReadiness(ctx context.Context, signer C
 	if tribunal {
 		readiness.VoteKind = policy.EffectiveVoteKind()
 	}
+	var routeReason constants.ConsensusNotReadyReason
 	for _, appID := range policy.MemberAppIDs {
 		pub, err := s.signerSvc.GetTrustedSigner(ctx, appID)
 		if err != nil {
@@ -180,28 +192,51 @@ func (s *ConsensusStoreService) ConsensusReadiness(ctx context.Context, signer C
 		if tribunal && signer != nil {
 			member.LocalKey = signer.HasKey(appID)
 		}
-		if member.SignerEnabled && (!tribunal || member.LocalKey) {
+		if tribunal && member.SignerEnabled && member.LocalKey {
+			reason, err := consensusVoteRouteReason(ctx, router, policy, appID)
+			if err != nil {
+				return models.ConsensusReadiness{}, fmt.Errorf("consensus store: readiness: member %s: %w", appID, err)
+			}
+			member.VoteRouted = reason == ""
+			if routeReason == "" {
+				routeReason = reason
+			}
+		}
+		if member.SignerEnabled && (!tribunal || (member.LocalKey && member.VoteRouted)) {
 			readiness.Usable++
 		}
 		readiness.Members = append(readiness.Members, member)
 	}
 	readiness.Ready = readiness.Usable >= readiness.Quorum
-	if policy.EffectiveVoteKind() == models.ConsensusVoteKindDecision {
-		doc, err := s.docSvc.DocGet(ctx, marshaler.CollectionName(constants.CollectionOperators), policy.InferenceOperatorID)
-		if err != nil {
-			return models.ConsensusReadiness{}, fmt.Errorf("consensus readiness: pinned Operator: %w", err)
+	if !readiness.Ready {
+		readiness.NotReady = routeReason
+		if readiness.NotReady == "" {
+			readiness.NotReady = constants.ConsensusNotReadySigners
 		}
-		if doc == nil {
-			readiness.Ready = false
-			return readiness, nil
-		}
-		op, err := models.OperatorDocumentFromStore(doc)
-		if err != nil {
-			return models.ConsensusReadiness{}, err
-		}
-		readiness.Ready = readiness.Ready && op != nil && op.GetStatus() == string(constants.OperatorStatusActive) && op.GetOperatorSessionId() != "" && op.GetRuntimeConfig().GetInferenceDecisionBackend() != "" && slices.Contains(op.GetRuntimeConfig().GetCapabilities(), string(constants.OperatorCapabilityInference)) && slices.Contains(op.GetRuntimeConfig().GetInferenceDecisionModels(), policy.ModelTag) && (!policy.AllowHosted || op.GetRuntimeConfig().GetInferenceAllowHostedDecision())
 	}
 	return readiness, nil
+}
+
+// consensusVoteRouteReason is the not-ready reason for memberAppID's vote
+// route, or empty when the vote routes. A failure that is not a routing
+// outcome (a store error) is returned, not reported as a reason.
+func consensusVoteRouteReason(ctx context.Context, router ConsensusVoteRouter, policy *models.ConsensusPolicy, memberAppID string) (constants.ConsensusNotReadyReason, error) {
+	if router == nil {
+		return constants.ConsensusNotReadyVoteOperator, nil
+	}
+	err := router.VoteRoute(ctx, policy, memberAppID)
+	switch {
+	case err == nil:
+		return "", nil
+	case errors.Is(err, constants.ErrConsensusAppNotEnrolled):
+		return constants.ConsensusNotReadyMemberOwner, nil
+	case errors.Is(err, constants.ErrInferenceOperatorAmbiguous):
+		return constants.ConsensusNotReadyVoteOperatorAmbiguous, nil
+	case errors.Is(err, constants.ErrInferenceOperatorNotFound), errors.Is(err, constants.ErrInferenceOperatorNotCapable):
+		return constants.ConsensusNotReadyVoteOperator, nil
+	default:
+		return "", err
+	}
 }
 
 // ConsensusAppDeliberator dispatches the GovernanceEnvelope to the bound consensus application's HTTPS endpoint.

@@ -94,8 +94,11 @@ type CampaignController struct {
 	store       CampaignStore
 	executor    CampaignAssignmentExecutor
 	publication *CampaignPublicationCoordinator
-	now         func() time.Time
-	newID       func(string) string
+	// live pushes assignment start and completion to the Gateway's observe
+	// producer, best effort.
+	live  liveEvents
+	now   func() time.Time
+	newID func(string) string
 }
 
 func NewCampaignController(store CampaignStore, executor CampaignAssignmentExecutor, now func() time.Time, newID func(string) string) *CampaignController {
@@ -113,6 +116,15 @@ func NewCampaignController(store CampaignStore, executor CampaignAssignmentExecu
 func (c *CampaignController) WithPublication(publication *CampaignPublicationCoordinator) *CampaignController {
 	if c != nil {
 		c.publication = publication
+	}
+	return c
+}
+
+// WithLiveEvents reports each executed assignment's start and persisted
+// completion to reporter as live events, best effort (liveEvents).
+func (c *CampaignController) WithLiveEvents(reporter LiveEventReporter) *CampaignController {
+	if c != nil {
+		c.live = liveEvents{reporter: reporter}
 	}
 	return c
 }
@@ -697,6 +709,7 @@ func (c *CampaignController) ExecuteNextAssignment(ctx context.Context, runID st
 	if startPublishErr != nil {
 		startPublishErr = fmt.Errorf("%w: assignment %s start: %w", constants.ErrEvaluationPublicationFailed, assignment.GetAssignmentId(), startPublishErr)
 	}
+	c.live.assignmentStarted(ctx, assignment)
 
 	if gateErr != nil {
 		// The failed probe is this assignment's executor failure. Nothing was

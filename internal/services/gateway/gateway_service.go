@@ -1267,7 +1267,7 @@ func (ls *GatewayModeService) IsGovernanceReady(ctx context.Context) bool {
 // installed after construction is observed. On a readiness error it logs and
 // returns the zero HealthConsensus, which reports not ready.
 func (ls *GatewayModeService) ConsensusHealth(ctx context.Context) models.HealthConsensus {
-	readiness, err := ls.consensusStore.ConsensusReadiness(ctx, ls.consensusSigner)
+	readiness, err := ls.consensusStore.ConsensusReadiness(ctx, ls.consensusSigner, ls.tribunalConsensus)
 	if err != nil {
 		ls.logger.Error("Failed to compute consensus readiness", "state", string(constants.ConnectionStateError), "error", err)
 		return models.HealthConsensus{}

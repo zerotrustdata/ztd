@@ -84,6 +84,18 @@
       ],
       "persistence": "gateway.sse_store"
     },
+    "AiEvalToolCallFannedOut": {
+      "_go_const": "EventAiEvalToolCallFannedOut",
+      "value": "ztd.v1.ai.eval.tool_call.fanned_out",
+      "kind": "fact",
+      "transport": [
+        "sse"
+      ],
+      "producers": [
+        "gateway"
+      ],
+      "persistence": "gateway.sse_store"
+    },
     "AiEvalProofAvailable": {
       "_go_const": "EventAiEvalProofAvailable",
       "value": "ztd.v1.ai.eval.proof.available",

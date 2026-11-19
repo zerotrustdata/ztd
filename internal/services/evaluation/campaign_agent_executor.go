@@ -110,6 +110,16 @@ type CampaignAgentExecutor struct {
 	// logger records harness lifecycle facts: IDs, counts, durations, and
 	// error kinds, never execution content (INV-STOR-LOG-01).
 	logger *slog.Logger
+	// live pushes each fanned-out tool call group to the Gateway's observe
+	// producer, best effort.
+	live liveEvents
+}
+
+// WithLiveEvents reports each fanned-out tool call group to reporter as a live
+// event, best effort (liveEvents).
+func (e *CampaignAgentExecutor) WithLiveEvents(reporter LiveEventReporter) *CampaignAgentExecutor {
+	e.live = liveEvents{reporter: reporter}
+	return e
 }
 
 // WithDeployJoinerFactory configures how the executor watches and joins newly
@@ -871,7 +881,7 @@ func (r *agentRun) loop(ctx context.Context) error {
 					r.joiner = joiner
 				}
 			}
-			callCtx, cancel := agentCallContext(ctx)
+			callCtx, cancel := agentCallContext(ctx, r.budget)
 			group, err := r.runTool(callCtx, turn, modelCallID, toolCall)
 			cancel()
 			if err != nil {
@@ -1068,11 +1078,19 @@ func agentAssistantMessage(result *operatorv1.InferenceResult, text string, tool
 // Operator continues executing, leaving an unclaimed ledger entry. The drain
 // is bounded by one approval and inference budget; cancellation before the
 // assignment deadline still interrupts it. The loop checks the assignment context before every new call.
-func agentCallContext(ctx context.Context) (context.Context, context.CancelFunc) {
-	deadline, ok := ctx.Deadline()
+// Under a scenario budget the call's deadline follows the budget's credits
+// (scenarioBudget.follow), and a held budget defers the call's expiry until its
+// release credits the wait: a fanned-out group's vote retries, credited when
+// the group returns, never use up the drain a later target needs.
+func agentCallContext(ctx context.Context, budget *scenarioBudget) (context.Context, context.CancelFunc) {
+	_, ok := ctx.Deadline()
 	if !ok || ctx.Err() != nil {
 		return ctx, func() {}
 	}
+	if budget != nil {
+		return budget.follow(ctx, mcp.ApprovalRequestTTL+inferencedispatch.RequestDeadline)
+	}
+	deadline, _ := ctx.Deadline()
 	callCtx, cancel := context.WithDeadline(context.WithoutCancel(ctx), deadline.Add(mcp.ApprovalRequestTTL+inferencedispatch.RequestDeadline))
 	stop := context.AfterFunc(ctx, func() {
 		if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -1386,7 +1404,7 @@ func (r *agentRun) infer(ctx context.Context, call AgentModelCall, messages []*o
 // context, so an admitted attempt returns its signed outcome even past the
 // loop deadline.
 func (r *agentRun) inferAttempt(ctx context.Context, call AgentModelCall, messages []*operatorv1.InferenceMessage, tools []*operatorv1.InferenceToolDeclaration) (*operatorv1.InferenceResult, AgentModelCall, error) {
-	callCtx, cancel := agentCallContext(ctx)
+	callCtx, cancel := agentCallContext(ctx, r.budget)
 	defer cancel()
 	return r.dispatchInference(callCtx, call, messages, tools)
 }
@@ -1644,8 +1662,10 @@ func (r *agentRun) fanOut(ctx context.Context, spec agentToolSpec, request agent
 			succeeded++
 		}
 	}
+	duration := time.Since(started)
 	r.log().Info("harness tool call fanned out", "tool", records[0].ToolName, "group_id", records[0].GroupID,
-		"targets", len(records), "succeeded", succeeded, "concurrency", concurrency, "duration_ms", time.Since(started).Milliseconds())
+		"targets", len(records), "succeeded", succeeded, "concurrency", concurrency, "duration_ms", duration.Milliseconds())
+	r.executor.live.toolCallFannedOut(ctx, r.req.Assignment, records[0], len(records), succeeded, concurrency, duration)
 	return completed, nil
 }
 

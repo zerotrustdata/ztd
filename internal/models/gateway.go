@@ -117,8 +117,10 @@ type HealthConsensus struct {
 	Provider string `json:"provider,omitempty"` // constants.ConsensusProvider of the binding
 	Quorum   int    `json:"quorum,omitempty"`   // K
 	Members  int    `json:"members,omitempty"`  // N
-	Usable   int    `json:"usable"`             // members that can vote now (enabled signer; tribunal: local key present)
+	Usable   int    `json:"usable"`             // members that can vote now (enabled signer; tribunal: local key present and the vote routes to an Inference Operator)
 	Ready    bool   `json:"ready"`              // Usable >= Quorum on an enabled binding
+	// NotReady is the closed reason Ready is false on a bound binding.
+	NotReady constants.ConsensusNotReadyReason `json:"not_ready,omitempty"`
 }
 
 // Describe renders the consensus summary for a status line. A bound binding
@@ -132,6 +134,9 @@ func (c HealthConsensus) Describe(posture constants.Posture) string {
 		}
 		if !c.Ready {
 			line += " | NOT READY"
+			if reason := ConsensusNotReadyText(c.NotReady, ""); reason != "" {
+				line += ": " + reason
+			}
 		}
 		return line
 	}
@@ -142,6 +147,27 @@ func (c HealthConsensus) Describe(posture constants.Posture) string {
 		return fmt.Sprintf("NOT BOUND — posture %s requires L2: ztd consensus enroll tribunal --model <tag>", posture)
 	}
 	return fmt.Sprintf("not bound (posture %s does not require L2)", posture)
+}
+
+// ConsensusNotReadyText renders a not-ready reason for an operator.
+// providerClass is the binding's model provider class when the caller holds
+// the binding (empty for the local provider, or when unknown).
+func ConsensusNotReadyText(reason constants.ConsensusNotReadyReason, providerClass string) string {
+	switch reason {
+	case constants.ConsensusNotReadyMemberOwner:
+		return "a member has no enrolled owner"
+	case constants.ConsensusNotReadyVoteOperator:
+		if providerClass != "" {
+			return "no active Inference Operator serves " + providerClass
+		}
+		return "no active Inference Operator serves the vote model"
+	case constants.ConsensusNotReadyVoteOperatorAmbiguous:
+		return "more than one active Inference Operator serves the vote model"
+	case constants.ConsensusNotReadySigners:
+		return "fewer usable signers than the quorum"
+	default:
+		return ""
+	}
 }
 
 // ConsensusReadiness is the single readiness view of the bound L2 consensus,
@@ -157,10 +183,15 @@ type ConsensusReadiness struct {
 	ModelProviderClass  string
 	Members             []ConsensusMemberReadiness
 	// Usable counts members with an enabled trusted signer and, under the
-	// tribunal provider, a sealed signing key present on this host.
+	// tribunal provider, a sealed signing key present on this host and a vote
+	// that routes to an Inference Operator.
 	Usable int
 	// Ready is Bound && Usable >= Quorum.
 	Ready bool
+	// NotReady is the reason Ready is false: the owner or vote-route reason of
+	// the first member, in member order, whose vote cannot route, and
+	// otherwise signers.
+	NotReady constants.ConsensusNotReadyReason
 }
 
 // ConsensusMemberReadiness is one member's readiness.
@@ -170,6 +201,10 @@ type ConsensusMemberReadiness struct {
 	// LocalKey is meaningful only for the tribunal provider: the member's
 	// sealed app signing key is present and unseals on this host.
 	LocalKey bool
+	// VoteRouted is meaningful only for the tribunal provider: the member's
+	// vote resolves to an active Inference Operator through the selection the
+	// vote dispatch applies.
+	VoteRouted bool
 }
 
 // Summary is the unauthenticated /health projection of r.
@@ -185,6 +220,7 @@ func (r ConsensusReadiness) Summary() HealthConsensus {
 		Members:  len(r.Members),
 		Usable:   r.Usable,
 		Ready:    r.Ready,
+		NotReady: r.NotReady,
 	}
 }
 

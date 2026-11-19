@@ -8,10 +8,12 @@
 package governance
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -51,6 +53,24 @@ func ConsensusInferences(err error) []*operatorv1.ConsensusVoteInference {
 		return carried.Inferences
 	}
 	return nil
+}
+
+// admissionReserveKey carries the admission reserve through a deliberation.
+type admissionReserveKey struct{}
+
+// WithAdmissionReserve records on ctx how much of the subject envelope's
+// lifetime the admission stages after L2 deliberation still need: the L3
+// human decision and the contextual admission review. The deliberation
+// leaves that share unspent, so a vote retry wait never runs into it.
+func WithAdmissionReserve(ctx context.Context, reserve time.Duration) context.Context {
+	return context.WithValue(ctx, admissionReserveKey{}, reserve)
+}
+
+// AdmissionReserve returns the reserve WithAdmissionReserve recorded on ctx,
+// or zero when no admission stage follows the deliberation.
+func AdmissionReserve(ctx context.Context) time.Duration {
+	reserve, _ := ctx.Value(admissionReserveKey{}).(time.Duration)
+	return max(reserve, 0)
 }
 
 // ConsensusVoteAttemptID binds one member's provider attempt to its subject

@@ -110,7 +110,7 @@ func TestStartCycle_PersistsProjectionAndEmitsSSE(t *testing.T) {
 
 	// Cycle state projection is persisted.
 	collection := marshaler.CollectionName(constants.CollectionObserveCycleStates)
-	doc, err := docStore.DocGet(context.Background(), collection, "cycle-1")
+	doc, err := docStore.DocGet(context.Background(), collection, liveProjectionID(userID, "cycle-1"))
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 
@@ -165,7 +165,7 @@ func TestCompleteCycle_PersistsProjectionAndEmitsSSE(t *testing.T) {
 
 	// Cycle state projection is persisted.
 	collection := marshaler.CollectionName(constants.CollectionObserveCycleStates)
-	doc, err := docStore.DocGet(context.Background(), collection, "cycle-2")
+	doc, err := docStore.DocGet(context.Background(), collection, liveProjectionID(userID, "cycle-2"))
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 
@@ -219,7 +219,7 @@ func TestStartAssignment_PersistsProjectionAndEmitsSSE(t *testing.T) {
 
 	// Assignment progress projection is persisted.
 	collection := marshaler.CollectionName(constants.CollectionObserveAssignmentProgress)
-	doc, err := docStore.DocGet(context.Background(), collection, "assign-1")
+	doc, err := docStore.DocGet(context.Background(), collection, liveProjectionID(userID, "assign-1"))
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 
@@ -274,7 +274,7 @@ func TestCompleteAssignment_PersistsProjectionAndEmitsSSE(t *testing.T) {
 
 	// Assignment progress projection is persisted.
 	collection := marshaler.CollectionName(constants.CollectionObserveAssignmentProgress)
-	doc, err := docStore.DocGet(context.Background(), collection, "assign-2")
+	doc, err := docStore.DocGet(context.Background(), collection, liveProjectionID(userID, "assign-2"))
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 
@@ -405,7 +405,7 @@ func TestCompleteVerifier_PersistsProjectionAndEmitsSSE(t *testing.T) {
 
 	// Verification progress projection is persisted.
 	collection := marshaler.CollectionName(constants.CollectionObserveVerificationProgress)
-	doc, err := docStore.DocGet(context.Background(), collection, "cycle-e")
+	doc, err := docStore.DocGet(context.Background(), collection, liveProjectionID(userID, "cycle-e"))
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 
@@ -440,7 +440,7 @@ func TestRecordProofAvailability_PersistsProjectionAndEmitsSSE(t *testing.T) {
 
 	// Publication progress projection is persisted.
 	collection := marshaler.CollectionName(constants.CollectionObservePublicationProgress)
-	doc, err := docStore.DocGet(context.Background(), collection, "cycle-f")
+	doc, err := docStore.DocGet(context.Background(), collection, liveProjectionID(userID, "cycle-f"))
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 
@@ -480,7 +480,7 @@ func TestCompletePublication_PersistsProjectionAndEmitsSSE(t *testing.T) {
 
 	// Publication progress projection is persisted.
 	collection := marshaler.CollectionName(constants.CollectionObservePublicationProgress)
-	doc, err := docStore.DocGet(context.Background(), collection, "cycle-g")
+	doc, err := docStore.DocGet(context.Background(), collection, liveProjectionID(userID, "cycle-g"))
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 
@@ -522,7 +522,7 @@ func TestEmitHeartbeat_PersistsProjectionAndEmitsSSE(t *testing.T) {
 
 	// Source freshness projection is persisted.
 	collection := marshaler.CollectionName(constants.CollectionObserveSourceFreshness)
-	doc, err := docStore.DocGet(context.Background(), collection, "source-1")
+	doc, err := docStore.DocGet(context.Background(), collection, liveProjectionID(userID, "source-1"))
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 
@@ -567,7 +567,7 @@ func TestRequestStop_PersistsProjectionAndEmitsSSE(t *testing.T) {
 
 	// Supervisor state projection is persisted.
 	collection := marshaler.CollectionName(constants.CollectionObserveSupervisorStates)
-	doc, err := docStore.DocGet(context.Background(), collection, "sup-1")
+	doc, err := docStore.DocGet(context.Background(), collection, liveProjectionID(userID, "sup-1"))
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 
@@ -608,7 +608,7 @@ func TestRequestStop_RequiresRunID(t *testing.T) {
 	require.ErrorIs(t, err, constants.ErrObserveRunIDRequired)
 
 	collection := marshaler.CollectionName(constants.CollectionObserveSupervisorStates)
-	doc, err := docStore.DocGet(context.Background(), collection, "sup-norun")
+	doc, err := docStore.DocGet(context.Background(), collection, liveProjectionID(userID, "sup-norun"))
 	require.NoError(t, err)
 	assert.Nil(t, doc)
 
@@ -653,7 +653,7 @@ func TestRequestStop_SafetyStopSetsSafetyStoppedFreshness(t *testing.T) {
 	require.NoError(t, err)
 
 	collection := marshaler.CollectionName(constants.CollectionObserveSupervisorStates)
-	doc, err := docStore.DocGet(context.Background(), collection, "sup-2")
+	doc, err := docStore.DocGet(context.Background(), collection, liveProjectionID(userID, "sup-2"))
 	require.NoError(t, err)
 	require.NotNil(t, doc)
 
@@ -786,6 +786,32 @@ func TestLiveEvents_CrossUserIsolation(t *testing.T) {
 	rowsB, err := sseStore.SSEEventsListSince(routeB, 0, 100)
 	require.NoError(t, err)
 	require.Len(t, rowsB, 1)
+}
+
+// TestLiveProjections_AreScopedToTheirOwner keeps one user's live projection
+// out of another's reach when their IDs collide: campaign and assignment IDs
+// come from each user's own campaign, so two users can hold the same one.
+func TestLiveProjections_AreScopedToTheirOwner(t *testing.T) {
+	producer, docStore, _ := newObserveProducerLiveTestEnv(t)
+	ctx := t.Context()
+	for _, userID := range []string{"user-owner-a", "user-owner-b"} {
+		route := SSERoute{UserID: userID, CLISessionID: "cli-" + userID}
+		require.NoError(t, producer.StartAssignment(ctx, userID, route, models.AssignmentProgressProjection{AssignmentID: "assign-shared", CampaignID: "campaign-shared"}))
+		require.NoError(t, producer.RequestStop(ctx, userID, route, "", "campaign-shared", "run-1", models.StopReasonGraceful, models.StopScopeCycle))
+	}
+	for _, collection := range []constants.CollectionName{constants.CollectionObserveAssignmentProgress, constants.CollectionObserveSupervisorStates} {
+		docs, err := docStore.DocList(ctx, marshaler.CollectionName(collection))
+		require.NoError(t, err)
+		owners := map[string]bool{}
+		for _, doc := range docs {
+			var owned struct {
+				UserID string `json:"user_id"`
+			}
+			require.NoError(t, doc.DecodeData(&owned))
+			owners[owned.UserID] = true
+		}
+		assert.Equal(t, map[string]bool{"user-owner-a": true, "user-owner-b": true}, owners, "%s keeps each owner's projection", collection)
+	}
 }
 
 // TestStartCycle_MissingCycleIDReturnsError verifies that StartCycle returns

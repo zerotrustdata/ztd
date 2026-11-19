@@ -255,6 +255,7 @@ definitions:
     - OLLAMA_MODEL_PULL
     - OLLAMA_MODEL_RELEASE
     - OLLAMA_MODEL_RESIDENCY
+    - OPERATOR_DEPLOY
     - PLATFORM_ENROLLMENT_BIND_CONSENSUS
     - PLATFORM_ENROLLMENT_CREATE
     - PLATFORM_ENROLLMENT_CREATE_SESSION
@@ -297,6 +298,7 @@ definitions:
     - ActionTypeOllamaModelPull
     - ActionTypeOllamaModelRelease
     - ActionTypeOllamaModelResidency
+    - ActionTypeOperatorDeploy
     - ActionTypePlatformEnrollmentBindConsensus
     - ActionTypePlatformEnrollmentCreate
     - ActionTypePlatformEnrollmentCreateSession
@@ -309,6 +311,18 @@ definitions:
     - ActionTypeProviderBoundaryObservation
     - ActionTypeRestoreFile
     - ActionTypeShutdown
+  constants.ConsensusNotReadyReason:
+    enum:
+    - member_owner
+    - vote_operator
+    - vote_operator_ambiguous
+    - signers
+    type: string
+    x-enum-varnames:
+    - ConsensusNotReadyMemberOwner
+    - ConsensusNotReadyVoteOperator
+    - ConsensusNotReadyVoteOperatorAmbiguous
+    - ConsensusNotReadySigners
   constants.EventType:
     enum:
     - ztd.v1.ai.eval.assignment.completed
@@ -375,6 +389,9 @@ definitions:
     - ztd.v1.operator.command.status.updated.queued
     - ztd.v1.operator.command.status.updated.running
     - ztd.v1.operator.context.changed
+    - ztd.v1.operator.deploy.completed
+    - ztd.v1.operator.deploy.failed
+    - ztd.v1.operator.deploy.requested
     - ztd.v1.operator.device.registered
     - ztd.v1.operator.eval.answer.requested
     - ztd.v1.operator.eval.workspace.seed.completed
@@ -611,6 +628,9 @@ definitions:
     - EventOperatorCommandStatusUpdatedQueued
     - EventOperatorCommandStatusUpdatedRunning
     - EventOperatorContextChanged
+    - EventOperatorDeployCompleted
+    - EventOperatorDeployFailed
+    - EventOperatorDeployRequested
     - EventOperatorDeviceRegistered
     - EventOperatorEvalAnswerRequested
     - EventOperatorEvalWorkspaceSeedCompleted
@@ -1357,6 +1377,10 @@ definitions:
       members:
         description: "N"
         type: integer
+      not_ready:
+        allOf:
+        - $ref: '#/definitions/constants.ConsensusNotReadyReason'
+        description: NotReady is the closed reason Ready is false on a bound binding.
       provider:
         description: constants.ConsensusProvider of the binding
         type: string
@@ -1368,7 +1392,7 @@ definitions:
         type: boolean
       usable:
         description: 'members that can vote now (enabled signer; tribunal: local key
-          present)'
+          present and the vote routes to an Inference Operator)'
         type: integer
       vote_kind:
         type: string

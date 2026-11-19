@@ -52,9 +52,17 @@ const (
 	// Operator rejected because the request exceeded its size bound. The
 	// provider was never called, so it is not a provider failure.
 	ExecutionFailureRequestTooLarge ExecutionFailureClass = "request_too_large"
-	ExecutionFailureCanceled        ExecutionFailureClass = "canceled"
-	ExecutionFailureTimeout         ExecutionFailureClass = "timeout"
-	ExecutionFailureInternal        ExecutionFailureClass = "internal_error"
+	// ExecutionFailurePublication is a run whose results were persisted but whose
+	// public mirror publication failed (ErrEvaluationPublicationFailed). The run
+	// needs 'ztd eval runs publish', not a rerun.
+	ExecutionFailurePublication ExecutionFailureClass = "publication_failed"
+	// ExecutionFailureKeyStore is a run that could not unseal its CLI key or open
+	// its evidence vault because the key store is locked or does not hold the key,
+	// such as an ssh-agent key that expired.
+	ExecutionFailureKeyStore ExecutionFailureClass = "key_store_unavailable"
+	ExecutionFailureCanceled ExecutionFailureClass = "canceled"
+	ExecutionFailureTimeout  ExecutionFailureClass = "timeout"
+	ExecutionFailureInternal ExecutionFailureClass = "internal_error"
 	// ExecutionFailureRecovered is an assignment that reached a terminal lifecycle
 	// with no persisted result, such as one a run cancel stopped. Repair records
 	// it; nothing is known about an execution beyond that lifecycle, so this is
@@ -64,9 +72,22 @@ const (
 
 // ClassifyExecutionFailure maps an executor error to its fixed failure
 // category. Unrecognized errors are ExecutionFailureInternal; their text is
-// never stored.
+// never stored. An error whose every failure is a publication failure is
+// ExecutionFailurePublication, whatever cause each publication failure wraps,
+// because the results it follows are persisted. Any other failure joined beside
+// a publication failure is classified instead.
 func ClassifyExecutionFailure(err error) ExecutionFailureClass {
+	if errors.Is(err, constants.ErrEvaluationPublicationFailed) {
+		beside := failuresBesidePublication(err)
+		if len(beside) == 0 {
+			return ExecutionFailurePublication
+		}
+		err = errors.Join(beside...)
+	}
 	switch {
+	case errors.Is(err, constants.ErrKeyStoreSSHAgentKeyMissing), errors.Is(err, constants.ErrKeyStoreSSHAgentUnavailable), errors.Is(err, constants.ErrKeyStoreLocked),
+		errors.Is(err, constants.ErrKeyStoreKeyNotFound), errors.Is(err, constants.ErrKeyStoreSecretServiceDown), errors.Is(err, constants.ErrEvaluationEvidenceVaultRequired):
+		return ExecutionFailureKeyStore
 	case errors.Is(err, context.DeadlineExceeded):
 		return ExecutionFailureTimeout
 	case errors.Is(err, context.Canceled):
@@ -103,6 +124,35 @@ func ClassifyExecutionFailure(err error) ExecutionFailureClass {
 		return ExecutionFailureInvalidInput
 	default:
 		return ExecutionFailureInternal
+	}
+}
+
+// failuresBesidePublication returns the branches of err's tree that are not
+// part of a publication failure. A publication failure is an error that wraps
+// ErrEvaluationPublicationFailed directly beside its cause, so its cause is
+// never returned.
+func failuresBesidePublication(err error) []error {
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, constants.ErrEvaluationPublicationFailed) {
+		return []error{err}
+	}
+	switch wrapped := err.(type) {
+	case interface{ Unwrap() []error }:
+		children := wrapped.Unwrap()
+		if slices.ContainsFunc(children, func(child error) bool { return child == constants.ErrEvaluationPublicationFailed }) {
+			return nil
+		}
+		var beside []error
+		for _, child := range children {
+			beside = append(beside, failuresBesidePublication(child)...)
+		}
+		return beside
+	case interface{ Unwrap() error }:
+		return failuresBesidePublication(wrapped.Unwrap())
+	default:
+		return nil
 	}
 }
 
@@ -187,8 +237,8 @@ const (
 // executionFailureClasses is every class ClassifyExecutionFailure can return.
 var executionFailureClasses = []ExecutionFailureClass{
 	ExecutionFailureProvider, ExecutionFailureGrader, ExecutionFailureTarget, ExecutionFailurePosture, ExecutionFailureEvidence, ExecutionFailureHeldContext, ExecutionFailureVerification,
-	ExecutionFailureDispatch, ExecutionFailureInvalidInput, ExecutionFailureScenarioContract, ExecutionFailureRehydration, ExecutionFailureRequestTooLarge, ExecutionFailureCanceled,
-	ExecutionFailureTimeout, ExecutionFailureInternal, ExecutionFailureRecovered,
+	ExecutionFailureDispatch, ExecutionFailureInvalidInput, ExecutionFailureScenarioContract, ExecutionFailureRehydration, ExecutionFailureRequestTooLarge, ExecutionFailurePublication,
+	ExecutionFailureKeyStore, ExecutionFailureCanceled, ExecutionFailureTimeout, ExecutionFailureInternal, ExecutionFailureRecovered,
 }
 
 // verifyExecutorFailureResult structurally verifies a result the executor
@@ -284,6 +334,7 @@ func (c *CampaignController) persistTerminalAssignment(ctx context.Context, assi
 	if err := c.store.SaveAssignment(persistCtx, assignment); err != nil {
 		return err
 	}
+	c.live.assignmentCompleted(persistCtx, assignment, result)
 	// The result is durable here; a publication failure is reported but never
 	// undoes or blocks the persisted terminal state.
 	if err := c.publishAssignmentTerminal(persistCtx, assignment, result); err != nil {

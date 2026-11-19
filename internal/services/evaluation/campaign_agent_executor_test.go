@@ -127,7 +127,7 @@ func TestCampaignAgentExecutor_RequiresLedgerSentinelToConstruct(t *testing.T) {
 func TestAgentCallContext_DrainsDeadlineButHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
-	callCtx, finish := agentCallContext(ctx)
+	callCtx, finish := agentCallContext(ctx, nil)
 	defer finish()
 	<-ctx.Done()
 	require.ErrorIs(t, ctx.Err(), context.DeadlineExceeded)
@@ -140,7 +140,7 @@ func TestAgentCallContext_DrainsDeadlineButHonorsCancellation(t *testing.T) {
 
 	ctx, cancel = context.WithTimeout(t.Context(), time.Hour)
 	defer cancel()
-	callCtx, finish = agentCallContext(ctx)
+	callCtx, finish = agentCallContext(ctx, nil)
 	defer finish()
 	cancel()
 	select {

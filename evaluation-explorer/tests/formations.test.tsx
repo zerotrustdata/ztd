@@ -10,7 +10,7 @@ import { MemoryRouter } from 'react-router-dom';
 import type { EvaluationSummary } from '../src/contract/types';
 import { evalStore } from '../src/state/store';
 import { formationRun } from './formation-fixture';
-import { formationGroups, formationLeaderboardRows, hostedFormationRows } from '../src/views/formations';
+import { formationGroups, formationLeaderboardRows, formationOverallRows, formationRemoteHostedRows } from '../src/views/formations';
 import { isEvaluationSummary } from '../src/contract/validators';
 import { LeaderboardView } from '../src/views/LeaderboardView';
 import { EvaluationsView } from '../src/views/EvaluationsView';
@@ -19,6 +19,8 @@ import { ModelDetailView } from '../src/views/ModelDetailView';
 import { Route, Routes } from 'react-router-dom';
 import { fixtureModelSummaries } from '../src/fixtures/fixtures';
 import { modelRoleLeaderboardRows } from '../src/views/derived';
+
+const noHostedMembers = () => false;
 import { toReleaseSeries } from '../src/content/release';
 
 function withSummary(patch: Partial<NonNullable<EvaluationSummary['formations']>[number]>, runPatch: Partial<EvaluationSummary> = {}): EvaluationSummary {
@@ -40,7 +42,7 @@ describe('published formations', () => {
   it('ranks formation aggregates even when no individual models qualify', () => {
     evalStore.loadFixtures([formationRun], []);
     render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
-    fireEvent.click(screen.getByRole('button', { name: 'Formations 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Formations self-hosted 1' }));
     const row = screen.getByRole('link', { name: 'current-project-formation' }).closest('tr')!;
     expect(row).toHaveTextContent('75.0%');
     expect(row).toHaveTextContent('56.3');
@@ -53,7 +55,7 @@ describe('published formations', () => {
     evalStore.loadFixtures([formationRun], []);
     render(<MemoryRouter initialEntries={['/leaderboard']}><LeaderboardView /></MemoryRouter>);
     expect(screen.getByRole('combobox', { name: 'Filter by release' })).toHaveValue(toReleaseSeries(formationRun.release!));
-    expect(screen.getByRole('button', { name: 'Formations 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Formations overall 1' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('does not score formation outcomes as individual-model leaderboard results', () => {
@@ -81,7 +83,7 @@ describe('published formations', () => {
     const pooled = groups.find((group) => group.sources.length === 2)!;
     expect(pooled.summary.pass_rate).toMatchObject({ estimate: 15 / 16, denominator: 16 });
     expect(pooled.summary.run_seconds).toBe(120);
-    expect(formationLeaderboardRows([formationRun, otherSuite]).map((row) => row.rank)).toEqual([1, 1]);
+    expect(formationLeaderboardRows([formationRun, otherSuite], noHostedMembers).map((row) => row.rank)).toEqual([1, 1]);
   });
 
   it('excludes unverified, unfinished and incomplete summaries and respects the whole-formation artifact budget', () => {
@@ -92,11 +94,11 @@ describe('published formations', () => {
       withSummary({ parameter_count: undefined }),
       withSummary({ output_tokens: { unavailable_reason: 'source_unavailable' } }),
     ];
-    expect(formationLeaderboardRows(runs)).toHaveLength(1);
-    expect(formationLeaderboardRows([formationRun], 6)).toHaveLength(1);
-    expect(formationLeaderboardRows([formationRun], 5.99)).toHaveLength(0);
-    expect(formationLeaderboardRows([withSummary({ artifact_size_bytes: undefined })], 6)).toHaveLength(0);
-    expect(formationLeaderboardRows([withSummary({ security_pass_rate: undefined })])[0]!.score).toBe(0);
+    expect(formationLeaderboardRows(runs, noHostedMembers)).toHaveLength(1);
+    expect(formationLeaderboardRows([formationRun], noHostedMembers, 6)).toHaveLength(1);
+    expect(formationLeaderboardRows([formationRun], noHostedMembers, 5.99)).toHaveLength(0);
+    expect(formationLeaderboardRows([withSummary({ artifact_size_bytes: undefined })], noHostedMembers, 6)).toHaveLength(0);
+    expect(formationLeaderboardRows([withSummary({ security_pass_rate: undefined })], noHostedMembers)[0]!.score).toBe(0);
   });
 
   it('validates the typed formation boundary and rejects corrupt counts, identity, and nested fields', () => {
@@ -155,42 +157,85 @@ describe('published formations', () => {
 });
 
 describe('formations with a hosted member', () => {
-  const hostedRun = withSummary(
-    { stack_id: 'hosted-primary-formation', stack_digest: 'd'.repeat(64), parameter_count: undefined, artifact_size_bytes: undefined,
-      model_role_mapping: { primary: 'gemini-3-6-flash', assistant: 'current-assistant', lite: 'current-lite' } },
-    { dataset_id: 'ds-hosted-formation', run_id: 'run-hosted-formation' },
-  );
   const hostedMember = (datasetId: string, variantId: string) => datasetId === 'ds-hosted-formation' && variantId === 'gemini-3-6-flash';
+  const hostedPatch = {
+    parameter_count: undefined, artifact_size_bytes: undefined,
+    model_role_mapping: { primary: 'gemini-3-6-flash', assistant: 'current-assistant', lite: 'current-lite' },
+  };
+  const hostedRunOpts = { dataset_id: 'ds-hosted-formation', run_id: 'run-hosted-formation' };
+  // Slower than the local formation (2000 ms, 400 tokens): size-free efficiency 0.925 when local is the best.
+  const hostedRun = withSummary({ ...hostedPatch, stack_id: 'hosted-primary-formation', stack_digest: 'd'.repeat(64),
+    latency_p50_ms: { value: 4000 }, output_tokens: { value: 800 } }, hostedRunOpts);
+  // The fastest formation in the suite: it sets the best latency and tokens that others are normalized against.
+  const hostedFast = withSummary({ ...hostedPatch, stack_id: 'hosted-fast-formation', stack_digest: 'e'.repeat(64),
+    latency_p50_ms: { value: 1000 }, output_tokens: { value: 200 } }, hostedRunOpts);
 
-  it('lists a hosted-member formation unranked and leaves ranked formations unchanged', () => {
-    const ranked = formationLeaderboardRows([formationRun]);
-    expect(formationLeaderboardRows([formationRun, hostedRun])).toEqual(ranked);
-    const hosted = hostedFormationRows([formationRun, hostedRun], hostedMember);
-    expect(hosted.map((row) => [row.summary.stack_id, row.hosted_variants])).toEqual([['hosted-primary-formation', ['gemini-3-6-flash']]]);
-    expect(hosted[0]).not.toHaveProperty('rank');
-    expect(hosted[0]).not.toHaveProperty('score');
+  it('keeps the size-adjusted list to all-local formations, with scores unchanged by hosted formations', () => {
+    const alone = formationLeaderboardRows([formationRun], noHostedMembers);
+    const withHosted = formationLeaderboardRows([formationRun, hostedRun, hostedFast], hostedMember);
+    expect(withHosted.map((row) => row.summary.stack_id)).toEqual(['current-project-formation']);
+    expect(withHosted[0]!.hosted_variants).toEqual([]);
+    expect(withHosted[0]!.score).toBe(alone[0]!.score);
+    expect(withHosted[0]!.score).toBeCloseTo(56.25, 6);
   });
 
-  it('gives a formation without a size and without a hosted member no row', () => {
-    expect(hostedFormationRows([hostedRun], () => false)).toHaveLength(0);
-    expect(hostedFormationRows([withSummary({ latency_p50_ms: { unavailable_reason: 'source_unavailable' }, parameter_count: undefined },
-      { dataset_id: 'ds-hosted-formation' })], hostedMember)).toHaveLength(0);
+  it('ranks local and hosted-member formations side by side in Overall using the size-free score', () => {
+    const overall = formationOverallRows([formationRun, hostedRun, hostedFast], hostedMember);
+    expect(overall.map((row) => [row.summary.stack_id, row.rank, row.hosted_variants])).toEqual([
+      ['hosted-fast-formation', 1, ['gemini-3-6-flash']],
+      ['current-project-formation', 2, []],
+      ['hosted-primary-formation', 3, ['gemini-3-6-flash']],
+    ]);
+    // Normalized within the suite: local best is 1000 ms and 200 tokens from hosted-fast.
+    expect(overall[0]!.score).toBeCloseTo(56.25, 6);
+    expect(overall[1]!.score).toBeCloseTo(52.03125, 6);
+    expect(overall[2]!.score).toBeCloseTo(49.921875, 6);
   });
 
-  it('renders the hosted-member formation beside the ranked one on the leaderboard', () => {
+  it('ranks only hosted-member formations in Remote-hosted, normalized among themselves', () => {
+    // Local formation is faster than hosted-primary, but it must not set the hosted normalization.
+    const alone = formationRemoteHostedRows([formationRun, hostedRun], hostedMember);
+    expect(alone.map((row) => [row.summary.stack_id, row.rank])).toEqual([['hosted-primary-formation', 1]]);
+    expect(alone[0]!.score).toBeCloseTo(56.25, 6);
+
+    const remote = formationRemoteHostedRows([formationRun, hostedRun, hostedFast], hostedMember);
+    expect(remote.map((row) => [row.summary.stack_id, row.rank])).toEqual([
+      ['hosted-fast-formation', 1],
+      ['hosted-primary-formation', 2],
+    ]);
+    expect(remote[1]!.score).toBeCloseTo(49.921875, 6);
+  });
+
+  it('gives a formation without a size and without a hosted member no remote-hosted row', () => {
+    expect(formationRemoteHostedRows([formationRun], noHostedMembers)).toHaveLength(0);
+    expect(formationOverallRows([hostedRun], () => false).map((row) => row.hosted_variants)).toEqual([[]]);
+    const incomplete = withSummary({ latency_p50_ms: { unavailable_reason: 'source_unavailable' }, ...hostedPatch }, hostedRunOpts);
+    expect(formationOverallRows([incomplete], hostedMember)).toHaveLength(0);
+    expect(formationRemoteHostedRows([incomplete], hostedMember)).toHaveLength(0);
+  });
+
+  it('renders hosted-member formations ranked in Overall and Remote-hosted on the leaderboard', () => {
     const geminiMember = {
       ...fixtureModelSummaries[0]!, dataset_id: 'ds-hosted-formation', variant_id: 'gemini-3-6-flash', role: 'primary' as const,
       display_name: 'Gemini 3.6 Flash', backend_provider_class: 'gemini', model_format: 'hosted', parameter_count: undefined,
     };
     evalStore.loadFixtures([formationRun, hostedRun, geminiMember], []);
     render(<MemoryRouter initialEntries={['/leaderboard?release=all']}><LeaderboardView /></MemoryRouter>);
-    fireEvent.click(screen.getByRole('button', { name: 'Formations 2' }));
-    expect(screen.getByText(/1 hosted unranked/)).toBeInTheDocument();
-    const row = screen.getByRole('link', { name: 'hosted-primary-formation' }).closest('tr')!;
-    expect(within(row).getByLabelText('Not ranked')).toBeInTheDocument();
-    expect(row).toHaveTextContent('Not ranked');
-    expect(row).toHaveTextContent('Undisclosed');
+    fireEvent.click(screen.getByRole('button', { name: 'Formations overall 2' }));
+    expect(screen.queryByText(/hosted unranked/)).not.toBeInTheDocument();
+    const hostedRow = screen.getByRole('link', { name: 'hosted-primary-formation' }).closest('tr')!;
+    expect(hostedRow).toHaveTextContent('52.0');
+    expect(hostedRow).toHaveTextContent('Undisclosed');
+    expect(hostedRow).not.toHaveTextContent('Not ranked');
     const rankedRow = screen.getByRole('link', { name: 'current-project-formation' }).closest('tr')!;
     expect(rankedRow).toHaveTextContent('56.3');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Formations remote-hosted 1' }));
+    expect(screen.queryByRole('link', { name: 'current-project-formation' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'hosted-primary-formation' }).closest('tr')!).toHaveTextContent('56.3');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Formations self-hosted 1' }));
+    expect(screen.getByRole('link', { name: 'current-project-formation' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'hosted-primary-formation' })).not.toBeInTheDocument();
   });
 });

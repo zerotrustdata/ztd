@@ -1103,7 +1103,14 @@ func (g *GatewayService) processGatewayTransaction(ctx context.Context, opts pro
 	// not configured, the envelope proceeds without L2 votes and will fail-closed at L4
 	// verification.
 	if governance.L2Enforced(env, g.posture) && g.l2ConsensusDeliberator != nil {
-		deliberatedBytes, err := g.l2ConsensusDeliberator.Deliberate(ctx, envelopeBytes)
+		// A call that needs L3 suspends this envelope for a human decision
+		// bounded by ApprovalRequestTTL; the deliberation leaves that share
+		// of its lifetime unspent.
+		deliberateCtx := ctx
+		if governance.L3Required(constants.ActionType(env.GetActionType()), g.posture) {
+			deliberateCtx = governance.WithAdmissionReserve(ctx, ApprovalRequestTTL)
+		}
+		deliberatedBytes, err := g.l2ConsensusDeliberator.Deliberate(deliberateCtx, envelopeBytes)
 		if err != nil {
 			g.logger.Error("L2 consensus deliberation failed", "tx_hash", hash, "error", err)
 			return "", nil, "", nil, fmt.Errorf("gateway: l2 consensus deliberation: %w", err)

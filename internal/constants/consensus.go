@@ -23,6 +23,31 @@ const (
 	ConsensusProviderTribunal ConsensusProvider = "tribunal"
 )
 
+// ConsensusNotReadyReason names why a bound consensus is not ready. It is a
+// closed code, so the unauthenticated /health summary never carries member
+// IDs, the pinned model, or an Operator ID.
+type ConsensusNotReadyReason string
+
+// Consensus not-ready reasons. Readiness reports the owner or vote-route
+// reason of the first member, in member order, whose vote cannot route, and
+// otherwise signers.
+const (
+	// ConsensusNotReadyMemberOwner: a Tribunal member with a usable key has no
+	// enrolled owner, so its vote has no requestor.
+	ConsensusNotReadyMemberOwner ConsensusNotReadyReason = "member_owner"
+	// ConsensusNotReadyVoteOperator: no active Inference Operator of the
+	// member owner serves the binding's model provider (the hosted class, or
+	// the local provider for an empty class), or the pinned decision Operator
+	// does not serve the decision vote.
+	ConsensusNotReadyVoteOperator ConsensusNotReadyReason = "vote_operator"
+	// ConsensusNotReadyVoteOperatorAmbiguous: more than one active Inference
+	// Operator could serve the vote and none is pinned.
+	ConsensusNotReadyVoteOperatorAmbiguous ConsensusNotReadyReason = "vote_operator_ambiguous"
+	// ConsensusNotReadySigners: fewer members than the quorum have an enabled
+	// signer (and, for the Tribunal, a sealed key on this host).
+	ConsensusNotReadySigners ConsensusNotReadyReason = "signers"
+)
+
 // ParseConsensusProvider decodes a stored or requested provider. The provider
 // is required; empty is invalid.
 func ParseConsensusProvider(value string) (ConsensusProvider, error) {

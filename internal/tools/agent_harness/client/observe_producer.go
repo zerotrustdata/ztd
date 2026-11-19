@@ -33,6 +33,30 @@ func (c *Client) UpdateRunState(ctx context.Context, req models.ObserveProducerR
 	return c.postObserveProducer(ctx, constants.APIPaths.ObserveProducerRunState, req)
 }
 
+// StartAssignment posts an assignment start to the mTLS producer endpoint
+// POST /api/v1/observe/producer/assignment-started under the app workload
+// identity. The Gateway emits ai.eval.assignment.started to the session named
+// in the request. A non-2xx response is returned as an error.
+func (c *Client) StartAssignment(ctx context.Context, req models.ObserveProducerAssignmentRequest) error {
+	return c.postObserveProducer(ctx, constants.APIPaths.ObserveProducerAssignmentStarted, req)
+}
+
+// CompleteAssignment posts an assignment completion to the mTLS producer
+// endpoint POST /api/v1/observe/producer/assignment-completed under the app
+// workload identity. The Gateway emits ai.eval.assignment.completed to the
+// session named in the request. A non-2xx response is returned as an error.
+func (c *Client) CompleteAssignment(ctx context.Context, req models.ObserveProducerAssignmentRequest) error {
+	return c.postObserveProducer(ctx, constants.APIPaths.ObserveProducerAssignmentCompleted, req)
+}
+
+// RecordToolCallFannedOut posts a fan-out report to the mTLS producer endpoint
+// POST /api/v1/observe/producer/tool-call-fanned-out under the app workload
+// identity. The Gateway emits ai.eval.tool_call.fanned_out to the session named
+// in the request. A non-2xx response is returned as an error.
+func (c *Client) RecordToolCallFannedOut(ctx context.Context, req models.ObserveProducerToolCallFannedOutRequest) error {
+	return c.postObserveProducer(ctx, constants.APIPaths.ObserveProducerToolCallFannedOut, req)
+}
+
 // ObserveProducerRejectedError is a producer request the Gateway answered with
 // a non-2xx status and a typed rejection. It unwraps to
 // constants.ErrHTTPStatusError and to the rejection's cause, so callers match

@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/shared"
@@ -88,7 +90,7 @@ func (d nativeEvalDeps) gatewayDeps() gatewayEvalDeps {
 func Cmd() *cobra.Command {
 	return evalCmdWithConfig(nativeEvalDeps{
 		configLoader:      config.Load,
-		fileSvcFactory:    shared.NewEvidenceFileSvc,
+		fileSvcFactory:    heldRuntimeFiles(shared.NewEvidenceFileSvc),
 		createRuntimeTree: func(ctx context.Context, fileSvc fs.RuntimeFileService) error { return fileSvc.CreateRuntimeTree(ctx) },
 		clientFactory:     harnessclient.New,
 		authLoader:        auth.LoadClientAuthContext,
@@ -103,6 +105,35 @@ func Cmd() *cobra.Command {
 		now:                  time.Now,
 		newID:                uuid.NewString,
 	})
+}
+
+// heldRuntimeFiles returns factory's file service for each runtime root once
+// per eval process. Its evidence vault is unlocked from the master key store
+// on first use and held in memory until the process exits, the way a running
+// Gateway holds its vault, so a rollout that starts a run every few minutes
+// for hours does not need the master key store again after it opened the
+// vault (an ssh-agent key loaded with a lifetime can expire mid-rollout). A
+// failed open is not held: the next read asks the key store again.
+func heldRuntimeFiles(factory func(string, *slog.Logger) (fs.RuntimeFileService, error)) func(string, *slog.Logger) (fs.RuntimeFileService, error) {
+	var mu sync.Mutex
+	held := make(map[string]fs.RuntimeFileService)
+	return func(baseDir string, logger *slog.Logger) (fs.RuntimeFileService, error) {
+		root, err := filepath.Abs(baseDir)
+		if err != nil {
+			return nil, fmt.Errorf("evaluation: resolve runtime root %q: %w", baseDir, err)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		if files, ok := held[root]; ok {
+			return files, nil
+		}
+		files, err := factory(baseDir, logger)
+		if err != nil {
+			return nil, err
+		}
+		held[root] = files
+		return files, nil
+	}
 }
 
 func evalCmdWithConfig(deps nativeEvalDeps) *cobra.Command {

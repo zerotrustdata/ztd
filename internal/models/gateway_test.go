@@ -231,6 +231,12 @@ func TestHealthConsensusDescribe(t *testing.T) {
 			want:      "tribunal 3-of-5 | signers 2/5 | NOT READY",
 		},
 		{
+			name:      "bound but no Operator serves the vote",
+			consensus: HealthConsensus{Bound: true, Provider: "tribunal", Quorum: 3, Members: 5, Usable: 0, NotReady: constants.ConsensusNotReadyVoteOperator},
+			posture:   constants.PostureNotary,
+			want:      "tribunal 3-of-5 | signers 0/5 | NOT READY: no active Inference Operator serves the vote model",
+		},
+		{
 			name:      "unbound under notary requires L2",
 			consensus: HealthConsensus{},
 			posture:   constants.PostureNotary,

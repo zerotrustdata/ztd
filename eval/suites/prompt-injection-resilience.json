@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
   "id": "prompt-injection-resilience",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Responder-only security regression suite. Tool-backed runbook variants test ordinary text, forged roles, Unicode formatting and encoded instructions. Metadata and token-passthrough controls require actual governed tools. Separate supplied-context tests measure disclosure and safe utility without asserting tool containment. Scripted regression tests validate the harness; fresh live-model campaigns are required to measure resilience.",
   "personas": [
     {

@@ -294,6 +294,180 @@ func (c *ObserveProducerController) handleStop(w http.ResponseWriter, r *http.Re
 	c.responder.JSON(w, http.StatusOK, models.ObserveProducerResponse{Accepted: true})
 }
 
+// handleAssignmentStarted accepts a typed assignment start from an app
+// workload, derives user_id from the mTLS peer certificate, and delegates to
+// the observe producer service which persists the assignment progress
+// projection and emits the ai.eval.assignment.started SSE event
+// (persist-before-publish).
+//
+// @Summary		Push observe assignment start
+// @Description	Accepts a typed assignment start from an mTLS-authenticated app workload. The gateway derives user_id from the peer certificate, persists the assignment progress projection under that user, and emits an ai.eval.assignment.started SSE event after successful persistence.
+// @Tags			observe
+// @Accept			json
+// @Produce		json
+// @Param			payload	body		models.ObserveProducerAssignmentRequest	true	"Assignment start"
+// @Success		200		{object}	models.ObserveProducerResponse			"accepted"
+// @Failure		400		{object}	models.ObserveProducerRejection			"Missing campaign_id or assignment_id, or a terminal_status on a start"
+// @Failure		401		{string}	string									"Unauthorized — mTLS user identity required"
+// @Failure		403		{string}	string									"Forbidden — not an app workload"
+// @Failure		500		{object}	models.ObserveProducerRejection			"Persistence failure"
+// @Router			/api/v1/observe/producer/assignment-started [post]
+func (c *ObserveProducerController) handleAssignmentStarted(w http.ResponseWriter, r *http.Request) {
+	c.handleAssignment(w, r, false)
+}
+
+// handleAssignmentCompleted accepts a typed assignment completion from an app
+// workload, derives user_id from the mTLS peer certificate, and delegates to
+// the observe producer service which persists the assignment progress
+// projection and emits the ai.eval.assignment.completed SSE event
+// (persist-before-publish).
+//
+// @Summary		Push observe assignment completion
+// @Description	Accepts a typed assignment completion from an mTLS-authenticated app workload. The gateway derives user_id from the peer certificate, persists the assignment progress projection under that user, and emits an ai.eval.assignment.completed SSE event carrying the terminal status after successful persistence.
+// @Tags			observe
+// @Accept			json
+// @Produce		json
+// @Param			payload	body		models.ObserveProducerAssignmentRequest	true	"Assignment completion"
+// @Success		200		{object}	models.ObserveProducerResponse			"accepted"
+// @Failure		400		{object}	models.ObserveProducerRejection			"Missing campaign_id or assignment_id, or a terminal_status outside the closed set"
+// @Failure		401		{string}	string									"Unauthorized — mTLS user identity required"
+// @Failure		403		{string}	string									"Forbidden — not an app workload"
+// @Failure		500		{object}	models.ObserveProducerRejection			"Persistence failure"
+// @Router			/api/v1/observe/producer/assignment-completed [post]
+func (c *ObserveProducerController) handleAssignmentCompleted(w http.ResponseWriter, r *http.Request) {
+	c.handleAssignment(w, r, true)
+}
+
+func (c *ObserveProducerController) handleAssignment(w http.ResponseWriter, r *http.Request, completed bool) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+	userID, ok := c.requireAppUserID(w, r)
+	if !ok {
+		return
+	}
+	body, err := readRequestBody(r, c.maxBodyBytes)
+	if err != nil {
+		c.rejectProducerRequest(w, r.URL.Path, err)
+		return
+	}
+	var req models.ObserveProducerAssignmentRequest
+	if err := decodeProducerRequest(body, &req); err != nil {
+		c.rejectProducerRequest(w, r.URL.Path, err)
+		return
+	}
+	if err := validateAssignmentProducerRequest(req, completed); err != nil {
+		c.rejectProducerRequest(w, r.URL.Path, err)
+		return
+	}
+	if err := validateProducerRouting(req.WebSessionID, req.CLISessionID); err != nil {
+		c.rejectProducerRequest(w, r.URL.Path, err)
+		return
+	}
+	route := buildProducerRoute(userID, req.WebSessionID, req.CLISessionID)
+	proj := models.AssignmentProgressProjection{
+		AssignmentID:   req.AssignmentID,
+		CycleID:        req.CycleID,
+		CampaignID:     req.CampaignID,
+		VariantID:      req.VariantID,
+		Role:           req.Role,
+		TaskID:         req.TaskID,
+		ArmID:          req.ArmID,
+		Repetition:     req.Repetition,
+		TerminalStatus: req.TerminalStatus,
+	}
+	if completed {
+		proj.Status = assignmentProgressStatus(req.TerminalStatus)
+		err = c.producerSvc.CompleteAssignment(r.Context(), userID, route, proj)
+	} else {
+		err = c.producerSvc.StartAssignment(r.Context(), userID, route, proj)
+	}
+	if err != nil {
+		c.rejectProducerRequest(w, r.URL.Path, err)
+		return
+	}
+	c.responder.JSON(w, http.StatusOK, models.ObserveProducerResponse{Accepted: true})
+}
+
+// assignmentProgressStatus is the progress status a completion projects for
+// its terminal outcome. A qualification assignment ran to completion.
+func assignmentProgressStatus(terminal models.TerminalOutcomeStatus) models.AssignmentProgressStatus {
+	switch terminal {
+	case models.TerminalOutcomeStatusFailed:
+		return models.AssignmentProgressStatusFailed
+	case models.TerminalOutcomeStatusSuperseded:
+		return models.AssignmentProgressStatusSuperseded
+	case models.TerminalOutcomeStatusUnavailable:
+		return models.AssignmentProgressStatusUnavailable
+	default:
+		return models.AssignmentProgressStatusCompleted
+	}
+}
+
+// handleToolCallFannedOut accepts a typed fan-out report from an app workload,
+// derives user_id from the mTLS peer certificate, and delegates to the observe
+// producer service which emits the ai.eval.tool_call.fanned_out SSE event.
+//
+// @Summary		Push observe tool call fan-out
+// @Description	Accepts a typed report of one tool call the eval harness fanned out across roster targets from an mTLS-authenticated app workload. The gateway derives user_id from the peer certificate and emits an ai.eval.tool_call.fanned_out SSE event to the routed session. It persists no projection; the signed agent trace records the group.
+// @Tags			observe
+// @Accept			json
+// @Produce		json
+// @Param			payload	body		models.ObserveProducerToolCallFannedOutRequest	true	"Tool call fan-out"
+// @Success		200		{object}	models.ObserveProducerResponse					"accepted"
+// @Failure		400		{object}	models.ObserveProducerRejection					"Missing campaign_id, assignment_id or group_id, or inconsistent counts"
+// @Failure		401		{string}	string											"Unauthorized — mTLS user identity required"
+// @Failure		403		{string}	string											"Forbidden — not an app workload"
+// @Failure		500		{object}	models.ObserveProducerRejection					"Emission failure"
+// @Router			/api/v1/observe/producer/tool-call-fanned-out [post]
+func (c *ObserveProducerController) handleToolCallFannedOut(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		c.responder.Error(w, http.StatusMethodNotAllowed, constants.ErrMethodNotAllowed.Error())
+		return
+	}
+	userID, ok := c.requireAppUserID(w, r)
+	if !ok {
+		return
+	}
+	body, err := readRequestBody(r, c.maxBodyBytes)
+	if err != nil {
+		c.rejectProducerRequest(w, r.URL.Path, err)
+		return
+	}
+	var req models.ObserveProducerToolCallFannedOutRequest
+	if err := decodeProducerRequest(body, &req); err != nil {
+		c.rejectProducerRequest(w, r.URL.Path, err)
+		return
+	}
+	if err := validateToolCallFannedOutProducerRequest(req); err != nil {
+		c.rejectProducerRequest(w, r.URL.Path, err)
+		return
+	}
+	if err := validateProducerRouting(req.WebSessionID, req.CLISessionID); err != nil {
+		c.rejectProducerRequest(w, r.URL.Path, err)
+		return
+	}
+	route := buildProducerRoute(userID, req.WebSessionID, req.CLISessionID)
+	payload := models.EvalToolCallFannedOutPayload{
+		CycleID:      req.CycleID,
+		CampaignID:   req.CampaignID,
+		AssignmentID: req.AssignmentID,
+		CallID:       req.CallID,
+		GroupID:      req.GroupID,
+		ToolName:     req.ToolName,
+		Targets:      req.Targets,
+		Succeeded:    req.Succeeded,
+		Concurrency:  req.Concurrency,
+		DurationMS:   req.DurationMS,
+	}
+	if err := c.producerSvc.RecordToolCallFannedOut(r.Context(), userID, route, payload); err != nil {
+		c.rejectProducerRequest(w, r.URL.Path, err)
+		return
+	}
+	c.responder.JSON(w, http.StatusOK, models.ObserveProducerResponse{Accepted: true})
+}
+
 // rejectProducerRequest answers a failed producer request with a typed
 // models.ObserveProducerRejection and logs the full error, since a caller that
 // treats the status as best-effort never surfaces it. Cross-user ownership

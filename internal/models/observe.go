@@ -582,6 +582,48 @@ type ObserveProducerStopRequest struct {
 	CLISessionID  string     `json:"cli_session_id,omitempty"`
 }
 
+// ObserveProducerAssignmentRequest is the typed request body for the mTLS
+// producer endpoints POST /api/v1/observe/producer/assignment-started and
+// /assignment-completed. It reports one campaign assignment's progress and
+// carries the SSE routing target. TerminalStatus is required on completion and
+// absent on start. The gateway derives user_id from the mTLS peer certificate,
+// never from the request body.
+type ObserveProducerAssignmentRequest struct {
+	SchemaVersion  string                `json:"schema_version"`
+	CycleID        string                `json:"cycle_id"`
+	CampaignID     string                `json:"campaign_id"`
+	AssignmentID   string                `json:"assignment_id"`
+	VariantID      string                `json:"variant_id,omitempty"`
+	Role           ModelRole             `json:"role,omitempty"`
+	TaskID         string                `json:"task_id"`
+	ArmID          string                `json:"arm_id,omitempty"`
+	Repetition     int                   `json:"repetition"`
+	TerminalStatus TerminalOutcomeStatus `json:"terminal_status,omitempty"`
+	WebSessionID   string                `json:"web_session_id,omitempty"`
+	CLISessionID   string                `json:"cli_session_id,omitempty"`
+}
+
+// ObserveProducerToolCallFannedOutRequest is the typed request body for the
+// mTLS producer endpoint POST /api/v1/observe/producer/tool-call-fanned-out.
+// It reports one tool call the harness fanned out across roster targets, named
+// as in the signed agent trace (group_id, the lead call_id). The gateway
+// derives user_id from the mTLS peer certificate, never from the request body.
+type ObserveProducerToolCallFannedOutRequest struct {
+	SchemaVersion string `json:"schema_version"`
+	CycleID       string `json:"cycle_id"`
+	CampaignID    string `json:"campaign_id"`
+	AssignmentID  string `json:"assignment_id"`
+	CallID        string `json:"call_id"`
+	GroupID       string `json:"group_id"`
+	ToolName      string `json:"tool_name"`
+	Targets       int    `json:"targets"`
+	Succeeded     int    `json:"succeeded"`
+	Concurrency   int    `json:"concurrency"`
+	DurationMS    int64  `json:"duration_ms"`
+	WebSessionID  string `json:"web_session_id,omitempty"`
+	CLISessionID  string `json:"cli_session_id,omitempty"`
+}
+
 // ObserveProducerResponse is the typed response body for the mTLS producer
 // endpoints. It carries a single accepted flag indicating the gateway
 // accepted and persisted the projection. The response contains no record
@@ -668,6 +710,25 @@ type EvalAssignmentCompletedPayload struct {
 	TerminalStatus TerminalOutcomeStatus `json:"terminal_status"`
 	CompletedAt    time.Time             `json:"completed_at"`
 	ObservedAt     time.Time             `json:"observed_at"`
+}
+
+// EvalToolCallFannedOutPayload is the payload for
+// ai.eval.tool_call.fanned_out events.
+type EvalToolCallFannedOutPayload struct {
+	SchemaVersion  string    `json:"schema_version"`
+	SourceSequence int64     `json:"source_sequence"`
+	EventID        string    `json:"event_id"`
+	CycleID        string    `json:"cycle_id"`
+	CampaignID     string    `json:"campaign_id"`
+	AssignmentID   string    `json:"assignment_id"`
+	CallID         string    `json:"call_id"`
+	GroupID        string    `json:"group_id"`
+	ToolName       string    `json:"tool_name"`
+	Targets        int       `json:"targets"`
+	Succeeded      int       `json:"succeeded"`
+	Concurrency    int       `json:"concurrency"`
+	DurationMS     int64     `json:"duration_ms"`
+	ObservedAt     time.Time `json:"observed_at"`
 }
 
 // EvalModelRoleInvokedPayload is the payload for

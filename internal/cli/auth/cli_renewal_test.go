@@ -23,6 +23,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/services/fs"
+	"github.com/zerotrustdata/ztd/internal/services/keystore/keystoretest"
 	"github.com/zerotrustdata/ztd/internal/testutil"
 )
 
@@ -366,4 +367,35 @@ func TestCLICertificateSource_FailsTheHandshakeOnceExpired(t *testing.T) {
 
 	_, err = source.GetClientCertificate(&tls.CertificateRequestInfo{})
 	require.ErrorIs(t, err, constants.ErrCLICertificateExpired)
+}
+
+func TestNewCLICertificateSource_ReusesTheLoadedIdentityAfterTheMasterKeyIsGone(t *testing.T) {
+	fileSvc, cfg := newAuthTestEnv(t)
+	writeBoundIdentity(t, fileSvc, cfg, time.Now().Add(time.Hour))
+	first, err := NewCLICertificateSource(fileSvc, cfg)
+	require.NoError(t, err)
+
+	// The ssh-agent key that seals the master key expires while the process
+	// runs: the identity it already unsealed stays usable.
+	cfg.Keyring = keystoretest.NewMemoryKeyring()
+	second, err := NewCLICertificateSource(fileSvc, cfg)
+	require.NoError(t, err)
+	assert.Same(t, first, second)
+	authContext, err := LoadClientAuthContext(fileSvc, cfg)
+	require.NoError(t, err)
+	assert.NotNil(t, authContext.Certificate)
+}
+
+func TestNewCLICertificateSource_UnsealsAChangedIdentityAgain(t *testing.T) {
+	fileSvc, cfg := newAuthTestEnv(t)
+	cliSessionID, bundlePEM := writeBoundIdentity(t, fileSvc, cfg, time.Now().Add(time.Minute))
+	_, err := NewCLICertificateSource(fileSvc, cfg)
+	require.NoError(t, err)
+	artifacts := renewedArtifacts(t, cliSessionID, bundlePEM)
+	_, err = RenewCLIIdentityIfDue(testutil.Context(t), fileSvc, cfg, &fakeCLIRenewer{artifacts: artifacts}, &mockKeyProvider{csr: "csr", key: artifacts.CLIKey}, time.Now)
+	require.NoError(t, err)
+
+	cfg.Keyring = keystoretest.NewMemoryKeyring()
+	_, err = NewCLICertificateSource(fileSvc, cfg)
+	require.ErrorIs(t, err, constants.ErrFailedToLoadClientCertificate, "a new identity is never presented without unsealing its key")
 }

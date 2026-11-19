@@ -31,6 +31,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/services/governance"
 	inferencedispatch "github.com/zerotrustdata/ztd/internal/services/inference/dispatch"
 	"github.com/zerotrustdata/ztd/internal/services/logging"
+	"github.com/zerotrustdata/ztd/internal/services/mcp"
 	"github.com/zerotrustdata/ztd/internal/services/operatordeploy"
 	"github.com/zerotrustdata/ztd/internal/services/pubsub"
 	commonv1 "github.com/zerotrustdata/ztd/protocol/proto/ztd/common/v1"
@@ -86,6 +87,27 @@ const InferenceProgressResultBuffer = 64
 // EnvelopeExpiry is the lifetime of a dispatched GovernanceEnvelope from
 // construction to operator expiry rejection.
 const EnvelopeExpiry = 5 * time.Minute
+
+// AdmissionReviewReserve is the share of a GovernanceEnvelope's lifetime held
+// back for the Tribunal's contextual admission review (DispatchRequest.OnAdmitted)
+// when one follows L2 deliberation. A vote retry wait that would end inside it
+// is never started (governance.AdmissionReserve).
+const AdmissionReviewReserve = 60 * time.Second
+
+// admissionReserve is the envelope lifetime the stages after L2 deliberation
+// need: the L3 human-approval wait (bounded by mcp.ApprovalRequestTTL) where
+// the action requires L3 under posture, and the admission review where the
+// request has one.
+func admissionReserve(actionType constants.ActionType, posture constants.Posture, reviewed bool) time.Duration {
+	var reserve time.Duration
+	if governance.L3Required(actionType, posture) {
+		reserve += mcp.ApprovalRequestTTL
+	}
+	if reviewed {
+		reserve += AdmissionReviewReserve
+	}
+	return reserve
+}
 
 // BuildEnvelopeParams is the input to BuildGovernanceEnvelope. The gateway
 // owns the state Merkle root and governance posture; callers supply the
@@ -459,7 +481,8 @@ func (d *DispatchService) Dispatch(ctx context.Context, req DispatchRequest) (re
 	//    A Tribunal member's own vote inference is never L2-enforced
 	//    (INFERENCE changes no state), so L2 cannot recurse into itself.
 	if governance.L2Enforced(env, d.posture) && d.l2Deliberator != nil {
-		deliberated, derr := d.l2Deliberator.Deliberate(ctx, wire)
+		reserve := admissionReserve(actionType, d.posture, req.OnAdmitted != nil)
+		deliberated, derr := d.l2Deliberator.Deliberate(governance.WithAdmissionReserve(ctx, reserve), wire)
 		if derr != nil {
 			return nil, fmt.Errorf("dispatch: l2 deliberation: %w: %w", constants.ErrIngressL2DeliberationFailed, derr)
 		}

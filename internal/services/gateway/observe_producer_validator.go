@@ -153,6 +153,59 @@ func validateStopProducerRequest(req models.ObserveProducerStopRequest) error {
 	return nil
 }
 
+// validTerminalOutcomes is the closed set of assignment terminal statuses a
+// completion may report.
+var validTerminalOutcomes = map[models.TerminalOutcomeStatus]struct{}{
+	models.TerminalOutcomeStatusCompleted:     {},
+	models.TerminalOutcomeStatusFailed:        {},
+	models.TerminalOutcomeStatusSuperseded:    {},
+	models.TerminalOutcomeStatusUnavailable:   {},
+	models.TerminalOutcomeStatusQualification: {},
+}
+
+// validateAssignmentProducerRequest checks an assignment progress request.
+// completed requires a terminal status from the closed set; a start carries
+// none.
+func validateAssignmentProducerRequest(req models.ObserveProducerAssignmentRequest, completed bool) error {
+	if req.SchemaVersion != supportedProducerSchemaVersion {
+		return fmt.Errorf("observe producer: validate assignment request: %w: got %q", constants.ErrObserveUnsupportedSchemaVersion, req.SchemaVersion)
+	}
+	if req.CampaignID == "" {
+		return fmt.Errorf("observe producer: validate assignment request: %w", constants.ErrObserveCampaignIDRequired)
+	}
+	if req.AssignmentID == "" {
+		return fmt.Errorf("observe producer: validate assignment request: %w", constants.ErrObserveAssignmentIDRequired)
+	}
+	_, known := validTerminalOutcomes[req.TerminalStatus]
+	if completed != known {
+		return fmt.Errorf("observe producer: validate assignment request: %w: %q", constants.ErrObserveTerminalStatusInvalid, req.TerminalStatus)
+	}
+	return nil
+}
+
+// validateToolCallFannedOutProducerRequest checks a fan-out report.
+func validateToolCallFannedOutProducerRequest(req models.ObserveProducerToolCallFannedOutRequest) error {
+	if req.SchemaVersion != supportedProducerSchemaVersion {
+		return fmt.Errorf("observe producer: validate tool call fan-out request: %w: got %q", constants.ErrObserveUnsupportedSchemaVersion, req.SchemaVersion)
+	}
+	if req.CampaignID == "" {
+		return fmt.Errorf("observe producer: validate tool call fan-out request: %w", constants.ErrObserveCampaignIDRequired)
+	}
+	if req.AssignmentID == "" {
+		return fmt.Errorf("observe producer: validate tool call fan-out request: %w", constants.ErrObserveAssignmentIDRequired)
+	}
+	if req.GroupID == "" {
+		return fmt.Errorf("observe producer: validate tool call fan-out request: %w", constants.ErrObserveGroupIDRequired)
+	}
+	if req.Targets < 0 || req.Succeeded < 0 || req.Concurrency < 0 || req.DurationMS < 0 {
+		return fmt.Errorf("observe producer: validate tool call fan-out request: %w", constants.ErrObserveNegativeTaskCount)
+	}
+	if req.Succeeded > req.Targets {
+		return fmt.Errorf("observe producer: validate tool call fan-out request: %w", constants.ErrObserveCompletedExceedsTotal)
+	}
+	return nil
+}
+
 // decodeProducerRequest decodes a producer request body with strict JSON
 // semantics: unknown fields and trailing JSON after the top-level value are
 // rejected. It returns a wrapped constants.ErrInvalidJSONBody so the
