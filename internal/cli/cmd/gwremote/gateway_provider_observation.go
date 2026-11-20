@@ -10,7 +10,9 @@ package gwremote
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -150,6 +152,12 @@ func PreflightProviderObservationDelivery(fileSvc fs.RuntimeFileService, cfg *co
 	}
 	body, err := client.Get(constants.APIPaths.InferenceProviderObservations + "_preflight")
 	if err != nil {
+		// The Gateway answers 503 only when no provider-boundary observer is
+		// enrolled, selectable, or deliverable.
+		var statusErr *api.StatusError
+		if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusServiceUnavailable {
+			return fmt.Errorf("provider observation preflight: %w: %w", constants.ErrEvaluationObservationUnavailable, err)
+		}
 		return fmt.Errorf("provider observation preflight: %w", err)
 	}
 	var resp struct {

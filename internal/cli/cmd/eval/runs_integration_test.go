@@ -1006,6 +1006,22 @@ func TestResolveRunWitnessPoliciesRejectsUnspecifiedStoredPolicies(t *testing.T)
 	require.ErrorIs(t, err, constants.ErrEvaluationFlagsInvalid)
 }
 
+// A start whose observer preflight fails refuses before it creates the run, so
+// a rollout step that fails here leaves no scheduled run behind.
+func TestRunsStart_ObservationPreflightRefusesBeforeTheRunExists(t *testing.T) {
+	env, run := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
+	env.createCampaign(t, "eval-a")
+	gwremote.WithConfiguredGatewayHealthCheck(t, false)
+	env.cmd.SetOut(&bytes.Buffer{})
+
+	_, err := runStartFlow(env.cmd, env.deps, runStartFlowOptions{CampaignID: "eval-a", RunID: "run-a-1"})
+	require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
+	assert.Zero(t, run.stack.Provider.ChatCount(), "the preflight refuses before any model turn")
+
+	_, loadErr := env.store(t).LoadRun(context.Background(), "run-a-1")
+	assert.True(t, isMissingRecord(loadErr), "a refused start creates no run record")
+}
+
 func TestRunsResume_RejectsPreflightWhenGatewayUnhealthy(t *testing.T) {
 	env, run := newGatewayRunEnvWithPosture(t, constants.PostureDoctrine)
 	runID := env.prepareRun(t)

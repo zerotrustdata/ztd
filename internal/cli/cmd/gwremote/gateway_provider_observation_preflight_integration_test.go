@@ -20,6 +20,7 @@ import (
 	"github.com/zerotrustdata/ztd/internal/cli/cmd/cmdtest"
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/netutil"
+	"github.com/zerotrustdata/ztd/internal/services/evaluation"
 	"github.com/zerotrustdata/ztd/internal/services/network"
 	"github.com/zerotrustdata/ztd/test/fixtures"
 )
@@ -37,7 +38,7 @@ func TestPreflightProviderObservationDelivery_AgainstGateway(t *testing.T) {
 		require.NoError(t, PreflightProviderObservationDelivery(fileSvc, cfg))
 	})
 
-	t.Run("reports a Gateway without a provider-boundary observer as HTTP 503", func(t *testing.T) {
+	t.Run("reports a Gateway without a provider-boundary observer as observation unavailable", func(t *testing.T) {
 		gateway := fixtures.NewGatewayFixture(t, fixtures.GatewayFixtureOptions{
 			TestName:     "preflight-no-observer",
 			Posture:      constants.PostureDoctrine,
@@ -56,6 +57,9 @@ func TestPreflightProviderObservationDelivery_AgainstGateway(t *testing.T) {
 		require.ErrorAs(t, err, &statusErr)
 		assert.Equal(t, http.StatusServiceUnavailable, statusErr.StatusCode)
 		assert.Contains(t, statusErr.Body, constants.ErrProviderBoundaryObserverNotFound.Error())
+		// A rollout step that fails here records why, not internal_error.
+		require.ErrorIs(t, err, constants.ErrEvaluationObservationUnavailable)
+		assert.Equal(t, evaluation.ExecutionFailureEvidence, evaluation.ClassifyExecutionFailure(err))
 	})
 
 	t.Run("treats an unreachable Gateway endpoint as observation unavailable", func(t *testing.T) {

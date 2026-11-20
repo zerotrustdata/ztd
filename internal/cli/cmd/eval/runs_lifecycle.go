@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/zerotrustdata/ztd/internal/cli/auth"
+	"github.com/zerotrustdata/ztd/internal/cli/cmd/gwremote"
 	"github.com/zerotrustdata/ztd/internal/cli/config"
 	"github.com/zerotrustdata/ztd/internal/cli/output"
 	"github.com/zerotrustdata/ztd/internal/constants"
@@ -180,7 +181,7 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 			return nil, fmt.Errorf("evaluation: runs start: campaign investigation: %w", err)
 		}
 		gatewayDeps := deps.gatewayDeps()
-		gatewayCfg, _, gatewayAuth, err := gatewayEvalEnvironment(cmd, gatewayDeps)
+		gatewayCfg, gatewayFileSvc, gatewayAuth, err := gatewayEvalEnvironment(cmd, gatewayDeps)
 		if err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
 		}
@@ -197,6 +198,15 @@ func runStartFlow(cmd *cobra.Command, deps nativeEvalDeps, opts runStartFlowOpti
 		}
 		if err := evaluation.ValidateRosterForCatalog(topology, catalog); err != nil {
 			return nil, fmt.Errorf("evaluation: runs start: %w", err)
+		}
+		// Checked before the run exists, so a refused start leaves no scheduled
+		// run behind. A prepared run executes later and preflights then.
+		if !opts.PrepareOnly {
+			if err := preflightRunProviderObservation(spec, func() error {
+				return gwremote.PreflightProviderObservationDelivery(gatewayFileSvc, gatewayCfg)
+			}); err != nil {
+				return nil, fmt.Errorf("evaluation: runs start: %w", err)
+			}
 		}
 	}
 	cellPosture := governance.Posture
