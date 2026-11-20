@@ -243,6 +243,10 @@ func TestAssessRisk(t *testing.T) {
 		{name: "unknown field fails closed", answer: `{"risk": "LOW", "score": 1}`, level: RiskHigh, invalid: true},
 		{name: "unknown level fails closed", answer: `{"risk": "NONE"}`, level: RiskHigh, invalid: true},
 		{name: "trailing content fails closed", answer: lowRisk + " LOW", level: RiskHigh, invalid: true},
+		{name: "empty rationale fails closed", answer: `{"risk": "LOW", "rationale": "", "feedback": ""}`, level: RiskHigh, invalid: true},
+		{name: "copied rationale placeholder fails closed", answer: `{"risk": "LOW", "rationale": "<why>", "feedback": ""}`, level: RiskHigh, invalid: true},
+		{name: "copied rationale type word fails closed", answer: `{"risk": "LOW", "rationale": "string", "feedback": ""}`, level: RiskHigh, invalid: true},
+		{name: "copied feedback placeholder fails closed", answer: `{"risk": "HIGH", "rationale": "deletes /", "feedback": "<how to reach the goal more safely>"}`, level: RiskHigh, invalid: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -305,6 +309,21 @@ func TestAudit(t *testing.T) {
 			failed:  true, attempts: 2,
 		},
 		{name: "free text fails closed", vote: split, answers: []string{"APPROVE"}, failed: true, attempts: 2},
+		{
+			name: "copied rationale placeholder retried once", vote: split,
+			answers: []string{`{"verdict": "APPROVE", "revised_arguments": null, "swap_to_cluster": null, "rationale": "<why>"}`, approveSplit},
+			verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_APPROVE, command: "ss -tlpn", attempts: 2,
+		},
+		{
+			name: "copied rationale type word retried once", vote: split,
+			answers: []string{`{"verdict": "APPROVE", "revised_arguments": null, "swap_to_cluster": null, "rationale": "string"}`, approveSplit},
+			verdict: evalv1.AgentReviewVerdict_AGENT_REVIEW_VERDICT_APPROVE, command: "ss -tlpn", attempts: 2,
+		},
+		{
+			name: "empty rationale fails closed", vote: split,
+			answers: []string{`{"verdict": "APPROVE", "revised_arguments": null, "swap_to_cluster": null, "rationale": " "}`},
+			failed:  true, attempts: 2,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

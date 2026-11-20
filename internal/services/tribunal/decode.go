@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode"
 
 	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/jsonschema"
@@ -54,4 +55,28 @@ func decodeAuthoringAnswer(text, schemaJSON string, answer any) error {
 		return fmt.Errorf("%w: %w", constants.ErrTribunalAnswerInvalid, failures)
 	}
 	return nil
+}
+
+// authoredText returns a model's trimmed explanation field. The output
+// contracts describe these fields by type, never by an example value, and an
+// answer that copies the template instead of writing is invalid: an empty
+// value, a value with no letter or digit (such as "..."), the bare type word
+// "string", or a lone angle-bracket placeholder (such as "<why>").
+func authoredText(field, value string) (string, error) {
+	text := strings.TrimSpace(value)
+	switch {
+	case text == "":
+		return "", fmt.Errorf("%w: %s is empty", constants.ErrTribunalAnswerInvalid, field)
+	case !strings.ContainsFunc(text, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }):
+		return "", fmt.Errorf("%w: %s %q has no words", constants.ErrTribunalAnswerInvalid, field, text)
+	case strings.EqualFold(text, "string"), templatePlaceholder(text):
+		return "", fmt.Errorf("%w: %s %q is a template placeholder, not an explanation", constants.ErrTribunalAnswerInvalid, field, text)
+	}
+	return text, nil
+}
+
+// templatePlaceholder reports whether text is one <...> placeholder and
+// nothing else.
+func templatePlaceholder(text string) bool {
+	return len(text) >= 2 && text[0] == '<' && text[len(text)-1] == '>' && !strings.ContainsAny(text[1:len(text)-1], "<>")
 }

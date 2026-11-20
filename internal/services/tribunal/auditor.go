@@ -172,7 +172,10 @@ func auditVerdict(text string, v Vote, clusters []Cluster, req Request) (*Audit,
 	if err := decodeAuthoringAnswer(text, auditorJSONSchema(swapAlternatives(v, clusters)), &answer); err != nil {
 		return nil, err.Error()
 	}
-	rationale := strings.TrimSpace(answer.Rationale)
+	rationale, err := authoredText("rationale", answer.Rationale)
+	if err != nil {
+		return nil, err.Error()
+	}
 	swap := strings.ToLower(strings.TrimSpace(answer.SwapToCluster))
 	var revised models.RunShellCommandRequest
 	if answer.RevisedArguments != nil && models.ValidExecutableName(answer.RevisedArguments.Command) {

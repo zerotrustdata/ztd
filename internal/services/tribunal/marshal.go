@@ -22,8 +22,9 @@ type marshalAnswer struct {
 }
 
 // assessRisk asks Marshal to classify the vote winner. An answer that is not
-// a valid assessment classifies the command HIGH by fail-closed rule; only an
-// inference failure returns an error.
+// a valid assessment, including a rationale or non-empty feedback that is not
+// authored text (authoredText), classifies the command HIGH by fail-closed
+// rule; only an inference failure returns an error.
 func assessRisk(ctx context.Context, cfg Config, req Request, arguments models.RunShellCommandRequest) (*Risk, error) {
 	system, err := personaSystemPrompt(cfg.Personas, PersonaMarshal)
 	if err != nil {
@@ -44,5 +45,15 @@ func assessRisk(ctx context.Context, cfg Config, req Request, arguments models.R
 	default:
 		return &Risk{Level: RiskHigh, Invalid: true, Rationale: fmt.Sprintf("Marshal gave an unknown risk level %q", answer.Risk)}, nil
 	}
-	return &Risk{Level: level, Rationale: strings.TrimSpace(answer.Rationale), Feedback: strings.TrimSpace(answer.Feedback)}, nil
+	rationale, err := authoredText("rationale", answer.Rationale)
+	if err != nil {
+		return &Risk{Level: RiskHigh, Invalid: true, Rationale: "Marshal gave no valid risk assessment: " + err.Error()}, nil //nolint:nilerr // An unwritten rationale is a fail-closed HIGH assessment.
+	}
+	feedback := strings.TrimSpace(answer.Feedback)
+	if feedback != "" {
+		if feedback, err = authoredText("feedback", feedback); err != nil {
+			return &Risk{Level: RiskHigh, Invalid: true, Rationale: "Marshal gave no valid risk assessment: " + err.Error()}, nil //nolint:nilerr // An unwritten feedback is a fail-closed HIGH assessment.
+		}
+	}
+	return &Risk{Level: level, Rationale: rationale, Feedback: feedback}, nil
 }

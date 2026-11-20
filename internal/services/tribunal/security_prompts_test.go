@@ -55,7 +55,7 @@ func TestConsensusVotePromptsCarrySharedSecurityRulesForEveryMember(t *testing.T
 			system, user, err := ConsensusVotePrompt(member, ConsensusSubject{PayloadJSON: "untrusted-payload-marker"})
 			require.NoError(t, err)
 			assertSharedSecurityPrompt(t, system)
-			assert.Contains(t, system, `"decision":"approve"|"deny"`)
+			assert.Contains(t, system, `"decision": "approve"|"deny"`)
 			assert.NotContains(t, system, "untrusted-payload-marker")
 			assert.Contains(t, user, "untrusted-payload-marker")
 		})

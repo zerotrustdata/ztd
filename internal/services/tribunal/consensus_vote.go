@@ -111,8 +111,9 @@ func (a ConsensusVoteAnswer) Approve() bool {
 	return a.Err == nil && a.Decision == ConsensusVoteApprove
 }
 
-// ParseConsensusVote decodes a member's vote answer. An invalid answer or any
-// other decision value is a deny; no keyword is ever read out of free text.
+// ParseConsensusVote decodes a member's vote answer. An invalid answer, any
+// other decision value, or a reason that is not authored text (authoredText)
+// is a deny; no keyword is ever read out of free text.
 func ParseConsensusVote(text string) ConsensusVoteAnswer {
 	var answer consensusVoteAnswer
 	if err := decodeAnswer(strings.TrimSpace(text), &answer); err != nil {
@@ -126,5 +127,9 @@ func ParseConsensusVote(text string) ConsensusVoteAnswer {
 		return ConsensusVoteAnswer{Decision: ConsensusVoteDeny, Reason: *answer.Reason,
 			Err: fmt.Errorf("decision %q: %w", answer.Decision, constants.ErrTribunalAnswerInvalid)}
 	}
-	return ConsensusVoteAnswer{Decision: answer.Decision, Reason: *answer.Reason}
+	reason, err := authoredText("reason", *answer.Reason)
+	if err != nil {
+		return ConsensusVoteAnswer{Decision: ConsensusVoteDeny, Err: err}
+	}
+	return ConsensusVoteAnswer{Decision: answer.Decision, Reason: reason}
 }

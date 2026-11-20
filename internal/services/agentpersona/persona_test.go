@@ -97,7 +97,7 @@ func TestTribunalVotePersonasHaveIndependentDigestBoundRenderings(t *testing.T) 
 			t.Fatal(err)
 		}
 		prompt := p.VoteSystemPrompt()
-		if !strings.HasPrefix(prompt, constants.AgentSecurityPrompt) || !strings.Contains(prompt, "<identity>") || !strings.Contains(prompt, "<purpose>") || !strings.Contains(prompt, `"decision":"approve"|"deny"`) {
+		if !strings.HasPrefix(prompt, constants.AgentSecurityPrompt) || !strings.Contains(prompt, "<identity>") || !strings.Contains(prompt, "<purpose>") || !strings.Contains(prompt, `"decision": "approve"|"deny"`) {
 			t.Errorf("%s vote prompt is incomplete: %s", id, prompt)
 		}
 		if p.VoteDigest() == "" || p.VoteDigest() == p.Digest() {

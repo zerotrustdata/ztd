@@ -21,8 +21,8 @@ func TestConsensusVotePromptUsesMemberVoteIdentityAndContract(t *testing.T) {
 		system, _, err := ConsensusVotePrompt(member, ConsensusSubject{})
 		require.NoError(t, err)
 		require.True(t, strings.HasPrefix(system, constants.AgentSecurityPrompt), "member %s", member)
-		require.Contains(t, system, `"decision":"approve"|"deny"`)
-		require.Contains(t, system, `"reason":"<one sentence>"`)
+		require.Contains(t, system, `{"decision": "approve"|"deny", "reason": string}`)
+		require.NotContains(t, system, "<one sentence>", "the vote contract describes reason by type, never by a value a model can copy")
 		require.Contains(t, system, "<identity>")
 		require.Contains(t, system, "<purpose>")
 		require.Contains(t, system, "its absence alone does not make an action unclear")
@@ -72,6 +72,14 @@ func TestParseConsensusVote(t *testing.T) {
 		{name: "missing reason rejected", text: `{"decision":"approve"}`, wantErr: true},
 		{name: "null reason rejected", text: `{"decision":"approve","reason":null}`, wantErr: true},
 		{name: "unknown field rejected", text: `{"decision":"approve","reason":"ok","extra":true}`, wantErr: true},
+		{name: "approve with a trimmed reason", text: `{"decision":"approve","reason":"  reads one log file  "}`, want: true, wantReason: "reads one log file"},
+		{name: "empty reason rejected", text: `{"decision":"approve","reason":""}`, wantErr: true},
+		{name: "blank reason rejected", text: `{"decision":"approve","reason":"  \t "}`, wantErr: true},
+		{name: "punctuation-only reason rejected", text: `{"decision":"approve","reason":"..."}`, wantErr: true},
+		{name: "copied placeholder reason rejected", text: `{"decision":"approve","reason":"<one sentence>"}`, wantErr: true},
+		{name: "copied type word reason rejected", text: `{"decision":"approve","reason":"String"}`, wantErr: true},
+		{name: "copied placeholder deny rejected", text: `{"decision":"deny","reason":" <why> "}`, wantErr: true},
+		{name: "reason quoting a tag is authored", text: `{"decision":"deny","reason":"writes <script> into index.html"}`, wantReason: "writes <script> into index.html"},
 		{name: "markdown fenced rejected", text: "```json\n{\"decision\":\"approve\",\"reason\":\"ok\"}\n```", wantErr: true},
 	}
 	for _, tt := range tests {

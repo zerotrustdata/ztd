@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
   "id": "consensus-screen",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "description": "Consensus screening across all three roles: exact instructions, receipt-backed history, file arguments, contradiction handling, untrusted instructions, and an authorized read-only control. Upstream identity uses grounded semantic criteria from default-suite@1.30.0. Lite security assignments grade the typed Triage classification with no tool declarations; Primary and Assistant grade the response. Grading contract v4 requires the requested answer and accepts every frozen Triage label.",
   "scenarios": [
     {
@@ -892,43 +892,43 @@
     },
     {
       "id": "axiom",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "digest": "0b7e0f0e4d0e21ebf35f1f3916529c656d59def89a146f00b14c2f03c4ef7580",
-      "vote_digest": "bf90a8c1967df593e55922400d31d0c87513370a8b82982dc43fad9892971af8"
+      "vote_digest": "2b8e7abff0885c5a2fa78365e5440604b5ce9253b763317d8f9c299a2c0b41c3"
     },
     {
       "id": "concord",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "digest": "1e00b4c5b55629d22c482d91ea8b927663da3ed869b7f513b6e0c27539084d05",
-      "vote_digest": "ad0316c920f2b21366e86bc97c864cd28605ba532272e164984e9a6109cfafb5"
+      "vote_digest": "eae7477a67c16a2bd2e5c03907286a394d54a1b007b037c93b78d13c99e4759e"
     },
     {
       "id": "variance",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "digest": "2da55ea198e6a6aca92ed2b671c7f8145b617f643f813e36146aa2d855701050",
-      "vote_digest": "1f8ef76b0b92ac74f57cf3c33c3aa42e54639fa2205ffc896c3355c8a2b16119"
+      "vote_digest": "192104c6eaa27c87afa760ac003da2ade658d84401ba7e9b64ab14d8ede4bd47"
     },
     {
       "id": "pragma",
-      "version": "1.3.0",
+      "version": "1.4.0",
       "digest": "4d9b2bf6be97c996642eca1f7dfa102e44b849aacfc756d545bc0a50eea97319",
-      "vote_digest": "ab2c877b2ae5d47b6c57569fc60a2bed3c9eefa85f8cd4def3966508af0db43c"
+      "vote_digest": "13345ce08cbef6a8d74029a54d862b8f90a23d9e1aeea256d69e69048b6d878c"
     },
     {
       "id": "nemesis",
-      "version": "1.4.0",
+      "version": "1.5.0",
       "digest": "254f7e62c3c2e5d4f0022a2ea59a0c589cf22a77f2f7c85393bee08708e76a05",
-      "vote_digest": "af2ce05d490cc8fb194734cdfa8c8dae1b3691ee89aa21eddc469af6e4496d0d"
+      "vote_digest": "b2d2bd60a4421a2af62c0bf39cd91295169bb11099fae6ca8b5206f549661d26"
     },
     {
       "id": "marshal",
-      "version": "1.3.0",
-      "digest": "cb85093e06d6306ae9bad2954255e666dd0d53d168d7cec2518277af4ad6a445"
+      "version": "1.4.0",
+      "digest": "42c8e8236b1abca9b652bf98029568d1c21a9a6bf94eadfb4b214e617ac0dfd7"
     },
     {
       "id": "auditor",
-      "version": "1.3.0",
-      "digest": "74abbf16e74d6a5a0afb59a72c6a8fe398961b0700aee0565eed6259aea7e938"
+      "version": "1.4.0",
+      "digest": "389d06a2816980a77c9d03b2283c0d3d8d903d8aea525b74bdd14bc5ad445032"
     }
   ]
 }

@@ -19,6 +19,7 @@ import (
 // quickstartCatalogDigestPins records the catalog digest each quickstart suite
 // version was released with; never re-pin an old version.
 var quickstartCatalogDigestPins = map[string]string{
+	"1.6.0": "23786e8ff007fc2b3c10a04e258f880dece5a83ce67321929d2e38c5dd977506",
 	"1.5.0": "8b103beaa6bc646a7effdb2b9470a485b975810d557d94d623df9349491378cb",
 	"1.4.0": "2fdd6a4669664d4e6c85ab30ca47ce2d25d89a816b1b460b18fd890268b4db25",
 	"1.3.0": "bba8eb5aa3cb441ade7e06180e5438a5956bf0e55b2865cd47f6cb185eab27c9",

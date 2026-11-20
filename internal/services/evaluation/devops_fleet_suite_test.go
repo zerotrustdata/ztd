@@ -25,7 +25,7 @@ func TestDevOpsFleetSuite_CatalogValidatesAndNeedsAFleet(t *testing.T) {
 	require.Len(t, catalog.GetScenarios(), DevOpsFleetScenarioCount)
 	assert.Len(t, artifacts, DevOpsFleetScenarioCount)
 	assert.True(t, CatalogNeedsFleet(catalog))
-	assert.Equal(t, "1.1.0", DevOpsFleetSuiteVersion)
+	assert.Equal(t, "1.2.0", DevOpsFleetSuiteVersion)
 	assert.Equal(t, 5, DevOpsFleetScenarioCount)
 	for _, scenario := range catalog.GetScenarios() {
 		wantMin := uint32(devOpsFleetSize)

@@ -25,7 +25,7 @@ import (
 // as a missing one.
 const (
 	DevOpsFleetSuiteID      = "devops-fleet"
-	DevOpsFleetSuiteVersion = "1.1.0"
+	DevOpsFleetSuiteVersion = "1.2.0"
 	devOpsFleetScenarioVer  = "1.0.0"
 	// devOpsFleetSize is the roster every fleet scenario needs.
 	devOpsFleetSize = 3

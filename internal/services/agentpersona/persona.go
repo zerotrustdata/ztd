@@ -83,7 +83,7 @@ func (p Persona) VoteSystemPrompt() string {
 	var b strings.Builder
 	b.WriteString(constants.AgentSecurityPrompt)
 	writeSection(&b, "role", p.Role)
-	writeSection(&b, "output_contract", `Answer with exactly one JSON object {"decision":"approve"|"deny","reason":"<one sentence>"}, with no explanation or markdown.`)
+	writeSection(&b, "output_contract", `Answer with exactly one JSON object and nothing else, with no markdown: {"decision": "approve"|"deny", "reason": string}. reason is one sentence, written in your own words, that explains the decision for this specific action.`)
 	writeSection(&b, "identity", p.Identity)
 	writeSection(&b, "purpose", p.VotePurpose)
 	return b.String()

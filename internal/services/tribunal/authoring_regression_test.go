@@ -146,7 +146,7 @@ func TestNemesisAuthoringIsCunningNotAlwaysAggressive(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, vote, "You are Nemesis of the ztd Tribunal")
 	assert.Contains(t, vote, "always cunning, not always aggressive")
-	assert.Contains(t, vote, `"decision":"approve"|"deny"`)
+	assert.Contains(t, vote, `"decision": "approve"|"deny"`)
 	assert.Contains(t, vote, "calibrated attacker")
 	assert.NotContains(t, vote, "Independently assess this governed action and target", "Nemesis never votes as an honest member")
 }
