@@ -3,8 +3,8 @@ doc_id: build-gateway
 title: Build Gateway
 audience: developers and operators
 status: current
-version: v1.5.0
-last_updated: 2026-10-28
+version: v1.11.0
+last_updated: 2026-11-20
 owners:
   - docs/guides/build_gateway.md
   - Makefile

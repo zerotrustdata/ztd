@@ -3,8 +3,8 @@ doc_id: troubleshooting
 title: Troubleshooting Guide
 audience: maintainers and coding agents
 status: current
-version: v1.10.0
-last_updated: 2026-11-11
+version: v1.11.0
+last_updated: 2026-11-20
 owners:
   - internal/cli/cmd/
   - internal/services/logging/
@@ -49,6 +49,10 @@ Diagnose and resolve common contributor setup, build, test, Gateway startup, aut
   - [Gateway CPU and Memory Profiling](#gateway-cpu-and-memory-profiling)
   - [Vault Validation and Key Recovery](#vault-validation-and-key-recovery)
   - [WSL Ollama Reachability](#wsl-ollama-reachability)
+  - [Feed Drift](#feed-drift)
+  - [Bucket Publication](#bucket-publication)
+  - [Model Not Found in a Rollout](#model-not-found-in-a-rollout)
+  - [Rollout Failure Classes and Record Repair](#rollout-failure-classes-and-record-repair)
   - [CLI Authentication and Session Recovery](#cli-authentication-and-session-recovery)
   - [Operator Connectivity and Enrollment Triage](#operator-connectivity-and-enrollment-triage)
   - [Governance Pipeline Diagnosis](#governance-pipeline-diagnosis)
@@ -150,7 +154,7 @@ make proto-generate
 ./ztd gw start --follow --log debug
 ```
 
-`./ztd gw logs` prints `.ztd/logs/ztd.log`, the current file only. The Gateway rotates it by size ([internal/services/logging/log_rotation.go](../../internal/services/logging/log_rotation.go)). When a record would take the file past `constants.ZtdLogMaxBytes` (50 MiB), its content is copied into `ztd.log.1`, older backups shift up to `ztd.log.5` (`constants.ZtdLogMaxBackups`), the oldest is removed, and `ztd.log` is truncated in place, so a background Gateway's inherited stdout and stderr keep writing to the current file. Read earlier records from the backups. `./ztd gw logs --follow` continues from the start of the file after a rotation. `./ztd gw start` also rotates `ztd.log` before it launches a background Gateway when the file is within `constants.ZtdLogStartHeadroomBytes` (4 MiB) of the threshold.
+`./ztd gw logs` prints `.ztd/logs/ztd.log`, the current file only. The Gateway rotates it by size ([internal/services/logging/log_rotation.go](../../internal/services/logging/log_rotation.go)). When a record would take the file past `constants.ZtdLogMaxBytes` (50 MiB), its content is copied into `ztd.log.1`, older backups shift up to `ztd.log.5` (`constants.ZtdLogMaxBackups`), the oldest is removed, and `ztd.log` is truncated in place, so a background Gateway's inherited stdout and stderr keep writing to the current file. Read earlier records from the backups. `./ztd gw logs --follow` continues from the start of the file after a rotation, and records written between its last read and the truncation are only in `ztd.log.1`. `./ztd gw start` also rotates `ztd.log` before it launches a background Gateway when the file is within `constants.ZtdLogStartHeadroomBytes` (4 MiB) of the threshold.
 
 `./ztd gw status` prints a `Consensus` row that describes the bound L2 consensus and the posture the Gateway reports. Start the Gateway and each Operator against a new runtime root rather than one left by an earlier release: an existing `.ztd/data/ztd.db` is not migrated, because the `CREATE TABLE` statements are the whole schema (`INV-STOR-SCHEMA-01` in [Developer Guidelines](devs.md)).
 
@@ -258,7 +262,7 @@ The explicit endpoint overrides a remote `ZTD_OLLAMA_ENDPOINT` in `.env`; it doe
 
 A `verify_failed` run holding stored `INVALID_EVIDENCE` results from before v1.9.1 needs `./ztd eval runs repair <run> --regrade` and a new verify before it publishes.
 
-`feed_drift_checked: false` means the comparison did not run. `feed_drift_error` gives the cause: a mirror that is not reachable at the origin in use, for which pass `--mirror-origin`, or a locked vault, which the [vault procedure](#vault-validation-and-key-recovery) covers.
+`feed_drift_checked: false` means the comparison did not run. `feed_drift_error` gives the cause: a mirror that is not reachable at the origin in use, for which pass `--mirror-origin`, a locked vault, which the [vault procedure](#vault-validation-and-key-recovery) covers, or a run record that still carries the retired `data_operator_session_id` field, which [record repair](#rollout-failure-classes-and-record-repair) covers.
 
 ### Bucket Publication
 
@@ -278,6 +282,15 @@ The bucket journal lives at `public-feed/bucket-journal.jsonl` under the runtime
 ### Model Not Found in a Rollout
 
 A run that stops with `the provider does not have the requested model` and a queue note of `provider_failure (model_not_found)` asked the provider for a served tag it does not hold. The results it already recorded cannot verify under strict provenance, so start a new run instead of resuming. Compare the registry and provider with `./ztd eval models diff`, then pull the model with `./ztd eval models pull` or correct the registry entry. A bare tag such as `llama3.2` resolves to `:latest`, so it is missing when only `llama3.2:3b` is installed.
+
+### Rollout Failure Classes and Record Repair
+
+Each failed assignment in a rollout records one fixed `ExecutionFailureClass` (`internal/services/evaluation/campaign_execution_failure.go`); the classes are defined in [Evaluation Architecture](../architecture/evals.md) (`INV-EVAL-EVID-08`). Two classes call for a repair step rather than a rerun:
+
+- `publication_failed` means the run's results were persisted but its public mirror publication failed (`ErrEvaluationPublicationFailed`). Publish the run with `./ztd eval runs publish <run>`; the results are not re-executed. The class applies only when every failure in the run is a publication failure. A verification failure recorded beside it keeps its own class.
+- `key_store_unavailable` means the run could not unseal its CLI key or open its evidence vault because the key store is locked or does not hold the key, including an ssh-agent that no longer holds the sealing key. Restore the key store as described in [Vault Validation and Key Recovery](#vault-validation-and-key-recovery).
+
+A run record written before the harness roster still carries the retired `data_operator_session_id` field. `./ztd eval runs repair <run>` removes that field and leaves the rest of the record unchanged. The repaired run may no longer verify.
 
 ### CLI Authentication and Session Recovery
 

@@ -104,7 +104,7 @@ MCP (`POST /mcp` or stdio), A2A (`POST /api/v1/a2a/call`), governed HTTP dispatc
 they fail closed at L4 instead. Client-native tools, external MCP wrappers, and other side channels are explicitly
 **outside** the governance boundary.
 
-### Storage: Local-First Audit Architecture (LFAA)
+### Storage: Local-First Events Architecture (LFEA)
 
 Each executing runtime (Gateway, each Operator) is authoritative for its own SQLite audit DB (which holds the execution events), and
 state root under `.ztd/`. Gateway-mirrored receipts are best-effort projections only — never treat them as the

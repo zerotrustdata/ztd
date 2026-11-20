@@ -11,11 +11,16 @@ compatible with the previous release in the same minor series. See `INV-REL-VER-
 
 ---
 
+## v1.11.x
+
+| Version | Date | Description | Notes |
+|---------|------|-------------|-------|
+| 1.11.0 | 2026-11-20 | Hosted inference providers (`gemini`, `anthropic`, `openai`) beside the local Inference Operator provider with hosted model identity digests and signed hosted egress attestations, bounded transient inference retries with superseded attempts kept as evidence, a fleet harness that fans tool calls out across a frozen roster of Data Operators with the `devops-fleet@1.1.0` suite and governed `OPERATOR_DEPLOY`, live evaluation SSE events, Tribunal consensus readiness that checks the vote route, rollout recovery when the ssh-agent key expires, `agent-trace.v14` as the only verified trace version, new suite versions that campaigns frozen earlier must be recreated for, and run records written before the harness roster repaired by `ztd eval runs repair`. | [v1.11.0](docs/release_notes/v1.11.x/v1.11.0.md) |
+
 ## v1.10.x
 
 | Version | Date | Description | Notes |
 |---------|------|-------------|-------|
-| 1.10.2 | 2026-11-17 | Hosted inference providers (`gemini`, `anthropic`, `openai`) beside the local Inference Operator provider with hosted model identity digests and signed hosted egress attestations, hosted models in evaluation, formations, Tribunal consensus, and agent checks, the Explorer Leaderboard ranking remote-hosted models separately, bounded transient inference retries with superseded attempts kept as evidence, `agent-trace.v13`, and an Inference Operator on v1.10.2 required for hosted providers and transient retries. | [v1.10.2](docs/release_notes/v1.10.x/v1.10.2.md) |
 | 1.10.1 | 2026-11-15 | Generation bounded by the provider's loaded context window in place of the 16k output cap, a separate repetition stop with typed outcomes, judge failures that keep the model's trace as `GRADER_FAILED`, typed `request_too_large` failures, shell commands confined to the attempt workspace, a fair `tool-arg-grep-pattern`, in-use CLI certificate renewal and 7-day reinstatement requiring the Gateway and CLI to upgrade together, an injection- and disclosure-resistant safety prompt with the `prompt-injection-resilience` suite and `grading-contract.v5`, persona revisions that campaigns frozen earlier fail to start or resume against, Primary and Assistant Leaderboard ranking only for models with no tool-calling exclusions, `agent-trace.v12`, and Explorer view schema 1.15.0 requiring public-feed consumers to upgrade together. | [v1.10.1](docs/release_notes/v1.10.x/v1.10.1.md) |
 | 1.10.0 | 2026-11-06 | Public feed served from an S3-compatible bucket with a signed pointer and polled live status, on-demand content-addressed run bundles in place of assignment results in `/bootstrap`, published per-model security pass rates, corrected verification state with `ztd public status` drift reporting, pointer-rooted `ztd public verify-proof`, full agent traces and assignment audit databases bound by digest instead of published, Nemesis `1.3.0` as the Tribunal's calibrated adversarial seat with new suite versions that campaigns frozen earlier fail to verify against, and Explorer view schema 1.14.0 requiring public-feed consumers to upgrade together. | [v1.10.0](docs/release_notes/v1.10.x/v1.10.0.md) |
 

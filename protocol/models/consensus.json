@@ -74,6 +74,16 @@
         },
         "description": "Pinned vote model digest. Tribunal provider only; must be empty for the application provider."
       },
+      "model_provider_class": {
+        "type": "string",
+        "enum": [
+          "gemini",
+          "anthropic",
+          "openai"
+        ],
+        "required": false,
+        "description": "Hosted inference provider class serving model_tag for generative Tribunal votes. Empty selects the local provider. Tribunal provider only."
+      },
       "vote_kind": {
         "type": "string",
         "enum": [

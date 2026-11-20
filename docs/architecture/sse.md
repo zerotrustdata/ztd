@@ -3,8 +3,8 @@ doc_id: sse
 title: SSE Streaming
 audience: maintainers and coding agents
 status: current
-version: v1.7.0
-last_updated: 2026-10-30
+version: v1.11.0
+last_updated: 2026-11-20
 owners:
   - internal/services/gateway/sse_controller.go
   - internal/services/gateway/sse_event_publisher.go
@@ -72,7 +72,7 @@ Ids are stable. Append the next free number within each group; do not renumber.
 
 | ID | Rule |
 | --- | --- |
-| INV-SSE-PROD-03 | The observe producer endpoints (`POST /api/v1/observe/producer/agent-state`, `POST /api/v1/observe/producer/run-state`, `POST /api/v1/observe/producer/stop`) accept only app-workload mTLS certificates (`RouteAuthMTLS`). Strict JSON decoding rejects unknown fields. `user_id` is derived from the mTLS peer certificate; the request body carries no `user_id` field. |
+| INV-SSE-PROD-03 | The observe producer endpoints (`POST /api/v1/observe/producer/agent-state`, `POST /api/v1/observe/producer/run-state`, `POST /api/v1/observe/producer/stop`, `POST /api/v1/observe/producer/assignment-started`, `POST /api/v1/observe/producer/assignment-completed`, `POST /api/v1/observe/producer/tool-call-fanned-out`) accept only app-workload mTLS certificates (`RouteAuthMTLS`). Strict JSON decoding rejects unknown fields. `user_id` is derived from the mTLS peer certificate; the request body carries no `user_id` field. |
 | INV-SSE-PROD-04 | Observe producer validation, lifecycle, ownership, and persistence rejections return a typed `models.ObserveProducerRejection` body with a stable `code`. Transition and stale-update rejections include their typed details; ownership misses return `forbidden` without record details, and unclassified failures return `internal` without details. The agent harness client decodes the body and preserves its classified cause for `errors.Is` and `errors.As`. Authentication and method rejection responses retain their shared boundary formats. |
 | INV-SSE-PROD-05 | Terminal run projection statuses (`completed`, `failed`, `cancelled`) accept no ordinary transition. A run-state request naming `reopens` is a producer repair. It is valid only when it names a terminal status and moves toward a non-terminal one (otherwise `ErrObserveStatusInvalid`). It is applied as a compare-and-set: the projection must hold exactly the status `reopens` names, or the normal transition rules decide. The stale-update guard still applies, and each applied reopen is logged as a warning with its from and to statuses. |
 
@@ -172,8 +172,11 @@ App workloads enrolled through platform enrollment publish telemetry over mTLS t
 - `POST /api/v1/observe/producer/agent-state`
 - `POST /api/v1/observe/producer/run-state`
 - `POST /api/v1/observe/producer/stop`
+- `POST /api/v1/observe/producer/assignment-started`
+- `POST /api/v1/observe/producer/assignment-completed`
+- `POST /api/v1/observe/producer/tool-call-fanned-out`
 
-The Gateway accepts these typed updates only from app-workload mTLS identities, derives `user_id` from the authenticated certificate, and validates strict request JSON. Each request names exactly one web or CLI session as its SSE target; after persisting the associated projection, the Gateway emits the event for that session on the path its registry persistence class selects. A persisted event is stored for that session and delivered live when the session has an open stream; an `ephemeral` event is delivered live only. A stop request names one campaign run (`campaign_id` and `run_id`), and the `ai.eval.stop.requested` event it produces carries the same `run_id`. That event is `ephemeral`, so a session without an open stream when the stop is posted never receives it and cannot replay it.
+The Gateway accepts these typed updates only from app-workload mTLS identities, derives `user_id` from the authenticated certificate, and validates strict request JSON. Each request names exactly one web or CLI session as its SSE target. Routes that persist a projection do so before the Gateway emits the event for that session on the path its registry persistence class selects. `assignment-started` persists the assignment progress projection and emits `ztd.v1.ai.eval.assignment.started`; `assignment-completed` persists the projection with its terminal status and emits `ztd.v1.ai.eval.assignment.completed`. `tool-call-fanned-out` persists no projection, because the signed agent trace is the record of the call group, and emits `ztd.v1.ai.eval.tool_call.fanned_out`. A fan-out report without `group_id`, or with more successes than targets, is rejected with `400`. A persisted event is stored for that session and delivered live when the session has an open stream; an `ephemeral` event is delivered live only. A stop request names one campaign run (`campaign_id` and `run_id`), and the `ai.eval.stop.requested` event it produces carries the same `run_id`. That event is `ephemeral`, so a session without an open stream when the stop is posted never receives it and cannot replay it.
 
 ## Consumer Replay and Reconnection
 

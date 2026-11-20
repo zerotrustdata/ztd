@@ -487,11 +487,14 @@ const (
 
 // Test-specific constants for isolated test environments.
 const (
-	TestEmptyMachineIDFilename     = "empty-machine-id"
-	TestFileTxtFilename            = "test.txt"
-	TestNonexistentTxtFilename     = "nonexistent.txt"
-	TestResultsDirname             = "test-results"
-	TestVaultDirname               = "test-vault"
+	TestEmptyMachineIDFilename = "empty-machine-id"
+	TestFileTxtFilename        = "test.txt"
+	TestNonexistentTxtFilename = "nonexistent.txt"
+	TestResultsDirname         = "test-results"
+	TestVaultDirname           = "test-vault"
+	// ChaosTestRunDirSuffix ends each chaos run directory, <timestamp> plus this
+	// suffix, under TestVaultDirname and OperatorsDirname.
+	ChaosTestRunDirSuffix          = "-chaos-test"
 	TestSecretManagerDBFilename    = "secret_manager_test.db"
 	TestCommitmentLedgerDBFilename = "commitment_ledger_test.db"
 	TestGatewayDatabaseFilename    = "gateway_test.db"

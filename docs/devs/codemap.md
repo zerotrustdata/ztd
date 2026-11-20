@@ -3,8 +3,8 @@ doc_id: codemap
 title: ztd Code Map
 audience: maintainers and coding agents
 status: current
-version: v1.10.2
-last_updated: 2026-11-18
+version: v1.11.0
+last_updated: 2026-11-20
 owners:
   - cmd/ztd/main.go
   - internal/cli/cmd/main.go
@@ -143,12 +143,13 @@ Ids are stable. Append the next free number in a topic. Do not renumber.
 | `internal/cli/` | CLI commands, API client, authentication, configuration, frontend-origin checks, process management, foreground Gateway and Operator startup, SSE, streams, platform helpers, TUI, and onboarding wizard. |
 | `internal/services/` | Gateway, outbound Operator, governance, transport, persistence, execution, evaluation, compliance, inference, public disclosure, and supporting services. |
 | `internal/constants/` | Go constants for paths, errors, protocol identifiers, permissions, Operator types (`OperatorType`) and capabilities (`OperatorCapabilities`), and runtime behavior. |
-| `internal/config/`, `internal/models/`, `internal/paths/` | Typed configuration, internal service models, and runtime paths derived from project root. `internal/models/hosted_model_identity.go` owns `ComputeHostedModelIdentityDigest`, `HostedDispatchProviderClass`, and `ValidateHostedEgress`. |
+| `internal/config/`, `internal/models/`, `internal/paths/` | Typed configuration, internal service models, and runtime paths derived from project root. `internal/models/hosted_model_identity.go` owns `ComputeHostedModelIdentityDigest`, `HostedDispatchProviderClass`, and `ValidateHostedEgress`. `internal/models/inference_response_schema.go` owns `ValidatePortableResponseSchema`. |
 | `internal/netutil/` | Wildcard TCP port availability probes shared by configuration and process startup; Windows binds without listening to avoid firewall prompts. |
 | `internal/governance/` | Envelope hash helpers over canonical protobuf `GovernanceEnvelope`. L1 through L5 services reside in `internal/services/governance/`. |
 | `internal/ollama/` | Minimal HTTP client for Ollama model-maintenance endpoints. |
 | `internal/infra/cloudflaredns/` | Cloudflare DNS client. |
 | `internal/pkg/certutil/`, `internal/pkg/ssh/` | Certificate and SSH helpers. |
+| `internal/pkg/processwatch/` | OS process-exit observation without polling (`WatchProcessExit`, `WaitForProcessExit`), with one file per platform. Consumed by `internal/services/operatordeploy/` local stop. |
 | `internal/fileidentity/`, `internal/llamacpp/` | Binary and file identity hashing and local llama.cpp GGUF resolution. |
 | `internal/buildinfo/`, `internal/exitcode/`, `internal/httpclient/`, `internal/jsonschema/`, `internal/marshaler/`, `internal/pathutil/`, `internal/response/`, `internal/security/`, `internal/testutil/`, `internal/timesvc/`, `internal/uuid/`, `internal/certs/` | Shared build metadata, exit handling, HTTP, schema validation, serialization, path utilities, responses, security helpers, test infrastructure, time, UUIDs, and certificates. |
 | `protocol/` | Protobuf schemas, generated bindings, JSON registries, model schemas, conformance tests, vectors, and protocol documentation. |
@@ -348,7 +349,7 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/auth/` | Host and system fingerprinting, CSR and certificate fingerprints, and current-account resolution. |
 | `internal/services/autochthon/` | Gateway-less `ztd autochthon` command (CLI: `internal/cli/cmd/autochthon/`): host sampling, local predictor population, `.ztd/autochthon/` hash-chained tally, and read-only status report. No governance path. |
 | `internal/services/compliance/` | KSI evaluation and history, OSCAL support, catalog validation, evidence import and graph verification, and signed report bundles. |
-| `internal/services/evaluation/` | Model campaign controller, campaign Operator role resolution (`campaign_operator_topology.go`), governed command lane, deploy joiner (`deploy_joiner.go`), grading, evidence storage, conformance record storage and compliance admission (`conformance_store.go`, `conformance_compliance.go`), and campaign verification. `model_inventory.go` owns `HostedModelVariant` and hosted-model retention on freeze. `harness_roster.go` owns the harness roster: `target_operators` resolution, the roster prompt and `<operator_roster_update>`, fan-out grouping, and per-target workspace dispatch arguments. `devops_fleet_suite.go` holds the built-in `devops-fleet` suite. |
+| `internal/services/evaluation/` | Model campaign controller, campaign Operator role resolution (`campaign_operator_topology.go`), governed command lane, deploy joiner (`deploy_joiner.go`), grading, evidence storage, conformance record storage and compliance admission (`conformance_store.go`, `conformance_compliance.go`), and campaign verification. `model_inventory.go` owns `HostedModelVariant` and hosted-model retention on freeze. `harness_roster.go` owns the harness roster: `target_operators` resolution, the roster prompt and `<operator_roster_update>`, fan-out grouping, and per-target workspace dispatch arguments. `devops_fleet_suite.go` holds the built-in `devops-fleet` suite. `campaign_live_events.go` owns `LiveEventReporter`, the best-effort observe producer push for assignment and fan-out progress. `campaign_scenario_budget.go` owns the per-scenario wall-clock budget, which credits provider retry waits. |
 | `internal/services/evaluation/conformance/` | Governance conformance suite (`governance-conformance@1.1.0`). `cases` holds the catalogue and its validation, `drive` the ingress drivers, fault mutators, sentinel, and attended wrapper, `canary` the effect snapshots, and `oracle` (with `oracle/oracletest`) the anchors, receipt verification, and ledger bracket. `run` captures evidence and writes the record, `verify` recomputes verdicts offline, and `report` builds coverage and recall. |
 | `internal/services/execution/` | Command execution and governed file edits. |
 | `internal/services/fs/` | Scoped `.ztd/` runtime file operations. |
@@ -356,18 +357,18 @@ Controller domains registered on HTTPS router (`HTTPHandlerDependencies`):
 | `internal/services/gateway/` | Gateway HTTP and control plane, including child packages in HTTP boundary table. |
 | `internal/services/gateway/embedded/` | In-process Operator substrate (`INV-MODE-02`). |
 | `internal/services/governance/` | L1, L2, L3, L4, L5, governance interfaces, state-root providers, signer stores, and public-key export. |
-| `internal/services/inference/` | Inference dispatch (`internal/services/inference/dispatch/`), provider backends, and attempt storage. `hosted_backend.go` owns `HostedBackend`, `NewHostedBackends`, and `NewHostedBackend`; `hosted_response.go` owns shared SSE framing, bounded capture, reroute checks, and egress attestation assembly (`provider_http.go` provides raw HTTP transport without redirects); `gemini_backend.go`, `anthropic_backend.go` (`anthropic_messages.go`, `anthropic_stream.go`), and `openai_backend.go` (`openai_responses.go`, `openai_stream.go`) implement the hosted clients. `dispatch/dispatch.go` owns hosted routing and `recordHostedProvenance`. |
+| `internal/services/inference/` | Inference dispatch (`internal/services/inference/dispatch/`), provider backends, and attempt storage. `hosted_backend.go` owns `HostedBackend`, `NewHostedBackends`, and `NewHostedBackend`; `hosted_response.go` owns shared SSE framing, bounded capture, reroute checks, and egress attestation assembly (`provider_http.go` provides raw HTTP transport without redirects); `gemini_backend.go`, `anthropic_backend.go` (`anthropic_messages.go`, `anthropic_stream.go`), and `openai_backend.go` (`openai_responses.go`, `openai_stream.go`) implement the hosted clients. `dispatch/dispatch.go` owns hosted routing and `recordHostedProvenance`. `dispatch/retry.go` owns `TransientRetry`, the 5 s, 20 s, and 40 s policy for provider-requested retries. |
 | `internal/services/inference/provider_observer/` | Provider-boundary GPU and RAM sampling. |
 | `internal/services/inference/model_provenance/` | Storage-side model weight attestation. `hosted.go` derives the hosted attestation window (`HOSTED_PROVIDER_REPORTED`) from the Inference Operator's signed hosted egress attestation. |
 | `internal/services/keystore/` | Encrypted key storage for Gateway secrets and PKI. |
-| `internal/services/logging/` | Runtime log file and `slog` configuration. |
+| `internal/services/logging/` | Runtime log file and `slog` configuration. `log_rotation.go` owns size-based rotation of `ztd.log` (`ZtdLogMaxBytes` and `ZtdLogMaxBackups` in `internal/constants/paths.go`). |
 | `internal/services/mcp/` | MCP and A2A gateway, native tools, field-path governance, suspension, and downstream clients. |
 | `internal/services/network/` | Network identity detection and endpoint construction. |
 | `internal/services/operatorcapability/` | Capability resolution and selection for provider-boundary observer, provenance operator, inference, and governed data operators, plus Ollama command construction. |
 | `internal/services/operatordeploy/` | Operator staging, process startup, readiness/enrollment watch, host-agent SSH helpers, and local stop logic shared by `ztd operator deploy` and governed L5 `OPERATOR_DEPLOY` handlers (`pubsub.OperatorDeployService`). |
 | `internal/services/profiling/` | Opt-in loopback-only `net/http/pprof` listener behind `gw start --pprof-listen`. |
 | `internal/services/publicdisclosure/` | Validation of public-disclosure records. Gateway publisher and mirror orchestration stay in `internal/services/gateway/`. |
-| `internal/services/pubsub/` | Gateway and Operator pub/sub clients, command dispatch, results, heartbeats, mode dependency types, and capability handlers (`NewCapabilityHandlers`) shared by Gateway-local executor and outbound Operator. |
+| `internal/services/pubsub/` | Gateway and Operator pub/sub clients, command dispatch, results, heartbeats, mode dependency types, and capability handlers (`NewCapabilityHandlers`) shared by Gateway-local executor and outbound Operator. `operator_deploy_service.go` owns `OperatorDeployService`, the governed L5 `OPERATOR_DEPLOY` handler. |
 | `internal/services/reporting/` | Deterministic CSV evidence reports and verification. Exposed by `ztd report`. |
 | `internal/services/scrubbing/` | Sensitive-value detection, tokenization, and rehydration. |
 | `internal/services/sqliteutil/` | Shared SQLite configuration and connection helpers. |

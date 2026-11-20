@@ -48,23 +48,31 @@ type Service struct {
 	doctrine *governance.L1Doctrine
 	personas *agentpersona.Registry
 	retry    inferencedispatch.TransientRetry
+	// publishMargin is the lifetime an admitted envelope must keep after its
+	// contextual review for publish and the executing Operator's L4 check.
+	publishMargin time.Duration
 }
 
 // NewService builds the Tribunal over governed inference and the active
 // Gateway doctrine. Neither dependency may be omitted. Member calls retry under
-// inferencedispatch.DefaultTransientRetry.
-func NewService(members MemberDispatcher, doctrine *governance.L1Doctrine) (*Service, error) {
+// inferencedispatch.DefaultTransientRetry. publishMargin is the envelope
+// lifetime the caller needs after ReviewAdmitted returns to publish the envelope
+// and receive its result (the Gateway's DispatchTimeout); it must be positive.
+func NewService(members MemberDispatcher, doctrine *governance.L1Doctrine, publishMargin time.Duration) (*Service, error) {
 	if members == nil {
 		return nil, fmt.Errorf("tribunal: member dispatcher: %w", constants.ErrMissingRequiredField)
 	}
 	if doctrine == nil {
 		return nil, fmt.Errorf("tribunal: %w", constants.ErrDoctrineRequired)
 	}
+	if publishMargin <= 0 {
+		return nil, fmt.Errorf("tribunal: publish margin: %w", constants.ErrMissingRequiredField)
+	}
 	personas, err := agentpersona.NewRegistry()
 	if err != nil {
 		return nil, fmt.Errorf("tribunal: personas: %w", err)
 	}
-	return &Service{members: members, doctrine: doctrine, personas: personas, retry: inferencedispatch.DefaultTransientRetry()}, nil
+	return &Service{members: members, doctrine: doctrine, personas: personas, retry: inferencedispatch.DefaultTransientRetry(), publishMargin: publishMargin}, nil
 }
 
 // Deliberate runs one intent through the Tribunal. The result never carries an
@@ -126,14 +134,15 @@ func (s *Service) Deliberate(ctx context.Context, req *tribunalv1.TribunalIntent
 // A human denial is never reviewed: L4 records it as signed, whatever a model
 // thinks. An envelope without L2 votes or an L3 proof carries nothing beyond
 // the L1 check every authored argument already passed, so it is not reviewed
-// again. The review must finish within the envelope's lifetime; a review that
-// cannot fails closed before publish instead of dispatching an expired envelope.
+// again. The review must finish while the envelope still holds the publish
+// margin; a review that cannot fails closed before publish instead of
+// dispatching an envelope that would expire before the Operator's L4 check.
 func (s *Service) ReviewAdmitted(ctx context.Context, req *tribunalv1.TribunalIntentRequest, result *tribunalv1.TribunalIntentResult, env *commonv1.GovernanceEnvelope, votes []*operatorv1.ConsensusVoteInference) error {
 	l3 := env.GetGovernance().GetL3()
 	if l3.GetDenied() || (len(env.GetGovernance().GetL2().GetVotes()) == 0 && l3.GetProof() == nil) {
 		return nil
 	}
-	reviewCtx, cancel := context.WithDeadline(ctx, env.GetExpiresAt().AsTime())
+	reviewCtx, cancel := context.WithDeadline(ctx, env.GetExpiresAt().AsTime().Add(-s.publishMargin))
 	defer cancel()
 	// failed classifies a review that ended without a verdict: running out of
 	// envelope lifetime is a failed audit, a failed member call is an

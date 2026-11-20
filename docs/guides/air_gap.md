@@ -3,8 +3,8 @@ doc_id: air_gap
 title: Air-Gapped Deployment
 audience: platform operators and infrastructure teams
 status: current
-version: v1.3.0
-last_updated: 2026-10-23
+version: v1.11.0
+last_updated: 2026-11-20
 owners:
   - docs/guides/air_gap.md
   - Makefile

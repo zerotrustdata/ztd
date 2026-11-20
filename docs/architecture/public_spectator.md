@@ -3,8 +3,8 @@ doc_id: public_spectator
 title: Public Spectator Architecture and Threat Model
 audience: architects and security reviewers
 status: current
-version: v1.10.0
-last_updated: 2026-11-05
+version: v1.11.0
+last_updated: 2026-11-20
 owners:
   - internal/services/gateway/public_mirror.go
   - internal/services/gateway/public_mirror_store.go
@@ -169,7 +169,7 @@ Only allowlisted fields and records cross into the public spectator feed.
 - **Model Role Identity**: Primary variant ID, Assistant variant ID, Lite variant ID.
 - **Metrics**: Metric ID, metric version, numerator, denominator, rate, unit, verification status.
 - **Verification Status**: Verification status, verified index-generation hash.
-- **Categorical Environment Labels**: `backend_name`, `quantization`.
+- **Categorical Environment Labels**: `quantization_weight_class` and `backend_provider_class` on `model_summary` rows. Rows carry their variant's provider class: `ollama` or `llamacpp` for a local model, and `gemini`, `anthropic`, or `openai` for a hosted one. A hosted row's `model_digest` is the identity digest the Inference Operator reports (`evaluation.HostedModelVariant`), which the hosted backends compute with `models.ComputeHostedModelIdentityDigest`.
 - **Bounded Diagnostic Detail**: `trajectory_outcome` (closed vocabulary), `guided_retry_count`, `failure_reason`, `tools_declared`.
 - **Verbatim Model and Grader Text (Optional Extensions)**: `model_response`, `failure_output`, `role_transcripts`, and `benchmark_observations.grade_summaries[].detail` / `semantic_grade_summaries[].detail` (each text within the 512 KiB record bound, at most 8 role transcripts, no screening or redaction).
 - **Agent Trace Digest**: The `assignment_agent_trace` evidence binding names the SHA-256 of the persisted `AgentTrace` body byte for byte. New publications hash the trace without placing it in the public artifact store. The Explorer offers access under a custom agreement. The trace carries the exact first-turn model input (`input.messages`, `input.tools`) and, for held-context repetitions, `held_context`, the earlier repetition's conversation. `agent-trace.v9` traces added ordered harness-owned `observations` for seeded tool outcomes, final file-state checks, and governed probes, separate from scored model calls. Every governed tool call, whether model-selected or harness-owned, carries its canonical admitted `request_envelope`, bound to the signed receipt. A pre-envelope L1 refusal carries only its refusal code and is not a signed receipt. The sentinel bracket verifier requires seed observations before agent activity and final file-state/probe observations afterward. `agent-trace.v8` added `tool_calls[].approved_arguments_json`, the approved arguments a tool call executed (`AgentToolCall`, `internal/services/evaluation/campaign_agent_trace.go`). `agent-trace.v10` adds `content_judgments`, one entry per judged content criterion, with the exact judge messages, the signed inference result and receipt, `met`, and `rationale` (`AgentContentJudgment`). `agent-trace.v11` records the frozen persona (ID, version, digest) that the designated role ran under. `agent-trace.v12` records a criterion the pinned judge failed to decide as the last content judgment, carrying its typed `failure` and no verdict, so the model's trace persists when grading fails. `agent-trace.v13` links a model call that retries a transient provider failure to the attempt it supersedes (`retry_of`, `retry_count`); the superseded attempt stays in the trace as evidence and is not published as model activity or counted in metrics. The judge messages contain each criterion's statement, so the statement is part of the persisted trace body. The public criteria list does not use the statement: each judged criterion is published as `content:<criterion id>` with the generic label "Judged answer requirement" and a description of the pinned judge's decision (`scenario_public_criteria.go`). See [Evaluations](evals.md#built-in-benchmark-inventory-and-scope) for how verdicts are graded.
@@ -382,6 +382,10 @@ Startup verifies retained snapshot batch signatures, exact record membership and
 # Inspect public mirror status
 ./ztd public status
 ```
+
+A run record that still carries the retired `data_operator_session_id` binding field stops `ztd public status` from comparing any run's verification report with the feed. The status reports `feed_drift_checked: false`, and `feed_drift_error` names every such run. The command still exits successfully. Rewrite each named run with `./ztd eval runs repair <run>`, then rerun `./ztd public status`. Feed drift causes are in [Feed Drift](../devs/troubleshooting.md#feed-drift), and the repair is in [Rollout Failure Classes and Record Repair](../devs/troubleshooting.md#rollout-failure-classes-and-record-repair).
+
+`./ztd test public-loop --candidate <file> --output <file>` runs the provider-free qualification of this mirror in an isolated runtime. It covers a mirror outage that retains a retryable batch, a restart that reopens the durable mirror store, and a signing-key rotation that revokes the old key. After the final restart it reads the private, token-authenticated proof head and requires it to match the pushed proof segment. It also checks that the public listener serves no proof artifact and no mutation route. Its harness is documented in [Testing](../devs/tests.md).
 
 ### Rotating the Signing Key
 

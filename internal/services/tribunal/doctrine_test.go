@@ -121,8 +121,10 @@ func TestTribunalRequiresActiveDoctrine(t *testing.T) {
 	cfg.Doctrine = nil
 	_, err := Run(context.Background(), cfg, Request{Request: testRequest}, 0)
 	require.ErrorIs(t, err, constants.ErrDoctrineRequired)
-	_, err = NewService(&fakeMemberDispatcher{}, nil)
+	_, err = NewService(&fakeMemberDispatcher{}, nil, admittedPublishMargin)
 	require.ErrorIs(t, err, constants.ErrDoctrineRequired)
-	_, err = NewService(nil, governance.NewL1Doctrine())
+	_, err = NewService(nil, governance.NewL1Doctrine(), admittedPublishMargin)
 	require.ErrorIs(t, err, constants.ErrMissingRequiredField)
+	_, err = NewService(&fakeMemberDispatcher{}, governance.NewL1Doctrine(), 0)
+	require.ErrorIs(t, err, constants.ErrMissingRequiredField, "a review without a publish margin could dispatch an envelope that expires in transit")
 }

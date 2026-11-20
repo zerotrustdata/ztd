@@ -3,8 +3,8 @@ doc_id: getting_started
 title: Getting Started
 audience: new users and platform evaluators
 status: current
-version: v1.5.0
-last_updated: 2026-10-29
+version: v1.11.0
+last_updated: 2026-11-20
 owners:
   - docs/guides/getting_started.md
   - Makefile
@@ -127,6 +127,7 @@ Every `./ztd` command, including the `make` targets, loads `.env` from the worki
 | :--- | :--- |
 | `ZTD_OLLAMA_ENDPOINT` | The Ollama provider is not on this host (default `http://127.0.0.1:11434`). It is the default for `--inference-ollama-endpoint` on `./ztd operator start`. |
 | `CLOUDFLARE_API_TOKEN` | You route a tunnel hostname with `./ztd gw tunnel route-dns` ([Cloudflare Tunnel](cloudflare_tunnel.md)). |
+| `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` | You serve a hosted inference provider from an Inference Operator (the Operator reads the key when it starts), or you launch the matching agent CLI with `./ztd mcp agent run gemini`, `claude`, or `codex`. |
 
 ```bash
 $EDITOR .env
@@ -408,7 +409,7 @@ All runtime state is written to `.ztd/` in the working directory:
 | `.ztd/secrets/` | Bootstrap secrets and vault key |
 | `.ztd/data/` | SQLite databases and blobs |
 | `.ztd/vault/` | Encrypted audit vault |
-| `.ztd/logs/` | Component logs (identifiers and metadata only, never command lines, output, or paths) |
+| `.ztd/logs/` | Component logs (identifiers and metadata only, never command lines, output, or paths). The Gateway log `ztd.log` rotates by size; see [Troubleshooting](../devs/troubleshooting.md#gateway-process-diagnosis). |
 
 ### Stop the Gateway
 

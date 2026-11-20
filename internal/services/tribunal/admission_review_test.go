@@ -38,6 +38,9 @@ const (
 	admittedTimeoutSecs  = 17
 	admittedTransaction  = "txn-admitted"
 	admittedAuditCallIdx = 0
+	// admittedPublishMargin is the Gateway's DispatchTimeout: the lifetime an
+	// admitted envelope keeps for publish and the Operator's L4 check.
+	admittedPublishMargin = 30 * time.Second
 )
 
 // admittedEnvelope is an admitted envelope carrying one recorded L2 vote and,
@@ -98,7 +101,7 @@ func admittedResult() *tribunalv1.TribunalIntentResult {
 
 func admittedService(t *testing.T, dispatcher *fakeMemberDispatcher) *Service {
 	t.Helper()
-	service, err := NewService(dispatcher, governance.NewL1Doctrine())
+	service, err := NewService(dispatcher, governance.NewL1Doctrine(), admittedPublishMargin)
 	require.NoError(t, err)
 	return service
 }
@@ -189,6 +192,11 @@ func TestReviewAdmittedSkipsDeniedAndUnevidencedEnvelopes(t *testing.T) {
 func TestReviewAdmittedFailsClosed(t *testing.T) {
 	expired := admittedEnvelope(admittedL3Approval())
 	expired.ExpiresAt = timestamppb.New(time.Now().Add(-time.Second))
+	// An envelope that expires inside the publish margin has no lifetime left
+	// for the review: publishing it after a review would reach the Operator
+	// too late for L4.
+	insideMargin := admittedEnvelope(admittedL3Approval(), admittedVote())
+	insideMargin.ExpiresAt = timestamppb.New(time.Now().Add(admittedPublishMargin / 3))
 	cases := []struct {
 		name       string
 		dispatcher *fakeMemberDispatcher
@@ -219,6 +227,13 @@ func TestReviewAdmittedFailsClosed(t *testing.T) {
 			name:       "envelope lifetime exhausted",
 			dispatcher: &fakeMemberDispatcher{marshal: lowRisk, audit: []string{approve}},
 			env:        expired,
+			outcome:    tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_AUDIT_FAILED, wantErr: context.DeadlineExceeded,
+			failure: "lifetime",
+		},
+		{
+			name:       "publish margin exhausted",
+			dispatcher: &fakeMemberDispatcher{marshal: lowRisk, audit: []string{approve}},
+			env:        insideMargin,
 			outcome:    tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_AUDIT_FAILED, wantErr: context.DeadlineExceeded,
 			failure: "lifetime",
 		},

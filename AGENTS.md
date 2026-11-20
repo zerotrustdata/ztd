@@ -98,7 +98,7 @@ Do not conflate these three runtime execution modes:
 - **Fail-Closed Boundary**: Direct envelope submission and governed HTTP dispatch must never synthesize or forge missing L2/L3 proofs; they fail closed at L4 instead.
 - **Out of Scope**: Client-native tools, external MCP wrappers, and unmonitored side channels are explicitly outside the governance boundary.
 
-### Storage: Local-First Audit Architecture (LFAA)
+### Storage: Local-First Events Architecture (LFEA)
 
 Each executing runtime (Gateway, each Operator) is strictly authoritative for its own SQLite audit DB (which holds the execution events), and state root under `.ztd/`.
 - Gateway-mirrored receipts are best-effort projections only — never treat them as authoritative over an Operator's local store.

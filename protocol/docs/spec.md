@@ -1,7 +1,7 @@
 # ztd Protocol Specification
 
 Last Updated: 2026-10-23
-Version: v1.10.2
+Version: v1.11.0
 
 The **ztd Protocol** is a zero-trust execution and evidence platform for autonomous AI agents, human operators, and distributed target runtimes. It establishes a cryptographically enforced, typed wire contract that binds identity, intent, state, and governance proofs into an immutable transaction envelope (`GovernanceEnvelope`). Every mutation passing through the platform is subjected to an uncompromising 5-layer interlock sequence before execution.
 
@@ -338,6 +338,7 @@ The terminal segment indicates lifecycle stage. Requests end in `requested`, and
 | **Operator MCP** | Model Context Protocol calls | `ztd.v1.operator.mcp.call.requested` | `MCP_CALL` |
 | **Operator A2A** | Agent-to-Agent skill calls | `ztd.v1.operator.a2a.call.requested` | `A2A_CALL` |
 | **Operator Lifecycle** | Heartbeats, shutdown, status | `ztd.v1.operator.heartbeat.requested` | `HEARTBEAT` |
+| **Operator Deploy** | Staging and start of Operators on target hosts | `ztd.v1.operator.deploy.requested` | `OPERATOR_DEPLOY` |
 | **Application Docs** | Case, investigation, task updates | `ztd.v1.app.document.update.requested` | `DOCUMENT_UPDATE` |
 | **Platform Enrollment**| Workload credential enrollment | `ztd.v1.platform.enrollment.create.requested` | `PLATFORM_ENROLLMENT_CREATE` |
 | **AI Evaluation** | Evaluation campaigns, cycles, and assignments | `ztd.v1.ai.eval.assignment.started` | *(fact)* |

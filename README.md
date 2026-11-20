@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 [![CI](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/zerotrustdata/ztd/actions/workflows/build-and-test.yml)
-[![Version](https://img.shields.io/badge/version-v1.10.2-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.11.0-green.svg)](CHANGELOG.md)
 
 ## Verify, then execute.
 
@@ -66,7 +66,7 @@ ztd splits operations into two distinct protocol roles, packaged into a single s
 ### The Policy Decision Point: Gateway (`ztd gw`)
 The Gateway is the front door and protocol coordinator. It ingests intent via MCP (`POST /mcp` or stdio), Agent-to-Agent (A2A), HTTP dispatch, or CLI. It checks technical bedrock rules, coordinates multi-agent consensus or human passkey authorizations, and packages admitted intent into a canonical, signed `GovernanceEnvelope`. It also serves the embedded browser console and hosts an in-process Operator substrate strictly for Gateway-local operations.
 
-### The Policy Execution Point: Operator (`ztdo`)
+### The Policy Execution Point: Operator (`ztd operator`)
 The Operator is a lightweight process that runs on the target machine that owns the data. It connects **strictly outbound** over mTLS to the Gateway and listens on zero inbound network ports. It pulls transactions from its dedicated session channel, independently re-evaluates the envelope at Layer 4, mints a short-lived capability, dispatches the action locally, and records cryptographic receipts in its own Local-First Events Store (`data/ztd.db`) and git file ledger.
 
 Even if the Gateway is compromised, an Operator refuses to execute any envelope whose canonical transaction hash, state Merkle root, or cryptographic proofs fail its independent verification. Delivery from the Gateway does not equal authorization.
@@ -94,7 +94,7 @@ Every mutation passing through ztd must clear five deterministic layers:
 You choose a governance posture when the Gateway starts (via `--posture`). It is immutable for the lifetime of that process:
 
 - **`doctrine`** *(default)*: L1 Doctrine, L4 Warden, and L5 Actuator are blocking gates. L2 and L3 proofs are recorded as audit evidence when present, but don't block dispatch.
-- **`consensus`**: Requires $K$-of-$N$ signed machine consensus before any state-changing action can execute. Bind the consensus with `ztd consensus enroll`; `ztd consensus status` shows it.
+- **`consensus`**: Requires $K$-of-$N$ signed machine consensus before any state-changing action can execute. Bind the consensus with `ztd consensus enroll app` or `ztd consensus enroll tribunal`; `ztd consensus status` shows it.
 - **`ratify`**: Requires explicit cryptographic human authorization (L3 Notary) for every mutation. Read-only actions pass through.
 - **`notary`**: Maximum governance. Requires both machine consensus (L2) and human sign-off (L3) before any mutating envelope touches a host.
 

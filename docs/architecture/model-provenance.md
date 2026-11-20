@@ -3,8 +3,8 @@ doc_id: model-provenance
 title: Model Provenance Architecture
 audience: engineering, campaign operators, and coding agents
 status: current
-version: v1.10.1
-last_updated: 2026-11-16
+version: v1.11.0
+last_updated: 2026-11-20
 owners:
   - internal/services/inference/model_provenance/
   - protocol/proto/ztd/eval/v1/eval.proto
@@ -80,12 +80,11 @@ Ids are stable. Append the next free number within each group; do not renumber.
 | INV-PROV-PERSIST-03 | Campaign verification validates the window's `attestation_digest`, requires a recognized `verification_mode` and a nonzero `full_hash_completed_at_unix_ms` on every weight attestation, and checks the expected campaign digest binding. `ztd eval runs verify --require-provenance` enforces strict policy, requiring a valid window and `digest_match=true` for every scored inference. A run whose frozen model provenance policy is strict is verified under strict policy without the flag. |
 | INV-PROV-PERSIST-04 | Under interim policy, `ztd eval runs verify` does not fail an assignment whose scored inferences have no window. Strict policy requires a valid window for every scored inference and fails the run when one is missing. Report generation is governed by `INV-PROV-PERSIST-06`. |
 | INV-PROV-PERSIST-05 | After storing a window, the Gateway publishes the ephemeral `ztd.v1.inference.model.provenance.attestation.recorded` event, carrying only `provider_attempt_id`, to the owner's connected CLI sessions. A strict run waits on that event rather than polling: on every SSE (re)connect the eval CLI fetches each still-pending window once and seals it into the run's evidence, and on each event it fetches that attempt's window. Verification reads only the sealed copies. A window not captured within `ModelProvenanceCompletionTimeout` (five minutes) fails closed as unavailable evidence. An attempt whose sealed trace holds a FAILED provenance receipt is not waited on, because no window follows that receipt; the wait reports it as unavailable evidence wrapping `ErrEvaluationObservationFailed`, and strict verification fails on the missing window. |
-| INV-PROV-PERSIST-06 | Compliance report generation (`buildCampaignReportSource` in `internal/cli/cmd/compliance/compliance_report.go`) fails closed with `ErrEvalRunVerificationFailed` when any scored attempt's sealed model provenance window cannot be loaded. It also requires the sealed provider attempt record and sealed provider observation window, but only for locally served attempts (`evaluation.ProviderObservable`); a hosted attempt has neither and is not required to have them. The loads do not consult the interim or strict policy, so no policy relaxes this rule. |
+| INV-PROV-PERSIST-06 | Compliance report generation (`buildCampaignReportSource` in `internal/cli/cmd/compliance/compliance_report.go`) fails closed with `ErrEvalRunVerificationFailed` when any scored attempt's sealed model provenance window cannot be loaded, for every attempt `evaluation.ModelProvenanceRequired` selects. It also requires the sealed provider attempt record and sealed provider observation window, but only for locally served attempts (`evaluation.ProviderObservable`); a hosted attempt has neither and is not required to have them. The loads do not consult the interim or strict policy, so no policy relaxes this rule. |
 | INV-PROV-PERSIST-07 | A pinned hosted attempt (non-empty model digest) that completes produces a `ModelProvenanceAttestationWindow` built by `HostedAttestationWindow` (`internal/services/inference/model_provenance/hosted.go`) and recorded by `RecordHostedAttempt` (`internal/services/gateway/model_provenance_observation.go`), called from `recordHostedProvenance` in `internal/services/inference/dispatch/dispatch.go`. The window has status `MODEL_MANIFEST_VERIFICATION_STATUS_HOSTED_PROVIDER_REPORTED`, a `hosted` block, `provenance_operator_id` set to the Inference Operator ID, and `observed_model_digest` set to the hosted model identity digest. It has no weight attestations and no manifest digest. |
 | INV-PROV-PERSIST-08 | A hosted window is saved in the same window store as local windows and announces the same `ztd.v1.inference.model.provenance.attestation.recorded` event. A campaign-bound hosted attempt whose window cannot be recorded fails. A non-campaign hosted attempt logs the failure. An unpinned hosted attempt records no window. |
 | INV-PROV-PERSIST-09 | A hosted window's `digest_match` is true only when the expected digest is non-empty, equals the identity digest, and the served model equals the requested model. `ValidateAttestationWindow` recomputes the identity digest from the `hosted` block. A rewritten provider model version or a forged match fails with `ErrModelProvenanceDigestMismatch`. A `hosted` block on a non-hosted status, or weight attestations on a hosted window, fail as malformed. |
 | INV-PROV-PERSIST-10 | Campaign verification, `--require-provenance`, and strict policy treat hosted windows like any other window: each requires a valid window and `digest_match=true`. |
-
 
 ## Owned surfaces
 
@@ -166,7 +165,7 @@ The Gateway persists attestation windows as canonical protojson files under `.zt
 
 - **Interim Policy (verification and scoring)**: `ztd eval runs verify` does not fail an assignment whose scored inferences have no window. Report generation does not apply interim policy (`INV-PROV-PERSIST-06`).
 - **Strict Policy (`ztd eval runs verify --require-provenance`; `ztd eval runs start --require-witness`, which implies `--verify`)**: Strict verification requires a valid, verified window where `digest_match = true` for 100% of scored inferences. A missing window fails the run. At run completion, before verification, run execution waits once for the whole run (`WaitForRunModelProvenanceEvidence`), on each scored attempt's attestation-recorded event, reconciling once per SSE (re)connect because ephemeral events are not replayed, for up to five minutes. An attempt with a signed FAILED provenance receipt is not waited on and is reported at the end of the wait (`INV-PROV-PERSIST-05`).
-- **Compliance Reports**: Generation is not governed by interim or strict policy. It requires a sealed model provenance window for every scored attempt, and a sealed provider attempt record and provider observation window for every locally served attempt. A missing required copy fails generation with `ErrEvalRunVerificationFailed` (`INV-PROV-PERSIST-06`).
+- **Compliance Reports**: Generation is not governed by interim or strict policy. It requires a sealed model provenance window for every scored attempt that `evaluation.ModelProvenanceRequired` selects, and a sealed provider attempt record and provider observation window for every locally served attempt. A missing required copy fails generation with `ErrEvalRunVerificationFailed` (`INV-PROV-PERSIST-06`).
 
 ## Hosted Provider Provenance
 
@@ -186,7 +185,7 @@ Hosted window fields:
 | Field | Value |
 | --- | --- |
 | `manifest_verification_status` | `MODEL_MANIFEST_VERIFICATION_STATUS_HOSTED_PROVIDER_REPORTED` |
-| `hosted` | transaction ID, result digest, served model, provider model version, origin, provider class |
+| `hosted` | provider class, provider origin, requested model, served model, provider model version, provider response ID, raw response digest, inference transaction ID, result digest (`HostedModelAttestation`) |
 | `provenance_operator_id` | Inference Operator ID |
 | `observed_model_digest` | hosted model identity digest |
 | `digest_match` | true only when expected digest is non-empty, equals the identity digest, and served model equals requested model |

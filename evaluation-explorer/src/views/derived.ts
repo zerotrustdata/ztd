@@ -1649,8 +1649,10 @@ export function modelRoleLeaderboardRows(
 }
 
 /** Hosted variants with complete evidence, one row per variant and role with its runs pooled,
- *  shown unranked beside the ranked rows. They never enter a role's best-in-role minimums, so
- *  they leave ranked scores unchanged, and they never enter Overall, which averages role scores. */
+ *  shown unranked beside the ranked rows of the size-adjusted role tables. They never enter a
+ *  role's best-in-role minimums, so they leave those ranked scores unchanged. Hosted models are
+ *  ranked size-free in Overall (modelCombinedOverallLeaderboardRows) and Remote-hosted
+ *  (modelRemoteHostedLeaderboardRows). */
 export function hostedRoleLeaderboardRows(
   models: ModelSummary[],
   role: ModelRole | 'all' = 'all',

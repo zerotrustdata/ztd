@@ -140,7 +140,7 @@ func TestDeliberateApproved(t *testing.T) {
 		marshal: lowRisk,
 		audit:   []string{approveSplit},
 	}
-	service, err := NewService(dispatcher, governance.NewL1Doctrine())
+	service, err := NewService(dispatcher, governance.NewL1Doctrine(), admittedPublishMargin)
 	require.NoError(t, err)
 	result, err := service.Deliberate(context.Background(), intentRequest(template))
 	require.NoError(t, err)
@@ -203,7 +203,7 @@ func TestDeliberateDispatchesEachPersonaOnItsStageTemplate(t *testing.T) {
 		generate: proposals(map[Member]string{MemberAxiom: "ss -l", MemberConcord: "ss -l", MemberVariance: "ss -l", MemberPragma: "ss -l", MemberNemesis: "ss -l"}),
 		marshal:  lowRisk, audit: []string{approve},
 	}
-	service, err := NewService(dispatcher, governance.NewL1Doctrine())
+	service, err := NewService(dispatcher, governance.NewL1Doctrine(), admittedPublishMargin)
 	require.NoError(t, err)
 	_, err = service.Deliberate(context.Background(), request)
 	require.NoError(t, err)
@@ -229,7 +229,7 @@ func TestDeliberateMemberFailure(t *testing.T) {
 				audit:    []string{approve},
 				fail:     stage,
 			}
-			service, err := NewService(dispatcher, governance.NewL1Doctrine())
+			service, err := NewService(dispatcher, governance.NewL1Doctrine(), admittedPublishMargin)
 			require.NoError(t, err)
 			result, err := service.Deliberate(context.Background(), intentRequest(memberTemplate()))
 			require.NoError(t, err)
@@ -255,7 +255,7 @@ func TestDeliberateBlocked(t *testing.T) {
 		marshal:  `{"risk": "HIGH", "rationale": "deletes /", "feedback": "scope the path"}`,
 		audit:    []string{approve},
 	}
-	service, err := NewService(dispatcher, governance.NewL1Doctrine())
+	service, err := NewService(dispatcher, governance.NewL1Doctrine(), admittedPublishMargin)
 	require.NoError(t, err)
 	result, err := service.Deliberate(context.Background(), intentRequest(memberTemplate()))
 	require.NoError(t, err)
@@ -274,7 +274,7 @@ func TestDeliberateAuditFailed(t *testing.T) {
 		marshal:  lowRisk,
 		audit:    []string{"looks fine"},
 	}
-	service, err := NewService(dispatcher, governance.NewL1Doctrine())
+	service, err := NewService(dispatcher, governance.NewL1Doctrine(), admittedPublishMargin)
 	require.NoError(t, err)
 	result, err := service.Deliberate(context.Background(), intentRequest(memberTemplate()))
 	require.NoError(t, err)

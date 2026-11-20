@@ -3,8 +3,8 @@ doc_id: storage
 title: Storage Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.7.0
-last_updated: 2026-10-30
+version: v1.11.0
+last_updated: 2026-11-20
 owners:
   - internal/services/storage/
   - internal/constants/paths.go
@@ -126,7 +126,7 @@ See [Encryption Architecture](./encryption.md) for vault and keystore protection
 
 ## Persistence Topology
 
-Paths are relative to `.ztd/data/` within the runtime directory. The database filename constant `DbFilename` is defined in [internal/constants/paths.go](../../internal/constants/paths.go). `CreateRuntimeTree` ([internal/services/fs/bootstrap.go](../../internal/services/fs/bootstrap.go)) creates the runtime tree for every Gateway and outbound Operator root: `data/`, `data/ledger/`, `data/ledger/files/`, the vault and secrets trees, `logs/`, `pids/`, `bin/`, the PKI tree, `public-feed/`, and `public-mirror/`. The Gateway opens the public spectator mirror database in `public-mirror/` (see [Public Spectator Architecture](public_spectator.md)). `ztd.db` is created with the rest of `data/`; the inference and eval directories are created when their owners first write to them. Every directory `CreateRuntimeTree` creates is `0700` (`constants.PermDirPrivate`), except `pki/trust/`, `pki/revocation/`, and `pki/binaries/` (public certificates), which are `0755` (`constants.PermDirStandard`). This matters because `--data-dir` can place a data directory outside the private runtime root. `ztd.db` and its `-wal`/`-shm` sidecars are `0600` (`sqliteutil.OpenDB` creates the file private and SQLite gives the sidecars the same mode). `logs/ztd.log` rotates by size into `0600` backups `ztd.log.1` through `ztd.log.5` (`constants.ZtdLogMaxBytes`, `constants.ZtdLogMaxBackups`; see [Troubleshooting Guide](../devs/troubleshooting.md#gateway-process-diagnosis)). The runtime root creates no `protocol/`, `docs/`, or `inference/` directory.
+Paths are relative to `.ztd/data/` within the runtime directory. The database filename constant `DbFilename` is defined in [internal/constants/paths.go](../../internal/constants/paths.go). `CreateRuntimeTree` ([internal/services/fs/bootstrap.go](../../internal/services/fs/bootstrap.go)) creates the runtime tree for every Gateway and outbound Operator root: `data/`, `data/ledger/`, `data/ledger/files/`, the vault and secrets trees, `logs/`, `pids/`, `bin/`, the PKI tree, `public-feed/`, and `public-mirror/`. The Gateway opens the public spectator mirror database in `public-mirror/` (see [Public Spectator Architecture](public_spectator.md)). `ztd.db` is created with the rest of `data/`; the inference and eval directories are created when their owners first write to them. Every directory `CreateRuntimeTree` creates is `0700` (`constants.PermDirPrivate`), except `pki/trust/`, `pki/revocation/`, and `pki/binaries/` (public certificates), which are `0755` (`constants.PermDirStandard`). This matters because `--data-dir` can place a data directory outside the private runtime root. `ztd.db` and its `-wal`/`-shm` sidecars are `0600` (`sqliteutil.OpenDB` creates the file private and SQLite gives the sidecars the same mode). The Gateway writes `logs/ztd.log`, which rotates by size into `0600` backups `ztd.log.1` through `ztd.log.5` (`constants.ZtdLogMaxBytes`, `constants.ZtdLogMaxBackups`; see [Troubleshooting Guide](../devs/troubleshooting.md#gateway-process-diagnosis)). The runtime root creates no `protocol/`, `docs/`, or `inference/` directory.
 
 | Store | Gateway | Outbound Operator | Purpose |
 | --- | --- | --- | --- |

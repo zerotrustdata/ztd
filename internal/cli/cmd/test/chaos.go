@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/paths"
 	"github.com/zerotrustdata/ztd/internal/tools/chaos"
 )
@@ -40,7 +41,7 @@ Distribution:
 	}
 
 	cmd.Flags().IntVar(&chaosCount, "count", 100, "number of payloads to fire")
-	cmd.Flags().StringVar(&chaosDataDir, "data-dir", "", "audit vault data dir (default: <project-root>/"+paths.Infra.TestVaultDir+"/<timestamp>)")
+	cmd.Flags().StringVar(&chaosDataDir, "data-dir", "", "audit vault data dir (default: <project-root>/"+paths.Infra.TestVaultDir+"/<timestamp>"+constants.ChaosTestRunDirSuffix+")")
 	cmd.Flags().StringVar(&chaosPKIDir, "pki-dir", "", "PKI dir reported in the run log (default: <cwd>/"+paths.Infra.PkiDir+")")
 
 	return cmd

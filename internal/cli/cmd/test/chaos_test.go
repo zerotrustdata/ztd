@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zerotrustdata/ztd/internal/constants"
 	"github.com/zerotrustdata/ztd/internal/tools/chaos"
 )
 
@@ -37,7 +38,8 @@ func TestChaosCmd(t *testing.T) {
 		require.NotNil(t, cmd)
 
 		flag := cmd.Flags().Lookup("data-dir")
-		assert.NotNil(t, flag, "chaos command should have --data-dir flag")
+		require.NotNil(t, flag, "chaos command should have --data-dir flag")
+		assert.Contains(t, flag.Usage, "<timestamp>"+constants.ChaosTestRunDirSuffix, "the default names the directory a run actually creates")
 	})
 
 	t.Run("chaos command has pki-dir flag", func(t *testing.T) {

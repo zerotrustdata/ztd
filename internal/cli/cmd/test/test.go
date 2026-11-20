@@ -509,7 +509,7 @@ func testSummaryCmdWithConfig(newFileSvc fileSvcFactory) *cobra.Command {
 
 			var testRuns []string
 			for _, entry := range entries {
-				if entry.IsDir() && strings.HasSuffix(entry.Name(), "chaos-test") {
+				if entry.IsDir() && strings.HasSuffix(entry.Name(), constants.ChaosTestRunDirSuffix) {
 					testRuns = append(testRuns, filepath.Join(testVaultRelDir, entry.Name()))
 				}
 			}

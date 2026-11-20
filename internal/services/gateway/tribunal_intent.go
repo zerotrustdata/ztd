@@ -138,7 +138,7 @@ func (c *TribunalIntentController) HandleIntent(w http.ResponseWriter, r *http.R
 	}
 
 	members := &tribunalMemberDispatcher{inference: c.inference, appID: appID, userID: userID, logger: c.logger}
-	service, err := tribunal.NewService(members, c.doctrine)
+	service, err := tribunal.NewService(members, c.doctrine, DispatchTimeout)
 	if err != nil {
 		c.logger.Error("tribunal intent: construct service", logging.ErrorKind(err))
 		c.responder.ProtoJSONCanonical(w, http.StatusInternalServerError, governance.NewIngressRefusal(err))

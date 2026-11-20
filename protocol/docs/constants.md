@@ -1,7 +1,7 @@
 # Protocol Constants System
 
 Last Updated: 2026-10-23
-Version: v1.10.2
+Version: v1.11.0
 
 The ztd platform maintains a centralized, cryptographically verified constant management architecture. The JSON specifications located in `protocol/constants/` represent the **Single Source of Truth (SSOT)** for the registries they cover (collections, status and action types, events, API paths, ports, channels, senders, and env vars). Some constants are hand-maintained Go with no JSON source; section 7 marks them.
 
@@ -144,7 +144,7 @@ Permitted terminals come from the closed `allowedTerminals` list in `internal/to
 The governance engine determines the action class of any governed request via `constants.Registry.ActionFor(event)`. Hand-coded mapping tables are strictly prohibited.
 
 ### 3.4 Hierarchical Go Accessors
-The generated file `internal/constants/events_gen.go` exposes a nested `Event` struct accessor for type-safe code navigation. Its only root is `Event.Operator`, and its paths come from `internal/tools/constgen/operator_hierarchy.json`. Every other event is referenced by its flat `Event<Name>` constant. The nested groups under `Event.Operator` are `A2a`, `Audit`, `Bootstrap`, `Command` (including `Command.StatusUpdated`), `Eval` (including `Eval.WorkspaceSeed`), `FetchFileDiff`, `FetchFileHistory`, `FetchHistory`, `FetchLogs`, `FileEdit`, `FsGrep`, `FsList`, `FsRead`, `Inference`, `Intent`, `Mcp`, `ModelProvenanceObservation`, `NetworkPing`, `Notary`, `OllamaModelInventory`, `OllamaModelRelease`, `OllamaModelResidency`, `PortCheck`, `ProviderBoundaryObservation`, `Receipt`, `RestoreFile`, and `StatusUpdated`. Ungrouped operator events, such as `Event.Operator.Bound`, are `EventType` fields.
+The generated file `internal/constants/events_gen.go` exposes a nested `Event` struct accessor for type-safe code navigation. Its only root is `Event.Operator`, and its paths come from `internal/tools/constgen/operator_hierarchy.json`. Every other event is referenced by its flat `Event<Name>` constant. The nested groups under `Event.Operator` are `A2a`, `Audit`, `Bootstrap`, `Command` (including `Command.StatusUpdated`), `Eval` (including `Eval.WorkspaceSeed`), `FetchFileDiff`, `FetchFileHistory`, `FetchHistory`, `FetchLogs`, `FileEdit`, `FsGrep`, `FsList`, `FsRead`, `Inference`, `Intent`, `Mcp`, `ModelProvenanceObservation`, `NetworkPing`, `Notary`, `OllamaModelCopy`, `OllamaModelInventory`, `OllamaModelPull`, `OllamaModelRelease`, `OllamaModelResidency`, `PortCheck`, `ProviderBoundaryObservation`, `Receipt`, `RestoreFile`, and `StatusUpdated`. Ungrouped operator events, such as `Event.Operator.Bound`, are `EventType` fields.
 
 ---
 
@@ -199,6 +199,9 @@ Route values are defined in `protocol/constants/api_paths.json`. The `APIPaths` 
   - `ObserveProducerAgentState`: `/api/v1/observe/producer/agent-state`
   - `ObserveProducerRunState`: `/api/v1/observe/producer/run-state`
   - `ObserveProducerStop`: `/api/v1/observe/producer/stop`
+  - `ObserveProducerAssignmentStarted`: `/api/v1/observe/producer/assignment-started`
+  - `ObserveProducerAssignmentCompleted`: `/api/v1/observe/producer/assignment-completed`
+  - `ObserveProducerToolCallFannedOut`: `/api/v1/observe/producer/tool-call-fanned-out`
 - **Audit & Forensics**:
   - `AuditEventReceipts`: `/api/v1/audit/event-receipts`
   - `AuditEventReceiptsExport`: `/api/v1/audit/event-receipts/export`
@@ -220,7 +223,7 @@ Environment variables MUST be read only through typed keys in `protocol/constant
 
 Production Go code accesses the environment solely via typed constants defined on `constants.EnvVar`:
 - **Host Facts**: `EnvVar.Shell` (`SHELL`), `EnvVar.Lang` (`LANG`), `EnvVar.Term` (`TERM`), `EnvVar.TZ` (`TZ`), `EnvVar.Home` (`HOME`), `EnvVar.User` (`USER`), `EnvVar.SSHAuthSock` (`SSH_AUTH_SOCK`), `EnvVar.XDGRuntimeDir` (`XDG_RUNTIME_DIR`), `EnvVar.DBusSessionBusAddress` (`DBUS_SESSION_BUS_ADDRESS`), `EnvVar.Display` (`DISPLAY`), `EnvVar.WaylandDisplay` (`WAYLAND_DISPLAY`), `EnvVar.Browser` (`BROWSER`).
-- **Secrets**: `EnvVar.CloudflareAPIToken` (`CLOUDFLARE_API_TOKEN`).
+- **Secrets**: `EnvVar.CloudflareAPIToken` (`CLOUDFLARE_API_TOKEN`), `EnvVar.GeminiAPIKey` (`GEMINI_API_KEY`), `EnvVar.AnthropicAPIKey` (`ANTHROPIC_API_KEY`), and `EnvVar.OpenAIAPIKey` (`OPENAI_API_KEY`). The three provider keys enable the hosted inference providers an Inference Operator serves when they are set at its start.
 - **User Endpoints**: `EnvVar.OllamaEndpoint` (`ZTD_OLLAMA_ENDPOINT`), the environment fallback for `--inference-ollama-endpoint`. The flag wins when set; otherwise the built-in default is `http://127.0.0.1:11434`.
 - **Test Harness**: `EnvVar.TestReexec` (`ZTD_TEST_REEXEC`) selects test-binary Gateway-child behavior in process-lifecycle tests. The `EnvVar.E2E*` keys (`ZTD_E2E_RUNTIME_ROOT`, `ZTD_E2E_GATEWAY_HTTP_PORT`, `ZTD_E2E_GATEWAY_HTTPS_PORT`, and the `ZTD_E2E_FLEET_*` keys), set by `ztd test scale` and read by the E2E suite under `test/e2e/`.
 

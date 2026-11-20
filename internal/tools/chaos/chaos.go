@@ -406,7 +406,7 @@ func Run(cfg Config) error {
 			return fmt.Errorf("failed to create file service: %w", err)
 		}
 		// Create unique subdirectory for this test run
-		testRunID := fmt.Sprintf("%s-chaos-test", time.Now().Format("20060102-150405"))
+		testRunID := time.Now().Format("20060102-150405") + constants.ChaosTestRunDirSuffix
 		testRunRelDir := filepath.Join(constants.TestVaultDirname, testRunID)
 		if err := cwdFileSvc.MkdirAll(context.Background(), testRunRelDir, constants.PermDirStandard); err != nil {
 			return fmt.Errorf("%w: %v", constants.ErrDirCreateFailed, err)

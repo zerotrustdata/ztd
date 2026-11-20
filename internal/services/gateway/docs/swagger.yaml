@@ -335,6 +335,7 @@ definitions:
     - ztd.v1.ai.eval.proof.available
     - ztd.v1.ai.eval.publication.completed
     - ztd.v1.ai.eval.stop.requested
+    - ztd.v1.ai.eval.tool_call.fanned_out
     - ztd.v1.ai.eval.verifier.completed
     - ztd.v1.ai.llm.chat.filter.updated
     - ztd.v1.app.agent.status.updated
@@ -574,6 +575,7 @@ definitions:
     - EventAiEvalProofAvailable
     - EventAiEvalPublicationCompleted
     - EventAiEvalStopRequested
+    - EventAiEvalToolCallFannedOut
     - EventAiEvalVerifierCompleted
     - EventAiLLMChatFilterEvent
     - EventAppAgentStatusUpdated
@@ -1461,6 +1463,16 @@ definitions:
           type: integer
         type: array
     type: object
+  models.ModelRole:
+    enum:
+    - primary
+    - assistant
+    - lite
+    type: string
+    x-enum-varnames:
+    - ModelRolePrimary
+    - ModelRoleAssistant
+    - ModelRoleLite
   models.ObserveBootstrapSnapshot:
     properties:
       active_run:
@@ -1530,6 +1542,33 @@ definitions:
       web_session_id:
         type: string
     type: object
+  models.ObserveProducerAssignmentRequest:
+    properties:
+      arm_id:
+        type: string
+      assignment_id:
+        type: string
+      campaign_id:
+        type: string
+      cli_session_id:
+        type: string
+      cycle_id:
+        type: string
+      repetition:
+        type: integer
+      role:
+        $ref: '#/definitions/models.ModelRole'
+      schema_version:
+        type: string
+      task_id:
+        type: string
+      terminal_status:
+        $ref: '#/definitions/models.TerminalOutcomeStatus'
+      variant_id:
+        type: string
+      web_session_id:
+        type: string
+    type: object
   models.ObserveProducerRejection:
     properties:
       code:
@@ -1561,6 +1600,9 @@ definitions:
     - end_before_start
     - stop_reason_invalid
     - stop_scope_invalid
+    - assignment_id_required
+    - group_id_required
+    - terminal_status_invalid
     - route_user_required
     - route_session_required
     - route_session_ambiguous
@@ -1588,6 +1630,9 @@ definitions:
     - ObserveProducerRejectionEndBeforeStart
     - ObserveProducerRejectionStopReasonInvalid
     - ObserveProducerRejectionStopScopeInvalid
+    - ObserveProducerRejectionAssignmentIDRequired
+    - ObserveProducerRejectionGroupIDRequired
+    - ObserveProducerRejectionTerminalStatusInvalid
     - ObserveProducerRejectionRouteUserRequired
     - ObserveProducerRejectionRouteSessionRequired
     - ObserveProducerRejectionRouteSessionAmbiguous
@@ -1651,6 +1696,35 @@ definitions:
         $ref: '#/definitions/models.StopReason'
       stop_scope:
         $ref: '#/definitions/models.StopScope'
+      web_session_id:
+        type: string
+    type: object
+  models.ObserveProducerToolCallFannedOutRequest:
+    properties:
+      assignment_id:
+        type: string
+      call_id:
+        type: string
+      campaign_id:
+        type: string
+      cli_session_id:
+        type: string
+      concurrency:
+        type: integer
+      cycle_id:
+        type: string
+      duration_ms:
+        type: integer
+      group_id:
+        type: string
+      schema_version:
+        type: string
+      succeeded:
+        type: integer
+      targets:
+        type: integer
+      tool_name:
+        type: string
       web_session_id:
         type: string
     type: object
@@ -2419,6 +2493,20 @@ definitions:
       user_id:
         type: string
     type: object
+  models.TerminalOutcomeStatus:
+    enum:
+    - completed
+    - failed
+    - superseded
+    - unavailable
+    - qualification
+    type: string
+    x-enum-varnames:
+    - TerminalOutcomeStatusCompleted
+    - TerminalOutcomeStatusFailed
+    - TerminalOutcomeStatusSuperseded
+    - TerminalOutcomeStatusUnavailable
+    - TerminalOutcomeStatusQualification
   models.User:
     properties:
       id:
@@ -5352,6 +5440,90 @@ paths:
       summary: Push observe agent state
       tags:
       - observe
+  /api/v1/observe/producer/assignment-completed:
+    post:
+      consumes:
+      - application/json
+      description: Accepts a typed assignment completion from an mTLS-authenticated
+        app workload. The gateway derives user_id from the peer certificate, persists
+        the assignment progress projection under that user, and emits an ai.eval.assignment.completed
+        SSE event carrying the terminal status after successful persistence.
+      parameters:
+      - description: Assignment completion
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.ObserveProducerAssignmentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: accepted
+          schema:
+            $ref: '#/definitions/models.ObserveProducerResponse'
+        "400":
+          description: Missing campaign_id or assignment_id, or a terminal_status
+            outside the closed set
+          schema:
+            $ref: '#/definitions/models.ObserveProducerRejection'
+        "401":
+          description: Unauthorized — mTLS user identity required
+          schema:
+            type: string
+        "403":
+          description: Forbidden — not an app workload
+          schema:
+            type: string
+        "500":
+          description: Persistence failure
+          schema:
+            $ref: '#/definitions/models.ObserveProducerRejection'
+      summary: Push observe assignment completion
+      tags:
+      - observe
+  /api/v1/observe/producer/assignment-started:
+    post:
+      consumes:
+      - application/json
+      description: Accepts a typed assignment start from an mTLS-authenticated app
+        workload. The gateway derives user_id from the peer certificate, persists
+        the assignment progress projection under that user, and emits an ai.eval.assignment.started
+        SSE event after successful persistence.
+      parameters:
+      - description: Assignment start
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.ObserveProducerAssignmentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: accepted
+          schema:
+            $ref: '#/definitions/models.ObserveProducerResponse'
+        "400":
+          description: Missing campaign_id or assignment_id, or a terminal_status
+            on a start
+          schema:
+            $ref: '#/definitions/models.ObserveProducerRejection'
+        "401":
+          description: Unauthorized — mTLS user identity required
+          schema:
+            type: string
+        "403":
+          description: Forbidden — not an app workload
+          schema:
+            type: string
+        "500":
+          description: Persistence failure
+          schema:
+            $ref: '#/definitions/models.ObserveProducerRejection'
+      summary: Push observe assignment start
+      tags:
+      - observe
   /api/v1/observe/producer/run-state:
     post:
       consumes:
@@ -5434,6 +5606,49 @@ paths:
           schema:
             $ref: '#/definitions/models.ObserveProducerRejection'
       summary: Request observe campaign run stop
+      tags:
+      - observe
+  /api/v1/observe/producer/tool-call-fanned-out:
+    post:
+      consumes:
+      - application/json
+      description: Accepts a typed report of one tool call the eval harness fanned
+        out across roster targets from an mTLS-authenticated app workload. The gateway
+        derives user_id from the peer certificate and emits an ai.eval.tool_call.fanned_out
+        SSE event to the routed session. It persists no projection; the signed agent
+        trace records the group.
+      parameters:
+      - description: Tool call fan-out
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/models.ObserveProducerToolCallFannedOutRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: accepted
+          schema:
+            $ref: '#/definitions/models.ObserveProducerResponse'
+        "400":
+          description: Missing campaign_id, assignment_id or group_id, or inconsistent
+            counts
+          schema:
+            $ref: '#/definitions/models.ObserveProducerRejection'
+        "401":
+          description: Unauthorized — mTLS user identity required
+          schema:
+            type: string
+        "403":
+          description: Forbidden — not an app workload
+          schema:
+            type: string
+        "500":
+          description: Emission failure
+          schema:
+            $ref: '#/definitions/models.ObserveProducerRejection'
+      summary: Push observe tool call fan-out
       tags:
       - observe
   /api/v1/observe/runs:

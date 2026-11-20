@@ -3,8 +3,8 @@ doc_id: events
 title: Event and Action Protocol
 audience: maintainers and coding agents
 status: current
-version: v1.7.0
-last_updated: 2026-10-30
+version: v1.11.0
+last_updated: 2026-11-20
 owners:
   - protocol/constants/events.json
   - internal/services/gateway/

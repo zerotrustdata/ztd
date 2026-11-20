@@ -3,8 +3,8 @@ doc_id: consensus
 title: Consensus Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.7.0
-last_updated: 2026-10-30
+version: v1.11.0
+last_updated: 2026-11-20
 owners:
   - internal/services/governance/l2_consensus.go
   - internal/services/governance/l4_warden.go
@@ -54,6 +54,7 @@ Defines ztd's Layer 2 (L2) machine consensus architecture: the bound consensus p
 - [Procedures](#procedures)
   - [Place in the Five-Layer Interlock](#place-in-the-five-layer-interlock)
   - [Consensus Providers and Binding](#consensus-providers-and-binding)
+  - [Consensus Readiness](#consensus-readiness)
   - [Tribunal Consensus Enrollment](#tribunal-consensus-enrollment)
   - [Consensus Application Enrollment and Binding](#consensus-application-enrollment-and-binding)
   - [Application Provider Deliberation Mechanics](#application-provider-deliberation-mechanics)

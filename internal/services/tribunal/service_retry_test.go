@@ -66,7 +66,7 @@ func (d *scriptedMemberDispatcher) DispatchMember(ctx context.Context, req *oper
 // recorded instead of slept.
 func retryService(t *testing.T, dispatcher *scriptedMemberDispatcher) (*Service, *[]time.Duration) {
 	t.Helper()
-	service, err := NewService(dispatcher, governance.NewL1Doctrine())
+	service, err := NewService(dispatcher, governance.NewL1Doctrine(), admittedPublishMargin)
 	require.NoError(t, err)
 	waits := &[]time.Duration{}
 	service.retry = inferencedispatch.TransientRetry{
@@ -93,7 +93,7 @@ func approvingDispatcher(failures ...operatorv1.ReceiptFailureCode) *scriptedMem
 }
 
 func TestNewService_DefaultsToTheTransientRetryPolicy(t *testing.T) {
-	service, err := NewService(approvingDispatcher(), governance.NewL1Doctrine())
+	service, err := NewService(approvingDispatcher(), governance.NewL1Doctrine(), admittedPublishMargin)
 	require.NoError(t, err)
 	assert.Equal(t, inferencedispatch.DefaultTransientRetry().Delays, service.retry.Delays)
 	require.NotNil(t, service.retry.Wait)
@@ -302,12 +302,13 @@ func TestReviewAdmitted_EnvelopeLifetimeBoundsTheRetryWait(t *testing.T) {
 	service, waits := retryService(t, dispatcher)
 	result := admittedResult()
 	env := admittedEnvelope(admittedL3Approval(), admittedVote())
-	env.ExpiresAt = timestamppb.New(time.Now().Add(time.Second))
+	// One second of review time remains once the publish margin is held back.
+	env.ExpiresAt = timestamppb.New(time.Now().Add(admittedPublishMargin + time.Second))
 
 	err := service.ReviewAdmitted(context.Background(), admittedRequest(), result, env, admittedVoteInference())
 
 	require.ErrorIs(t, err, constants.ErrTribunalInferenceFailed)
-	assert.Empty(t, *waits, "a 5 s wait cannot end before the envelope expires in 1 s")
+	assert.Empty(t, *waits, "a 5 s wait cannot end inside the 1 s of review time the envelope has left")
 	assert.Equal(t, tribunalv1.TribunalOutcome_TRIBUNAL_OUTCOME_INFERENCE_FAILED, result.GetOutcome())
 	require.Len(t, result.GetMemberCalls(), 1)
 	assert.True(t, governance.IsTransientFailureReceipt(result.GetMemberCalls()[0].GetReceipt()))

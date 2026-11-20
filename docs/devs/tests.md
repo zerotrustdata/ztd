@@ -3,8 +3,8 @@ doc_id: tests
 title: Testing Guide
 audience: maintainers and coding agents
 status: current
-version: v1.10.2
-last_updated: 2026-11-18
+version: v1.11.0
+last_updated: 2026-11-20
 owners:
   - internal/cli/cmd/test/
   - internal/testutil/
@@ -338,7 +338,7 @@ Use `./ztd test integration -v --pkg <pkg> --run <regexp>` to stream individual 
 
 ### Scale-Test Cohorts
 
-`./ztd test scale` configures fleet scenario inputs (`ZTD_E2E_RUNTIME_ROOT`, `ZTD_E2E_GATEWAY_HTTP_PORT`, `ZTD_E2E_GATEWAY_HTTPS_PORT`, `ZTD_E2E_FLEET_*`). `TestOperatorFleet_HoldsUnderFanOut` accepts `ZTD_E2E_FLEET_SESSIONS` (comma-separated session UUIDs matching `ZTD_E2E_FLEET_SIZE`). When specified, registry health checks and CLI fan-out target exactly those remote sessions.
+`./ztd test scale` configures fleet scenario inputs (`ZTD_E2E_RUNTIME_ROOT`, `ZTD_E2E_GATEWAY_HTTP_PORT`, `ZTD_E2E_GATEWAY_HTTPS_PORT`, `ZTD_E2E_FLEET_*` except `ZTD_E2E_FLEET_SESSIONS`) and removes `ZTD_E2E_FLEET_SESSIONS` from the inherited environment, so the runner never selects a session cohort. `TestOperatorFleet_HoldsUnderFanOut` accepts `ZTD_E2E_FLEET_SESSIONS` (comma-separated session UUIDs matching `ZTD_E2E_FLEET_SIZE`). When specified, registry health checks and CLI fan-out target exactly those remote sessions.
 
 ### Write a behavior test
 

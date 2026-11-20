@@ -1,7 +1,7 @@
 # Model Context Protocol (MCP) Integration
 
 Last Updated: 2026-10-23
-Version: v1.10.2
+Version: v1.11.0
 
 The ztd Gateway implements native support for the **Model Context Protocol (MCP)**. Autonomous AI agents and coding assistants connect to the Gateway via standardized JSON-RPC 2.0 interfaces. The Gateway acts as a Policy Decision Point (PDP), intercepting every tool invocation, encapsulating it into a strongly typed `GovernanceEnvelope`, subjecting it to the 5-layer governance sequence (L1–L5), and executing it either via host-native tools or by proxying to an authorized downstream MCP server.
 
@@ -72,6 +72,8 @@ When an MCP client requests a tool execution or resource access, the Gateway tra
 | `a2a/call` | `A2A_CALL` | `ztd.operator.v1.A2aCallRequested` | `ztd.v1.operator.a2a.call.requested` |
 
 The payload messages, their fields, and their L1 forbidden-pattern annotations are defined in [`protocol/proto/ztd/operator/v1/operator.proto`](../proto/ztd/operator/v1/operator.proto). Event names are listed in `protocol/constants/events.json`; action types are generated into `internal/constants/action_types_gen.go`.
+
+Governed action tools are the exception to the `tools/call` row. A native tool implementing `GovernedActionTool` (`internal/services/mcp/governed_file_tools.go`) is not wrapped in `MCP_CALL`. Its call becomes the typed action returned by its `ActionType()`, built from the arguments its `GovernedAction()` decodes (`governedActionTool` and `governedActionOptions` in `internal/services/mcp/gateway.go`). `operator_deploy` is one such tool and maps to `OPERATOR_DEPLOY` (`internal/services/mcp/operator_deploy.go`); its `Execute` fails closed rather than running as `MCP_CALL`.
 
 ### 2.2 Protobuf Payload Notes
 - `McpCallRequested.tool_name` carries an L1 forbidden-pattern annotation. The pattern list is in the proto; it is not repeated here.

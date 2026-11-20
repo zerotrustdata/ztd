@@ -3,8 +3,8 @@ doc_id: auth
 title: Authentication & Authorization Architecture
 audience: maintainers and coding agents
 status: current
-version: v1.10.0
-last_updated: 2026-11-11
+version: v1.11.0
+last_updated: 2026-11-20
 owners:
   - internal/services/gateway/
   - internal/cli/cmd/auth/
@@ -226,7 +226,7 @@ The current fingerprint and serial move to `previous_cert_fingerprint` and `prev
 
 An exclusive, nonblocking lock on `.ztd/cli-identity.lock` serializes renewal across processes. Lock files are confined to the runtime root, and a planted symlink is refused. The CLI re-inspects its identity under the lock, stages the returned certificate and key, and commits them while preserving the local operator binding. A held lock skips the attempt. CLI approval signing holds a shared lock through the signed request, so renewal cannot replace the TLS certificate between signing and submission; concurrent approvals can share that lock. Signing waits for an in-flight renewal with caller cancellation and an acquisition timeout. A failed command-start renewal prints a warning and lets the command run with its still-valid certificate.
 
-`auth.CLICertificateSource` reloads the certificate on each TLS handshake and unseals its key only when the certificate changes. `auth.BuildMTLSClient`, `api.NewClient`, and evaluation harness clients use this source. An incomplete concurrent file replacement retains the last good certificate until it expires. `auth.LoadClientAuthContext` keeps a signing snapshot and also exposes the reloading callback for long-running clients. Application identities remain separately enrolled workload leaves; CLI renewal does not renew them.
+`auth.CLICertificateSource` reloads the certificate on each TLS handshake and unseals its key only when the certificate changes. Within one process, `auth.NewCLICertificateSource` returns the source that already holds the identity at the same certificate and key paths while the certificate on disk is unchanged, so the key is unsealed once per process and held in memory until the process exits; a changed certificate on disk is unsealed again. `auth.BuildMTLSClient`, `api.NewClient`, and evaluation harness clients use this source. An incomplete concurrent file replacement retains the last good certificate until it expires. `auth.LoadClientAuthContext` keeps a signing snapshot and also exposes the reloading callback for long-running clients. Application identities remain separately enrolled workload leaves; CLI renewal does not renew them.
 
 A lost response can leave the local identity as the session's previous certificate. A further renewal receives 412 (`ErrCLIRenewalStaleCertificate`) and directs the user to `./ztd auth enroll user --rotate-cli`. Recovery remains explicit because rotation ends the old session and revokes its certificates. A Gateway without the route produces `ErrCLIRenewalUnavailable` with a rebuild-and-restart instruction. An expired local certificate that could not be reinstated produces `ErrCLICertificateExpired` and directs the user to `./ztd auth enroll user`.
 

@@ -291,7 +291,7 @@ func (vs *ZtdoService) Start(ctx context.Context) error {
 	vs.tokenStore = gateway.NewEncryptedKVAdapter(vs.gatewayDB.GetKVStore(), encryptionVault)
 	vs.logger.Info("Token store initialized (canonical KV store)")
 
-	vs.logger.Info("Initializing Local-First Audit Architecture (LFEA)...")
+	vs.logger.Info("Initializing Local-First Events Architecture (LFEA)...")
 
 	// Reuse the runtime's LocalFirstEventsStore and canonical database pool.
 	// CanonicalDBService.Close() owns the store and pruner lifecycle.

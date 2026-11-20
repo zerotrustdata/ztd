@@ -3,8 +3,8 @@ doc_id: glossary
 title: ztd Glossary
 audience: developers, maintainers, and coding agents
 status: current
-version: v1.7.0
-last_updated: 2026-10-30
+version: v1.11.0
+last_updated: 2026-11-20
 owners:
   - protocol/
   - internal/services/
@@ -41,6 +41,12 @@ The `acting_app_id` field in a **Governance Envelope**. It identifies the applic
 ## Actuator (L5 Actuator)
 
 The singular execution boundary in the Operator substrate (`internal/services/governance/l5_actuator.go`). After the **L4 Warden** returns a verified transaction, L5 executes a fail-closed sequence: it signs and persists an initial `EXECUTING` **Event Receipt**, appends a signed **Commitment Attestation** to the SQLite **Commitment Ledger**, rehydrates scrubbed tokens locally through the **Sovereign Execution Boundary**, mints a just-in-time single-action **Capability**, dispatches the action to the registered execution handler, captures deterministic stage evidence, dissolves the capability, finalizes and signs the final receipt, and persists a signed **Receipt Persistence Attestation**. Signing, initial receipt persistence, or commitment persistence failure halts execution immediately.
+
+---
+
+## Agent Trace
+
+The content-addressed JSON evidence envelope that seals one evaluation assignment's complete conversation and tool trajectory, schema `agent-trace.v14` (`agentTraceSchemaVersion`, `internal/services/evaluation/campaign_agent_trace.go`). It binds the run and campaign, the **Harness Roster**, every governed model call, every receipted tool call, and retry chains (`retry_count`, `retry_of`). Its protobuf projection is `AgentTrace`. See [Evaluations Architecture](../architecture/evals.md).
 
 ---
 
@@ -182,6 +188,12 @@ The `events` table in `ztd.db` (`internal/services/storage/local_first_events_st
 
 ---
 
+## Fan-Out
+
+The dispatch of one Data Operator tool call to several **Harness Roster** members. The model names targets in the harness-owned `target_operators` argument (roster indexes, Operator IDs, hostnames, or `["all"]`) on every Operator tool. The harness removes that argument, resolves it against the frozen roster (`resolveRosterTargets`, `internal/services/evaluation/harness_roster.go`), and dispatches one governed action per target, so each target runs its own L1–L5 pass and signs its own receipt. See [Evaluations Architecture](../architecture/evals.md#harness-roster-and-fan-out).
+
+---
+
 ## FIPS Approved Mode
 
 The Go Cryptographic Module state of a `ztd` linux/amd64 binary built with `GOFIPS140=v1.0.0` (`make fips-build`). The build links Go Cryptographic Module v1.0.0, which initializes into approved mode by default. The `Makefile` cites it as CMVP Certificate #5247. `ztd version --fips` reports whether approved mode is active and exits non-zero if it is not (`internal/cli/cmd/version/version.go`). `GODEBUG=fips140=only` turns on enforcement; `make fips-verify` runs under it. The compliance claim covers only that build target. See [FIPS 140-3 Reference](fips140-3.md) for scope and limits.
@@ -241,15 +253,39 @@ The Policy Execution Point (PEP) deployed on a target host (`ztd operator`). It 
 
 ---
 
+## Harness Roster
+
+The frozen, ordered set of Data Operators that one evaluation run addresses. `ztd eval runs start --data-operators` selects it, and `runStartFleet` (`internal/cli/cmd/eval/runs_lifecycle.go`) resolves it. The model reads the roster in an `<operator_roster>` block of its system prompt, names targets from it through **Fan-Out**, and the agent trace brackets each member's ledger before and after the run (`internal/services/evaluation/harness_roster.go`). See [Evaluations Architecture](../architecture/evals.md#harness-roster-and-fan-out).
+
+---
+
 ## Heartbeat
 
 Periodic health and status telemetry sent by a Governed Operator to the Gateway over its outbound connection. `HeartbeatRequested` is an empty trigger; `HeartbeatResult` (`ztd.operator.v1.HeartbeatResult`) reports operator identity, uptime, OS, architecture, CPU count, memory and disk metrics, network interfaces, runtime environment, and system fingerprint. The separate native `sys_info` MCP tool reports OS version, kernel version, uptime, and load average where available; Windows reports load average as `unknown`. The Gateway monitors heartbeats to maintain operator liveness records.
 
 ---
 
+## Hosted Egress Attestation
+
+The signed `InferenceHostedEgressAttestation` (`hosted_egress` on `InferenceResult`, `protocol/proto/ztd/operator/v1/operator.proto`) that an Inference Operator attaches to each hosted generation. It names the provider class and fixed API origin, the requested model and the provider-reported model version, the **Hosted Model Identity Digest**, the normalized request hash, and the provider response ID and raw-response digest. The result digest covers it. The Gateway checks it against its request with `models.ValidateHostedEgress` (`internal/models/hosted_model_identity.go`); a local generation carries none. See [Model Provenance](../architecture/model-provenance.md#hosted-provider-provenance) (`INV-PROV-ATTEST-09`).
+
+---
+
+## Hosted Model Identity Digest
+
+The model digest of a hosted model: lowercase hex SHA-256 over a domain-separated canonical record of the provider class, provider API origin, model ID, and provider model version read from the provider's metadata (`ComputeHostedModelIdentityDigest`, `internal/models/hosted_model_identity.go`). A hosted provider holds the weights, so the digest binds the identity the provider declares rather than attesting weights, and it changes when the provider re-versions the model behind an unchanged ID. The Inference Operator recomputes it from a fresh metadata read before every governed hosted call. See [Model Provenance](../architecture/model-provenance.md#hosted-provider-provenance) (`INV-PROV-ATTEST-08`).
+
+---
+
+## Hosted Provider Class
+
+The provider class of a model served by a hosted provider API: `gemini`, `anthropic`, or `openai` (`constants.HostedInferenceProviders`, `internal/constants/inference.go`). Each class has one fixed API origin that is never configured. An Inference Operator with the `inference` capability serves a hosted class only when its API key was set at startup and the owner's enrollment approval bound that class to it. The local classes are `ollama` and `llamacpp`. The Gateway routes a governed inference with a non-empty provider class only to an Operator that serves that class. See [Operator Architecture](../architecture/operator.md) (`INV-OP-CAP-05`).
+
+---
+
 ## Inference Dispatch (Governed Inference)
 
-The governed model-inference dispatch subsystem (`internal/services/inference/`). It routes model generation requests (`InferenceDispatchRequest`) to the Inference Operator's provider backend (Ollama or llama.cpp). The dispatcher rejects an unspecified model role (`InferenceModelRole`), enforces campaign model-registry bindings and SHA-256 model digests (`VerifyModelRegistryBinding`), and returns token usage, finish reason and timing in an `InferenceResult` wrapped in an `InferenceDispatchResponse`. Dispatched inference requests are governed envelopes and pass through the L1–L5 pipeline and model-boundary token scrubbing.
+The governed model-inference dispatch subsystem (`internal/services/inference/`). It routes model generation requests (`InferenceDispatchRequest`) to the Inference Operator's local provider backend (Ollama or llama.cpp) or to a hosted provider class (see **Hosted Provider Class**). The dispatcher rejects an unspecified model role (`InferenceModelRole`), enforces campaign model-registry bindings and SHA-256 model digests (`VerifyModelRegistryBinding`), including the **Hosted Model Identity Digest** for hosted models, and returns token usage, finish reason and timing in an `InferenceResult` wrapped in an `InferenceDispatchResponse`. Dispatched inference requests are governed envelopes and pass through the L1–L5 pipeline and model-boundary token scrubbing.
 
 ---
 
@@ -394,7 +430,7 @@ A Governed Operator started with the `provenance` capability (`OperatorCapabilit
 
 ## Receipt Failure Code
 
-A strongly typed classification enum (`ReceiptFailureCode`, `protocol/proto/ztd/operator/v1/operator.proto`) stamped on an `EventReceipt` when execution status is `EXECUTION_STATUS_FAILED`. Values distinguish governance rejections (`RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED`), model configuration errors (`RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED`, `RECEIPT_FAILURE_CODE_ROLE_INVALID`, `RECEIPT_FAILURE_CODE_MODEL_REF_INVALID`), inference backend faults (`RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE`, `RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT`, `RECEIPT_FAILURE_CODE_GENERATE_FAILED`), missing models (`RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND`), provider format errors (`RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID`), a provider stream that ended with an error event instead of a done event (`RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR`), prompts that fill the model context window (`RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW`, returned by the Gateway as HTTP 422), general execution failures (`RECEIPT_FAILURE_CODE_EXECUTION_FAILED`), and payloads withheld because they could not be rehydrated: an unresolvable UEI placeholder, colliding keys, or a payload that does not decode as its action's message (`RECEIPT_FAILURE_CODE_REHYDRATION_FAILED`). The failure code is bound into the receipt signature.
+A strongly typed classification enum (`ReceiptFailureCode`, `protocol/proto/ztd/operator/v1/operator.proto`) stamped on an `EventReceipt` when execution status is `EXECUTION_STATUS_FAILED`. Values distinguish governance rejections (`RECEIPT_FAILURE_CODE_GOVERNANCE_REJECTED`), model configuration errors (`RECEIPT_FAILURE_CODE_MODEL_OVERRIDE_DENIED`, `RECEIPT_FAILURE_CODE_ROLE_INVALID`, `RECEIPT_FAILURE_CODE_MODEL_REF_INVALID`), inference backend faults (`RECEIPT_FAILURE_CODE_BACKEND_UNAVAILABLE`, `RECEIPT_FAILURE_CODE_BACKEND_TIMEOUT`, `RECEIPT_FAILURE_CODE_GENERATE_FAILED`), a backend that asked to be retried later (`RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT`, the trigger for a **Transient Retry**), missing models (`RECEIPT_FAILURE_CODE_MODEL_NOT_FOUND`), provider format errors (`RECEIPT_FAILURE_CODE_PROVIDER_RESPONSE_INVALID`), a provider stream that ended with an error event instead of a done event (`RECEIPT_FAILURE_CODE_PROVIDER_STREAM_ERROR`), prompts that fill the model context window (`RECEIPT_FAILURE_CODE_CONTEXT_OVERFLOW`, returned by the Gateway as HTTP 422), general execution failures (`RECEIPT_FAILURE_CODE_EXECUTION_FAILED`), and payloads withheld because they could not be rehydrated: an unresolvable UEI placeholder, colliding keys, or a payload that does not decode as its action's message (`RECEIPT_FAILURE_CODE_REHYDRATION_FAILED`). The failure code is bound into the receipt signature.
 
 ---
 
@@ -477,6 +513,12 @@ The terminal user interface launched via `ztd tui` (`internal/cli/cmd/tui/`, imp
 ## Transaction Hash
 
 The deterministic SHA-256 digest computed from normalized **Governance Envelope** fields via `GenerateMessageID(env)`. The envelope `id` and `transaction_hash` must both match this value. The calculation dispatches on protocol version: V1 hashes the canonical field string; V2 hashes `ztd-tx-v2|<action_type>|<event_type>|<V1 canonical string>` and requires a nonempty event type. L2 consensus votes, L3 human approvals, replay checks, capabilities, receipts, and commitment attestations bind cryptographically to this hash. Dynamic policy metadata, including the active governance posture, is excluded from hash canonicalization.
+
+---
+
+## Transient Retry
+
+The retry policy for an inference attempt that the provider asked to retry later (`TransientRetry`, `internal/services/inference/dispatch/retry.go`). It starts only on a signed `FAILED` receipt with `RECEIPT_FAILURE_CODE_BACKEND_TRANSIENT` and waits 5 s, 20 s, then 40 s, at most three retries. Each retry is a new provider attempt carrying `retry_count` and `retry_of`, and superseded attempts remain in the evidence. Campaign agent turns, Interrogator calls, judge calls, Tribunal member calls, and L2 consensus votes use it (`INV-EVAL-CAMP-63`, `INV-GW-GOV-07`, `INV-CON-VOTE-05`).
 
 ---
 
