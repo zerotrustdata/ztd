@@ -983,7 +983,7 @@ func buildModelSummaryRecord(datasetID, observedAt string, bucket *variantRoleAg
 		CampaignRelease: release.publicIdentity(),
 		SchemaVersion:   constants.ExplorerViewSchemaVersion, Kind: "model_summary", DatasetID: datasetID,
 		QualityState: qualityStateForModelSummary(terminal), ObservedAt: observedAt, SourceRevisionLabel: campaignSourceRevision,
-		VariantID: bucket.VariantID, DisplayName: displayNameForVariant(bucket.VariantID), ServedModelTag: bucket.ServedModelTag,
+		VariantID: bucket.VariantID, DisplayName: displayNameForModel(bucket.ServedModelTag, bucket.VariantID), ServedModelTag: bucket.ServedModelTag,
 		ParameterCount: bucket.ParameterCount,
 		ModelDigest:    bucket.ModelDigest, ModelFamily: bucket.ModelFamily, ModelFormat: bucket.ModelFormat,
 		ArtifactSizeBytes: bucket.ArtifactSizeBytes, QuantizationWeightClass: bucket.Quantization, ContextLimit: bucket.ContextLimit,
@@ -1773,17 +1773,15 @@ func evaluationUnitForRun(run *evalv1.EvaluationRun) string {
 	return "model"
 }
 
-func displayNameForVariant(variantID string) string {
-	parts := strings.Split(variantID, "-")
-	words := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		words = append(words, strings.ToUpper(part[:1])+part[1:])
+// displayNameForModel names a model by its served tag, the same rule formation
+// models use. The tag keeps the vendor's punctuation ("gemini-3.6-flash",
+// "qwen3:4b") that the variant ID slug drops; the variant ID names a model only
+// when it has no served tag.
+func displayNameForModel(servedModelTag, variantID string) string {
+	if servedModelTag != "" {
+		return servedModelTag
 	}
-	return strings.Join(words, " ")
+	return variantID
 }
 
 func homogeneousVariantRole(assignment *evalv1.EvaluationAssignment) (string, string, error) {

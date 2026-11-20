@@ -320,7 +320,7 @@ func TestBuildRunAggregateViewRecords(t *testing.T) {
 	assert.Equal(t, "model_summary", model.Kind)
 	assert.Equal(t, "qwen3-4b", model.VariantID)
 	assert.Equal(t, "primary", model.Role)
-	assert.Equal(t, "Qwen3 4b", model.DisplayName)
+	assert.Equal(t, "qwen3:4b", model.DisplayName)
 	assert.Equal(t, "qwen3:4b", model.ServedModelTag)
 	require.NotNil(t, model.AgreementPairwise)
 	assert.Equal(t, "source_unavailable", model.AgreementPairwise.UnavailableReason)
@@ -1314,4 +1314,19 @@ func TestBuildRunVerificationApplicability_BindsHeterogeneousStackPopulation(t *
 	assert.Equal(t, stack.GetStackId(), entry.GetStackId())
 	assert.Empty(t, entry.GetVariantId())
 	require.Len(t, applicability.EligibleModelBuckets, 3)
+}
+
+func TestDisplayNameForModel_IsTheServedTag(t *testing.T) {
+	cases := []struct {
+		name, servedTag, variantID, want string
+	}{
+		{name: "hosted version dot", servedTag: "gemini-3.6-flash", variantID: "gemini-3-6-flash", want: "gemini-3.6-flash"},
+		{name: "local size tag", servedTag: "qwen3:4b", variantID: "qwen3-4b", want: "qwen3:4b"},
+		{name: "no served tag", servedTag: "", variantID: "smollm2-135m", want: "smollm2-135m"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, displayNameForModel(tc.servedTag, tc.variantID))
+		})
+	}
 }
