@@ -146,11 +146,10 @@ func (s *Store) UpdateSuite(ctx context.Context, def ScenarioSuite) error {
 	if err != nil {
 		return err
 	}
-	previous, _, err := MaterializeSuite(current)
-	if err != nil {
-		return fmt.Errorf("evaluation: update suite %q: stored suite is invalid: %w", def.ID, err)
-	}
-	if previous.GetCatalogDigest() == next.GetCatalogDigest() {
+	// A stored suite that no longer materializes on this build (for example,
+	// one frozen under an earlier persona registry) cannot equal the valid
+	// definition, so it is only ever replaced, never a no-op.
+	if previous, _, err := MaterializeSuite(current); err == nil && previous.GetCatalogDigest() == next.GetCatalogDigest() {
 		return nil
 	}
 	if current.Version == def.Version {

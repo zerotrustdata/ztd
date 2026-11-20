@@ -9,6 +9,7 @@ package evaluation
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -301,4 +302,30 @@ func TestSuiteStore_LoadSuiteCatalogServesBuiltinsAndRejectsUnknownIDs(t *testin
 	require.ErrorIs(t, err, constants.ErrNotFound)
 	_, _, err = store.LoadSuiteCatalog(ctx, "../escape")
 	assert.ErrorIs(t, err, constants.ErrNotFound)
+}
+
+// A suite stored under an earlier persona registry no longer materializes on
+// this build. Update replaces it with a valid new version; the same version
+// is still refused, because the content differs.
+func TestSuiteStore_UpdateReplacesASuiteFrozenUnderEarlierPersonas(t *testing.T) {
+	ctx := context.Background()
+	store := NewStore(newCampaignMemoryFileService())
+
+	stale := customSuite(t, "my-suite", "1.0.0", "instruction-classify-severity")
+	require.NotEmpty(t, stale.Personas)
+	stale.Personas[0].Digest = "sha256:" + strings.Repeat("0", 64)
+	require.NoError(t, store.writeSuite(ctx, stale))
+	_, _, err := store.LoadSuiteCatalog(ctx, "my-suite")
+	require.ErrorIs(t, err, constants.ErrPersonaDigestMismatch)
+
+	sameVersion := customSuite(t, "my-suite", "1.0.0", "instruction-classify-severity")
+	require.ErrorIs(t, store.UpdateSuite(ctx, sameVersion), constants.ErrEvaluationSuiteInvalid)
+
+	next := customSuite(t, "my-suite", "1.1.0", "instruction-classify-severity")
+	require.NoError(t, store.UpdateSuite(ctx, next))
+	resolved, _, err := store.ResolveSuite(ctx, "my-suite")
+	require.NoError(t, err)
+	assert.Equal(t, "1.1.0", resolved.Version)
+	_, _, err = store.LoadSuiteCatalog(ctx, "my-suite")
+	require.NoError(t, err)
 }
